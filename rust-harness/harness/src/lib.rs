@@ -6,6 +6,7 @@
 pub mod agent;
 pub mod alignment;
 pub mod chat;
+pub mod cli;
 pub mod compact;
 pub mod generator;
 pub mod interplog;

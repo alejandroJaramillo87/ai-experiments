@@ -44,7 +44,22 @@ residual activations in the interp capture shard format (consumed unchanged
 by the parent repository's `interp/probes` toolkit); `attention-capture` writes
 post-softmax attention weights for chosen layers and query heads over one
 prompt, which is how Gemma 4's interleaved sliding and global attention can be
-looked at directly.
+looked at directly; `ladder` runs the five-rung correctness gate against a
+transformers reference; `layer-diff` reports per-layer divergence of the
+residual stream against a reference capture; and `long-context-golden` writes
+the committed long-prefill logits fixture.
+
+## Command line
+
+`harness --help` is the authoritative list of flags, generated from the same
+table the parser reads, so it cannot describe a flag the binary does not accept
+or omit one it does. `harness --version` prints the build. Both write to stdout
+and exit 0; a usage error goes to stderr and exits 2.
+
+An unrecognized flag is a usage error rather than task text, so a misspelling
+like `harness --modle m "do x"` stops rather than running a task named after the
+mistake. Task text that legitimately begins with a dash goes after a bare `--`,
+which ends flag parsing.
 
 ## Testing
 

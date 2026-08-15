@@ -631,82 +631,31 @@ fn run(
     Ok(())
 }
 
-/// Refuse a flag value that is itself a flag, naming both. The extractor
-/// takes the word after a flag as its value, so an omitted value swallows
-/// the flag that follows: the swallowed flag never applies, its own value
-/// falls into the task text, and the run exits 0 having done something the
-/// user never asked for. Only the `--` spelling this parser recognizes is
-/// refused; a negative number or a path starting with `-` is a value.
-fn flag_value_error(flag: &str, value: &str) -> Option<String> {
-    value
-        .starts_with("--")
-        .then(|| format!("[ERROR] {flag}: expected a value, found the flag {value}"))
-}
-
 fn main() -> ExitCode {
-    const USAGE: &str = "usage: harness --model <checkpoint-dir> [--tokenizer <path.json>] \
-         [--record <path>] \
-         [--trace-chrome <path>] [--control-vector <path.safetensors>] \
-         [--control-vector-scale <f>] [--control-vector-layer-range \"<start> <end>\"] \
-         [--probe <path.safetensors>] [--interp-log <dir>] \
-         [--probe-out <path>] [--alignment-out <path>] [--temperature <f>] [--top-p <f>] \
-         [--top-k <n>] [--seed <n>] [--max-tokens <n>] [--context <n>] \
-         [--compact-at <f>] [--text-only] [--single-thread] \
-         [--serve-addr <ip>] \
-         (--chat | --serve <port> | <task description>)";
-    let mut args: Vec<String> = std::env::args().skip(1).collect();
-    // Snapshot before flag extraction mutates args: cmd.start records the
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    // The meta flags answer and exit before anything is parsed, loaded or
+    // logged. They print to stdout, which does not weaken the stdout-is-payload
+    // rule: requested help is this invocation's payload, exactly as argparse
+    // treats it in the Python tiers. A usage *error* stays on stderr at exit 2.
+    // Exiting here also means no obs record, matching the rule that a query is
+    // not a run -- and matching the usage errors below, which likewise return
+    // before RunLog::begin.
+    //
+    // Only the region before `--` is scanned, so a task containing the word
+    // --help is still a task.
+    let meta: Vec<&String> = args.iter().take_while(|a| *a != "--").collect();
+    if meta.iter().any(|a| *a == "--help" || *a == "-h") {
+        println!("{}", harness::cli::help());
+        return ExitCode::SUCCESS;
+    }
+    if meta.iter().any(|a| *a == "--version" || *a == "-V") {
+        println!("harness {}", env!("CARGO_PKG_VERSION"));
+        return ExitCode::SUCCESS;
+    }
+    drop(meta);
+    // Snapshot before extraction consumes args: cmd.start records the
     // invocation as given, program name excluded (the shape common/obs logs).
     let argv_full = args.clone();
-    // --model <checkpoint-dir>: config.json and model.safetensors for the
-    // CPU backend. A path to the weights file resolves to its directory.
-    // --record <path>: wrap the model in the flight recorder, appending every
-    // forward call to a JSONL file replayable as a MockModel script.
-    // --trace-chrome <path>: write a Perfetto-loadable trace of the span
-    // timeline. No subscriber is installed otherwise, so spans cost nothing.
-    // --control-vector <path.safetensors>: steering directions from
-    // interp/steering/export.py, one `block.<index>` tensor per steered
-    // decoder block, added to that block's output residual.
-    // --control-vector-scale <f>: multiplier on the directions (default 1.0).
-    // --control-vector-layer-range "<start> <end>": inclusive 0-based block
-    // range; directions outside it are dropped at load.
-    // --probe <path.safetensors>: linear probe (interp/probes/export.py
-    // layout) scored in-band at every position of its layer through the tap
-    // seam. The JSON sidecar beside it -- the same path with a .json
-    // extension -- carries the layer, site and threshold, and is required.
-    // --probe-out <path>: JSONL file for flagged positions (default
-    // probe-flags.jsonl in the working directory).
-    // --interp-log <dir>: under --serve, append one JSONL record per
-    // completed request to <dir>/harness/YYYY-MM-DD.jsonl, carrying the
-    // request, the reply, and the probe scores taken while answering it.
-    // This is what interp's probe monitor reads; without it a served run
-    // computes scores and discards them, because serving has no end of run
-    // at which to report. Ignored outside --serve, where the end-of-run
-    // artifacts above are reachable.
-    // --alignment-out <path>: JSONL file mapping every position to the byte
-    // span of output text it produced, the forward pass that computed it, and
-    // the probe score taken there. Off by default: it makes the model record
-    // its passes and the monitor keep every clean score, both of which grow
-    // with the run.
-    // --temperature <f> / --top-p <f> / --seed <n>: sampling parameters
-    // (defaults 0.8 / 0.95 / 0; seed 0 replays a run exactly).
-    // --top-k <n>: rank cutoff applied before top-p, keeping at most the n
-    // most probable tokens of the masked support. Omitted by default, which
-    // is no rank cutoff at all; 0 is rejected rather than read as "disabled".
-    // --max-tokens <n>: per-turn generation budget (default 256).
-    // --context <n>: cap the context budget below the model's trained
-    // window (never above it; max_position_embeddings is the default and
-    // the maximum).
-    // --compact-at <f>: automatic-compaction threshold as a fraction of the
-    // context budget (default 0.8, must be in (0, 1]).
-    // --serve <port>: serve /v1/chat/completions and /v1/health on loopback
-    // instead of running a task, for the interp pipeline's HTTP clients. The
-    // sampling flags above become the per-request defaults; a request may
-    // override any of them, including the seed. Mutually exclusive with
-    // --chat, and takes no task text.
-    // --serve-addr <ip>: the bind address, 127.0.0.1 by default. Only a
-    // container needs to set it, and must: see the parse site for why the
-    // container's own loopback is unreachable through a published port.
     let mut model: Option<std::path::PathBuf> = None;
     let mut tokenizer: Option<std::path::PathBuf> = None;
     let mut record: Option<std::path::PathBuf> = None;
@@ -727,41 +676,53 @@ fn main() -> ExitCode {
     let mut compact_at_arg: Option<std::path::PathBuf> = None;
     let mut serve_arg: Option<std::path::PathBuf> = None;
     let mut serve_addr_arg: Option<std::path::PathBuf> = None;
-    for (flag, slot) in [
-        ("--model", &mut model),
-        ("--record", &mut record),
-        ("--trace-chrome", &mut trace_chrome),
-        ("--control-vector", &mut control_vector),
-        ("--control-vector-scale", &mut control_scale_arg),
-        ("--control-vector-layer-range", &mut control_range_arg),
-        ("--probe", &mut probe),
-        ("--tokenizer", &mut tokenizer),
-        ("--probe-out", &mut probe_out),
-        ("--alignment-out", &mut alignment_out),
-        ("--interp-log", &mut interp_log),
-        ("--temperature", &mut temperature_arg),
-        ("--top-p", &mut top_p_arg),
-        ("--top-k", &mut top_k_arg),
-        ("--seed", &mut seed_arg),
-        ("--max-tokens", &mut max_tokens_arg),
-        ("--context", &mut context_arg),
-        ("--compact-at", &mut compact_at_arg),
-        ("--serve", &mut serve_arg),
-        ("--serve-addr", &mut serve_addr_arg),
-    ] {
-        if let Some(i) = args.iter().position(|a| a == flag) {
-            if i + 1 >= args.len() {
-                eprintln!("{USAGE}");
+    // The scan borrows every slot mutably, so it lives in a block: the typed
+    // parsing below reads those same locals, and the borrows have to be dead by
+    // then. Deleting the braces produces a borrow error pointing at the first
+    // reader rather than here.
+    let parsed = {
+        let mut slots: [(&'static str, &mut Option<std::path::PathBuf>); 20] = [
+            ("--model", &mut model),
+            ("--record", &mut record),
+            ("--trace-chrome", &mut trace_chrome),
+            ("--control-vector", &mut control_vector),
+            ("--control-vector-scale", &mut control_scale_arg),
+            ("--control-vector-layer-range", &mut control_range_arg),
+            ("--probe", &mut probe),
+            ("--tokenizer", &mut tokenizer),
+            ("--probe-out", &mut probe_out),
+            ("--alignment-out", &mut alignment_out),
+            ("--interp-log", &mut interp_log),
+            ("--temperature", &mut temperature_arg),
+            ("--top-p", &mut top_p_arg),
+            ("--top-k", &mut top_k_arg),
+            ("--seed", &mut seed_arg),
+            ("--max-tokens", &mut max_tokens_arg),
+            ("--context", &mut context_arg),
+            ("--compact-at", &mut compact_at_arg),
+            ("--serve", &mut serve_arg),
+            ("--serve-addr", &mut serve_addr_arg),
+        ];
+        match harness::cli::extract(args, &mut slots) {
+            Ok(parsed) => parsed,
+            Err(error) => {
+                runtime::status::error(&error);
+                eprintln!("{}", harness::cli::usage());
                 return ExitCode::from(2);
             }
-            if let Some(error) = flag_value_error(flag, &args[i + 1]) {
-                eprintln!("{error}");
-                return ExitCode::from(2);
-            }
-            *slot = Some(std::path::PathBuf::from(args.remove(i + 1)));
-            args.remove(i);
         }
+    };
+    // Flags given without the flag they need. Generalized from the one
+    // hand-written case (--serve-addr), so the steering companions are checked
+    // too: --control-vector-scale without a vector used to be ignored.
+    let missing = harness::cli::missing_requirements(&parsed.given);
+    if !missing.is_empty() {
+        for message in &missing {
+            runtime::status::error(message);
+        }
+        return ExitCode::from(2);
     }
+    let args = parsed.rest;
     let control_scale = match control_scale_arg {
         Some(v) => match v.to_string_lossy().parse::<f32>() {
             Ok(s) if s.is_finite() => s,
@@ -856,32 +817,12 @@ fn main() -> ExitCode {
         },
         None => 0.8,
     };
-    // --text-only: load the text stack of a multimodal checkpoint and decline
-    // its audio and vision towers. Required rather than implied, so nobody
-    // runs a multimodal model text-blind without having said so.
-    let text_only = if let Some(i) = args.iter().position(|a| a == "--text-only") {
-        args.remove(i);
-        true
-    } else {
-        false
-    };
-    // --single-thread: run the CPU backend's row split at width one. Not a
-    // numerics switch -- the split is bit-identical at every width -- but rr
-    // serializes threads anyway, so `make debug-record` wants it.
-    let single_thread = if let Some(i) = args.iter().position(|a| a == "--single-thread") {
-        args.remove(i);
-        true
-    } else {
-        false
-    };
-    // --chat: interactive REPL instead of a one-shot task; the two are
-    // mutually exclusive, so leftover positional args are a usage error.
-    let chat = if let Some(i) = args.iter().position(|a| a == "--chat") {
-        args.remove(i);
-        true
-    } else {
-        false
-    };
+    // The bare flags carry no value, so the scan recorded only that they were
+    // given. Their help text lives in the table with everything else.
+    let given = |name: &str| parsed.given.contains(&name);
+    let text_only = given("--text-only");
+    let single_thread = given("--single-thread");
+    let chat = given("--chat");
     // --serve <port>: the OpenAI-shaped endpoint on loopback instead of a
     // task or a REPL. Mutually exclusive with both, and like --chat it takes
     // no positional task text.
@@ -899,14 +840,6 @@ fn main() -> ExitCode {
         eprintln!("[ERROR] --chat and --serve are mutually exclusive");
         return ExitCode::from(2);
     }
-    // --serve-addr <ip>: loopback by default, so a harness run directly on a
-    // workstation is reachable only from that machine. A container has to
-    // override it: binding the container's own 127.0.0.1 makes the published
-    // port unreachable from the host, because the mapping forwards to the
-    // container's external interface and nothing is listening there. That is
-    // not a weaker posture -- compose publishes to 127.0.0.1:8005 on the
-    // host, so what may reach the endpoint is unchanged either way.
-    let serve_addr_given = serve_addr_arg.is_some();
     let serve_addr = match serve_addr_arg {
         Some(v) => match v.to_string_lossy().parse::<std::net::IpAddr>() {
             Ok(addr) => addr,
@@ -920,14 +853,25 @@ fn main() -> ExitCode {
         },
         None => std::net::IpAddr::from([127, 0, 0, 1]),
     };
-    if serve_addr_given && serve.is_none() {
-        eprintln!("[ERROR] --serve-addr has no meaning without --serve");
-        return ExitCode::from(2);
+    // Flags accepted but with nothing to act on. A warning rather than an
+    // error: setting sampling defaults uniformly and then pinning one run to
+    // greedy is a coherent thing for a script to do, and the request log is
+    // documented as ignored outside --serve rather than being lost. What was
+    // wrong was doing it silently.
+    if sampling.temperature == 0.0 {
+        for message in harness::cli::inert(&parsed.given, harness::cli::GREEDY) {
+            runtime::status::warn(&message);
+        }
+    }
+    if serve.is_none() {
+        for message in harness::cli::inert(&parsed.given, harness::cli::NOT_SERVING) {
+            runtime::status::warn(&message);
+        }
     }
     // A task is positional text; the two flag modes take none. Exactly one of
     // the three must be selected.
     if args.is_empty() != (chat || serve.is_some()) {
-        eprintln!("{USAGE}");
+        eprintln!("{}", harness::cli::usage());
         return ExitCode::from(2);
     }
     // The guard flushes the trace file on drop at the end of main.
@@ -1106,27 +1050,6 @@ mod tests {
         let out = dir.path().join("absent").join("flags.jsonl");
         report_probe(&monitor, &out).expect("a missing parent directory is created, not a failure");
         assert!(out.is_file(), "{}", out.display());
-    }
-
-    #[test]
-    fn a_flag_value_that_is_itself_a_flag_is_refused_naming_the_flag_and_the_value() {
-        // `--probe-out --max-tokens 4 hello` without a path: the old parser
-        // stored "--max-tokens" as the probe output, dropped the token
-        // budget, and pushed "4" into the task text, all at exit 0.
-        let error = flag_value_error("--probe-out", "--max-tokens")
-            .expect("an omitted value must not swallow the following flag");
-        assert!(error.starts_with("[ERROR] "), "{error}");
-        assert!(error.contains("--probe-out"), "{error}");
-        assert!(error.contains("--max-tokens"), "{error}");
-    }
-
-    #[test]
-    fn a_flag_value_that_only_looks_flag_adjacent_is_accepted() {
-        // Refusing more than the `--` spelling would reject legitimate
-        // values: a negative scale, or a path whose name starts with a dash.
-        assert_eq!(flag_value_error("--probe-out", "flags.jsonl"), None);
-        assert_eq!(flag_value_error("--control-vector-scale", "-1.5"), None);
-        assert_eq!(flag_value_error("--model", "./-weights.gguf"), None);
     }
 
     #[test]

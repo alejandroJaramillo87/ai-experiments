@@ -381,6 +381,117 @@ including that records survive `kill` rather than depending on a clean shutdown.
 [../verification/interp/interp.md](../verification/interp/interp.md) are the workstation checks, and what
 they add is whether a real probe over real E4B produces scores worth reading.
 
+## The U series — the user surface, and the harness as an observability tier
+
+Runs alongside the phases above and depends on none of them. Three failures motivate it and
+they are the same failure: `DotKind`'s default was `Sequential` while `set_dot` had one
+caller, so everything but the ladder ran the reference fold for months; RH.12's determinism
+runs deviated from the documented `--seed 7`, caught only while writing the entry up; and
+unknown flags were swallowed into the task string, so `harness --modle m "do x"` ran a task
+named after the misspelling and exited 0. In each case the tool knew what it was doing and
+never said so.
+
+Alongside that, the observability integration was built but invisible: `harness/src/obs.rs`
+has written the shared record contract since RH.13, and nothing surfaced a harness run to a
+human. The governing distinction is **centralize observation, not invocation** — one log
+root, one run-id format, one event schema, one catalog, one viewer, and deliberately no
+unified launcher, because the three tiers have genuinely different shapes and a wrapper
+would become a third place a flag spelling can drift.
+
+### U5 — the runs catalog becomes browsable (done)
+
+`common/obs/runs.py` holds the four selection flags once; the training and interp
+subcommands collapse onto it, and `python -m common.obs.runs --cli harness` gives the Rust
+workspace the entry point it had no Python package to host. A net deletion. `make
+harness-runs` wraps it.
+
+### U1 — `runtime/src/status.rs`, the shared six-tag emitter (done)
+
+One module owns the status-line format for every binary in the workspace, byte-for-byte
+`common/output.py`'s `Printer`: six tags, an indent that precedes the colour escape, colour
+gated on `NO_COLOR` and a terminal, and every emitter on stderr.
+`runtime/tests/status_python_parity.rs` spawns the real Python `Printer` and compares bytes,
+so the two tables cannot drift into being two people typing the same thing. `testlog::skip`
+stays as a delegating wrapper.
+
+Recorded divergence: this checks `NO_COLOR` by presence and `output.py:38` by truthiness, so
+an empty value disagrees. Presence is what no-color.org specifies, which makes Python the
+off-spec side; changing a stable tier four CLIs depend on was out of scope.
+
+### U1b / U1c — migrate the print sites
+
+The ~64 hand-written status lines move onto `status`, one commit per crate, because a
+64-site mechanical diff is unreviewable. U1b is `runtime/` and carries the risk: five status
+lines currently on stdout move to stderr, so the runbooks consuming those tools and
+`runtime/tests/checkpoint_info_check.rs` are re-read in the same commit.
+
+### U3 — one flag table behind `--help`, `-V`, and unknown-flag rejection (done)
+
+`harness/src/cli.rs` holds every flag's spelling, arity, help text and relationships once.
+Parsing reads it, `--help` renders it, and the usage line is generated from it. This
+replaced three descriptions of the same surface in `main.rs` that had already drifted apart:
+the comment block described 18 flags while the parser accepted 23.
+
+Hand-rolled rather than clap, for a reason that is about parsing and not help text: the
+value slots are `Option<PathBuf>` so a path survives arbitrary bytes, the layer range is one
+argument spelled `"START END"` to match `steering_env`, and the task is positional text
+joined with spaces. clap expresses none of the three without contortion, which would make a
+UX change into a behaviour change.
+
+Behaviour changes: an unknown flag exits 2 instead of becoming task text; a repeated flag
+exits 2 instead of silently taking the first and leaking the rest; `--control-vector-scale`
+without its vector exits 2 instead of being ignored; `--top-k`/`--top-p` under greedy
+decoding and `--interp-log` outside `--serve` warn rather than staying silent. A bare `--`
+ends flag parsing, which is what makes rejecting unknown flags safe.
+
+### U3b — the same for the other seven binaries
+
+`--help` for all seven, unknown-argument rejection for the six that lack it. Promote
+`cli::Flag` into `runtime/` only when a second binary wants it, not pre-emptively.
+
+### U2 — the run header, built once and rendered twice
+
+`RunHeader::lines()` derives from `RunHeader::fields()`, so the terminal header and the obs
+record cannot disagree — two match arms would reintroduce exactly the drift the stage exists
+to prevent. `obs.rs` records no resolved configuration today, only the command and raw argv,
+so this is built rather than rendered from something already there.
+
+### U4 — `harness --status`
+
+Preflight checks as data: model directory, weights and config readable, probe and its
+mandatory sidecar, control vector and its manifest, log directories writable. `--deep` opts
+into the full sha256. Writes no obs record — a filesystem query is not a run, the same rule
+that keeps `--help` out of the catalog.
+
+### U6 — phases, `metrics.jsonl`, and the existing dashboard
+
+Wire phases explicitly rather than bridging `tracing`, whose subscriber is installed only
+under `--trace-chrome` and whose installation is a hard `expect`. The dashboard needs no
+Python change: `report --run` takes a directory verbatim. Note the RH.6 span schema is
+partly fiction — `model.load`, `prefill` and `decode` do not exist as spans — so this stage
+creates those boundaries and corrects the documentation.
+
+### U7 / U8 — errors that state the fix, and progress on long operations
+
+`[ERROR] <what>` then indented `Solution:` and `Command:`, attached by context rather than
+matched from error text. Progress reuses `status::stderr_is_terminal()` so there is one
+terminal probe in the workspace, and emits nothing during a non-TTY run so an `Observed`
+block never carries a carriage-return smear.
+
+### U9 — bring the other binaries under obs
+
+U9a is the crate-layout problem and lands alone: `obs.rs` uses `libc::flock` and lives in
+`harness`, while the seven other binaries live in `runtime`, which carries
+`#![forbid(unsafe_code)]`. A new workspace member takes `RunLog` with its tests unmodified,
+which is what makes it a pure refactor. Then `ladder` (U9b) and the three capture binaries
+(U9c). All share `cli = "harness"` with the binary name as `command`, so one catalog and one
+`runs` view serve the whole workspace.
+
+`checkpoint-info`, `long-context-golden` and `tiny-model` are deliberately not instrumented:
+the rule is to record a run someone will later want to find, not a question someone asked
+and got an answer to. `tiny-model` also runs inside the gate, so instrumenting it would make
+`make quality` write to the log root.
+
 ## Phase 4 — Intervention
 
 ### R11 — IF-4 plus IF-5 together
