@@ -2,21 +2,26 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 6 verified, 0 blocked, 1 pending, of 7.**
+**Entries: 7 verified, 0 blocked, 0 pending, of 7.**
 
 Host verification for the observability stack: the logging core, traced
 dispatch, audit trace, retention, run catalog (phases A-C), and the metrics
 sink, watchdog wiring, snapshot dashboard, and live server (phase D). All of
 it passed the sandbox campaign — unit suites, cross-module integration
-through the real dispatch, and SIGKILL durability. Six of the seven closed on
-the workstation 2026-08-14; only OBS-V6, which needs a human watching a
-browser, remains. The real-Chromium harness is no longer merely
+through the real dispatch, and SIGKILL durability. **All seven closed on the
+workstation 2026-08-14.** The real-Chromium harness is no longer merely
 sandbox context: it is OBS-V5 in
 [sandbox/sandbox-executable.md](../sandbox/sandbox-executable.md), verified
-2026-08-14. The entries below are the
-host-only gaps: GPU sample values, NVML context capture, the `/mnt/ai-data`
-default log root, external sink artifacts, and the live server against an
-in-flight run.
+the same day. The entries below were the host-only gaps: GPU sample values,
+NVML context capture, the `/mnt/ai-data` default log root, external sink
+artifacts, and the live server against an in-flight run.
+
+The campaign found four defects in its own runbook and one in the code. The
+runbook defects mattered most: the three training entries named a tokenizer
+fixture that exists only inside the unit tests, so **none of them could ever
+have run as written**. OBS-V7 addressed the wrong process and could not have
+failed. Each is corrected in place, with the reasoning kept beside the entry
+rather than summarized away. The code defect is KB-69.
 
 Recording protocol and session-start gate are defined in
 [README.md](../README.md). One GPU consumer at a time applies to the entries
@@ -57,8 +62,7 @@ can still close three of them. All three are closed.
   its `ls` of the log root work immediately; the `report --run` step consumes
   the run OBS-V2 produces, so the entry closed only once OBS-V2 had.
 - **GPU and shards:** OBS-V2, OBS-V6, OBS-V8. These train, so the one-GPU-
-  consumer rule applies. OBS-V6 additionally needs a human at a browser, and
-  is the one entry still open.
+  consumer rule applies. OBS-V6 additionally needs a human at a browser.
 
 **All three training entries need OBS-V2's two recipe overrides**
 (`tokenizer.path` and `model.scratch.vocab`), for the reason set out there.
@@ -375,10 +379,61 @@ because the property cannot be asserted from a terminal.
 
 Observed:
 
-```
-```
+Run `R-20260815-005434-9ab66c`, `scratch-2L-64d`, 20,000 steps, served at
+`http://127.0.0.1:8010/` and watched in Firefox. Screenshots taken at
+1,600 and 2,000+ steps.
 
-Status: PENDING
+- **Header renders.** `run`, `tier pretrain`, `model scratch-2L-64d`,
+  `recipe 51ff800cf204`, and the full schedule object.
+- **Four charts render**: Loss, Learning rate, Throughput (tokens/s), and
+  Device memory (GB) carrying both `gpu_mem_allocated_gb` and
+  `gpu_vram_used_gb`.
+- **The page extends without a reload.** Two screenshots thirty seconds
+  apart show the x axis grown from ~1,600 to beyond 2,000 steps, on every
+  chart, with the log tail extending alongside.
+- **A zoom survives incoming data.** Dragging a range on the Loss chart
+  pins it; the window stays where it was put while new points continue to
+  arrive outside it. Double-clicking restores full range, and the restored
+  axis extends past where it was when the zoom began — which is the
+  positive evidence that data streamed throughout rather than stalling.
+- **The log tail renders and the filters work.** `cmd.start` (carrying the
+  full argv including both overrides), `run.context` with the RTX 5090
+  block, and `run.dir`.
+
+The last signal, the run finishing while the page stays open without
+errors, was observed as part of the same session.
+
+Status: VERIFIED 2026-08-14
+
+### Findings that are not this entry's criterion
+
+Three things surfaced that the expected signal does not cover. None
+blocks the entry; all three are real.
+
+**Checkpoint markers have no density limit** — filed as KB-69. At
+`interval_steps: 5` over 20,000 steps the Loss chart draws roughly 4,000
+vertical marker lines and renders as a solid block, hiding the series it
+annotates.
+
+**No follow-the-tail mode.** Zoom is all-or-nothing: pinned at a fixed
+window, or auto-scaled to everything. Watching a live run at a fixed
+recent width is the natural thing to want from a live dashboard and there
+is no way to ask for it. This is a feature gap rather than a defect — the
+current behavior is the documented one, and auto-following would yank the
+view away from a reader studying a specific range — so it is recorded here
+rather than in the bug ledger.
+
+**The `debug` filter option is decorative.** Selecting `debug` and `info`
+produced identical output, which was checked and is correct: every record
+this run emitted was `info`. Nothing in the observability system writes at
+`debug` level today, so the option filters a level that does not exist.
+
+**Why a human found all three.** `scripts/verify/obs_browser/check.mjs`
+makes thirteen assertions and none of them touches zoom, marker density,
+or level-filter behavior beyond the `warning` case. The one property
+OBS-V6 names explicitly — that a zoom survives incoming data — has no
+automated coverage at all. Extending that harness is worth more than the
+individual fixes.
 
 ## OBS-V7 Crash durability on the workstation
 
