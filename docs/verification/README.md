@@ -113,8 +113,8 @@ Each runbook's own progress line is authoritative; this table is the index.
 | [interp/interp.md](interp/interp.md) | 8 | 3 | 7 | 18 |
 | [observability/observability.md](observability/observability.md) | 2 | 0 | 7 | 9 |
 | [sandbox/sandbox-executable.md](sandbox/sandbox-executable.md) | 2 | 0 | 0 | 2 |
-| [rust-harness/rust-harness.md](rust-harness/rust-harness.md) | 16 | 5 | 1 | 22 |
-| [rust-harness/rust-harness-ux.md](rust-harness/rust-harness-ux.md) | 0 | 0 | 8 | 8 |
+| [rust-harness/rust-harness.md](rust-harness/rust-harness.md) | 16 | 5 | 16 | 37 |
+| [rust-harness/rust-harness-ux.md](rust-harness/rust-harness-ux.md) | 0 | 0 | 9 | 9 |
 | [hardware/hardware-stress.md](hardware/hardware-stress.md) | 0 | 0 | 6 | 6 |
 | [interp/reference-captures.md](interp/reference-captures.md) | 0 | 0 | 2 | 2 |
 

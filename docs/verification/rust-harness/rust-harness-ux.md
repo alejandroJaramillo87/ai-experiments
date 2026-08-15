@@ -4,7 +4,9 @@
 operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate —
 both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 0 verified, 0 blocked, 8 pending, of 8.**
+**Entries: 0 verified, 0 blocked, 9 pending, of 9.** RHX.9 joined the eight `U`-campaign
+entries from the surface inventory: it records a defect in the `--dot` help text and the check
+that closes it.
 
 The `U` campaign rebuilt what the harness tells the person running it: one flag table behind
 `--help` for all eight binaries, a preflight that answers before the model loads, a run header
@@ -438,6 +440,60 @@ Note a divergence recorded rather than fixed: `NO_COLOR=` set but empty turns co
 here and leaves it **on** in `common/output.py`, which checks truthiness. Rust matches
 no-color.org; Python is the off-spec side. Not exercised by this entry, and named so the next
 reader does not report it as new.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+## RHX.9 The --dot help text describes the kernels the flag offers
+
+Implementation: `rust-harness/runtime/src/bin/ladder.rs` (the `--dot` flag),
+`rust-harness/runtime/src/model/cpu.rs` (`DotKind::is_bit_identical`).
+
+**This entry records a defect and the check that closes it.** `--dot` help currently reads
+"the dot-product kernel; every kind is bit-identical". Measured on the real fixture this week,
+`lanes16` is not: at logit 0 the two kernels return `1062660370` against `sequential`'s
+`1062660362` as raw f32 bits. The predicate in the code is right —
+`DotKind::is_bit_identical` is `self != DotKind::Lanes16`, and the ladder's invariance tests
+are asserted over exactly the set it returns. The sentence a person reads before choosing a
+kernel is the part that is wrong, and it is wrong in the direction that costs a debugging
+session: a run that picks `lanes16` on the strength of it and then compares logits bits
+against a sequential baseline reports a defect that is not there.
+
+A user-surface entry rather than a numerics one because the numerics are already pinned
+(`rust-harness/runtime/tests/ladder_flags.rs`, RH.24 in
+[rust-harness.md](rust-harness.md)). What no test can assert is whether the help text tells
+the truth about them, and that is what a person reads.
+
+```bash
+cd ~/workspace/ai-experiments/rust-harness
+MODEL=<the gemma-4-E4B checkpoint directory>
+
+# 1. what the flag currently claims
+cargo run --release -q -p runtime --bin ladder -- --help | grep -A1 -- '--dot'
+
+# 2. the measurement the claim has to survive: one rung, each kernel, logits bits
+for K in sequential rows4 rows8 rows16 widen4 lanes16; do
+  printf '%s ' "$K"
+  cargo run --release -q -p runtime --bin ladder -- --text-only --size quick \
+    --model "$MODEL" --reference fixtures/reference/e4b/quick --rung L2 --dot "$K" 2>&1 \
+    | grep -i 'logit\|L2'
+done
+```
+
+Expected signal: (1) the help text names which kinds are bit-identical and which are not,
+rather than asserting that all of them are. The corrected sentence must exclude `lanes16` by
+name — a hedge such as "most kinds" leaves the reader to guess which, which is the same
+failure in a quieter voice. (2) The five bit-identical kinds produce one set of bits and
+`lanes16` produces another, reproducing the 1062660370 against 1062660362 divergence at logit
+0 or naming whatever the current build measures there.
+
+The entry passes when the text and the measurement agree. It does not pass on the measurement
+alone: the measurement is already true today, and the defect is that the documentation
+contradicts it.
 
 Observed:
 

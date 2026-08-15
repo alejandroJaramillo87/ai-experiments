@@ -2,13 +2,19 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 16 verified, 5 blocked, 1 pending, of 22.** The five blocked are
+**Entries: 16 verified, 5 blocked, 16 pending, of 37.** The five blocked are
 RH.7 (rr does not recognize Zen 5) and RH.8, RH.9d, RH.11 and RH.15, which
 need an instruction-tuned checkpoint or a control vector this repository does
-not yet have. Each says so in its own Status line; none is merely unrun. The
-one pending is RH.13, reopened by U7: the code under it changed the terminal
-output the entry records, so its Observed block needs re-collecting rather
-than editing.
+not yet have. Each says so in its own Status line; none is merely unrun.
+
+Of the 16 pending, one is RH.13, reopened by U7: the code under it changed the
+terminal output the entry records, so its Observed block needs re-collecting
+rather than editing. RH.17 through RH.22 are new full entries from the surface
+inventory, each needing a human, the GPU host, or the real E4B checkpoint.
+RH.23 through RH.31 are **gate-backed**: each names the test function that
+asserts its expected signal, and one `cargo test --workspace` run closes all
+nine. Everything the inventory found that is neither is listed in the coverage
+roster at the end of this file, against the test that pins it.
 
 Workstation verification for the `rust-harness/` workspace: the CPU
 inference backend on the real Gemma 4 E4B checkpoint, the observability stack
@@ -2156,5 +2162,651 @@ deciding signals are unaffected, but the "close to 4a's" sub-signal is
 unconfirmed rather than observed — a repeat against a warm target directory
 would settle it, and until then the honest statement is that `--deep` reads the
 weights once, evidenced by the matching digest rather than by the clock.
+
+## RH.17 The CPU backend past E4B's real sliding window
+
+Implementation: `rust-harness/runtime/src/ladder.rs`,
+`rust-harness/runtime/src/bin/ladder.rs`,
+`rust-harness/fixtures/reference_long_context.py`.
+
+Rungs L0 through L4 never cross a window. L3 scores in 256-token windows
+against an E4B attention window of 512, and L4's continuations start from
+prompts of a few dozen tokens, so the two features that are the architectural
+interest of Gemma 4 — the interleaved sliding/global split, and the shared-KV
+tail reading a donor layer's older rows — are engaged by no reference
+comparison below L5. `fixtures/long-context-logits.json` is not a substitute:
+the binary that writes it is the engine it guards.
+
+**`make ladder` now carries L5 as a standing rung, so this entry is a rung of
+the routine climb rather than a bespoke command.** The reference artifact is
+not committed and has to be generated on the workstation by
+`rust-harness/fixtures/reference_long_context.py`, which needs the checkpoint
+and `transformers`. Both sides derive the scored positions from the
+checkpoint's `sliding_window`, so which positions were scored is itself part of
+what L5 asserts.
+
+```bash
+cd ~/workspace/ai-experiments/rust-harness
+MODEL=<the gemma-4-E4B checkpoint directory>
+
+# 1. generate the reference. It writes long_context.json into the reference
+#    directory the ladder reads for this SIZE.
+python3 fixtures/reference_long_context.py --model "$MODEL" \
+  --out fixtures/reference/e4b/quick/long_context.json
+
+# 2. the whole climb, L5 included
+make ladder SIZE=quick MODEL="$MODEL"
+echo "exit=$?"
+
+# 3. L5 alone, for a re-run that does not pay for the first five rungs
+cargo run --release -q -p runtime --bin ladder -- --text-only \
+  --size quick --model "$MODEL" --reference fixtures/reference/e4b/quick \
+  --rung L5
+echo "exit=$?"
+```
+
+Expected signal: six rungs in the table, none skipped, `L5` passing. The
+anchors L5 scores are `window - 1`, `window`, `window + 1`, `2*window + 1`,
+`length // 2` and `length - 1`, derived from the window the *loader* read, and
+the run reports that window. It must be 512 — the same figure the reference
+generator recorded — because a run whose loader read a different window scores
+different positions and compares rows computed at different places. A skipped
+L5 means step 1 did not write where step 2 reads, and is a failure of this
+entry rather than a pass with an absence.
+
+Record the reported window alongside the verdict. The window agreeing across
+the two independently written sides is half of what the rung measures.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+## RH.18 Attention capture on real weights
+
+Implementation: `rust-harness/runtime/src/bin/attention-capture.rs`.
+
+`attention-capture` writes post-softmax attention weights for the requested
+layers and query heads over one prompt. Every assertion on it to date runs
+against the two-layer synthetic fixture, whose layers are all one kind: the
+fixture cannot show an interleaved sliding/global schedule because it does not
+have one. This entry is the first reading of the captured weights against the
+schedule the real checkpoint declares.
+
+The prompt must be longer than the window for the sliding layers to differ
+from the global ones at all — under 512 tokens both attend to the whole prefix
+and the two are indistinguishable. Use the L5 corpus, which is 2052 tokens.
+
+```bash
+cd ~/workspace/ai-experiments/rust-harness
+MODEL=<the gemma-4-E4B checkpoint directory>
+mkdir -p /tmp/rh18
+
+# a prompt past the 512-token window: the first ~3000 words of the corpus
+PROMPT=$(head -c 12000 fixtures/reference/corpus.txt)
+
+# layers 0 and 1 straddle the schedule; head 0 of each
+cargo run --release -q -p runtime --bin attention-capture -- --text-only \
+  --model "$MODEL" --prompt "$PROMPT" --layers 0,1,20,41 --heads 0 \
+  --out /tmp/rh18/attn.json
+echo "exit=$?"
+
+# 1. every row sums to one, to float tolerance
+python3 - <<'PY'
+import json
+d = json.load(open("/tmp/rh18/attn.json"))
+print(json.dumps({k: v for k, v in d.items() if k != "rows"}, indent=2)[:800])
+PY
+
+# 2. the per-layer sliding/global verdict the checkpoint declares
+cargo run --release -q -p runtime --bin checkpoint-info -- --text-only "$MODEL" \
+  | grep -i 'window\|sliding\|global' | head -50
+```
+
+Expected signal: three properties, all of them checked against the same
+capture.
+
+| Property | Expected |
+|----------|----------|
+| Row mass | Every query row sums to 1.0 over the positions it may attend, within 1e-5 |
+| Outside the span | Every weight at a position outside the row's span is exactly 0.0, not merely small |
+| Schedule | The layers the capture marks sliding, and the span width it gives them, match what `checkpoint-info` reports for the same layer indices |
+
+The zero outside the span is the deciding property and it is exact, not
+approximate: a masked position is `-inf` before the softmax, so it comes out
+`0.0` bit-for-bit. A small-but-nonzero weight there means the mask was applied
+as a large negative number rather than an infinity, which is a different
+implementation with a different failure mode at long context.
+
+If the capture's JSON does not name the span per row, record what it does name
+and treat the schedule check as unmet rather than inferring it.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+## RH.19 The alignment artifact on the real vocabulary
+
+Implementation: `rust-harness/harness/src/alignment.rs`,
+`rust-harness/runtime/src/align.rs`.
+
+`--alignment-out` writes one JSONL file per run holding, for every position,
+the byte span of output text that position produced alongside the probe score
+taken there. The library and binary contracts are pinned in the sandbox
+(RH.26 below), but on the synthetic fixture one clause of the artifact's
+meaning cannot be observed.
+
+**The divergence is recorded in the file header of
+`rust-harness/harness/src/alignment.rs`, lines 9-17.** "Scaffolding produces no user-visible text" holds when the
+checkpoint carries its chat markers as pieces `decode` drops — which the real
+Gemma 4 vocabulary does, and which the synthetic fixtures deliberately do not,
+since they carry boundaries as ordinary vocabulary entries so nothing but the
+caller's allowlist can resolve them. On a fixture the marker therefore decodes
+to its own characters and lands in the text. This entry is the only place the
+dropping side of that fork is exercised.
+
+```bash
+cd ~/workspace/ai-experiments/rust-harness
+MODEL=<the gemma-4-E4B checkpoint directory>
+mkdir -p /tmp/rh19
+
+cargo run --release -q -p harness -- --model "$MODEL" --text-only \
+  --seed 7 --max-tokens 48 --alignment-out /tmp/rh19/align.jsonl \
+  "The three states of matter are"
+echo "exit=$?"
+
+# 1. the header, then the role histogram
+head -1 /tmp/rh19/align.jsonl | jq .
+tail -n +2 /tmp/rh19/align.jsonl | jq -r .role | sort | uniq -c
+
+# 2. the scaffold rows and the bytes they claim
+tail -n +2 /tmp/rh19/align.jsonl \
+  | jq -c 'select(.role == "scaffold") | {pos, span, text}'
+
+# 3. the round trip: concatenated spans reproduce the text
+tail -n +2 /tmp/rh19/align.jsonl | jq -r .text | tr -d '\n' | wc -c
+head -1 /tmp/rh19/align.jsonl | jq .text_bytes
+```
+
+Expected signal: (1) positions dense from zero, counted in the header, and at
+least one row marked `scaffold`. (2) **On the real vocabulary every scaffold
+row carries an empty span** — the marker is a piece `decode` drops, so the
+position exists in the artifact and contributes no bytes. This is the clause
+the fixtures invert. (3) The concatenated spans reproduce the written text
+byte for byte, which is the property the artifact would break if it suppressed
+bytes to satisfy the rule rather than marking the role.
+
+Record the scaffold rows verbatim. If any of them carries a non-empty span,
+the fork in the header block is wrong about the real vocabulary and the note
+needs correcting, not the artifact.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+## RH.20 Compaction past the rewind horizon
+
+Implementation: `rust-harness/runtime/src/session.rs`,
+`rust-harness/runtime/src/model/cpu.rs` (`rewind_horizon`).
+
+`Session::sync` may not rewind past a sliding-window cache's horizon, because
+such a cache evicts rather than masks. Below the horizon it clears and
+re-prefills. Compaction rewinds much further than the horizon by construction —
+it rewrites the middle of the transcript and the summarizing turn opens a fresh
+sequence, so the common prefix lands near zero — which makes the clear-and-
+re-prefill path the routine path after a compaction rather than an edge case.
+
+`harness/tests/sampling_flags.rs` pins that `--compact-at` fires at a low
+threshold and does not at a high one (RH.28), but on the fixture the horizon is
+a handful of positions and the re-prefill is instant. **The horizon on E4B is
+reported in the run header as `rewind_horizon`, and this entry expects 208**;
+the header is the authority, so record what it prints rather than assuming the
+figure. Reaching it needs a session long enough that compaction has a middle to
+rewrite, which on E4B means turns numbering in the tens.
+
+The transcript is `session.jsonl` in the working directory, so run this from an
+empty directory. The debug-level rewind message is the deciding signal, so
+raise the log level for it.
+
+```bash
+cd ~/workspace/ai-experiments/rust-harness
+MODEL=<the gemma-4-E4B checkpoint directory>
+mkdir -p /tmp/rh20 && cd /tmp/rh20
+
+# 1. the horizon this checkpoint reports, before anything else
+cargo run --release -q --manifest-path ~/workspace/ai-experiments/rust-harness/Cargo.toml \
+  -p harness -- --model "$MODEL" --text-only --max-tokens 1 "hello" 2>&1 \
+  | grep rewind_horizon
+
+# 2. a session long enough to compact more than once. --compact-at 0.05
+#    reaches the threshold in tens of turns rather than hundreds; the
+#    conversation content does not matter, only its length.
+seq 1 40 | sed 's/^/turn /' \
+  | RUST_LOG=runtime::session=debug cargo run --release -q \
+      --manifest-path ~/workspace/ai-experiments/rust-harness/Cargo.toml \
+      -p harness -- --model "$MODEL" --text-only --chat \
+      --compact-at 0.05 --max-tokens 8 2> /tmp/rh20/run.log
+echo "exit=$?"
+
+# 3. how many compactions the transcript records
+jq -r .role /tmp/rh20/session.jsonl | sort | uniq -c
+
+# 4. the rewind decision, once per compaction
+grep 'rewind past the sliding window' /tmp/rh20/run.log
+```
+
+Expected signal: (1) `rewind_horizon=208`. (2) exit 0 — a rewind past the
+horizon is a slower path, not an error, and a run that fails here means the
+floor is being enforced as a refusal rather than as a rebuild. (3) at least two
+compaction records. (4) **one `rewind past the sliding window: clearing and
+re-prefilling` line per compaction, each naming `floor=208` and a `keep` below
+it.** That line is the entry: it is the only evidence that compaction crossed
+the horizon rather than staying inside a window where the cheap rewind
+suffices, and a run with two compactions and no such line has not tested the
+path this entry exists for.
+
+If (4) is empty, lower `--compact-at` or lengthen the session and re-run rather
+than recording a pass.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+## RH.21 Layer diff against a real reference capture
+
+Implementation: `rust-harness/runtime/src/bin/layer-diff.rs`.
+
+`layer-diff` runs the checkpoint, compares the residual stream layer by layer
+against a reference capture, and passes or fails against `--cosine-floor` and
+`--rel-l2-ceiling`. Its numerics are now bracketed in the sandbox against a
+synthetic capture (RH.23), including that the verdict names the *first*
+diverging layer and not the worst. What the sandbox cannot supply is a
+reference capture from `transformers` over the real 42-layer stack, where the
+per-layer figures are the ones a reader would quote.
+
+```bash
+cd ~/workspace/ai-experiments/rust-harness
+MODEL=<the gemma-4-E4B checkpoint directory>
+mkdir -p /tmp/rh21
+
+# 1. the reference capture, from transformers. --prompt is required: the
+#    residual stream is per-position, so the capture is only defined against
+#    a stated input, and the same text must reach layer-diff.
+python3 fixtures/reference_capture.py --model "$MODEL" \
+  --prompt "The three states of matter are" \
+  --out /tmp/rh21/capture.json
+
+# 2. the comparison at the defaults
+cargo run --release -q -p runtime --bin layer-diff -- --text-only \
+  --model "$MODEL" --reference /tmp/rh21/capture.json
+echo "exit=$?"
+
+# 3. the same comparison with the tolerances closed to just under the
+#    measured worst row, so the tool has to fail and name a layer
+cargo run --release -q -p runtime --bin layer-diff -- --text-only \
+  --model "$MODEL" --reference /tmp/rh21/capture.json \
+  --rel-l2-ceiling <just under the worst rel-L2 from step 2>
+echo "exit=$?"
+```
+
+Expected signal: (2) exit 0, a table of 42 rows, cosine at or above the floor
+and relative L2 at or below the ceiling on every one. Record the whole table:
+the shape of the drift across depth is the measurement this entry exists to
+produce, and no other entry reports it. (3) exit 1, with the verdict naming
+**the first row over the closed ceiling, not the largest** — the tool states
+that every later layer is downstream of this one, so a verdict naming the worst
+row would send a reader to the wrong layer.
+
+Step 3 is what makes step 2 mean anything. A pass with tolerances no run can
+fail is not a measurement.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+## RH.22 checkpoint-info --check against the real E4B
+
+Implementation: `rust-harness/runtime/src/bin/checkpoint-info.rs`.
+
+`checkpoint-info` dumps a checkpoint's config and tensor table, then the
+architecture summary and the CPU backend's compatibility verdict. `--check`
+turns that verdict into an exit code: 1 when the checkpoint is unsupported,
+rather than reporting and exiting 0. The released E4B is
+`Gemma4ForConditionalGeneration` — a text tower beside a vision and an audio
+one — so it exercises **both** verdicts from one checkpoint depending on
+whether `--text-only` is given, and no fixture reproduces that.
+
+```bash
+cd ~/workspace/ai-experiments/rust-harness
+MODEL=<the gemma-4-E4B checkpoint directory>
+
+# 1. the report, no --check: exit 0 whatever the verdict
+cargo run --release -q -p runtime --bin checkpoint-info -- "$MODEL"
+echo "exit=$?"
+
+# 2. --check without --text-only: multimodal, so unsupported
+cargo run --release -q -p runtime --bin checkpoint-info -- --check "$MODEL"
+echo "exit=$?"
+
+# 3. --check with --text-only: the text tower is supported
+cargo run --release -q -p runtime --bin checkpoint-info -- --check --text-only "$MODEL"
+echo "exit=$?"
+
+# 4. a directory that is not a checkpoint: an error, not a verdict
+cargo run --release -q -p runtime --bin checkpoint-info -- --check /absent
+echo "exit=$?"
+```
+
+Expected signal: (1) exit 0, with 42 layers, hidden size 2560 and context
+131072 — the same three figures RH.16's preflight and RH.2's run header report,
+which is what cross-checks that the three readers read one checkpoint. (2) exit
+**1**, with the verdict naming the towers it declined to serve. (3) exit **0**,
+supported. (4) an error naming the path; exit 1 for a missing checkpoint, and
+not exit 2, which would mean the command line was misread.
+
+The pair (2) and (3) is the entry. One of them alone shows the exit code moved,
+not that it tracks the verdict.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+## Gate-backed entries
+
+The entries above need a human, the workstation, or the real checkpoint. The
+entries in this section do not: each states an expected signal and names the
+test function that asserts it, and the evidence for it is a green run of that
+test rather than a bespoke command. **An entry whose evidence is "the gate was
+green" without naming the check is not verified**, so every row below names a
+file and a function; anything that could not be tied to one is a full entry
+above, or a roster row at the end.
+
+One command closes the section. It runs in the sandbox and needs no GPU:
+
+```bash
+cd ~/workspace/ai-experiments/rust-harness
+cargo test --workspace -- --test-threads=1
+echo "exit=$?"
+```
+
+Paste the summary lines for the named test binaries into each entry's Observed
+block, not the whole run.
+
+### RH.23 layer-diff numerics are bracketed around a measured value
+
+Asserted by `rust-harness/runtime/tests/layer_diff_numerics.rs`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| A reference matching the checkpoint passes every layer | `a_reference_matching_the_checkpoint_passes_every_layer` |
+| A reference perturbed at one layer fails and names that layer | `a_reference_perturbed_at_one_layer_fails_and_names_that_layer` |
+| The verdict names the first diverging layer, not the worst | `the_verdict_names_the_first_diverging_layer_and_not_the_worst` |
+| `--rel-l2-ceiling` moves the verdict across a scaled row | `the_rel_l2_ceiling_moves_the_verdict_across_a_scaled_row` |
+| `--cosine-floor` moves the verdict across a reoriented row | `the_cosine_floor_moves_the_verdict_across_a_reoriented_row` |
+| A divergence before the stack displaces the layer verdict | `a_divergence_before_the_stack_is_reported_instead_of_a_layer` |
+
+Each tolerance is bracketed around a measured value rather than asserted to be
+non-empty: the test perturbs one row until the figure crosses, then runs the
+tool once on each side of the flag. RH.21 supplies what this cannot — the same
+tool against a `transformers` capture over 42 real layers.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+### RH.24 The ladder table is invariant across the flags that may not change it
+
+Asserted by `rust-harness/runtime/tests/ladder_flags.rs`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| Every bit-identical `DotKind` prints the same table | `every_bit_identical_dot_kind_prints_the_same_ladder_table` |
+| Every thread width prints the same table | `every_thread_width_prints_the_same_ladder_table` |
+| Every batch mode prints the same table | `every_batch_mode_prints_the_same_ladder_table` |
+| Every bit-identical `DotKind` yields the same logits bits | `every_bit_identical_dot_kind_produces_the_same_logits_bits` |
+| Every thread width yields the same logits bits | `every_thread_width_produces_the_same_logits_bits` |
+| `--rung` climbs only the rung it names, in both directions | `rung_climbs_only_the_rung_it_names` |
+
+The two logits tests compare `f32::to_bits`, not an epsilon: "bit-identical" is
+the claim, so an approximate comparison would pass on a kernel that reorders.
+The set the invariance is asserted over is `DotKind::is_bit_identical`, which
+excludes `Lanes16` — see the known defect below.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+### RH.25 The fixture writers produce what they claim, reproducibly
+
+Asserted by `rust-harness/runtime/tests/fixture_writers.rs`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| `tiny-model` writes a checkpoint that loads and prefills | `tiny_model_writes_a_checkpoint_that_loads_and_prefills` |
+| Its tokenizer is readable by the `tokenizers` crate | `tiny_model_writes_a_tokenizer_the_tokenizers_crate_reads` |
+| `--bpe` writes only a tokenizer | `tiny_model_bpe_writes_only_a_tokenizer` |
+| The E4B variant writes a different architecture from the default | `tiny_model_e4b_writes_a_different_architecture_from_the_default` |
+| Regeneration is byte-identical | `tiny_model_regenerates_byte_identical_artifacts` |
+| `long-context-golden` writes the rows it claims | `long_context_golden_writes_the_rows_it_claims` |
+| Its regeneration is byte-identical | `long_context_golden_regenerates_byte_identical_bytes` |
+
+The two byte-identity tests are what let a fixture be regenerated in review: a
+diff against the committed artifact is meaningful only if the writer is
+deterministic.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+### RH.26 --alignment-out reaches the same contract through the binary
+
+Asserted by `rust-harness/harness/tests/alignment_artifact.rs`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| Header and rows carry exactly the contract key sets | `the_header_and_rows_carry_exactly_the_contract_key_sets` |
+| Every enumerated field holds a value the contract lists | `every_enumerated_field_holds_a_value_the_contract_lists` |
+| Concatenating the written spans reproduces the written text | `concatenating_the_written_spans_reproduces_the_written_text` |
+| Positions are dense from zero and counted in the header | `positions_are_dense_from_zero_and_counted_in_the_header` |
+| A scored run carries the score channel; an unscored one omits it | `a_scored_run_carries_the_score_channel_and_an_unscored_one_omits_it` |
+| The `--alignment-out` flag writes an artifact conforming to that contract | `the_alignment_out_flag_writes_an_artifact_conforming_to_the_same_contract` |
+| The flagged run records every pass and counts its positions | `the_flagged_run_records_every_pass_and_counts_its_positions_in_the_header` |
+
+The last two reach the flag through the binary rather than the library, and
+share one `assert_conforms` helper with the library tests, so the flag cannot
+drift into writing a second dialect of the artifact. RH.19 covers the one
+clause this cannot: scaffold role on a vocabulary whose markers `decode` drops.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+### RH.27 Probe identity decides, and --probe-out writes where it names
+
+Asserted by `rust-harness/harness/tests/probe_identity.rs`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| A probe recording the served model's sha256 loads and the run completes | `a_probe_recording_the_served_models_sha256_loads_and_the_run_completes` |
+| A probe recording a different hash is refused, naming both hashes | `a_probe_recording_a_different_model_hash_is_refused_naming_both_hashes` |
+| The unknown sentinel loads with the check skipped | `a_probe_recording_the_unknown_sentinel_loads_with_the_check_skipped` |
+| `--probe-out` writes to the named path and leaves the default unwritten | `probe_out_puts_the_flag_file_where_it_names_and_leaves_the_default_unwritten` |
+
+RH.16 step 4d is the same comparison against 14 GiB of real weights; this is
+the same decision made in milliseconds, so both arms can be asserted on every
+gate run.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+### RH.28 The sampling and compaction thresholds are validated at the boundary
+
+Asserted by `rust-harness/harness/tests/sampling_flags.rs`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| A `--top-p` outside the unit interval is refused, naming the range | `a_top_p_outside_the_unit_interval_is_refused_naming_the_range` |
+| A `--top-p` inside it is accepted and reaches the model | `a_top_p_inside_the_unit_interval_is_accepted_and_reaches_the_model` |
+| A nucleus under greedy decoding warns rather than refusing the run | `a_nucleus_under_greedy_decoding_warns_rather_than_refusing_the_run` |
+| A `--compact-at` outside the unit interval is refused, naming the range | `a_compact_at_outside_the_unit_interval_is_refused_naming_the_range` |
+| A low threshold compacts the conversation and a high one does not | `a_low_compact_at_threshold_compacts_the_conversation_and_a_high_one_does_not` |
+
+The last test is what makes `--compact-at` a threshold rather than a parsed
+number. RH.20 covers what it cannot: a session long enough that compaction
+rewinds past the horizon and forces the clear-and-re-prefill path.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+### RH.29 --tokenizer overrides the one beside the checkpoint
+
+Asserted by `rust-harness/harness/tests/tokenizer_override.rs`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| The flag overrides the tokenizer beside the checkpoint | `the_tokenizer_flag_overrides_the_one_beside_the_checkpoint` |
+| A tokenizer that does not exist is refused rather than resolved around | `a_tokenizer_that_does_not_exist_is_refused_rather_than_resolved_around` |
+
+The second is the one that matters: a flag that silently falls back to the
+checkpoint's own tokenizer on a typo produces a run that looks correct and was
+not the run that was asked for.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+### RH.30 --control-vector-layer-range decides which directions load
+
+Asserted by `rust-harness/harness/tests/control_vector_range.rs`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| A direction outside the range is dropped at load | `a_direction_outside_the_layer_range_is_dropped_at_load` |
+| A direction inside the range is kept | `a_direction_inside_the_layer_range_is_kept` |
+| A malformed range is refused, naming the flag | `a_malformed_layer_range_is_refused_naming_the_flag` |
+
+The kept and dropped arms are asserted together; either alone is consistent
+with a flag that ignores its value.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+### RH.31 --serve-addr binds where it names
+
+Asserted by `rust-harness/harness/tests/serve_bind_addr.rs`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| The endpoint answers on the bind address and not on the default | `the_endpoint_answers_on_the_bind_address_and_not_on_the_default` |
+| An address the host does not own fails the bind, naming it | `an_address_the_host_does_not_own_fails_the_bind_naming_it` |
+| The default bind address is loopback | `the_default_bind_address_is_loopback` |
+
+The third is a security property, not a convenience one: a harness that
+defaults to `0.0.0.0` serves a checkpoint to the local network without anyone
+having asked it to.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+## Known defects
+
+Two defects measured during this campaign, recorded here rather than in an
+entry because neither is a check to run: each is a statement about the tree
+that a reader of the entries above needs.
+
+**`Lanes16` is not bit-identical to `Sequential` on the real fixture.** At
+logit 0 the two kernels return `1062660370` and `1062660362` as raw f32 bits.
+`DotKind::is_bit_identical` (`rust-harness/runtime/src/model/cpu.rs:1623`)
+correctly excludes `Lanes16`, and RH.24's invariance tests are therefore
+asserted over the right set. **The `--dot` help text in
+`rust-harness/runtime/src/bin/ladder.rs:421` overclaims**: it reads "the
+dot-product kernel; every kind is bit-identical", which is false of the one
+kind the predicate beside it exists to exclude. A run that picks `lanes16` on
+the strength of that sentence and then compares logits bits against a
+sequential baseline will report a defect that is not there. The code is right
+and the help text is wrong; see RHX.9 in
+[rust-harness-ux.md](rust-harness-ux.md).
+
+**A malformed safetensors header aborts the loader rather than returning an
+error.** A header declaring a tensor larger than the file drives a request for
+roughly 7.3e18 bytes, and the process dies on `SIGABRT` from the allocator
+instead of surfacing a `Result`. Every other unreadable-checkpoint path in the
+tree reports and exits 1 (RH.16 step 3, RH.22 step 4), so this is the one input
+class where a caller cannot distinguish a bad file from a crash, and no
+`catch_unwind` helps because an allocation failure is an abort and not a panic.
+The fix is to validate declared extents against the file length before
+allocating.
+
+## Coverage roster
+
+Every element the surface inventory found that is neither a full entry above
+nor a gate-backed one, against the test that pins it. The roster exists so the
+census is complete: a row here is covered, and its absence from the entry list
+is a decision rather than an oversight.
+
+| Element | Pinned by |
+|---------|-----------|
+| Flag table behind `--help`, all binaries | `rust-harness/harness/tests/cli_surface.rs`, `rust-harness/runtime/tests/binary_cli_surface.rs` |
+| Preflight check list and its verdicts | `rust-harness/harness/tests/preflight_surface.rs` |
+| Errors that name a runnable remedy | `rust-harness/harness/tests/actionable_surface.rs` |
+| Status on stderr, payload on stdout | `rust-harness/harness/tests/status_streams.rs` |
+| `run.header` field set, both directions | `rust-harness/harness/tests/run_header.rs`, `rust-harness/harness/tests/obs_contract.rs` |
+| Capture obs records | `rust-harness/runtime/tests/capture_obs.rs` |
+| Ladder obs records | `rust-harness/runtime/tests/ladder_obs.rs` |
+| `ladder::window_schedule` against the reference generator's | `rust-harness/runtime/tests/ladder_reference_contract.rs` |
+| Row-split bit-identity at every thread width | `rust-harness/runtime/src/model/cpu.rs::par_rows_is_bit_identical_at_every_width` |
+| `Lanes16` excluded from the bit-identical set | `rust-harness/runtime/src/model/cpu.rs` (the `DotKind::Lanes16` assertion at line 4252) |
+| Blocked-row folding against row-at-a-time | `rust-harness/runtime/src/tensor.rs::a_block_of_rows_is_bit_identical_to_the_rows_folded_one_at_a_time` |
+| Widened blocks against stored-row folding | `rust-harness/runtime/src/tensor.rs::a_widened_block_is_bit_identical_to_folding_the_stored_rows` |
+| Rewindability invariants across stepped and batched runs | `rust-harness/runtime/src/conformance.rs` |
+| Colour helper as a pure function | `rust-harness/runtime/tests/status_python_parity.rs` |
 
 Status: VERIFIED 2026-08-15
