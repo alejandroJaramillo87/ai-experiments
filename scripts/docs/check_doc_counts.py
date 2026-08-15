@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Fail the quality gate when a heading's stated count disagrees with its own section.
+"""Fail the quality gate when a document's stated count disagrees with itself.
+
+Two patterns are checked, both self-referential.
 
 A heading like `## Open (3)` asserts a fact about the twelve lines beneath it,
 and the two are edited at different moments: a row is moved, and the number in
@@ -8,6 +10,12 @@ and it compounds, because the count is what a reader trusts instead of counting.
 docs/verification/README.md drifted to "56 defects" against an actual 66 and sat
 that way through several sessions; the heading counts in the ledger beside it
 were hand-maintained through five separate edits in one afternoon.
+
+A verification runbook states the same kind of claim about itself, in the tally
+under its front matter: `**Entries: N verified, M blocked, K pending, of T.**`
+It is updated by hand in the edit that closes an entry, which is the edit whose
+attention is on the entry. Against it stands one `Status: ` line per entry, so
+the runbook already carries the answer and only needs someone to add it up.
 
 This is the narrowest possible version of a self-consistency check: it compares a
 document against itself, needs no knowledge of the tree, and cannot be wrong about
@@ -52,6 +60,28 @@ FENCE = re.compile(r"^(?:\s*)(?:```|~~~)")
 # A parenthesised number in this range is a year, not a count. "### Speculative
 # Decoding (2025)" heads a prose section and counts nothing.
 YEAR_MIN, YEAR_MAX = 1900, 2100
+
+# A runbook's progress line, per docs/verification/README.md. Trailing prose after
+# the closing `**` is allowed: rust-harness.md continues the sentence past its own
+# tally to say which entries are blocked.
+TALLY = re.compile(
+    r"^\*\*Entries:\s*(\d+)\s+verified,\s*(\d+)\s+blocked,\s*(\d+)\s+pending,"
+    r"\s*of\s*(\d+)\.\*\*"
+)
+
+# An entry's own status. Column zero is the whole distinction: a bolded
+# `**Status: ...**` inside a paragraph is prose about an entry, not the entry's
+# status line, and counting it would inflate the tally by one per mention.
+STATUS_LINE = re.compile(r"^Status:\s*(\S*)")
+
+# The kind is the leading run of letters, so the date and any parenthetical after
+# it are ignored -- `Status: PENDING (verified 2026-08-14; reopened by U7)` and
+# `Status: VERIFIED 2026-08-14` each yield their kind and nothing else.
+KIND_WORD = re.compile(r"[A-Za-z]+")
+
+# The three the tally has a term for. docs/verification/README.md also allows
+# FAILED, which the tally cannot represent; see the failure text in main().
+STATUS_KINDS = ("VERIFIED", "BLOCKED", "PENDING")
 
 
 def is_year(value: int) -> bool:
@@ -117,6 +147,55 @@ def find_sections(text: str) -> list[tuple[int, str, int, list[str]]]:
     return sections
 
 
+def find_tallies(text: str) -> list[tuple[int, dict[str, int], int]]:
+    """Every runbook tally as (line number, claimed count per kind, claimed total).
+
+    A runbook carries one, under its front matter. All of them are checked
+    against the same status lines, because a second tally in the same document
+    is a claim about the same entries and has to agree with them too.
+    """
+    found = []
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        match = TALLY.match(line)
+        if not match:
+            continue
+        claimed = {
+            "VERIFIED": int(match.group(1)),
+            "BLOCKED": int(match.group(2)),
+            "PENDING": int(match.group(3)),
+        }
+        found.append((lineno, claimed, int(match.group(4))))
+    return found
+
+
+def count_statuses(text: str) -> tuple[dict[str, int], list[tuple[int, str]]]:
+    """Status lines by kind, and every (line number, word) naming no known kind.
+
+    Status lines are the only countable thing here. Entry numbering is not: it is
+    neither contiguous nor one-per-entry, so interp.md reaches its 13 entries via
+    an interstitial I.9b with no I.13. Headings are not either, because a parent
+    entry may carry no status of its own -- rust-harness.md RH.9 heads RH.9a
+    through RH.9d, each of which has one.
+
+    An unrecognized word is returned rather than dropped. Ignoring it would make
+    a typo (`Status: VERIFED`) read as an entry with no status at all, which is
+    the tally drifting by one with nothing left to show for it.
+    """
+    counts = dict.fromkeys(STATUS_KINDS, 0)
+    unknown: list[tuple[int, str]] = []
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        match = STATUS_LINE.match(line)
+        if not match:
+            continue
+        word = KIND_WORD.match(match.group(1))
+        kind = word.group(0) if word else match.group(1)
+        if kind in counts:
+            counts[kind] += 1
+        else:
+            unknown.append((lineno, kind))
+    return counts, unknown
+
+
 def iter_docs(root: Path) -> list[Path]:
     """Every markdown file in the tree. Enumerated without git; see check_doc_refs.py.
 
@@ -146,7 +225,10 @@ def main() -> int:
         return 1
 
     wrong: list[tuple[str, int, str, int, int, str]] = []
+    tally_wrong: list[tuple[str, int, str]] = []
+    unknown_status: list[tuple[str, int, str]] = []
     checked = 0
+    tallied = 0
     for doc in docs:
         try:
             text = doc.read_text(encoding="utf-8")
@@ -165,26 +247,89 @@ def main() -> int:
             if actual != claimed:
                 wrong.append((rel_doc, lineno, heading, claimed, actual, kind))
 
-    # The guard that matters for this check. Every count heading in the tree could
+        # Only a document stating a tally is in scope for the status check. A line
+        # beginning `Status: ` is ordinary prose elsewhere in the tree -- see
+        # docs/inference/engines/vllm.md -- and the three-word vocabulary is a
+        # runbook convention, not a rule about markdown.
+        tallies = find_tallies(text)
+        if not tallies:
+            continue
+        counts, unknown = count_statuses(text)
+        unknown_status.extend((rel_doc, lineno, word) for lineno, word in unknown)
+        for lineno, claimed_by_kind, total in tallies:
+            tallied += 1
+            for kind in STATUS_KINDS:
+                if counts[kind] != claimed_by_kind[kind]:
+                    tally_wrong.append(
+                        (
+                            rel_doc,
+                            lineno,
+                            f"says {claimed_by_kind[kind]} {kind.lower()}, "
+                            f"has {counts[kind]}",
+                        )
+                    )
+            parts = sum(claimed_by_kind.values())
+            if parts != total:
+                tally_wrong.append(
+                    (rel_doc, lineno, f"parts sum to {parts}, not the stated {total}")
+                )
+
+    # The guards that matter for this check. Every count heading in the tree could
     # be deleted or reworded past the pattern, and the gate would keep reporting
     # success over an empty set.
     if not checked:
         out.error("doc-counts: found no counted sections to check")
         out.line("  The gate would pass without checking anything.")
         return 1
+    if not tallied:
+        out.error("doc-counts: found no runbook tallies to check")
+        out.line("  The gate would pass without checking anything.")
+        out.line("  Expected a bolded `Entries: N verified, ...` line per runbook.")
+        return 1
 
-    out.info(f"doc-counts: {len(docs)} documents, {checked} counted sections")
-    if not wrong:
+    out.info(
+        f"doc-counts: {len(docs)} documents, {checked} counted sections, "
+        f"{tallied} runbook tallies"
+    )
+
+    failed = False
+    if wrong:
+        failed = True
+        noun = "heading disagrees" if len(wrong) == 1 else "headings disagree"
+        out.error(f"doc-counts: {len(wrong)} {noun} with their own section")
+        for rel_doc, lineno, heading, claimed, actual, kind in wrong:
+            out.line(
+                f"  {rel_doc}:{lineno}: {heading} says {claimed}, has {actual} {kind}"
+            )
+        out.line("  Solution: correct whichever is wrong. The count in the heading is")
+        out.line("  the one a reader trusts instead of counting, so it is usually it.")
+    else:
         out.ok("doc-counts: every stated count matches its section")
-        return 0
 
-    noun = "heading disagrees" if len(wrong) == 1 else "headings disagree"
-    out.error(f"doc-counts: {len(wrong)} {noun} with their own section")
-    for rel_doc, lineno, heading, claimed, actual, kind in wrong:
-        out.line(f"  {rel_doc}:{lineno}: {heading} says {claimed}, has {actual} {kind}")
-    out.line("  Solution: correct whichever is wrong. The count in the heading is")
-    out.line("  the one a reader trusts instead of counting, so it is usually it.")
-    return 1
+    if unknown_status:
+        failed = True
+        noun = "line names" if len(unknown_status) == 1 else "lines name"
+        out.error(f"doc-counts: {len(unknown_status)} Status {noun} no counted kind")
+        kinds = ", ".join(STATUS_KINDS)
+        for rel_doc, lineno, word in unknown_status:
+            out.line(f"  {rel_doc}:{lineno}: `Status: {word}` is none of {kinds}")
+        out.line("  Solution: use a kind the tally has a term for. FAILED is a legal")
+        out.line("  status per docs/verification/README.md but the tally cannot hold")
+        out.line("  it, so a failed entry is resolved rather than counted.")
+
+    if tally_wrong:
+        failed = True
+        noun = "disagreement" if len(tally_wrong) == 1 else "disagreements"
+        out.error(f"doc-counts: {len(tally_wrong)} tally {noun} with the Status lines")
+        for rel_doc, lineno, detail in tally_wrong:
+            out.line(f"  {rel_doc}:{lineno}: tally {detail}")
+        out.line("  Solution: recount the `Status: ` lines and correct the tally. It")
+        out.line("  is updated by hand in the edit that closes an entry, which is the")
+        out.line("  edit whose attention is on the entry.")
+    elif not unknown_status:
+        out.ok("doc-counts: every runbook tally matches its Status lines")
+
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

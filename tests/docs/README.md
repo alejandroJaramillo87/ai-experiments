@@ -24,6 +24,7 @@ the host-environment reporters in `scripts/utils/`.
 | `test_retired_names.py` | `scripts/docs/check_retired_names.py` | `pattern_for` precision, `RETIRED` table invariants, `find_retired` line numbers, `wants_scan`, `is_exempt`; then the full-tree gate |
 | `test_make_targets.py` | `scripts/docs/check_make_targets.py` | `extract_refs` separating commands from the English verb, `target_exists` pattern-rule matching, `collect_targets` across all three Makefiles, `KNOWN_ABSENT` invariants; then the full-tree gate |
 | `test_doc_counts.py` | `scripts/docs/check_doc_counts.py` | `find_sections` heading classification and section extent, `count_body` table-versus-list rules, `is_year`; then the full-tree gate |
+| `test_doc_tallies.py` | `scripts/docs/check_doc_counts.py`, its second pattern | `find_tallies` and `count_statuses` against the four shapes that defeat a naive count — a bolded inline status mid-paragraph, a parent entry with no status of its own, non-contiguous entry numbering, and a kind followed by a date and a parenthetical — plus the empty-set guard |
 | `test_kb_refs.py` | `scripts/docs/check_kb_refs.py` | `extract_citations` including the reserved next identifier, `collect_defined` across both ledgers, `is_exempt`; then the full-tree gate |
 
 ## Notes
