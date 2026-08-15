@@ -30,6 +30,15 @@ const CLI_NAME: &str = "harness";
 const DEFAULT_LOG_DIR: &str = "/mnt/ai-data/logs";
 // Caps mirror common/obs/core.py so fail records stay bounded on disk
 const EXC_MSG_CAP: usize = 4096;
+/// The metrics file inside a run directory, named as the Python tier names it
+/// so `training/commands/report.py --run <dir>` finds it without a flag.
+const METRICS_FILE: &str = "metrics.jsonl";
+
+/// Round to three decimals, the precision `common/obs/core.py::phase` uses for
+/// `duration_s`. Shared so the two writers agree digit for digit.
+fn round3(seconds: f64) -> f64 {
+    (seconds * 1000.0).round() / 1000.0
+}
 
 /// UTC civil date from days since 1970-01-01 (Howard Hinnant's algorithm).
 pub fn civil_from_days(z: i64) -> (i64, u32, u32) {
@@ -121,6 +130,91 @@ const BASE_KEYS: [&str; 8] = [
     "ts", "level", "run_id", "cli", "command", "pid", "event", "msg",
 ];
 
+/// The report envelope's discriminator for a metrics file. `read_metrics`
+/// takes the first record carrying this value as the header, and
+/// `common/reports.py::validate_report` requires exactly one discriminator.
+const METRICS_REPORT: &str = "run_metrics";
+
+/// Keys `metrics_header` writes itself. As with `BASE_KEYS`, a caller field
+/// naming one of these is skipped rather than emitted: a duplicate key is
+/// legal JSON whose meaning depends on which one the reader keeps, and
+/// displacing `report` or `run_id` breaks the envelope or the event-file join
+/// rather than just the record.
+const METRICS_BASE_KEYS: [&str; 6] = [
+    "schema_version",
+    "report",
+    "timestamp",
+    "run_id",
+    "cli",
+    "command",
+];
+
+/// Append one per-step record. `step` is written as a JSON number, not a
+/// string: `common/obs/viewer.js:109` drops any record whose `step` is not
+/// `typeof "number"`, silently and without a parse error.
+fn write_metric(file: &mut File, step: u64, fields: &[(&str, Value)]) {
+    let mut line = format!(
+        "{{\"step\":{step},\"ts\":{}",
+        json_str(&format_ts(SystemTime::now()))
+    );
+    for (k, v) in fields {
+        if *k == "step" || *k == "ts" {
+            continue;
+        }
+        line.push_str(&format!(",{}:{}", json_str(k), v.to_json()));
+    }
+    line.push_str("}\n");
+    // One write_all per whole line, as for the catalog: independent O_APPEND
+    // handles (see `RunLog::metrics_sink`) then interleave records rather
+    // than tearing one.
+    let _ = file.write_all(line.as_bytes());
+    let _ = file.flush();
+}
+
+/// An open span, closing with `phase.end` when dropped. From `RunLog::phase`.
+pub struct Phase<'a> {
+    log: &'a mut RunLog,
+    name: String,
+    started: Instant,
+}
+
+impl Drop for Phase<'_> {
+    fn drop(&mut self) {
+        let duration_s = round3(self.started.elapsed().as_secs_f64());
+        let name = std::mem::take(&mut self.name);
+        self.log.event(
+            "info",
+            "phase.end",
+            "",
+            &[
+                ("phase", Value::Str(name)),
+                ("duration_s", Value::Num(duration_s)),
+            ],
+        );
+    }
+}
+
+/// An independent append handle onto a run's metrics file, from
+/// `RunLog::metrics_sink`. Every method is infallible; a disabled sink
+/// silently drops records, matching the rest of this crate.
+pub struct MetricsSink {
+    file: Option<File>,
+}
+
+impl MetricsSink {
+    /// A sink that drops everything, for callers with no run log at all.
+    pub fn disabled() -> Self {
+        MetricsSink { file: None }
+    }
+
+    /// Append one per-step record.
+    pub fn metric(&mut self, step: u64, fields: &[(&str, Value)]) {
+        if let Some(file) = self.file.as_mut() {
+            write_metric(file, step, fields);
+        }
+    }
+}
+
 /// A field value for `RunLog::event`, serialized by this module.
 ///
 /// Deliberately not a pre-serialized `String`, which is what `write_event`
@@ -184,6 +278,15 @@ struct Inner {
     run_id: String,
     command: String,
     started: Instant,
+    // ${OBS_LOG_DIR}/<cli>/<run_id>/ -- the run's artifact directory, and the
+    // path recorded as `run_dir` in the catalog. Computed here but created
+    // only when metrics are first written: an eagerly created directory would
+    // leave one empty directory per run behind forever, since the retention
+    // pruner globs `R-*.jsonl` and a directory named `<run_id>` never matches
+    // it. The path is recorded either way, so the catalog carries one meaning
+    // -- "where this run's metrics are" -- rather than two.
+    run_dir: PathBuf,
+    metrics: Option<File>,
 }
 
 /// Run-level record writer. Construct with `begin`, close with `end`.
@@ -240,6 +343,7 @@ impl RunLog {
         unsafe {
             libc::flock(events.as_raw_fd(), libc::LOCK_SH);
         }
+        let run_dir = dir.join(&run_id);
         let mut log = RunLog {
             inner: Some(Inner {
                 events,
@@ -247,6 +351,8 @@ impl RunLog {
                 run_id,
                 command: command.to_string(),
                 started: Instant::now(),
+                run_dir,
+                metrics: None,
             }),
         };
         let args_json = format!(
@@ -326,6 +432,138 @@ impl RunLog {
         let _ = inner.events.flush();
     }
 
+    /// Bracket a coarse span, emitting `phase.start` now and `phase.end` when
+    /// the returned guard drops.
+    ///
+    /// Two-sided with `common/obs/core.py::phase`: same event names, same
+    /// `phase` field, same `duration_s` rounded to three decimals, same empty
+    /// `msg`. File-only on both sides -- the command's own status lines stay
+    /// the human view of progress.
+    ///
+    /// `phase.end` fires from `Drop`, so a span left by `?` or a panic unwind
+    /// still records its duration, matching the Python `finally`.
+    ///
+    /// The guard borrows the log mutably, so nothing else can write an event
+    /// while a phase is open. That is deliberate for events -- phases do not
+    /// nest here -- but it is also why per-step metrics go through
+    /// `metrics_sink` rather than through `self`.
+    pub fn phase(&mut self, name: &str) -> Phase<'_> {
+        let name = name.to_string();
+        self.event(
+            "info",
+            "phase.start",
+            "",
+            &[("phase", Value::Str(name.clone()))],
+        );
+        Phase {
+            log: self,
+            name,
+            started: Instant::now(),
+        }
+    }
+
+    /// The run's artifact directory, when the log is active.
+    ///
+    /// The directory exists on disk only once `metrics_header` has been
+    /// called; before that this is the path one would be created at.
+    pub fn run_dir(&self) -> Option<&Path> {
+        self.inner.as_ref().map(|i| i.run_dir.as_path())
+    }
+
+    /// Create the run directory and write the metrics file's header record.
+    ///
+    /// The header is the shared report envelope (`common/reports.py`), so
+    /// `validate_report` accepts the file and `common/obs/dashboard.py`
+    /// recognizes it: `report` is the discriminator, and `run_id` plus `cli`
+    /// are what `default_events_path` joins to find this run's event file.
+    ///
+    /// `git_sha` is **not** supplied here and must come from `fields`, or the
+    /// envelope fails `validate_report`. This crate cannot call
+    /// `runtime::envelope::git_sha` -- `runtime` is what will depend on this
+    /// crate, not the reverse -- and re-deriving the shell-out here would put
+    /// a second implementation of provenance in the tree.
+    ///
+    /// The timestamp is `format_ts`, not the envelope's `%z` spelling: one
+    /// shape for every timestamp the Rust obs path writes. See
+    /// `schemas/run_metrics.json`'s `notes.timestamp_shape`.
+    pub fn metrics_header(&mut self, fields: &[(&str, Value)]) {
+        let Some(inner) = self.inner.as_mut() else {
+            return;
+        };
+        if std::fs::create_dir_all(&inner.run_dir).is_err() {
+            return;
+        }
+        let file = match OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(inner.run_dir.join(METRICS_FILE))
+        {
+            Ok(f) => f,
+            Err(_) => return,
+        };
+        let mut line = format!(
+            "{{\"schema_version\":1,\"report\":{},\"timestamp\":{},\"run_id\":{},\"cli\":{},\"command\":{}",
+            json_str(METRICS_REPORT),
+            json_str(&format_ts(SystemTime::now())),
+            json_str(&inner.run_id),
+            json_str(CLI_NAME),
+            json_str(&inner.command),
+        );
+        for (k, v) in fields {
+            if METRICS_BASE_KEYS.contains(k) {
+                continue;
+            }
+            line.push_str(&format!(",{}:{}", json_str(k), v.to_json()));
+        }
+        line.push_str("}\n");
+        let mut file = file;
+        let _ = file.write_all(line.as_bytes());
+        let _ = file.flush();
+        inner.metrics = Some(file);
+    }
+
+    /// Append one per-step metrics record.
+    ///
+    /// A no-op until `metrics_header` has run: a metrics file whose first
+    /// record is not the envelope is one `validate_report` rejects and
+    /// `read_metrics` reports with an empty header.
+    pub fn metric(&mut self, step: u64, fields: &[(&str, Value)]) {
+        let Some(inner) = self.inner.as_mut() else {
+            return;
+        };
+        let Some(file) = inner.metrics.as_mut() else {
+            return;
+        };
+        write_metric(file, step, fields);
+    }
+
+    /// An independent append handle onto this run's metrics file.
+    ///
+    /// Exists because the writers of per-step metrics cannot hold `&mut
+    /// RunLog`: the served generator lives behind `Arc<ServerState>`, and
+    /// during a `phase` the log is already mutably borrowed by the guard.
+    /// Handing out a second O_APPEND descriptor is the same concurrency
+    /// contract the catalog already relies on -- one `write_all` per whole
+    /// line, so concurrent writers interleave records and never tear one.
+    ///
+    /// Disabled (a silent no-op) when the log is disabled or
+    /// `metrics_header` has not run.
+    pub fn metrics_sink(&self) -> MetricsSink {
+        let Some(inner) = self.inner.as_ref() else {
+            return MetricsSink { file: None };
+        };
+        if inner.metrics.is_none() {
+            return MetricsSink { file: None };
+        }
+        MetricsSink {
+            file: OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(inner.run_dir.join(METRICS_FILE))
+                .ok(),
+        }
+    }
+
     /// Record a run failure. Written before cmd.end, like the Python stack.
     pub fn fail(&mut self, err: &anyhow::Error, exit_code: i32) {
         let mut msg = format!("{err:#}");
@@ -346,11 +584,18 @@ impl RunLog {
     }
 
     /// Write cmd.end and append the catalog line, then release the log.
-    pub fn end(mut self, exit_code: i32, run_dir: &Path) {
+    ///
+    /// The catalog's `run_dir` is this run's own directory (`run_dir`), not a
+    /// caller-supplied path. It used to be the harness's working directory,
+    /// which named the session's files but never the run's metrics -- so
+    /// `training report --run` could not open it. A caller that can pass a
+    /// different path is a caller that can lie about it, which is why the
+    /// parameter is gone rather than defaulted.
+    pub fn end(mut self, exit_code: i32) {
         let Some(inner) = self.inner.as_ref() else {
             return;
         };
-        let duration_s = (inner.started.elapsed().as_secs_f64() * 1000.0).round() / 1000.0;
+        let duration_s = round3(inner.started.elapsed().as_secs_f64());
         let extras = vec![
             ("exit_code", exit_code.to_string()),
             ("duration_s", format!("{duration_s}")),
@@ -363,7 +608,7 @@ impl RunLog {
             json_str(&inner.run_id),
             json_str(&inner.command),
             json_str(&format_ts(SystemTime::now())),
-            json_str(&run_dir.to_string_lossy()),
+            json_str(&inner.run_dir.to_string_lossy()),
         );
         // One write_all on an O_APPEND fd: concurrent writers interleave
         // whole lines (the contract the Python catalog reader relies on)
@@ -461,7 +706,7 @@ mod tests {
         let argv = vec!["--model".to_string(), "m.gguf".to_string()];
         let log = RunLog::begin_at(tmp.path(), "task", &argv, Some("R-20260101-000000-abcdef"));
         let run_id = log.run_id().unwrap().to_string();
-        log.end(0, Path::new("/work"));
+        log.end(0);
 
         let events_path = tmp.path().join("harness").join(format!("{run_id}.jsonl"));
         let raw = std::fs::read_to_string(&events_path).unwrap();
@@ -502,7 +747,16 @@ mod tests {
         assert_eq!(row["run_id"], run_id.as_str());
         assert_eq!(row["command"], "task");
         assert_eq!(row["exit_code"], 0);
-        assert_eq!(row["run_dir"], "/work");
+        // The run's own directory, not the caller's cwd -- what
+        // `training report --run` can open. See `end`.
+        assert_eq!(
+            row["run_dir"],
+            tmp.path()
+                .join("harness")
+                .join(&run_id)
+                .to_string_lossy()
+                .as_ref()
+        );
         // runs table renders timestamp[:19] as YYYY-MM-DDTHH:MM:SS
         let ts = row["timestamp"].as_str().unwrap();
         assert_eq!(ts.as_bytes()[10], b'T');
@@ -516,7 +770,7 @@ mod tests {
         let run_id = log.run_id().unwrap().to_string();
         let long = "x".repeat(EXC_MSG_CAP + 100);
         log.fail(&anyhow::anyhow!(long), 1);
-        log.end(1, Path::new("/work"));
+        log.end(1);
 
         let events = read_lines(&tmp.path().join("harness").join(format!("{run_id}.jsonl")));
         assert_eq!(events.len(), 3);
@@ -537,8 +791,8 @@ mod tests {
     #[test]
     fn catalog_appends_without_truncating() {
         let tmp = tempfile::tempdir().unwrap();
-        RunLog::begin_at(tmp.path(), "task", &[], None).end(0, Path::new("/a"));
-        RunLog::begin_at(tmp.path(), "chat", &[], None).end(1, Path::new("/b"));
+        RunLog::begin_at(tmp.path(), "task", &[], None).end(0);
+        RunLog::begin_at(tmp.path(), "chat", &[], None).end(1);
         let catalog = read_lines(&tmp.path().join("harness").join("runs.jsonl"));
         assert_eq!(catalog.len(), 2);
         assert_eq!(catalog[0]["command"], "task");
@@ -554,8 +808,170 @@ mod tests {
         let mut log = RunLog::begin_at(&blocked, "task", &[], None);
         assert!(log.run_id().is_none());
         log.fail(&anyhow::anyhow!("boom"), 1);
-        log.end(1, Path::new("/work"));
+        log.end(1);
         assert!(std::fs::read_dir(tmp.path()).unwrap().count() == 1);
+    }
+
+    #[test]
+    fn phase_brackets_the_span_and_ends_on_drop() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut log = RunLog::begin_at(tmp.path(), "task", &[], None);
+        let run_id = log.run_id().unwrap().to_string();
+        {
+            let _span = log.phase("model.load");
+        }
+        log.end(0);
+
+        let events = read_lines(&tmp.path().join("harness").join(format!("{run_id}.jsonl")));
+        let start = &events[1];
+        assert_eq!(start["event"], "phase.start");
+        assert_eq!(start["phase"], "model.load");
+        // msg is empty on both sides: common/obs/core.py::phase passes ""
+        assert_eq!(start["msg"], "");
+        assert_eq!(start["level"], "info");
+        assert!(start.get("duration_s").is_none());
+
+        let end = &events[2];
+        assert_eq!(end["event"], "phase.end");
+        assert_eq!(end["phase"], "model.load");
+        assert_eq!(end["msg"], "");
+        assert!(end["duration_s"].is_number());
+    }
+
+    #[test]
+    fn phase_end_fires_on_an_early_return() {
+        // The Python contextmanager ends the phase from `finally`, so a span
+        // left early still records its duration. Drop is what makes that true
+        // here, and a span that only closed on the happy path would report
+        // nothing for exactly the runs worth investigating.
+        fn bail(log: &mut RunLog) -> Option<()> {
+            let _span = log.phase("prefill");
+            None?;
+            Some(())
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let mut log = RunLog::begin_at(tmp.path(), "task", &[], None);
+        let run_id = log.run_id().unwrap().to_string();
+        assert!(bail(&mut log).is_none());
+        log.end(0);
+
+        let events = read_lines(&tmp.path().join("harness").join(format!("{run_id}.jsonl")));
+        let ends: Vec<_> = events
+            .iter()
+            .filter(|e| e["event"] == "phase.end")
+            .collect();
+        assert_eq!(ends.len(), 1);
+        assert_eq!(ends[0]["phase"], "prefill");
+    }
+
+    #[test]
+    fn the_run_directory_is_created_only_by_the_metrics_header() {
+        // Eager creation would leave one empty directory per run behind
+        // forever: retention.py::prune globs R-*.jsonl, which a directory
+        // named <run_id> never matches.
+        let tmp = tempfile::tempdir().unwrap();
+        let mut log = RunLog::begin_at(tmp.path(), "task", &[], None);
+        let dir = log.run_dir().unwrap().to_path_buf();
+        assert!(!dir.exists(), "no metrics written yet");
+
+        log.metrics_header(&[("git_sha", Value::Str("abc123".into()))]);
+        assert!(dir.is_dir());
+        assert!(dir.join("metrics.jsonl").is_file());
+
+        // The catalog records the path either way, so run_dir has one meaning
+        log.end(0);
+        let catalog = read_lines(&tmp.path().join("harness").join("runs.jsonl"));
+        assert_eq!(catalog[0]["run_dir"], dir.to_string_lossy().as_ref());
+    }
+
+    #[test]
+    fn the_metrics_header_is_a_conforming_report_envelope() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut log = RunLog::begin_at(tmp.path(), "task", &[], None);
+        let run_id = log.run_id().unwrap().to_string();
+        let dir = log.run_dir().unwrap().to_path_buf();
+        log.metrics_header(&[
+            ("git_sha", Value::Str("abc123".into())),
+            ("model", Value::Str("gemma-4-E4B".into())),
+        ]);
+        let records = read_lines(&dir.join("metrics.jsonl"));
+        let header = &records[0];
+        // common/reports.py::validate_report's four requirements
+        assert_eq!(header["schema_version"], 1);
+        assert_eq!(header["report"], "run_metrics");
+        assert!(header["timestamp"].as_str().unwrap().ends_with("+00:00"));
+        assert_eq!(header["git_sha"], "abc123");
+        // dashboard.py::default_events_path joins these two to find the events
+        assert_eq!(header["run_id"], run_id.as_str());
+        assert_eq!(header["cli"], "harness");
+        assert_eq!(header["model"], "gemma-4-E4B");
+    }
+
+    #[test]
+    fn a_caller_field_cannot_displace_a_metrics_header_key() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut log = RunLog::begin_at(tmp.path(), "task", &[], None);
+        let dir = log.run_dir().unwrap().to_path_buf();
+        log.metrics_header(&[
+            ("report", Value::Str("not_run_metrics".into())),
+            ("cli", Value::Str("training".into())),
+            ("git_sha", Value::Str("abc123".into())),
+        ]);
+        let raw = std::fs::read_to_string(dir.join("metrics.jsonl")).unwrap();
+        // Skipped, not emitted: a duplicate key is legal JSON whose meaning
+        // depends on which one the reader keeps
+        assert_eq!(raw.matches("\"report\"").count(), 1);
+        assert_eq!(raw.matches("\"cli\"").count(), 1);
+        let header = &read_lines(&dir.join("metrics.jsonl"))[0];
+        assert_eq!(header["report"], "run_metrics");
+        assert_eq!(header["cli"], "harness");
+    }
+
+    #[test]
+    fn a_metric_before_the_header_is_dropped() {
+        // A metrics file whose first record is not the envelope is one
+        // validate_report rejects and read_metrics reports with no header.
+        let tmp = tempfile::tempdir().unwrap();
+        let mut log = RunLog::begin_at(tmp.path(), "task", &[], None);
+        let dir = log.run_dir().unwrap().to_path_buf();
+        log.metric(0, &[("tokens_per_s", Value::Num(1.0))]);
+        assert!(!dir.exists());
+        assert!(log.metrics_sink().file.is_none());
+
+        log.metrics_header(&[("git_sha", Value::Str("abc123".into()))]);
+        log.metric(1, &[("tokens_per_s", Value::Num(2.0))]);
+        let records = read_lines(&dir.join("metrics.jsonl"));
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[1]["step"], 1);
+    }
+
+    #[test]
+    fn step_is_a_number_and_a_sink_interleaves_whole_lines() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut log = RunLog::begin_at(tmp.path(), "task", &[], None);
+        let dir = log.run_dir().unwrap().to_path_buf();
+        log.metrics_header(&[("git_sha", Value::Str("abc123".into()))]);
+
+        let mut a = log.metrics_sink();
+        let mut b = log.metrics_sink();
+        for i in 0..4u64 {
+            a.metric(i * 2, &[("tokens_per_s", Value::Num(1.5))]);
+            b.metric(i * 2 + 1, &[("rss_gb", Value::Num(2.25))]);
+        }
+        let records = read_lines(&dir.join("metrics.jsonl"));
+        assert_eq!(records.len(), 9, "header plus eight whole records");
+        for (i, rec) in records[1..].iter().enumerate() {
+            // viewer.js:109 drops a record whose step is not typeof "number"
+            assert!(rec["step"].is_number(), "step must be a JSON number");
+            assert_eq!(rec["step"], i as u64);
+            assert!(rec["ts"].as_str().unwrap().ends_with("+00:00"));
+        }
+    }
+
+    #[test]
+    fn a_disabled_sink_drops_everything() {
+        let mut sink = MetricsSink::disabled();
+        sink.metric(0, &[("tokens_per_s", Value::Num(1.0))]);
     }
 
     #[test]
@@ -572,7 +988,7 @@ mod tests {
         let live = unsafe { libc::flock(probe.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
         assert_eq!(live, -1, "live event file must appear locked");
 
-        log.end(0, Path::new("/work"));
+        log.end(0);
         let probe = File::open(&path).unwrap();
         // SAFETY: as for the first probe — a freshly opened descriptor, owned
         // by `probe` and valid for the whole call, and no pointer arguments.

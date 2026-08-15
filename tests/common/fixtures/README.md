@@ -99,3 +99,30 @@ history rather than current tree references, and `.jsonl` is not among the exten
 These are captures, not generated fixtures. Re-capturing requires a machine carrying a
 harness corpus at `${OBS_LOG_DIR}/harness/`, and any re-capture changes the run identifiers
 the tests assert against. Prefer extending the samples over replacing them.
+
+## `run_metrics_sample.jsonl`
+
+A run's `metrics.jsonl`: the report-envelope header record followed by eight per-step
+records. Consumed by `tests/common/test_run_metrics_contract.py`, which feeds it to
+`common.obs.dashboard.read_metrics` and `common.reports.validate_report`.
+
+Unlike the two samples above this one is **generated rather than captured** — but generated
+by the real writer, `rust-harness/obs/src/lib.rs`, not hand-authored. That distinction is the
+point of the file. U6's premise is that the training dashboard renders a harness run with no
+Python change, and a Python-authored imitation of the harness's output could only prove that
+Python agrees with itself. These are bytes the Rust writer emitted.
+
+Every value is synthetic: `/fixture/models/gemma-4-E4B`, a `git_sha` that is well-formed and
+belongs to no commit, and a smooth `tokens_per_s`/`rss_gb` ramp. Nothing here was measured, so
+nothing here should be quoted as a measurement. The shapes are what the tests assert —
+`step` a JSON number, the envelope's four required keys, and `run_id` plus `cli` for the
+event-file join.
+
+### Regenerating
+
+Written by a throwaway `#[test]` under `rust-harness/harness/tests/` that calls
+`RunLog::begin_at`, `metrics_header`, `metric` and `end` against a tempdir and copies the
+result out. It is not committed: a permanent test whose product is a committed fixture
+invites the fixture and the writer to be regenerated together, which is exactly the drift the
+cross-language test exists to catch. Re-deriving it means writing those few lines again
+against the current API — which is the check.

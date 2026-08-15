@@ -88,7 +88,7 @@ fn write_run() -> Run {
         .run_id()
         .expect("a writable root mints a run id")
         .to_string();
-    log.end(0, Path::new("/work"));
+    log.end(0);
     let root = dir.path().join("harness");
     Run {
         _dir: dir,
@@ -205,7 +205,16 @@ fn a_harness_written_catalog_parses_through_the_python_reader() {
     );
     assert_eq!(records[0]["command"], "task");
     assert_eq!(records[0]["exit_code"], 0);
-    assert_eq!(records[0]["run_dir"], "/work");
+    // run_dir is the run's own artifact directory (schema_version 2), which
+    // is what `training report --run` opens. Asserted against the row's own
+    // run_id rather than a literal: the property is that the two agree, and a
+    // hard-coded path would only pin the tempdir.
+    let run_dir = records[0]["run_dir"].as_str().expect("run_dir is a string");
+    let run_id = records[0]["run_id"].as_str().expect("run_id is a string");
+    assert!(
+        run_dir.ends_with(run_id),
+        "run_dir {run_dir} must name the run {run_id}"
+    );
 
     // The runs table renders timestamp[:19]; a stamp the reader cannot slice
     // that way shows up as a mangled column rather than an error.
@@ -294,7 +303,7 @@ fn a_caller_field_cannot_displace_a_base_key() {
             ("model", Value::Str("/models/e4b".to_string())),
         ],
     );
-    log.end(0, Path::new("/tmp"));
+    log.end(0);
 
     let events = read_lines(&dir.path().join("harness").join(format!("{run_id}.jsonl")));
     let header = events
@@ -342,10 +351,112 @@ fn header_numbers_are_json_numbers_and_not_strings() {
             ("text_only", Value::Bool(true)),
         ],
     );
-    log.end(0, Path::new("/tmp"));
+    log.end(0);
     let events = read_lines(&dir.path().join("harness").join(format!("{run_id}.jsonl")));
     let h = events.iter().find(|e| e["event"] == "run.header").unwrap();
     assert_eq!(h["weight_bytes"].as_u64(), Some(15_000_000_000));
     assert_eq!(h["temperature"].as_f64(), Some(0.0));
     assert_eq!(h["text_only"].as_bool(), Some(true));
+}
+
+/// The phase events carry exactly the fields the contract declares.
+///
+/// Two-sided, which is what makes this the stronger kind of assertion here:
+/// `common/obs/core.py::phase` writes the same two events, and
+/// `tests/common/test_obs_record_contract.py` holds it to the same declaration
+/// in the same file. Neither writer can drift without one of the two failing.
+#[test]
+fn the_phase_events_match_their_declared_fields() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut log = RunLog::begin_at(dir.path(), "task", &[], None);
+    let run_id = log.run_id().unwrap().to_string();
+    {
+        let _span = log.phase("model.load");
+    }
+    log.end(0);
+
+    let events = read_lines(&dir.path().join("harness").join(format!("{run_id}.jsonl")));
+    let base = contract_keys("event").unwrap_or_default();
+    for name in ["phase.start", "phase.end"] {
+        let Some(declared) = contract_event_keys(name) else {
+            runtime::testlog::skip(name, "schemas/obs_record.json is absent");
+            return;
+        };
+        let record = events
+            .iter()
+            .find(|e| e["event"] == name)
+            .unwrap_or_else(|| panic!("{name} was written"));
+        let written: BTreeSet<String> = record
+            .as_object()
+            .expect("an object")
+            .keys()
+            .filter(|k| !base.contains(*k))
+            .cloned()
+            .collect();
+        // Equality in both directions: containment alone would let a field be
+        // declared and never written, which is the likelier drift.
+        assert_eq!(written, declared, "{name}");
+        // File-only on both sides, so msg stays empty rather than doubling as
+        // the phase name.
+        assert_eq!(record["msg"], "");
+        assert_eq!(record["phase"], "model.load");
+    }
+}
+
+/// The metrics header is a report envelope the Python validator accepts, and
+/// the catalog's run_dir points at the directory holding it.
+///
+/// `schemas/run_metrics.json` is what these two claims are asserted against;
+/// `tests/common/test_run_metrics_contract.py` feeds a file written by this
+/// same code to the real reader and the real validator.
+#[test]
+fn the_metrics_header_matches_the_run_metrics_contract() {
+    use obs::Value;
+    let dir = tempfile::tempdir().unwrap();
+    let mut log = RunLog::begin_at(dir.path(), "task", &[], None);
+    let run_dir = log
+        .run_dir()
+        .expect("an active log names its run dir")
+        .to_path_buf();
+    log.metrics_header(&[("git_sha", Value::Str("deadbeef".to_string()))]);
+    log.metric(0, &[("tokens_per_s", Value::Num(12.5))]);
+    log.end(0);
+
+    let path = repo_root().join("schemas/run_metrics.json");
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        runtime::testlog::skip(
+            "run_metrics contract",
+            "schemas/run_metrics.json is absent (container build context)",
+        );
+        return;
+    };
+    let contract: serde_json::Value = serde_json::from_str(&text).expect("valid JSON");
+    let records = read_lines(&run_dir.join("metrics.jsonl"));
+
+    let header = &records[0];
+    for key in contract["header"]["required"].as_array().unwrap() {
+        let key = key.as_str().unwrap();
+        assert!(
+            header.get(key).is_some(),
+            "metrics header is missing the required key {key}"
+        );
+    }
+    assert_eq!(header["report"], "run_metrics");
+
+    for key in contract["record"]["required"].as_array().unwrap() {
+        let key = key.as_str().unwrap();
+        assert!(
+            records[1].get(key).is_some(),
+            "step record is missing {key}"
+        );
+    }
+    // viewer.js:109 drops a record whose step is not typeof "number"
+    assert!(records[1]["step"].is_number());
+
+    let catalog = read_lines(&dir.path().join("harness").join("runs.jsonl"));
+    assert_eq!(
+        catalog[0]["run_dir"],
+        run_dir.to_string_lossy().as_ref(),
+        "the catalog must point at the directory holding metrics.jsonl"
+    );
 }

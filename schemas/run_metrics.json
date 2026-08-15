@@ -1,0 +1,53 @@
+{
+  "contract": "run_metrics",
+  "schema_version": 1,
+  "description": "A run's per-step metrics file: one shared report-envelope header record followed by one record per step. Rendered by the dashboard as the time-series half of a run, joined to the run's event file through the header's run_id and cli.",
+  "file": "<run_dir>/metrics.jsonl",
+  "writers": [
+    "training/runtime/tracking.py (JsonlSink._header_record, log)",
+    "rust-harness/obs/src/lib.rs (RunLog::metrics_header, RunLog::metric, MetricsSink::metric)"
+  ],
+  "readers": [
+    "common/obs/dashboard.py (read_metrics, default_events_path)",
+    "common/obs/viewer.js",
+    "common/reports.py (validate_report)",
+    "training/commands/report.py"
+  ],
+  "guarded_by": [
+    "rust-harness/harness/tests/obs_contract.rs",
+    "tests/common/test_run_metrics_contract.py",
+    "tests/training/test_report.py"
+  ],
+  "header": {
+    "description": "The first record carrying report == 'run_metrics'. read_metrics takes it as the header and treats every other line as a step record, so exactly one record may carry the discriminator and it must come first.",
+    "required": [
+      "schema_version",
+      "report",
+      "timestamp",
+      "git_sha",
+      "run_id",
+      "cli",
+      "command"
+    ],
+    "extra_fields": "Emitters merge their own header payload on top. The harness merges RunHeader::fields() (schemas/obs_record.json, events.run.header), so the dashboard's header strip and the terminal's header state the same facts from the same struct."
+  },
+  "record": {
+    "description": "One per step. Keys beyond step and ts are emitter-chosen series names; viewer.js groups the ones it knows and ignores the rest.",
+    "required": [
+      "step",
+      "ts"
+    ],
+    "harness_fields": [
+      "tokens_per_s",
+      "rss_gb"
+    ]
+  },
+  "notes": {
+    "why_this_file_exists": "schemas/README.md recorded that the metrics file's first record must satisfy common/reports.py::validate_report and was covered by no file in schemas/. That was defensible while Python was the only writer and the envelope was built by one call to report_header(). The harness is the first cross-language writer of the envelope, so the directory's own rationale now applies: two hand-maintained implementations of a shape, in two languages, with a reader that degrades silently between them.",
+    "numeric_step": "step must be a JSON number. common/obs/viewer.js:109 returns early on any record whose step is not typeof 'number', so a stringified step is dropped from every chart with no parse error and no warning -- the record is present in the file and absent from the page.",
+    "timestamp_shape": "The two writers spell the header timestamp differently, and deliberately. common/reports.py::report_header uses time.strftime('%Y-%m-%dT%H:%M:%S%z'), a local-offset stamp with no colon and no milliseconds; the harness uses obs::format_ts, UTC with milliseconds and an explicit +00:00. validate_report requires only a non-empty string, and no reader parses it. The harness reuses format_ts rather than imitating report_header so that every timestamp the Rust obs path writes -- event lines, catalog rows, and this header -- has one shape.",
+    "git_sha_is_the_callers": "obs::RunLog::metrics_header does not supply git_sha; the caller passes it, and the envelope fails validate_report without it. The obs crate cannot call runtime::envelope::git_sha() because runtime is what will depend on obs, not the reverse, and re-deriving the shell-out inside obs would put a second implementation of provenance in the tree. envelope::git_sha() already matches common/provenance.py, including the 'unknown' fallback, which validate_report accepts.",
+    "harness_cadence": "Task and chat runs write one record per decoded token, bounded by --max-tokens. Serve writes one record per completed request: per-token records from a server with no run boundary is an unbounded file, which is a defect rather than a feature.",
+    "append_contract": "Records are appended one write_all per whole line on O_APPEND descriptors, so the run log and a generator holding an independent MetricsSink interleave whole records rather than tearing one. This is the same contract the obs catalog relies on."
+  }
+}

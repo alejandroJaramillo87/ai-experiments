@@ -1028,13 +1028,13 @@ fn main() -> ExitCode {
     ) {
         // The answer, if any, was printed by `run` before its bookkeeping.
         Ok(()) => {
-            run_log.end(0, &root);
+            run_log.end(0);
             ExitCode::SUCCESS
         }
         Err(e) => {
             runtime::status::error(&format!("Task failed: {e:#}"));
             run_log.fail(&e, 1);
-            run_log.end(1, &root);
+            run_log.end(1);
             ExitCode::from(1)
         }
     }

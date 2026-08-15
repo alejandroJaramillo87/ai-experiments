@@ -1,5 +1,6 @@
 {
   "contract": "obs_record",
+  "schema_version": 2,
   "description": "Run-level observability JSONL under ${OBS_LOG_DIR}/<cli>/: one event file per run plus an appended run catalog",
   "writers": [
     "common/obs/core.py (_JsonFormatter, record_run)",
@@ -68,6 +69,29 @@
       "writers": [
         "rust-harness/harness/src/runheader.rs (RunHeader::fields)"
       ]
+    },
+    "phase.start": {
+      "description": "Opens a coarse in-command span. File-only on both sides: the command's own status lines remain the human view of progress.",
+      "fields": [
+        "phase"
+      ],
+      "optional": [],
+      "writers": [
+        "common/obs/core.py (phase)",
+        "rust-harness/obs/src/lib.rs (RunLog::phase)"
+      ]
+    },
+    "phase.end": {
+      "description": "Closes the span opened by phase.start, carrying its wall-clock duration rounded to three decimals. Always fires: Python ends it from a finally block, Rust from Drop, so a span left by an exception or an early return still records its duration.",
+      "fields": [
+        "phase",
+        "duration_s"
+      ],
+      "optional": [],
+      "writers": [
+        "common/obs/core.py (phase)",
+        "rust-harness/obs/src/lib.rs (Phase::drop)"
+      ]
     }
   },
   "notes": {
@@ -76,7 +100,9 @@
     "silent_skip": "read_runs skips a line it cannot parse rather than raising, so a writer that drifts off this contract presents as an empty runs table and not as an error. That is why the contract is asserted at the writers rather than left to the reader.",
     "hand_rolled_json": "The Rust catalog line is formatted by hand (the obs crate), not through serde, so nothing in the type system keeps it aligned with the Python writer. This file is what keeps them aligned.",
     "events_section": "An additive, optional top-level key: a reader that does not know about it is unaffected, which is why this landed without a schema_version. Declares per-event fields on top of event.required, which stays exact for the base record.",
-    "unversioned": "This file carries no schema_version. Nothing has needed one yet -- every change so far has been additive and therefore compatible. The first incompatible change (a renamed, retyped or removed key) is what introduces the field; minting a versioning mechanism on a change that does not need it would leave a version number nobody has ever had to read.",
+    "schema_version": "Introduced at 2 by the run_dir change below, which is the first incompatible change this contract has taken -- every earlier one was additive. Version 1 is the retroactive name for every state of this file before that, and no reader has ever branched on it.",
+    "run_dir_semantic": "Changed in schema_version 2. run_dir was the process's working directory; it is now the run's own artifact directory, ${OBS_LOG_DIR}/<cli>/<run_id>/, which is what training/commands/report.py --run can open. The key and its type are unchanged, so a reader that only displays it is unaffected -- but one that resolved it against the filesystem now resolves somewhere else, which is why this is a bump and not an additive change. The Rust writer creates the directory lazily, on the first metrics write: common/obs/retention.py::prune globs R-*.jsonl and so would never reclaim an eagerly created empty directory. The path is recorded whether or not it exists, so run_dir carries one meaning rather than two.",
+    "two_sided_events": "phase.start and phase.end are written by both stacks, which makes them the stronger kind of declaration here: the field names, the empty msg, and duration_s rounded to three decimals are asserted against this file from Python and from Rust independently, so neither writer can drift without a gate failing. run.header remains the one-sided case below.",
     "one_sided_events": "run.header is written by the Rust harness alone, and deliberately so rather than pending: the Python tiers carry equivalent provenance through common/obs/context.py::run_context(), and imitating that block from Rust would emit a packages/gpu section that reads true and is not. binary_version plus runtime::envelope::git_sha() is the honest subset.",
     "base_key_guard": "RunLog::event skips any caller field whose key is in the base set, mirroring common/obs/core.py:121-124. Rust had no such guard while write_event was private and every caller was in-file; a public emitter is what makes the rule need stating."
   }
