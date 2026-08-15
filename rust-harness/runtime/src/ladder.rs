@@ -458,6 +458,10 @@ impl Ladder {
 /// The header carries the size and its token count because a perplexity or
 /// agreement number means nothing without them, and a number copied out of a
 /// terminal loses its context immediately otherwise.
+///
+/// The table only. The verdict is `summary`, because the two belong on
+/// different streams: this is the ladder's answer and goes to stdout, and a
+/// status line mixed into it would corrupt a captured comparison.
 pub fn render(l: &Ladder) -> String {
     let mut s = String::new();
     // The counts are printed only when a rung that reads the corpus actually
@@ -555,43 +559,62 @@ pub fn render(l: &Ladder) -> String {
         );
     }
 
-    let _ = writeln!(s);
+    s
+}
+
+/// One line of the verdict: a tag, or `None` for an indented continuation of
+/// the line above it.
+///
+/// `None` is not an oversight. The verdict's shape is one tagged statement
+/// followed by indented detail -- the same shape `rust-harness/Makefile:70-86`
+/// uses -- and tagging a continuation would produce `  [ERROR] Rungs below it
+/// were not reached`, which reads as a second, separate failure. The indent
+/// travels in the string because that is where it has always been.
+pub type SummaryLine = (Option<crate::status::Tag>, String);
+
+/// The ladder's verdict, as tagged lines rather than rendered text.
+///
+/// Split out of `render` because the two halves belong on different streams:
+/// the table is the answer and goes to stdout, the verdict is status and goes
+/// to stderr through `crate::status`. Returning tags rather than a string is
+/// what keeps the verdict testable -- a test can assert no `Tag::Ok` is
+/// present, which grepping rendered text for `"[OK]"` only appeared to do,
+/// since a table that stopped carrying tags would satisfy it vacuously.
+pub fn summary(l: &Ladder) -> Vec<SummaryLine> {
+    use crate::status::Tag;
     match l.first_failure() {
         // A run that measured nothing is not a pass. The status of each rung
         // is honest either way, but the summary line is what a reader takes
         // away, and "every rung within tolerance" over five skips is a green
         // gate that compared nothing.
-        None if l.skipped() == Rung::ALL.len() => {
-            let _ = writeln!(
-                s,
-                "[WARN] Ladder: no rung had a reference; nothing was measured"
-            );
-        }
-        None => {
-            let _ = writeln!(
-                s,
-                "[OK] Ladder: every rung within tolerance ({} skipped)",
+        None if l.skipped() == Rung::ALL.len() => vec![(
+            Some(Tag::Warn),
+            "Ladder: no rung had a reference; nothing was measured".to_string(),
+        )],
+        None => vec![(
+            Some(Tag::Ok),
+            format!(
+                "Ladder: every rung within tolerance ({} skipped)",
                 l.skipped()
-            );
-        }
+            ),
+        )],
         Some(r) => {
-            let _ = writeln!(
-                s,
-                "[ERROR] Ladder: {} failed on {}",
-                r.rung.label(),
-                r.rung.subject()
-            );
+            let mut lines = vec![(
+                Some(Tag::Error),
+                format!("Ladder: {} failed on {}", r.rung.label(), r.rung.subject()),
+            )];
             if !r.note.is_empty() {
-                let _ = writeln!(s, "  {}", r.note);
+                lines.push((None, format!("  {}", r.note)));
             }
-            let _ = writeln!(
-                s,
+            lines.push((
+                None,
                 "  Rungs below it were not reached: each one reads the output of the \
                  one above, so they would measure a run already known to be wrong."
-            );
+                    .to_string(),
+            ));
+            lines
         }
     }
-    s
 }
 
 /// The tolerances every rung is judged against.
@@ -1295,8 +1318,17 @@ mod tests {
                 rung.label()
             );
         }
-        assert!(out.contains("not reached"), "{out}");
-        assert!(out.contains("[ERROR] Ladder: L1 failed"), "{out}");
+        // The verdict left `render` for `summary`: the table is payload on
+        // stdout, the verdict is status on stderr. Asserted against the tags
+        // rather than rendered text, which is what makes the negative
+        // assertion below mean anything.
+        let v = summary(&l);
+        assert_eq!(v[0].0, Some(crate::status::Tag::Error), "{v:?}");
+        assert!(v[0].1.starts_with("Ladder: L1 failed on "), "{v:?}");
+        assert!(
+            v.iter().any(|(_, line)| line.contains("not reached")),
+            "{v:?}"
+        );
     }
 
     #[test]
@@ -1352,7 +1384,9 @@ mod tests {
         assert!(l.results[1..].iter().all(|r| r.status == Status::Pass));
         assert!(l.ok());
         assert_eq!(l.skipped(), 1);
-        assert!(render(&l).contains("(1 skipped)"), "{}", render(&l));
+        let v = summary(&l);
+        assert_eq!(v[0].0, Some(crate::status::Tag::Ok), "{v:?}");
+        assert!(v[0].1.contains("(1 skipped)"), "{v:?}");
     }
 
     #[test]
@@ -1360,9 +1394,22 @@ mod tests {
         // Five skips and an [OK] line is a green gate that compared nothing,
         // and the summary line is what a reader takes away from the table.
         let l = climb(Size::Quick, "m", "r", |_| None);
-        let out = render(&l);
-        assert!(out.contains("nothing was measured"), "{out}");
-        assert!(!out.contains("[OK]"), "{out}");
+        let v = summary(&l);
+        assert!(
+            v.iter()
+                .any(|(_, line)| line.contains("nothing was measured")),
+            "{v:?}"
+        );
+        // The assertion this replaces was `!render(&l).contains("[OK]")`,
+        // which searched rendered text for a tag. Once the tags left `render`
+        // it would have passed for the wrong reason and stopped guarding
+        // anything. Against `summary` it states the property directly: no
+        // part of a five-skip verdict may be a pass.
+        assert!(
+            !v.iter()
+                .any(|(tag, _)| *tag == Some(crate::status::Tag::Ok)),
+            "{v:?}"
+        );
     }
 
     #[test]

@@ -187,18 +187,40 @@ fn run(
     l.threads = Some(model.threads());
     l.dot = Some(model.dot().label().to_string());
     l.batch = Some(model.batch().label());
+    // The table is the ladder's answer and stays on stdout, which is the
+    // payload channel. The verdict is status: it goes to stderr through
+    // `runtime::status`, so a redirect that captures the table for comparison
+    // does not also capture a line that says whether it passed.
     print!("{}", ladder::render(&l));
+    for (tag, line) in ladder::summary(&l) {
+        match tag {
+            Some(runtime::status::Tag::Ok) => runtime::status::ok(&line),
+            Some(runtime::status::Tag::Warn) => runtime::status::warn(&line),
+            Some(runtime::status::Tag::Error) => runtime::status::error(&line),
+            // The verdict emits only those three; anything else, and this
+            // arm is what says so rather than a silently dropped line.
+            Some(other) => runtime::status::plain(&runtime::status::line(
+                other,
+                &line,
+                0,
+                runtime::status::color_enabled(),
+            )),
+            None => runtime::status::plain(&line),
+        }
+    }
     // Every rung skipped is not a pass. The ladder library is right to treat
     // a skip as neutral -- it does not know whether the caller asked for one
     // rung -- but a run that measured nothing at all and exited 0 would read
     // as a green gate, and the usual cause is a --reference that points
     // somewhere empty.
     if l.skipped() == ladder::Rung::ALL.len() {
-        eprintln!(
-            "[ERROR] Ladder: no reference artifacts under {} -- nothing was measured",
+        runtime::status::error(&format!(
+            "Ladder: no reference artifacts under {} -- nothing was measured",
             reference_dir.display()
+        ));
+        runtime::status::plain(
+            "  See rust-harness/fixtures/reference/README.md for how to generate them.",
         );
-        eprintln!("  See rust-harness/fixtures/reference/README.md for how to generate them.");
         return Ok(false);
     }
     Ok(l.ok())
@@ -218,10 +240,10 @@ const USAGE: &str = "usage: ladder [--text-only] [--single-thread] \
 /// mistaken for a small one.
 fn report_peak_rss() {
     if let Some(bytes) = runtime::peak_rss_bytes() {
-        eprintln!(
-            "[INFO] Peak RSS: {:.2} GiB",
+        runtime::status::info(&format!(
+            "Peak RSS at exit: {:.2} GiB",
             bytes as f64 / (1024.0 * 1024.0 * 1024.0)
-        );
+        ));
     }
 }
 
@@ -258,8 +280,8 @@ fn main() -> ExitCode {
     let mut it = args.into_iter();
     while let Some(arg) = it.next() {
         let Some(value) = it.next() else {
-            eprintln!("[ERROR] {arg}: missing value");
-            eprintln!("{USAGE}");
+            runtime::status::error(&format!("{arg}: missing value"));
+            runtime::status::plain(USAGE);
             return ExitCode::from(2);
         };
         match arg.as_str() {
@@ -268,17 +290,19 @@ fn main() -> ExitCode {
             "--size" => match Size::parse(&value) {
                 Some(s) => size = s,
                 None => {
-                    eprintln!("[ERROR] --size {value}: expected quick, standard, or deep");
+                    runtime::status::error(&format!(
+                        "--size {value}: expected quick, standard, or deep"
+                    ));
                     return ExitCode::from(2);
                 }
             },
             "--dot" => match DotKind::parse(&value) {
                 Some(k) => dot = k,
                 None => {
-                    eprintln!(
-                        "[ERROR] --dot {value}: expected one of {}",
+                    runtime::status::error(&format!(
+                        "--dot {value}: expected one of {}",
                         DotKind::ALL.map(|k| k.label()).join(", ")
-                    );
+                    ));
                     return ExitCode::from(2);
                 }
             },
@@ -289,36 +313,40 @@ fn main() -> ExitCode {
             "--batch" => match BatchKind::parse(&value) {
                 Some(b) => batch = b,
                 None => {
-                    eprintln!(
-                        "[ERROR] --batch {value}: expected stepped, whole, or a positive integer"
-                    );
+                    runtime::status::error(&format!(
+                        "--batch {value}: expected stepped, whole, or a positive integer"
+                    ));
                     return ExitCode::from(2);
                 }
             },
             "--threads" => match value.parse::<usize>() {
                 Ok(n) if n >= 1 => threads = Some(n),
                 _ => {
-                    eprintln!("[ERROR] --threads {value}: expected a positive integer");
+                    runtime::status::error(&format!(
+                        "--threads {value}: expected a positive integer"
+                    ));
                     return ExitCode::from(2);
                 }
             },
             "--rung" => match Rung::ALL.into_iter().find(|r| r.label() == value) {
                 Some(r) => only = Some(r),
                 None => {
-                    eprintln!("[ERROR] --rung {value}: expected one of L0 L1 L2 L3 L4");
+                    runtime::status::error(&format!(
+                        "--rung {value}: expected one of L0 L1 L2 L3 L4"
+                    ));
                     return ExitCode::from(2);
                 }
             },
             other => {
-                eprintln!("[ERROR] Unknown argument: {other}");
-                eprintln!("{USAGE}");
+                runtime::status::error(&format!("Unknown argument: {other}"));
+                runtime::status::plain(USAGE);
                 return ExitCode::from(2);
             }
         }
     }
 
     let (Some(model), Some(reference)) = (model, reference) else {
-        eprintln!("{USAGE}");
+        runtime::status::plain(USAGE);
         return ExitCode::from(2);
     };
 
@@ -336,7 +364,7 @@ fn main() -> ExitCode {
         Ok(true) => ExitCode::SUCCESS,
         Ok(false) => ExitCode::from(1),
         Err(e) => {
-            eprintln!("[ERROR] {e:#}");
+            runtime::status::error(&format!("{e:#}"));
             ExitCode::from(1)
         }
     }
