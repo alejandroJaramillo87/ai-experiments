@@ -343,6 +343,18 @@ pub const FLAGS: &[Flag] = &[
         inert_when: None,
     },
     Flag {
+        name: "--deep",
+        kind: Kind::Bare,
+        group: Group::Diagnostics,
+        help: "under --status, hash the weights and compare the digest against \
+               what each interp artifact records; opt-in because it reads the \
+               whole checkpoint, which is the one part of a preflight that is \
+               not fast",
+        default: None,
+        requires: Some("--status"),
+        inert_when: None,
+    },
+    Flag {
         // The bind address a container must override: binding the container's
         // own loopback makes the published port unreachable, because the
         // mapping forwards to the container's external interface and nothing
@@ -373,6 +385,19 @@ pub const FLAGS: &[Flag] = &[
         help: "serve /v1/chat/completions and /v1/health instead of running a \
                task; the sampling flags become per-request defaults that a \
                request may override, and no task text is taken",
+        default: None,
+        requires: None,
+        inert_when: None,
+    },
+    Flag {
+        name: "--status",
+        kind: Kind::Bare,
+        group: Group::Mode,
+        help: "report what this invocation would fail on and exit, without \
+               loading the model: the checkpoint, the backend's verdict on it, \
+               each interp artifact, and the directories written to; exit 1 if \
+               anything would stop the run, and no run record is written \
+               because a query is not a run",
         default: None,
         requires: None,
         inert_when: None,
@@ -684,8 +709,9 @@ mod tests {
          [--probe <path.safetensors>] [--interp-log <dir>] [--probe-out <path>] \
          [--alignment-out <path>] [--temperature <f>] [--top-p <f>] \
          [--top-k <n>] [--seed <n>] [--max-tokens <n>] [--context <n>] \
-         [--compact-at <f>] [--text-only] [--single-thread] [--serve-addr <ip>] \
-         (--chat | --serve <port> | <task description>)";
+         [--compact-at <f>] [--text-only] [--single-thread] [--deep] \
+         [--serve-addr <ip>] \
+         (--chat | --serve <port> | --status | <task description>)";
 
     #[test]
     fn the_generated_usage_is_the_line_the_harness_has_always_printed() {
