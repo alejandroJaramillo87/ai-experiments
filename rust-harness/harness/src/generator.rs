@@ -80,6 +80,18 @@ impl SessionGenerator {
         self
     }
 
+    /// Record `prefill` and `decode` phases for every turn this generator
+    /// runs, served or not.
+    ///
+    /// Separate from `observing_metrics` because the two write to different
+    /// files at different cadences -- one pair of event records per turn,
+    /// against one metrics record per token -- and a single call taking both
+    /// would suggest they are one decision.
+    pub fn observing_phases(mut self, sink: obs::EventSink) -> Self {
+        self.session.observing_phases(sink);
+        self
+    }
+
     /// One metrics record: throughput so far, and resident memory now.
     ///
     /// `tokens_per_s` is cumulative over the turn rather than instantaneous.

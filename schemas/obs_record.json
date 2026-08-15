@@ -103,7 +103,7 @@
       "optional": [],
       "writers": [
         "common/obs/core.py (phase)",
-        "rust-harness/obs/src/lib.rs (RunLog::phase)"
+        "rust-harness/obs/src/lib.rs (RunLog::phase, EventSink::phase)"
       ]
     },
     "phase.end": {
@@ -115,7 +115,7 @@
       "optional": [],
       "writers": [
         "common/obs/core.py (phase)",
-        "rust-harness/obs/src/lib.rs (Phase::drop)"
+        "rust-harness/obs/src/lib.rs (Phase::drop, SinkPhase::drop)"
       ]
     }
   },
@@ -131,6 +131,8 @@
     "one_cli_many_commands": "Every binary in the Rust workspace writes under cli = \"harness\" with its own name as command, so one catalog and one `runs` view serve the whole tool suite -- symmetric with training and interp, and one directory is also one retention policy. That makes `runs` a reserved command name: common/obs/catalog.py drops rows whose command is literally `runs`, so a binary of that name would log correctly and be invisible in the table. Guarded at the writer, where a ninth binary gets named, by harness/src/cli.rs::no_binary_claims_the_name_the_catalog_reader_reserves.",
     "two_header_events": "ladder.header exists rather than the ladder reusing run.header, and the reason is the strength of the assertion rather than the shape of the data. run.header's field list is asserted for key-set equality in both directions against a real harness run, so a field silently dropped from the header fails a test -- which is the whole reason U2 added it, after DotKind defaulted to Sequential for months with nothing printing the fold. A ladder has no sampler, no KV cache and no context window, so admitting it under run.header means moving seed, temperature, max_tokens, max_context, kv_bytes and kv_batch_group to optional, and an optional field is one no test can miss. Two events, each pinned exactly, is the stronger contract. The keys the two share are spelled identically and carry the same units, so one jq filter reads both.",
     "one_sided_events": "run.header is written by the Rust harness alone, and deliberately so rather than pending: the Python tiers carry equivalent provenance through common/obs/context.py::run_context(), and imitating that block from Rust would emit a packages/gpu section that reads true and is not. binary_version plus runtime::envelope::git_sha() is the honest subset.",
-    "base_key_guard": "RunLog::event skips any caller field whose key is in the base set, mirroring common/obs/core.py:121-124. Rust had no such guard while write_event was private and every caller was in-file; a public emitter is what makes the rule need stating."
+    "base_key_guard": "RunLog::event skips any caller field whose key is in the base set, mirroring common/obs/core.py:121-124. Rust had no such guard while write_event was private and every caller was in-file; a public emitter is what makes the rule need stating.",
+    "phase_names": "Phase names are emitter-chosen and this file does not enumerate them; common/obs/core.py::phase takes any string. The Rust side writes model.load from both binaries, prefill and decode from the harness (one pair per turn or per served request, from Session::generate), and rung.L0 through rung.L4 from the ladder. Guarded by harness/tests/run_header.rs and runtime/tests/ladder_obs.rs, which assert the sequence a real run writes rather than a declaration here -- a name list in this file would be a second place to keep in step with no reader consuming it.",
+    "two_descriptors_one_event_file": "phase records reach the event file through two paths. RunLog::phase writes on the log's own descriptor; EventSink::phase writes on an independent O_APPEND duplicate, one whole line per write, the same concurrency contract the catalog and metrics file rely on. The sink exists because a RunLog::phase guard borrows the log, so a caller cannot open a span and then take &mut on the object doing the measured work -- Session::generate is exactly that case. A forked session does not inherit the sink: forks advance alongside their parent and phase records carry no session identity, so interleaved pairs would be unattributable and their durations wrong rather than missing."
   }
 }

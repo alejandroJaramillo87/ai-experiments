@@ -537,7 +537,9 @@ fn run(
     // `obs` cannot derive the sha itself: it must not depend on `runtime`,
     // which is the crate that will depend on it.
     run_log.metrics_header(&header.fields());
-    let mut generator = generator.observing_metrics(run_log.metrics_sink());
+    let mut generator = generator
+        .observing_metrics(run_log.metrics_sink())
+        .observing_phases(run_log.event_sink());
     // Started here rather than in `build_generator`, which does not own the
     // handle the artifact is written from.
     let alignment = alignment_out.map(|_| generator.record_alignment());

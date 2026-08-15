@@ -84,6 +84,14 @@ pub struct Session {
     // valid. Reusing them saves a redundant replay forward pass per
     // generation; a truncate-only sync invalidates them.
     tail_logits: Option<Logits>,
+    /// Phase records for the two halves of a generation, disabled by default.
+    ///
+    /// A sink rather than a `&mut RunLog` for two independent reasons, either
+    /// of which alone would force it: the served generator lives behind
+    /// `Arc<ServerState>` and can never produce one, and a `RunLog::phase`
+    /// guard borrows the log, which would collide with the `&mut self` that
+    /// `generate` needs for the work the span is measuring.
+    events: obs::EventSink,
 }
 
 /// Outcome of one generation: sampled tokens (EOS excluded) and whether EOS
@@ -107,7 +115,20 @@ impl Session {
             max_context,
             tokens: Vec::new(),
             tail_logits: None,
+            events: obs::EventSink::disabled(),
         })
+    }
+
+    /// Record `prefill` and `decode` phases into the run's event file.
+    ///
+    /// One pair per `generate` call, which is one pair per agent turn, per
+    /// chat turn, or per served request. Deliberately not per token: the
+    /// event file is unbounded on a server, and a pair of records for every
+    /// token would make it grow with generation rather than with requests.
+    /// The per-token series lives in `metrics.jsonl`, which is what that file
+    /// is for.
+    pub fn observing_phases(&mut self, sink: obs::EventSink) {
+        self.events = sink;
     }
 
     pub fn cached_len(&self) -> usize {
@@ -218,7 +239,24 @@ impl Session {
         max_tokens: usize,
         mut on_token: impl FnMut(Token),
     ) -> Result<Generation> {
-        let mut active = self.begin_generation(transcript, vocab, grammar)?;
+        // The two phases bracket the two halves this method already has:
+        // `begin_generation` syncs the cache and runs the prompt through the
+        // forward pass, and the loop below is the token-at-a-time decode.
+        // Both guards own their descriptors, so opening one does not stop the
+        // `&mut self` call it is measuring -- see `obs::EventSink`.
+        //
+        // The prefill span closes at the end of this statement rather than at
+        // a `drop`, because `begin_generation` borrows `self` for as long as
+        // `active` lives; the block is what bounds the span to the work.
+        // Duplicated before the borrow starts: `active` holds `&mut self` for
+        // the rest of this call, so `self.events` is unreachable from the
+        // point `begin_generation` returns.
+        let events = self.events.duplicate();
+        let mut active = {
+            let _span = events.phase("prefill");
+            self.begin_generation(transcript, vocab, grammar)?
+        };
+        let _decode = events.phase("decode");
         let mut out = Vec::new();
         while out.len() < max_tokens {
             match active.step(sampler)? {
@@ -365,6 +403,15 @@ impl Session {
             max_context: self.max_context,
             tokens: self.tokens.clone(),
             tail_logits: self.tail_logits.clone(),
+            // Deliberately not inherited. A fork exists to be advanced
+            // alongside its parent -- that is what the subagent interleaver
+            // does -- and `phase` records carry no session identity, so two
+            // sessions writing into one event file would produce overlapping
+            // prefill/decode pairs that no reader could attribute. Worse than
+            // absent: a `duration_s` covering a span another session's work
+            // was interleaved into is a wrong number rather than a missing
+            // one. The `agent.fork` tracing span already marks the boundary.
+            events: obs::EventSink::disabled(),
         })
     }
 }

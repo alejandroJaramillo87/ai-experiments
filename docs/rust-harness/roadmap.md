@@ -591,9 +591,10 @@ directory — the first incompatible change `obs_record.json` has taken, and so 
 introduced its `schema_version`. `schemas/run_metrics.json` is new, because the report
 envelope stopped being a Python-only convention the moment a second language wrote it.
 
-**Only `model.load` became a phase, not the three the plan named.** `prefill` and `decode`
-happen inside `Session::generate` in the `runtime` crate, and `runtime` does not depend on
-`obs` — giving it that dependency is U9b. The documentation correction this stage owed was
+**Only `model.load` became a phase at this stage, not the three the plan named.** `prefill`
+and `decode` happen inside `Session::generate` in the `runtime` crate, which did not then
+depend on `obs`; U9b gave it that dependency and closed the gap, so all three exist now. The
+documentation correction this stage owed was
 made against what is actually true: `docs/rust-harness/observability.md`'s span table was
 missing `model.forward`, the span that dominates every trace RH.6 recorded, and its
 acceptance line promised a "prefill/decode timeline" no span provides. RH.6 itself named the
@@ -631,6 +632,14 @@ Two events pinned exactly beats one event pinned loosely. The stage also surface
 the ladder already had and never said: the load fingerprint, which the binary discarded into
 `_fingerprint`, and the per-rung `elapsed` that `climb` has always stamped and `render`
 deliberately never printed.
+
+U9b also paid off U6's remaining debt: `prefill` and `decode` are phases now, one pair per
+`generate` call, which is one per agent turn, chat turn or served request. Not per token —
+the event file has no bound on a server. Two mechanics were needed and are worth knowing:
+`obs::EventSink`, whose span guard owns its descriptor and so can bracket a call that takes
+`&mut self` on the struct holding it, which a `RunLog::phase` guard cannot; and the decision
+that a forked session does *not* inherit the sink, because interleaved subagent spans carry
+no session identity and their durations would be wrong rather than absent.
 
 Then the three capture binaries (U9c). All share `cli = "harness"` with the binary name as
 `command`, so one catalog and one `runs` view serve the whole workspace — which makes `runs`

@@ -176,6 +176,142 @@ fn write_metric(file: &mut File, step: u64, fields: &[(&str, Value)]) {
     let _ = file.flush();
 }
 
+/// Assemble and append one event line, in the shared base-key order:
+/// ts, level, run_id, cli, command, pid, event, msg, then extras.
+///
+/// Free rather than a method because `RunLog` and `EventSink` both write this
+/// shape onto their own descriptor, and a second assembly of the base keys is
+/// a second thing that can disagree with `schemas/obs_record.json`. Built by
+/// hand rather than through serde so the key order survives serialization.
+fn write_event_line(
+    file: &mut File,
+    run_id: &str,
+    command: &str,
+    level: &str,
+    event: &str,
+    msg: &str,
+    extras: &[(&str, String)],
+) {
+    let mut line = format!(
+        "{{\"ts\":{},\"level\":{},\"run_id\":{},\"cli\":{},\"command\":{},\"pid\":{},\"event\":{},\"msg\":{}",
+        json_str(&format_ts(SystemTime::now())),
+        json_str(level),
+        json_str(run_id),
+        json_str(CLI_NAME),
+        json_str(command),
+        std::process::id(),
+        json_str(event),
+        json_str(msg),
+    );
+    for (k, v) in extras {
+        line.push_str(&format!(",{}:{v}", json_str(k)));
+    }
+    line.push_str("}\n");
+    // Single write of a whole line so concurrent readers never see a torn
+    // record; errors are silently dropped per the degradation contract
+    let _ = file.write_all(line.as_bytes());
+    let _ = file.flush();
+}
+
+/// An independent append handle onto a run's event file, from
+/// `RunLog::event_sink`.
+///
+/// The event-file counterpart of `MetricsSink`, and it exists for a sharper
+/// reason than its sibling. `RunLog::phase` hands back a guard that borrows
+/// the log, so a caller holding one cannot then take `&mut` on the thing it
+/// wants to measure -- which is every interesting case: `Session::generate`
+/// needs `&mut self` for exactly the work the span is meant to cover. The
+/// guard this hands back **owns** its descriptor and borrows nothing, so a
+/// span can be opened and the measured call made immediately after.
+///
+/// Every method is infallible; a disabled sink silently drops records, as
+/// everything else in this crate does.
+pub struct EventSink {
+    file: Option<File>,
+    run_id: String,
+    command: String,
+}
+
+impl EventSink {
+    /// A sink that drops everything, for callers with no run log at all.
+    pub fn disabled() -> Self {
+        EventSink {
+            file: None,
+            run_id: String::new(),
+            command: String::new(),
+        }
+    }
+
+    /// A second, independent handle onto the same event file.
+    ///
+    /// For a caller that must hold the sink outside the struct that owns it.
+    /// `Session::generate` needs exactly that: the handle it returns from
+    /// `begin_generation` borrows the session for the rest of the call, so
+    /// the decode span cannot be opened through `self.events` any more. A
+    /// duplicate taken before the borrow starts can.
+    pub fn duplicate(&self) -> EventSink {
+        EventSink {
+            file: self.file.as_ref().and_then(|f| f.try_clone().ok()),
+            run_id: self.run_id.clone(),
+            command: self.command.clone(),
+        }
+    }
+
+    /// Open a span, emitting `phase.start` now and `phase.end` when the
+    /// returned guard drops.
+    ///
+    /// Takes `&self` and returns a guard with no lifetime parameter, so the
+    /// borrow ends when this call does. That is the whole point of the type:
+    /// `let span = sink.phase("prefill"); self.do_the_work()?;` compiles,
+    /// where the same two lines against `RunLog::phase` do not.
+    pub fn phase(&self, name: &str) -> SinkPhase {
+        let mut span = SinkPhase {
+            // A second descriptor onto the same file, appended to whole-line
+            // at a time -- the concurrency contract the catalog and the
+            // metrics sink already rely on.
+            file: self.file.as_ref().and_then(|f| f.try_clone().ok()),
+            run_id: self.run_id.clone(),
+            command: self.command.clone(),
+            name: name.to_string(),
+            started: Instant::now(),
+        };
+        let phase = Value::Str(name.to_string()).to_json();
+        span.write("phase.start", &[("phase", phase)]);
+        span
+    }
+}
+
+/// An open span from `EventSink::phase`, closing on drop. Owns its handle.
+pub struct SinkPhase {
+    file: Option<File>,
+    run_id: String,
+    command: String,
+    name: String,
+    started: Instant,
+}
+
+impl SinkPhase {
+    fn write(&mut self, event: &str, extras: &[(&str, String)]) {
+        if let Some(file) = self.file.as_mut() {
+            write_event_line(file, &self.run_id, &self.command, "info", event, "", extras);
+        }
+    }
+}
+
+impl Drop for SinkPhase {
+    fn drop(&mut self) {
+        let duration_s = round3(self.started.elapsed().as_secs_f64());
+        let name = std::mem::take(&mut self.name);
+        self.write(
+            "phase.end",
+            &[
+                ("phase", Value::Str(name).to_json()),
+                ("duration_s", Value::Num(duration_s).to_json()),
+            ],
+        );
+    }
+}
+
 /// An open span, closing with `phase.end` when dropped. From `RunLog::phase`.
 pub struct Phase<'a> {
     log: &'a mut RunLog,
@@ -416,25 +552,15 @@ impl RunLog {
         let Some(inner) = self.inner.as_mut() else {
             return;
         };
-        let mut line = format!(
-            "{{\"ts\":{},\"level\":{},\"run_id\":{},\"cli\":{},\"command\":{},\"pid\":{},\"event\":{},\"msg\":{}",
-            json_str(&format_ts(SystemTime::now())),
-            json_str(level),
-            json_str(&inner.run_id),
-            json_str(CLI_NAME),
-            json_str(&inner.command),
-            std::process::id(),
-            json_str(event),
-            json_str(msg),
+        write_event_line(
+            &mut inner.events,
+            &inner.run_id,
+            &inner.command,
+            level,
+            event,
+            msg,
+            extras,
         );
-        for (k, v) in extras {
-            line.push_str(&format!(",{}:{v}", json_str(k)));
-        }
-        line.push_str("}\n");
-        // Single write of a whole line so concurrent readers never see a torn
-        // record; errors are silently dropped per the degradation contract
-        let _ = inner.events.write_all(line.as_bytes());
-        let _ = inner.events.flush();
     }
 
     /// Bracket a coarse span, emitting `phase.start` now and `phase.end` when
@@ -566,6 +692,28 @@ impl RunLog {
                 .append(true)
                 .open(inner.run_dir.join(METRICS_FILE))
                 .ok(),
+        }
+    }
+
+    /// An independent append handle onto this run's event file.
+    ///
+    /// For a caller that must open a span around work taking `&mut self` on
+    /// the object holding the handle -- `Session::generate` is the case this
+    /// exists for. See `EventSink` for why `phase` cannot serve there.
+    ///
+    /// Disabled (a silent no-op) when the log is disabled.
+    pub fn event_sink(&self) -> EventSink {
+        let Some(inner) = self.inner.as_ref() else {
+            return EventSink::disabled();
+        };
+        EventSink {
+            file: OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(inner.dir.join(format!("{}.jsonl", inner.run_id)))
+                .ok(),
+            run_id: inner.run_id.clone(),
+            command: inner.command.clone(),
         }
     }
 

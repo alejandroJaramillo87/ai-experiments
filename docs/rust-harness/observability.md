@@ -160,20 +160,30 @@ the run log would make obs output depend on subscriber installation, and
 `--trace-chrome`'s `set_global_default` is a hard `expect`, so a second
 installation panics. Phases are called directly instead.
 
-The harness writes one phase, `model.load`, which brackets the whole of
-`build_generator`. The ladder writes `model.load` and then one per rung
-attempted — `rung.L0` through `rung.L4` — which is what makes the per-rung wall
-clock visible outside the run's own timing block; `render` deliberately keeps
-it out of the table, because it is the one figure in a result that is not
-reproducible.
+The harness writes three: `model.load` around the whole of `build_generator`,
+then `prefill` and `decode` around the two halves of every generation. The
+ladder writes `model.load` and one per rung attempted, `rung.L0` through
+`rung.L4` — which is what makes the per-rung wall clock visible outside the
+run's own timing block; `render` deliberately keeps it out of the table,
+because it is the one figure in a result that is not reproducible.
 
-`prefill` and `decode` are still not phases. U9b gave `runtime` its dependency
-on `obs`, so the crate boundary that blocked them is gone, but the remaining
-obstacle is a design question rather than a layout one: both happen inside
-`Session::generate`, which has no run log and is called once per turn, so
-phases there would mean either threading a log through the generation seam or
-emitting a pair of records per turn. Neither is obviously right, and the token
-loop already has spans under `--trace-chrome`.
+`prefill` and `decode` are the split an operator wants first, because a slow
+turn is either a slow prompt or a slow decode and the two have different
+causes. They come from inside `Session::generate`, which is the seam all three
+modes share, so one pair lands per agent turn, per chat turn and per served
+request. **Not per token**: the event file has no bound on a server, and a
+record pair for every token would make it grow with generation rather than
+with requests. The per-token series is `metrics.jsonl`, which is what that
+file is for.
+
+Two mechanics make that possible, both worth knowing before touching the code.
+A `RunLog::phase` guard borrows the log, so it cannot bracket a call that
+needs `&mut self` on the object holding it — `obs::EventSink` exists for that
+case, handing back a guard that owns its own descriptor and borrows nothing.
+And a forked session does **not** inherit the sink: forks are advanced
+alongside their parent by the subagent interleaver, and phase records carry no
+session identity, so two sessions writing one event file would produce
+overlapping pairs whose durations are wrong rather than missing.
 
 ## Phase 3: rr-friendliness via a simple CPU backend
 
@@ -332,7 +342,9 @@ What a run leaves behind:
   spelled identically.
 - `phase.start` and `phase.end` bracketing coarse spans, with `phase` and a
   `duration_s` rounded to three decimals. Written by both stacks; see
-  "Phases are a separate mechanism from spans" above.
+  "Phases are a separate mechanism from spans" above. The harness writes
+  `model.load`, `prefill` and `decode`; the ladder writes `model.load` and one
+  per rung.
 - One catalog line appended to `${OBS_LOG_DIR}/harness/runs.jsonl` at run
   end, written as a single append so concurrent writers interleave whole
   lines. Its `run_dir` is the run's own directory below.

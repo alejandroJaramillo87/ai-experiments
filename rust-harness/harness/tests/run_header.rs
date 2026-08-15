@@ -48,6 +48,11 @@ fn write_checkpoint(root: &Path) -> PathBuf {
 
 /// One run of the harness, returning its stderr and the events it recorded.
 fn run(seed: &str) -> (String, Vec<serde_json::Value>) {
+    run_with(seed, "1")
+}
+
+/// `run` with the token budget chosen, for the cases that measure decoding.
+fn run_with(seed: &str, max_tokens: &str) -> (String, Vec<serde_json::Value>) {
     let dir = tempfile::tempdir().unwrap();
     let model = write_checkpoint(dir.path());
     let logs = dir.path().join("logs");
@@ -58,7 +63,7 @@ fn run(seed: &str) -> (String, Vec<serde_json::Value>) {
             "--seed",
             seed,
             "--max-tokens",
-            "1",
+            max_tokens,
             "say hi",
         ])
         // Random weights emit gibberish; the assertion is about the header,
@@ -144,4 +149,113 @@ fn the_terminal_states_the_same_facts_as_the_record() {
     for line in stderr.lines().filter(|l| l.contains("Fold:")) {
         assert!(line.starts_with("[INFO]"), "{line}");
     }
+}
+
+#[test]
+fn the_run_brackets_the_work_it_did_with_phases() {
+    // A generation is two very differently-shaped pieces of work -- one
+    // forward pass over the whole prompt, then one per sampled token -- and
+    // until they were bracketed a run's event file showed the total and no
+    // split. That is the number an operator actually wants first: a slow turn
+    // is either a slow prompt or a slow decode, and the two have different
+    // causes.
+    let (_, events) = run("7");
+    let opened: Vec<&str> = events
+        .iter()
+        .filter(|e| e["event"] == "phase.start")
+        .map(|e| e["phase"].as_str().expect("phase is a string"))
+        .collect();
+    assert_eq!(
+        opened,
+        vec!["model.load", "prefill", "decode"],
+        "{events:#?}"
+    );
+
+    // Every span closed, with a duration. `phase.end` fires from Drop, so a
+    // span left open by `?` still records -- the assertion is that all three
+    // are two-sided, not merely that the starts were written.
+    for name in opened {
+        let ended: Vec<&serde_json::Value> = events
+            .iter()
+            .filter(|e| e["event"] == "phase.end" && e["phase"] == name)
+            .collect();
+        assert_eq!(ended.len(), 1, "{name} did not close exactly once");
+        assert!(
+            ended[0]["duration_s"].as_f64().is_some(),
+            "{name}: {}",
+            ended[0]
+        );
+    }
+
+    // The two generation phases are disjoint and ordered: prefill closes
+    // before decode opens. They are written through two independent
+    // descriptors onto one file, so this is also the check that the
+    // whole-line append contract holds -- an interleaved write would land a
+    // phase.end after the next phase.start.
+    let order: Vec<String> = events
+        .iter()
+        .filter(|e| e["event"] == "phase.start" || e["event"] == "phase.end")
+        .map(|e| {
+            format!(
+                "{} {}",
+                e["phase"].as_str().unwrap(),
+                e["event"].as_str().unwrap()
+            )
+        })
+        .collect();
+    assert_eq!(
+        order,
+        vec![
+            "model.load phase.start",
+            "model.load phase.end",
+            "prefill phase.start",
+            "prefill phase.end",
+            "decode phase.start",
+            "decode phase.end",
+        ],
+        "{events:#?}"
+    );
+}
+
+#[test]
+fn the_decode_phase_measures_the_decoding() {
+    // The ordering test above passes against a span that covers nothing:
+    // `let _ = events.phase("decode")` drops the guard in the same statement,
+    // writing phase.start and phase.end back to back, in the same order, with
+    // a duration of zero. That is a live hazard rather than a hypothetical --
+    // the binding name is the only thing preventing it, and `_decode` looks
+    // like a name a tidy-up would shorten.
+    //
+    // So this asserts the span actually contains the loop. Decoding 32 tokens
+    // on the tiny fixture takes tens of milliseconds against a three-decimal
+    // rounding floor of 0.5 ms, and a dropped guard records 0.0 exactly.
+    let (_, events) = run_with("7", "32");
+    let decode = events
+        .iter()
+        .find(|e| e["event"] == "phase.end" && e["phase"] == "decode")
+        .unwrap_or_else(|| panic!("no decode phase.end among {events:#?}"));
+    let measured = decode["duration_s"]
+        .as_f64()
+        .expect("duration_s is a number");
+    assert!(
+        measured > 0.0,
+        "the decode span recorded {measured}s over 32 tokens, which means the \
+         guard was dropped before the loop rather than after it"
+    );
+
+    // And it scales with the work, which distinguishes "covers the loop" from
+    // "covers something that happens to take time". Same prompt both times,
+    // so only the token budget differs.
+    let (_, one) = run_with("7", "1");
+    let single = one
+        .iter()
+        .find(|e| e["event"] == "phase.end" && e["phase"] == "decode")
+        .unwrap()["duration_s"]
+        .as_f64()
+        .unwrap();
+    assert!(
+        measured > single,
+        "decoding 32 tokens took {measured}s and one token took {single}s; \
+         the span is not bounding the decode loop"
+    );
 }
