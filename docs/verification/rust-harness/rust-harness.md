@@ -2,8 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 16 verified, 5 blocked, 1 pending, of 22.** The one pending is
-RH.16, which needs a workstation run. The five blocked are
+**Entries: 17 verified, 5 blocked, 0 pending, of 22.** The five blocked are
 RH.7 (rr does not recognize Zen 5) and RH.8, RH.9d, RH.11 and RH.15, which
 need an instruction-tuned checkpoint or a control vector this repository does
 not yet have. Each says so in its own Status line; none is merely unrun.
@@ -2035,4 +2034,62 @@ it would believe the weights had been verified. Fixed by giving `--deep` an
 interp artifact to check`. The command block above is the corrected step 4;
 the expected signal is unchanged.
 
-Status: PENDING. Steps 1-3 verified above; the entry closes when step 4 runs.
+Observed, step 4, 2026-08-15:
+
+```
+$ make probe-export ARGS="--probe /mnt/ai-data/interp/probes/rust-e4b-verify-probe"
+uv run python -m interp probe-export --probe /mnt/ai-data/interp/probes/rust-e4b-verify-probe
+[RUN] Exporting /mnt/ai-data/interp/probes/rust-e4b-verify-probe
+[OK] Image written: /mnt/ai-data/interp/probes/rust-e4b-verify-probe/probe.safetensors
+[OK] Sidecar written: /mnt/ai-data/interp/probes/rust-e4b-verify-probe/probe.json
+  [INFO] Serve with: make harness-serve HARNESS_PROBE=/app/probes/rust-e4b-verify-probe/probe.safetensors
+
+$ time cargo run --release -q -p harness -- --model "$MODEL" --text-only \
+    --probe /tmp/rh16/probe.safetensors --status --deep
+[OK] model directory: /mnt/ai-data/models/hf/gemma-4-E4B
+[OK] checkpoint files: config.json and model.safetensors present, header names 2130 tensors
+[OK] config.json: 42 layers, hidden size 2560, context 131072
+[OK] backend compatibility: supported
+[OK] probe: rust-e4b-verify-probe, layer 8, site LayerOutput, width 2560
+[OK] probe geometry: width 2560 and layer 8 fit the model
+[OK] probe identity: matches the served weights, sha256 43fb96cec3045b72852c787540300dc5b258634b7a025f7c80355ac0788b9651
+[SKIP] control vector: no --control-vector given
+[SKIP] control vector identity: no --control-vector given
+[SKIP] interp log directory: no --interp-log given
+[OK] obs log directory: /mnt/ai-data/logs/harness is writable
+cargo run ... 40.61s user 0.71s system 112% cpu 36.762 total
+exit=0
+
+$ sed -i 's/"model_hash": "4/"model_hash": "5/' /tmp/rh16/probe.json
+$ cargo run --release -q -p harness -- --model "$MODEL" --text-only \
+    --probe /tmp/rh16/probe.safetensors --status --deep
+[OK] model directory: /mnt/ai-data/models/hf/gemma-4-E4B
+[OK] checkpoint files: config.json and model.safetensors present, header names 2130 tensors
+[OK] config.json: 42 layers, hidden size 2560, context 131072
+[OK] backend compatibility: supported
+[OK] probe: rust-e4b-verify-probe, layer 8, site LayerOutput, width 2560
+[OK] probe geometry: width 2560 and layer 8 fit the model
+[ERROR] probe identity: trained on a different model: artifact model_hash 53fb96cec3045b72852c787540300dc5b258634b7a025f7c80355ac0788b9651, served model sha256 43fb96cec3045b72852c787540300dc5b258634b7a025f7c80355ac0788b9651
+[SKIP] control vector: no --control-vector given
+[SKIP] control vector identity: no --control-vector given
+[SKIP] interp log directory: no --interp-log given
+[OK] obs log directory: /mnt/ai-data/logs/harness is writable
+exit=1
+```
+
+Step 4d decides the entry and passes: one changed character turns the identity
+check from `[OK]` to `[ERROR]` naming both hashes, and the exit code follows it
+from 0 to 1. The comparison decides rather than merely reading bytes, which
+timing alone could never show. The digest the preflight computed is the one
+`sha256sum` reported in 4a, so the two independent readers of the same 15 GB
+agree.
+
+**4c's elapsed time is not the isolated figure the entry asked for.** 36.762s
+against 4a's 6.153s, at 112% CPU and 40.61s user: this run rebuilt the release
+binary after the `--deep` fix, and the build is the difference. The two
+deciding signals are unaffected, but the "close to 4a's" sub-signal is
+unconfirmed rather than observed — a repeat against a warm target directory
+would settle it, and until then the honest statement is that `--deep` reads the
+weights once, evidenced by the matching digest rather than by the clock.
+
+Status: VERIFIED 2026-08-15
