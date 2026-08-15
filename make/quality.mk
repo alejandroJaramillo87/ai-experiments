@@ -130,6 +130,12 @@ endif
 # near-capacity VRAM and load real models, so it is opt-in -- a gate nobody will run is not
 # a gate.
 #
+# e4b is full plus the checks that need the real Gemma 4 E4B checkpoint on disk. It is a
+# provisioning precondition rather than a third tier of hardware stress: the same GPU runs
+# it, and what separates it is whether a 14 GiB checkpoint is present. Kept opt-in for the
+# reason the marker is deselected by default -- no sandbox has the checkpoint, and a tier
+# that fails for an absent file teaches everyone to ignore it.
+#
 # Deliberately not named TIER. make/agents.mk:86 already owns that variable with a different
 # accepted set (sandbox|full) and a `?=` default; a second `?=` in this file would win by
 # include order and silently hand `worktree-%` a value it rejects.
@@ -154,9 +160,10 @@ ifdef AI_SANDBOX
 	exit 1
 else
 	@case "$(HW)" in \
-	  smoke|full) ;; \
+	  smoke|full|e4b) ;; \
 	  *) printf '[ERROR] quality-full: unknown HW: %s\n' "$(HW)"; \
-	     printf '  Accepted: smoke (under five minutes, default), full (near-capacity VRAM, real models)\n'; \
+	     printf '  Accepted: smoke (under five minutes, default), full (near-capacity VRAM, real models),\n'; \
+	     printf '            e4b (full plus the checks needing the real E4B checkpoint on disk)\n'; \
 	     printf '  Command: make quality-full HW=full\n'; \
 	     exit 1;; \
 	esac
@@ -171,9 +178,21 @@ else
 	$(MAKE) quality
 	$(MAKE) test
 	$(RUN_PY) pytest -m hw_smoke -v
-	@if [ "$(HW)" = full ]; then \
+	@case "$(HW)" in full|e4b) \
 	  printf '[RUN] hardware full tier: near-capacity VRAM and real model loads\n'; \
-	  $(RUN_PY) pytest -m hw_full -v; \
+	  $(RUN_PY) pytest -m hw_full -v;; \
+	esac
+	@if [ "$(HW)" = e4b ]; then \
+	  printf '[RUN] E4B tier: checks that need the real checkpoint on disk\n'; \
+	  if [ -z "$(HARNESS_E4B_MODEL)" ]; then \
+	    printf '[ERROR] quality-full HW=e4b: HARNESS_E4B_MODEL is unset, so every check would skip its way to green\n'; \
+	    printf '  Found: the tier names the checkpoint through one variable so no test hard-codes a path.\n'; \
+	    printf '  Solution: point it at the instruction-tuned safetensors directory\n'; \
+	    printf '  Command: make quality-full HW=e4b HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B-it\n'; \
+	    exit 1; \
+	  fi; \
+	  HARNESS_E4B_MODEL="$(HARNESS_E4B_MODEL)" $(RUN_PY) pytest -m hw_e4b -v; \
+	  HARNESS_E4B_MODEL="$(HARNESS_E4B_MODEL)" $(MAKE) -C rust-harness test-e4b; \
 	fi
 endif
 

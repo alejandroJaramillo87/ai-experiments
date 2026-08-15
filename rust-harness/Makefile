@@ -39,6 +39,23 @@ doc:
 test:
 	cargo test --workspace -- --nocapture
 
+# The checks that need the real E4B checkpoint rather than the committed tiny
+# fixture. Driven by `make quality-full HW=e4b`, which supplies
+# HARNESS_E4B_MODEL and refuses to run without it.
+#
+# --test-threads=1 is not a style preference. Each of these loads the real
+# checkpoint at roughly 14 GiB resident, and cargo runs a binary's tests in
+# parallel by default, so the machine would hold several copies at once and
+# the tier would fail on memory rather than on numerics.
+#
+# The tests skip through runtime::testlog::skip when the variable is unset, so
+# running this target by hand without it reports skips rather than passing
+# vacuously -- but the gate above makes the unset case an error, because a
+# tier that skipped its way to green is the failure this whole campaign was
+# about.
+test-e4b: ## Run the checks needing the real E4B checkpoint (HARNESS_E4B_MODEL=<dir>)
+	cargo test --workspace -- --nocapture --test-threads=1
+
 # The correctness ladder (workstation only): the six rungs against the real
 # checkpoint and reference artifacts generated from transformers.
 #
