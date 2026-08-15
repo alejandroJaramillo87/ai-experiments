@@ -418,12 +418,24 @@ Recorded divergence: this checks `NO_COLOR` by presence and `output.py:38` by tr
 an empty value disagrees. Presence is what no-color.org specifies, which makes Python the
 off-spec side; changing a stable tier four CLIs depend on was out of scope.
 
-### U1b / U1c — migrate the print sites
+### U1b / U1c — migrate the print sites (done)
 
-The ~64 hand-written status lines move onto `status`, one commit per crate, because a
-64-site mechanical diff is unreviewable. U1b is `runtime/` and carries the risk: five status
-lines currently on stdout move to stderr, so the runbooks consuming those tools and
-`runtime/tests/checkpoint_info_check.rs` are re-read in the same commit.
+134 hand-written status lines moved onto `status` — not the ~64 first estimated — across four
+commits, because a mechanical diff that size is unreviewable in one. U1c took `harness/`'s 44
+sites; U1b took `runtime/`'s 90 in three parts: the four quiet binaries, the ladder, and the
+two tools whose stdout a human reads.
+
+Six status lines were on stdout, not the five the brief named. The sixth was the worst: the
+ladder's verdict tags were built *inside* `ladder::render`'s returned string rather than typed
+at a print site, so no grep for a tag literal at a print site ever found them. `render` now
+yields the table alone and `ladder::summary` yields the verdict as tags. That also repaired a
+negative assertion which had been grepping rendered text for `[OK]` — it would have passed
+vacuously the moment the tags moved.
+
+RH.1 in `docs/verification/rust-harness/rust-harness.md` gained `2>&1 | tee` in the same
+commit: its expected signal is a verdict that is now on stderr, while it separately asks for
+the full stdout dump, so a plain `| tee` would have captured 2624 lines and lost the one line
+the entry turns on.
 
 ### U3 — one flag table behind `--help`, `-V`, and unknown-flag rejection (done)
 
@@ -449,12 +461,47 @@ ends flag parsing, which is what makes rejecting unknown flags safe.
 `--help` for all seven, unknown-argument rejection for the six that lack it. Promote
 `cli::Flag` into `runtime/` only when a second binary wants it, not pre-emptively.
 
-### U2 — the run header, built once and rendered twice
+### U2 — the run header, built once and rendered twice (done)
 
 `RunHeader::lines()` derives from `RunHeader::fields()`, so the terminal header and the obs
 record cannot disagree — two match arms would reintroduce exactly the drift the stage exists
-to prevent. `obs.rs` records no resolved configuration today, only the command and raw argv,
-so this is built rather than rendered from something already there.
+to prevent. `obs.rs` recorded no resolved configuration before this, only the command and raw
+argv, so the header is built rather than rendered from something already there.
+
+`schemas/obs_record.json` gained an additive `events` section declaring `run.header`. No
+`schema_version` was introduced: the file has never carried one, every change so far has been
+compatible, and minting a versioning mechanism on a change that does not need it would leave a
+number nobody has had to read. The first incompatible change is what introduces it.
+
+**Acceptance, workstation, 2026-08-15**, against the published E4B checkpoint:
+
+```
+$ cargo run --release -p harness -- --model <e4b> --text-only \
+    --seed 7 --max-tokens 16 "say hi"
+[INFO] Model: <e4b> hash=e376216f8b693aff layers=42
+[INFO] Weights: 13.90 GiB resident at bf16
+[INFO] Peak RSS after load: 14.03 GiB
+[INFO] KV cache: 131072 tokens, 4.05 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=7 temperature=0.800000011920929 max_tokens=16
+[INFO] Build: 0.1.0 git e89ca4db6d77dcaf89cf617db76cc7d10f448f1c
+[WARN] KV cache above 2 GiB: consider --context to cap it (compaction keeps long sessions inside the cap)
+```
+
+`dot=widen4` is the line the stage exists for: the fold in use had been unreportable, which is
+how `DotKind` stayed defaulted to `Sequential` for months. The 42 layers, 13.90 GiB bf16
+weights, 14.03 GiB peak and 4.05 GiB KV all agree with RH.2 and RH.3.
+
+**The run found a defect, recorded here rather than quietly fixed.**
+`temperature=0.800000011920929` is the f32 the sampler holds, widened to f64 for the record —
+so 0.8 prints as its binary representation. Unreadable on the terminal, and worse in a record
+whose purpose is cross-run comparison, where two runs at the same temperature would look as
+though they might differ. `obs::Value` gained a `Num32` variant and the header carries `f32`;
+`f32`'s Display gives the shortest decimal that round-trips, so the line now reads
+`temperature=0.8`. Guarded by
+`runheader::tests::a_single_precision_temperature_reads_as_the_value_that_was_asked_for`, and
+mutation-checked by restoring the f64 widening.
 
 ### U4 — `harness --status`
 

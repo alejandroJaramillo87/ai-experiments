@@ -124,6 +124,16 @@ pub enum Value {
     Str(String),
     Int(u64),
     Num(f64),
+    /// A single-precision number, rendered at single precision.
+    ///
+    /// Not folded into `Num`: widening an f32 to f64 exposes the binary
+    /// representation, so `temperature: 0.8` records as
+    /// `0.800000011920929`. That is unreadable, and worse than unreadable in
+    /// a record whose purpose is cross-run comparison -- two runs at the same
+    /// temperature would look as though they might differ. `f32`'s Display
+    /// gives the shortest decimal that round-trips to the stored value, which
+    /// is the honest rendering of what the sampler actually holds.
+    Num32(f32),
     Bool(bool),
 }
 
@@ -144,6 +154,14 @@ impl Value {
                 }
             }
             Value::Num(_) => "null".to_string(),
+            Value::Num32(f) if f.is_finite() => {
+                let s = format!("{f}");
+                match s.contains(['.', 'e', 'E']) {
+                    true => s,
+                    false => format!("{s}.0"),
+                }
+            }
+            Value::Num32(_) => "null".to_string(),
             Value::Bool(b) => b.to_string(),
         }
     }

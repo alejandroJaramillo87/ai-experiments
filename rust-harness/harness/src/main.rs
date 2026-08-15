@@ -308,7 +308,7 @@ fn build_generator(
             dot: cpu.dot().label().to_string(),
             batch: cpu.batch().label(),
             seed: sampling.seed,
-            temperature: sampling.temperature as f64,
+            temperature: sampling.temperature,
             max_tokens: max_tokens as u64,
             binary_version: env!("CARGO_PKG_VERSION").to_string(),
             git_sha: runtime::envelope::git_sha(),

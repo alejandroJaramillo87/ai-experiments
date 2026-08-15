@@ -62,7 +62,7 @@ pub struct RunHeader {
     pub dot: String,
     pub batch: String,
     pub seed: u64,
-    pub temperature: f64,
+    pub temperature: f32,
     pub max_tokens: u64,
     pub binary_version: String,
     pub git_sha: String,
@@ -94,7 +94,7 @@ impl RunHeader {
             ("dot", Value::Str(self.dot.clone())),
             ("batch", Value::Str(self.batch.clone())),
             ("seed", Value::Int(self.seed)),
-            ("temperature", Value::Num(self.temperature)),
+            ("temperature", Value::Num32(self.temperature)),
             ("max_tokens", Value::Int(self.max_tokens)),
             ("binary_version", Value::Str(self.binary_version.clone())),
             ("git_sha", Value::Str(self.git_sha.clone())),
@@ -294,6 +294,28 @@ mod tests {
         assert!(!text.contains("Peak RSS"), "{text}");
         assert!(!text.contains("Rewind horizon"), "{text}");
         assert!(!text.contains("Probe"), "{text}");
+    }
+
+    #[test]
+    fn a_single_precision_temperature_reads_as_the_value_that_was_asked_for() {
+        // Found on the first real E4B run, 2026-08-15: `temperature` was
+        // widened to f64 for the record, which prints 0.8 as
+        // 0.800000011920929 -- the binary representation of the f32 the
+        // sampler holds. Unreadable on the terminal, and worse in the record,
+        // where two runs at the same temperature would look as though they
+        // might differ. `SamplingParams::temperature` is f32, so the header
+        // carries f32 and renders at single precision.
+        let h = RunHeader {
+            temperature: 0.8,
+            ..full()
+        };
+        assert!(
+            h.lines().iter().any(|l| l.contains("temperature=0.8")),
+            "{:?}",
+            h.lines()
+        );
+        let text = h.lines().join("\n");
+        assert!(!text.contains("0.80000"), "{text}");
     }
 
     #[test]
