@@ -721,6 +721,13 @@ had to establish the hard way.
 The banner is identical to the 2026-08-12 run in all four lines, so the KV
 reconciliation above stands unchanged against a second independent load.
 
+**Both banners above predate U8, 2026-08-15.** A run now ends its banner with
+`[INFO] Model load: {s}` and reports `[INFO] Prefill: {n} tokens in {s}`
+before the reply. The entry stays VERIFIED: its expected signal names four
+lines and asks for those four, all of which still print unchanged, and both
+blocks are declared excerpts rather than complete transcripts. A re-run will
+show two lines these do not — that is the addition, not a discrepancy.
+
 Status: VERIFIED 2026-08-14
 
 ## RH.3 CPU generation speed
@@ -803,6 +810,12 @@ own output does not state them.
 *The model ignored the instruction*, as a base checkpoint does — it emitted a
 Python program rather than counting. That is irrelevant here: this entry times
 the forward pass, and any prompt of similar length would serve.
+
+**U8, 2026-08-15, makes the next run of this entry easier to record.** The
+harness now prints `Model load: {s}` and `Prefill: {n} tokens in {s}` itself,
+so the wall clock this entry asks for no longer has to be separated from the
+load by hand. The expected signal is unchanged and the entry stays VERIFIED;
+the pasted block simply predates the two lines.
 
 Status: VERIFIED 2026-08-14
 
@@ -1645,6 +1658,15 @@ checkpoint is a strong reproducibility result, and it makes container-versus-
 host timing comparisons legitimate later, because both sides provably do
 identical work.
 
+**"Byte-identical" is a claim about the reply, and after U8 it must be read
+that way.** Since 2026-08-15 a run prints `Model load: {s}` and
+`Prefill: {n} tokens in {s}`, and the two timing figures will differ between
+container and host by construction — that is what a timing comparison *is*.
+The continuation and the 189 cached tokens are what this entry established and
+they are unaffected, so it stays VERIFIED; but a re-run diffing the two
+transcripts wholesale will show a difference on those lines and must not read
+it as a numerics divergence. Diff the reply, not the banner.
+
 The run also confirms the container's security posture in passing: it executes
 as `${UID}:${GID}` under `network_mode: none`, `read_only: true` and
 `cap_drop: ALL`, and still writes its session into the bind-mounted `/work`.
@@ -1832,6 +1854,14 @@ number itself', 'usage': {'prompt_tokens': 13, 'completion_tokens': 64,
 ```
 
 Status: VERIFIED 2026-08-12
+
+**U8, 2026-08-15, adds one line to this entry's startup and none per
+request.** The server prints `Model load: {s}` once at start; the per-turn
+prefill line is emitted from `SessionGenerator::complete` and deliberately not
+from the served path, since a status line per request on a long-lived server
+is unbounded output. The expected signal here is about `wait_healthy` and the
+`chat_completion` payload, neither of which moves, so the entry stays
+VERIFIED.
 
 The interp client works unmodified: `wait_healthy` and `chat_completion` both
 succeed against the harness with nothing added but a registry entry. `usage`

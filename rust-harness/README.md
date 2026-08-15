@@ -86,6 +86,16 @@ a placeholder. The advice reaches the terminal only: the run record's `exc_msg`
 stays the diagnosis alone, so a `fail` event is still one line of cause and not
 a page of counsel.
 
+A run that succeeds says what it waited on. The two operations that dominate a
+cold start each report once when they finish — `Model load:` at the end of the
+banner, and `Prefill:` with the token count and rate before the reply. Both
+figures are read off the obs phase that already records them, so the terminal
+and `<run_id>.jsonl` cannot disagree. The prefill count is the *delta* the
+forward pass actually ran, not the prompt length, which is what makes a second
+turn's small number the visible evidence that the KV cache is being reused.
+There is no progress animation and no terminal check: a pipe and a terminal get
+the same bytes, so a runbook's pasted output never carries a carriage return.
+
 ## Testing
 
 Testing is test-first and tiered:

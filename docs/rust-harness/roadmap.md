@@ -636,11 +636,42 @@ re-run; its `exc_msg` evidence is unaffected and is now pinned by
 `harness/tests/actionable_surface.rs`, which asserts what RH.13 relied on and nothing
 guarded — that the printed line and the recorded message are one string.
 
-### U8 — progress on long operations
+### U8 — progress on long operations (done)
 
-Progress reuses `status::stderr_is_terminal()` so there is one terminal probe in the
-workspace, and emits nothing during a non-TTY run so an `Observed` block never carries a
-carriage-return smear.
+A cold start spends its wall clock in two places and said nothing about either. Both were
+already measured — the `model.load` phase and the `prefill` phase each hold an `Instant` and
+write `duration_s` — so the numbers existed and reached a human only by opening the event
+file. `Phase::elapsed_s` exposes that clock, and a run now ends its banner with
+`Model load: {s}` and reports `Prefill: {n} tokens in {s} ({rate})` per turn.
+
+**Read from the phase, not from a second `Instant`.** Two clocks around the same work drift
+by however long the work took to start, and a human comparing the terminal against
+`<run_id>.jsonl` would find two answers to one question. `harness/tests/status_streams.rs`
+asserts the printed figure against the recorded one.
+
+**The prefill count is the delta, not the prompt length.** Only `Session::sync` knows it, and
+on a second turn most of the prompt is a cache hit — reporting the prompt would claim work
+delta prefill skipped. The small numbers on later turns are the point: they are the only
+visible evidence that delta prefill works, which is the class of silent behaviour that let
+`DotKind::Sequential` survive for months. `runtime` prints none of it; the library records and
+the binary renders, which is what keeps `ladder`, `long-context-golden` and every test call
+site silent with no flag to thread through them. The served path is excluded at
+`SessionGenerator::complete_sampled`, the same split `record_step` already draws.
+
+**The `\r` animation was dropped, and not for schedule reasons.** `CpuModel::load` has no loop
+of its own — the layer loop is in `from_checkpoint`, shared with ~25 mostly-test call sites,
+and the gate runs `--nocapture` — while prefill's loop sits behind `Model::prefill`, a trait
+method with no callback slot. Animating either means changing a shared constructor or a trait,
+and `status.rs` would need its first partial-line emitter and flush, against
+`.styles/TEST_OUTPUT_STYLE.md`'s rule that progress is verbose-gated by default. Dropping it
+also removes the TTY/non-TTY divergence entirely, so a pasted `Observed` block and an
+interactive terminal get the same bytes by construction rather than by a branch —
+`status::stderr_is_terminal()` gains no second caller. `status_streams.rs` now asserts stderr
+carries no carriage return, which nothing guarded before and which is the tripwire any future
+animation lands against.
+
+**Acceptance:** sandbox, end to end — a run against `fixtures/tiny-gemma4` prints one line per
+operation in order, and the load figure matches the `phase.end` record it came from.
 
 ### U9 — bring the other binaries under obs
 
