@@ -2764,7 +2764,14 @@ Asserted by `rust-harness/harness/tests/serve_bind_addr.rs`:
 
 The third is a security property, not a convenience one: a harness that
 defaults to `0.0.0.0` serves a checkpoint to the local network without anyone
-having asked it to.
+having asked it to. Answering on `127.0.0.1` does not establish it, which is
+the trap this entry has now fallen into twice: first with a helper that passed
+`--serve-addr` on every run, so the default was never exercised at all, and
+then with a health check that a wildcard bind satisfies as readily as a
+loopback one. The discriminator is a second bind against this host's routable
+address on the same port -- free if the harness took loopback, already held if
+it took the wildcard. That arm skips loudly on a host with no routable
+address.
 
 Observed:
 

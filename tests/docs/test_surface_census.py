@@ -137,3 +137,9 @@ class TestGate:
         result = run_gate(tmp_path)
         assert result.returncode == 1
         assert "enumerated no rust-harness command line" in result.stderr
+
+
+def test_the_repository_surface_is_fully_mentioned():
+    """The real gate over the whole tree, as every sibling module ends."""
+    result = run_gate(REPO_ROOT)
+    assert result.returncode == 0, result.stderr

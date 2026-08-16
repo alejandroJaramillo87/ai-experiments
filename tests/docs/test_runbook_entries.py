@@ -222,3 +222,13 @@ class TestGate:
         result = run_gate(tmp_path)
         assert result.returncode == 1
         assert "found no named checks to resolve" in result.stderr
+
+
+def test_the_repository_runbooks_are_well_formed():
+    """The real gate over the whole tree, as every sibling module ends.
+
+    A stale citation anywhere in live documentation surfaces as a pytest
+    failure and not only as a `make quality` failure.
+    """
+    result = run_gate(REPO_ROOT)
+    assert result.returncode == 0, result.stderr

@@ -178,12 +178,50 @@ fn an_address_the_host_does_not_own_fails_the_bind_naming_it() {
     );
 }
 
-/// The default the flag overrides, asserted so the test above cannot pass for
-/// a build that fails to bind anything at all.
+/// This host's routable address, or `None` when it has none.
+///
+/// A connected UDP socket sends nothing; the kernel picks the source address
+/// for the route and `local_addr` reads it back. That is the only way in `std`
+/// to learn which interface a default route leaves by, and the assertion below
+/// needs a concrete non-loopback address rather than a wildcard.
+fn routable_addr() -> Option<Ipv4Addr> {
+    let probe = std::net::UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).ok()?;
+    probe.connect((Ipv4Addr::new(203, 0, 113, 1), 9)).ok()?;
+    match probe.local_addr().ok()? {
+        SocketAddr::V4(addr) if !addr.ip().is_loopback() => Some(*addr.ip()),
+        _ => None,
+    }
+}
+
+/// The default the flag overrides, and that it is loopback rather than the
+/// wildcard.
+///
+/// Answering on 127.0.0.1 is necessary and nowhere near sufficient: a default
+/// of 0.0.0.0 answers there too, so a test that stops at the health check
+/// stays green under precisely the exposure this entry exists to catch -- a
+/// checkpoint served to the local network by a run that named no address. The
+/// discriminator is a second bind. With the harness on 127.0.0.1 the routable
+/// address is free and binds; had it taken the wildcard, the same port on that
+/// address is already held and the bind fails.
 #[test]
 fn the_default_bind_address_is_loopback() {
     let dir = tempfile::tempdir().unwrap();
     let mut server = spawn_with(None, dir.path());
     let port = server.port;
     wait_healthy(&mut server, SocketAddr::from((Ipv4Addr::LOCALHOST, port)));
+
+    let Some(routable) = routable_addr() else {
+        runtime::testlog::skip(
+            "the wildcard-default assertion",
+            "this host has no routable address to prove the default is not 0.0.0.0",
+        );
+        return;
+    };
+    let taken = TcpListener::bind((routable, port));
+    assert!(
+        taken.is_ok(),
+        "the default bound {routable}:{port} as well as loopback, \
+         so it is the wildcard rather than 127.0.0.1: {:?}",
+        taken.err()
+    );
 }
