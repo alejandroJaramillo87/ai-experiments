@@ -2580,17 +2580,34 @@ Asserted by `rust-harness/runtime/tests/ladder_flags.rs`:
 
 | Expected signal | Test function |
 |-----------------|---------------|
-| Every bit-identical `DotKind` prints the same table | `every_bit_identical_dot_kind_prints_the_same_ladder_table` |
-| Every thread width prints the same table | `every_thread_width_prints_the_same_ladder_table` |
-| Every batch mode prints the same table | `every_batch_mode_prints_the_same_ladder_table` |
-| Every bit-identical `DotKind` yields the same logits bits | `every_bit_identical_dot_kind_produces_the_same_logits_bits` |
-| Every thread width yields the same logits bits | `every_thread_width_produces_the_same_logits_bits` |
+| Every bit-identical `--dot` kind prints the same table | `every_bit_identical_dot_kind_prints_the_same_ladder_table` |
+| Every `--threads` width, and `--single-thread`, prints the same table | `every_thread_width_prints_the_same_ladder_table` |
+| Every `--batch` mode prints the same table, under the spelling the header reports | `every_batch_mode_prints_the_same_ladder_table` |
+| Every bit-identical `--dot` kind yields the same logits bits | `every_bit_identical_dot_kind_produces_the_same_logits_bits` |
+| Every `--threads` width yields the same logits bits | `every_thread_width_produces_the_same_logits_bits` |
 | `--rung` climbs only the rung it names, in both directions | `rung_climbs_only_the_rung_it_names` |
 
 The two logits tests compare `f32::to_bits`, not an epsilon: "bit-identical" is
 the claim, so an approximate comparison would pass on a kernel that reorders.
 The set the invariance is asserted over is `DotKind::is_bit_identical`, which
 excludes `Lanes16` — see the known defect below.
+
+Each sweep asserts the header names the value the run used, not merely that the
+run accepted it. The `--batch` row states the spelling because the two differ:
+`BatchKind::parse` reads `1` as `stepped`, and the header prints
+`model.batch()`. A value clamped between the parser and the model — `7` read as
+the default 64 — would otherwise leave the sweep green over a mode it never
+ran.
+
+`--threads` needs a wider checkpoint than the fixture supplies.
+`runtime::model::cpu::par_row_runs` spawns no worker below 512 output rows, and
+the widest row `rust-harness/fixtures/tiny-hf-gemma4` produces is its 288-entry
+vocabulary, so every width there takes the serial path.
+`every_thread_width_produces_the_same_logits_bits` therefore sweeps a
+1024-vocabulary, 640-wide checkpoint synthesized through `runtime::synth`,
+which crosses the threshold on both paths that split. The table test keeps the
+fixture: its subject is the printed table, and no reference capture exists at
+the wider shape.
 
 Observed:
 

@@ -31,6 +31,7 @@ use std::process::Command;
 
 use runtime::model::cpu::{CpuModel, DotKind};
 use runtime::model::Model;
+use runtime::synth::TinySpec;
 
 fn fixture_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../fixtures/tiny-hf-gemma4")
@@ -234,12 +235,29 @@ fn every_batch_mode_prints_the_same_ladder_table() {
     );
     // 7 divides neither the 150-token prompt nor any window, so the last group
     // of a batched prefill is short.
-    for batch in ["whole", "1", "7", "64"] {
+    //
+    // Each mode is paired with the spelling the header must carry, which is not
+    // always the spelling on the command line: `BatchKind::parse` reads `1` as
+    // `stepped`. The table is written out here rather than taken from
+    // `BatchKind::parse` because the expectation has to be independent of the
+    // parser under test; calling it would agree with any answer it gave.
+    for (batch, label) in [
+        ("whole", "whole"),
+        ("1", "stepped"),
+        ("7", "7"),
+        ("64", "64"),
+    ] {
         let r = ladder(&["--batch", batch]);
         assert_eq!(r.code, 0, "batch {batch}: {}", r.stderr);
+        // The mode the run used, not merely that it reported one. The header
+        // prints `model.batch()`, and it prints `batch=` on every run, so the
+        // earlier `contains("\nbatch=")` was satisfied unconditionally: a value
+        // clamped between the parser and the model -- `7` read as the default
+        // 64 -- left this test green while the short trailing group the width
+        // was chosen for was never prefilled.
         assert!(
-            r.stdout.contains("\nbatch="),
-            "batch {batch}: the run reported no batch mode:\n{}",
+            r.stdout.contains(&format!("batch={label}\n")),
+            "batch {batch}: the run reported batch mode other than {label}:\n{}",
             r.stdout
         );
         assert_eq!(
@@ -248,14 +266,6 @@ fn every_batch_mode_prints_the_same_ladder_table() {
             "batch {batch} changed the table"
         );
     }
-    // Spelled how it was asked for, which `1` is not: `BatchKind::parse` reads
-    // it as `stepped`, and the header has to say which mode actually ran.
-    assert!(
-        ladder(&["--batch", "whole"])
-            .stdout
-            .contains("batch=whole\n"),
-        "the header did not name the batch mode the run used"
-    );
 }
 
 /// `--rung` climbs the one rung named and leaves the others unclimbed.
@@ -346,32 +356,60 @@ fn every_bit_identical_dot_kind_produces_the_same_logits_bits() {
     }
 }
 
+/// A checkpoint whose widest rows cross the row-split threshold.
+///
+/// The committed fixture cannot serve the sweep below. `par_row_runs` spawns
+/// no worker under 512 output rows, and the widest row tiny-hf-gemma4 produces
+/// is its 288-entry vocabulary, so every width there took the serial path and
+/// the sweep compared five copies of one run. Measured rather than reasoned:
+/// perturbing only the spawned branch of `par_row_runs` left the fixture
+/// version of this test green while `par_rows_is_bit_identical_at_every_width`
+/// failed on the same edit.
+///
+/// 1024 rows of vocabulary and a 640-wide feed-forward cross the threshold on
+/// both paths that split, and the widths 3 and 5 below divide neither, so a
+/// worker's run begins away from a block boundary.
+fn wide_model() -> CpuModel {
+    let spec = TinySpec {
+        vocab_size: 1024,
+        embed_dim: 24,
+        ffn_dim: 640,
+        ..TinySpec::e4b_shaped()
+    };
+    let files = runtime::synth::tiny_checkpoint(&spec).expect("synthesize a checkpoint");
+    let checkpoint = runtime::checkpoint::parse(&files).expect("the synthetic checkpoint parses");
+    CpuModel::from_checkpoint(&checkpoint).expect("the synthetic checkpoint loads")
+}
+
 /// The same claim for the row split: the width is a speed, not a number.
 #[test]
 fn every_thread_width_produces_the_same_logits_bits() {
-    if !have_fixture("thread-width logits bits") {
-        return;
-    }
-    let (mut model, tokens) = model_and_tokens();
-    model.set_threads(1);
-    let reference: Vec<u32> = model
-        .prefill(&tokens)
-        .expect("prefill on one thread")
-        .0
-        .iter()
-        .map(|v| v.to_bits())
-        .collect();
-
-    for width in [2usize, 3, 5, 8, 64] {
-        let (mut m, _) = CpuModel::load(&fixture_dir(), false).expect("load the fixture");
+    let tokens: Vec<runtime::model::Token> = vec![7, 300, 42, 261, 900, 3];
+    let bits = |width: usize| -> Vec<u32> {
+        let mut m = wide_model();
         m.set_threads(width);
-        let got: Vec<u32> = m
-            .prefill(&tokens)
+        m.prefill(&tokens)
             .unwrap_or_else(|e| panic!("threads {width}: {e:#}"))
             .0
             .iter()
             .map(|v| v.to_bits())
-            .collect();
+            .collect()
+    };
+
+    let reference = bits(1);
+    assert!(!reference.is_empty(), "the reference row is empty");
+
+    for width in [2usize, 3, 5, 8, 64] {
+        let got = bits(width);
+        // Length before contents: `zip` stops at the shorter side, so a row
+        // that came back short would otherwise compare nothing and pass.
+        assert_eq!(
+            got.len(),
+            reference.len(),
+            "threads {width} produced {} logits against {}",
+            got.len(),
+            reference.len()
+        );
         let differing = got
             .iter()
             .zip(&reference)
