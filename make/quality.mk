@@ -62,6 +62,23 @@ format: ## Format code with ruff
 # about the right answer. It was added after a count in docs/verification/ drifted from 56 to
 # an actual 66 and sat that way for several sessions with nothing able to see it.
 #
+# check_runbook_entries.py checks the two structural properties of a verification entry that
+# a reader would otherwise have to take on trust. A gate-backed entry pastes no output; it
+# names the test function asserting its signal, so its honesty is a reference into the tree,
+# and renaming a test is a one-line edit that leaves the runbook claiming coverage nothing
+# provides. The second half is cruder: a VERIFIED entry must offer evidence of one of the two
+# legal kinds. Neither says an entry is correct -- whether pasted output demonstrates a signal
+# needs a reader, and five entries marked verified against output that did not demonstrate
+# theirs is what opened the campaign that added this file.
+#
+# check_surface_census.py is the only gate here that starts from the code. Every other one
+# reads the documentation and asks whether it is true, which cannot see a feature nobody
+# thought to document: `attention-capture` and `layer-diff` shipped as binaries named once
+# each in prose, and `long-context-golden` and `tiny-model` were named nowhere at all. It
+# enumerates the rust-harness command line from the `Flag` literals and subtracts what the
+# runbooks mention. A mention is a low bar deliberately -- whether the mention verifies
+# anything is the check above's question, and a reader's.
+#
 # check_kb_refs.py holds the ends of a cross-reference together. Thirty-one known-bug ids sit
 # in permanent source comments and one is asserted as a literal string by a test, so a
 # deleted ledger row breaks a reference in the direction hardest to notice: the code still
@@ -113,6 +130,8 @@ endif
 	$(RUN_PY) python scripts/docs/check_make_targets.py
 	$(RUN_PY) python scripts/docs/check_doc_counts.py
 	$(RUN_PY) python scripts/docs/check_kb_refs.py
+	$(RUN_PY) python scripts/docs/check_runbook_entries.py
+	$(RUN_PY) python scripts/docs/check_surface_census.py
 	@files=$$(find . -name '*.sh' -type f \
 	    -not -path './.git/*' -not -path './.venv/*' \
 	    -not -path './node_modules/*' -not -path '*/target/*' \

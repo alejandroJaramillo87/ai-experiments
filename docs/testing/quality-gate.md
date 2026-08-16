@@ -26,7 +26,13 @@ Ten steps, cheapest first, failing on the first error:
    reading `## Open (3)` must have three rows beneath it.
 9. `scripts/docs/check_kb_refs.py` — fails when a known-bug id cited in source has no ledger
    row, or the reverse.
-10. `shellcheck --severity=warning` — shell scripts, enumerated with `find`.
+10. `scripts/docs/check_runbook_entries.py` — fails when a verification entry names a test
+    function that does not exist, or is marked `VERIFIED` with neither pasted evidence nor a
+    named check.
+11. `scripts/docs/check_surface_census.py` — enumerates the rust-harness binaries and flags
+    from their `Flag` literals and fails when one is named in no runbook. The only gate here
+    that starts from the code rather than the documentation.
+12. `shellcheck --severity=warning` — shell scripts, enumerated with `find`.
 
 Note what is absent: **`make quality` does not run pytest.** See
 [The full gate](#the-full-gate) below.

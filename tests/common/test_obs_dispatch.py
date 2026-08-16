@@ -49,8 +49,19 @@ def _interrupt_handler(args):
     raise KeyboardInterrupt
 
 
+# 143 rather than 1 (128 + SIGTERM, the status a shell reports for a
+# SIGTERM-killed process). dispatch() initializes exit_code to 1 before
+# calling the handler and its generic failure branch records 1 as well, so
+# a SystemExit(1) here is satisfied by three separate paths: the assertion
+# below held even with the SystemExit branch replaced by "exit_code = 1",
+# and so asserted nothing about exc.code being read.
 def _sigterm_handler(args):
-    raise SystemExit(1)
+    raise SystemExit(143)
+
+
+def _console_handler(args):
+    core.emit("info", "handler spoke", console=True)
+    return 0
 
 
 def _phase_handler(args):
@@ -69,6 +80,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("raise", _raise_handler),
         ("interrupt", _interrupt_handler),
         ("sigterm", _sigterm_handler),
+        ("console", _console_handler),
         ("phased", _phase_handler),
     ):
         sub.add_parser(name).set_defaults(func=func)
@@ -121,7 +133,7 @@ def test_keyboard_interrupt_records_130_and_reraises(tmp_path):
 def test_mid_run_system_exit_records_own_code(tmp_path):
     with pytest.raises(SystemExit):
         dispatch("toycli", build_parser, ["sigterm"])
-    assert read_records(tmp_path)[-1]["exit_code"] == 1
+    assert read_records(tmp_path)[-1]["exit_code"] == 143
 
 
 def test_usage_error_exits_before_any_record(tmp_path):
@@ -130,11 +142,17 @@ def test_usage_error_exits_before_any_record(tmp_path):
     assert not (tmp_path / "obs-logs").exists()
 
 
-def test_uncreatable_log_root_degrades_to_console_only(tmp_path, monkeypatch):
+def test_uncreatable_log_root_degrades_to_console_only(tmp_path, monkeypatch, capsys):
     blocker = tmp_path / "not-a-dir"
     blocker.write_text("")
     monkeypatch.setenv("OBS_LOG_DIR", str(blocker / "logs"))
-    assert dispatch("toycli", build_parser, ["ok"]) == 0
+    assert dispatch("toycli", build_parser, ["console"]) == 0
+    # "console-only" is two claims, and the exit code is only the first of
+    # them. Asserting the command survives says nothing about whether it can
+    # still speak: dropping the console handler outright left this test green,
+    # so a degraded run on a host without the log root -- which is every
+    # sandbox run -- could have produced no output at all.
+    assert "handler spoke" in capsys.readouterr().err
 
 
 def test_phase_records_span_with_duration(tmp_path, capsys):
