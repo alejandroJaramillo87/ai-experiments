@@ -130,8 +130,9 @@ sudo apt-get purge nvidia-*
 # 2. Add NVIDIA repository
 # (Handled by script)
 
-# 3. Install latest driver
-sudo apt install nvidia-driver-580
+# 3. Install the qualified driver branch
+# The -open flavor is required: Blackwell (SM 12.0) is only supported there.
+sudo apt install nvidia-driver-580-open
 
 # 4. Configure persistence mode
 sudo nvidia-smi -pm 1
