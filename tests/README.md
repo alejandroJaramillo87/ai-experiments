@@ -13,6 +13,7 @@ header transcripts, and a hardware tier that runs only on the workstation.
 | `common/` | the `common/` package: `Printer` and `common/obs/` — see [common/README.md](common/README.md) |
 | `docs/` | the documentation gates in `scripts/docs/` — see [docs/README.md](docs/README.md) |
 | `utils/` | the `scripts/utils/` host-environment reporters — see [utils/README.md](utils/README.md) |
+| `setup/` | the `--help` contract of the `scripts/setup/` provisioning scripts; their install paths need a host — see [setup/README.md](setup/README.md) |
 | `agents/` | agent tooling, the guard hook, and Make targets — see [agents/README.md](agents/README.md) |
 | `models/` | GGUF and safetensors header transcripts — see [models/README.md](models/README.md) |
 | `hardware/` | live GPU, CPU, RAM, and SSD checks; deselected by default |
