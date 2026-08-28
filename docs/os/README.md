@@ -213,7 +213,7 @@ Security Implementation Process:
 
 Security Components:
 - **Automated Security Updates**: Unattended-upgrades with scheduled 3 AM reboots
-- **AI Development Firewall**: UFW allowing Jupyter (8888), TensorBoard (6006), Gradio (7860), Streamlit (8501), and Docker ports
+- **Firewall**: UFW denying all inbound except SSH (22) and the Docker bridge (172.17.0.0/16). No development ports are opened: every service in `docker-compose.inference.yaml` binds `127.0.0.1`, so a rule for one would grant access to nothing
 - **Intrusion Prevention**: Fail2Ban with server protection rules
 - **System Auditing**: Logging for file access and authentication events
 - **Kernel Security**: Security parameters including ASLR, SYN flood protection, IP spoofing prevention
