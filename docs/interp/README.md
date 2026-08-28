@@ -5,7 +5,7 @@ platform, the write-back path, and the activation and SAE tooling.
 
 The code is at [../../interp/](../../interp/) and the containers at
 [../../docker/interp/](../../docker/interp/); this directory documents how to operate them.
-Verification records live in [../verification/interp.md](../verification/interp.md), not here.
+Verification records live in [../verification/interp/interp.md](../verification/interp/interp.md), not here.
 
 ## Documents
 

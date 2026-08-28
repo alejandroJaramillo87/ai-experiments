@@ -27,6 +27,7 @@ import urllib.request
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TRAIN_COMPOSE = os.path.join(REPO_ROOT, "docker-compose.training.yaml")
 INFER_COMPOSE = os.path.join(REPO_ROOT, "docker-compose.inference.yaml")
+HARNESS_COMPOSE = os.path.join(REPO_ROOT, "docker-compose.rust-harness.yaml")
 CONTAINER_MODELS = "/app/models/"
 HOST_MODELS = "/mnt/ai-data/models/"
 
@@ -49,6 +50,17 @@ class ServiceSpec:
     health_path: str  # llama.cpp and vLLM disagree; see docker-compose.inference.yaml
     concurrency: int  # request concurrency the service tolerates
     start_budget_s: int  # default health-poll budget after a recreate
+    # Where compose defines this service, and what it is called there. Both
+    # default to the inference stack, which is where every service but the
+    # harness lives; the harness has its own compose file so `make up` never
+    # starts it, and is named for the mode it runs in rather than the binary.
+    compose_file: str = INFER_COMPOSE
+    compose_name: str = ""
+
+    @property
+    def service(self) -> str:
+        """The name compose knows this service by."""
+        return self.compose_name or self.name
 
     @property
     def base_url(self) -> str:
@@ -95,6 +107,42 @@ SERVICES = {
         concurrency=16,
         start_budget_s=600,
     ),
+    # The rust harness serving its own runtime, for interp work that wants
+    # the taps in the process that answers the request, and the steering
+    # applied there too. `harness-serve` in docker-compose.rust-harness.yaml,
+    # started by `make harness-serve` or by `make steer-up`; never by
+    # `make up`.
+    #
+    # R9 recorded this as a non-compose service that swap_model had to refuse,
+    # because the binary took its checkpoint from --model. R10 gave it a
+    # compose service reading HARNESS_MODEL, so the refusal went and the entry
+    # is now an ordinary one.
+    #
+    # concurrency=1 because runtime `Model` is Send but not Sync and every
+    # generation path takes &mut self, so the endpoint serializes generation
+    # behind a mutex. Health stays responsive regardless; only chat queues.
+    #
+    # A CPU consumer, not a GPU one, so the one-GPU-consumer policy does not
+    # cover it -- but it holds ~14 GiB resident and saturates the cores, so
+    # treat it as exclusive with training and benchmark runs.
+    #
+    # start_budget_s covers loading a ~14 GiB checkpoint from disk. Still a
+    # placeholder: RH.14 measured the endpoint against real E4B but polled an
+    # already-running server, so it timed the poll and not the load.
+    #
+    # The decode rate it did measure is 5.5-5.8 tokens/s at the default thread
+    # width, so callers must pass an explicit timeout: chat_completion's 120s
+    # default covers about 660 tokens, and a 256-token call takes roughly 45s.
+    "harness": ServiceSpec(
+        "harness",
+        8005,
+        "HARNESS_MODEL",
+        "/v1/health",
+        concurrency=1,
+        start_budget_s=600,
+        compose_file=HARNESS_COMPOSE,
+        compose_name="harness-serve",
+    ),
 }
 
 
@@ -131,11 +179,11 @@ def model_paths(model: str) -> tuple[str, str]:
     )
 
 
-def compose(env: dict, *args: str) -> None:
+def compose(env: dict, *args: str, compose_file: str = INFER_COMPOSE) -> None:
     # -f is explicit: compose auto-discovers only its default filenames, so the
     # inference file's domain suffix puts it out of reach of a bare invocation
-    # even with cwd=REPO_ROOT.
-    cmd = ["docker", "compose", "-f", INFER_COMPOSE, *args]
+    # even with cwd=REPO_ROOT. The harness passes its own file.
+    cmd = ["docker", "compose", "-f", compose_file, *args]
     proc = subprocess.run(cmd, cwd=REPO_ROOT, env=env)
     if proc.returncode != 0:
         raise ServingError(f"Command failed ({proc.returncode}): {' '.join(cmd)}")
@@ -154,7 +202,14 @@ def swap_model(
         env.pop(service.model_env, None)
     else:
         env[service.model_env] = container_path
-    compose(env, "up", "-d", "--force-recreate", service.name)
+    compose(
+        env,
+        "up",
+        "-d",
+        "--force-recreate",
+        service.service,
+        compose_file=service.compose_file,
+    )
 
 
 def wait_healthy(service: ServiceSpec, budget_s: int | None = None) -> float:

@@ -56,24 +56,40 @@ storage format in this repository and nowhere a compute one.
 | Concern | rust-harness | interp | training |
 |---------|--------------|--------|----------|
 | Model compute | f32 throughout the CPU backend | Subject model loaded at `harvest.dtype` | `precision.dtype`, default bf16 |
-| Weights in memory | Dequantized to dense `Vec<f32>` at load | Subject-model dtype | `precision.dtype`; frozen base optionally nf4 |
-| Weights on disk | GGUF F32, F16, BF16, or Q8_0 | n/a (consumes a served or loaded model) | Checkpoint in parameter dtype |
+| Weights in memory | Held at the checkpoint's published width (`tensor::Weight`), widened per use | Subject-model dtype | `precision.dtype`; frozen base optionally nf4 |
+| Weights on disk | Hugging Face safetensors, F32, F16, or BF16 | n/a (consumes a served or loaded model) | Checkpoint in parameter dtype |
 | Activations on disk | Probe capture shards, f32 | Arrow capture at `harvest.dtype`; Arrow stores fp16 or fp32 only | n/a |
 | Gradients | n/a (inference only) | n/a | Parameter dtype (KB-55) |
 | Optimizer state | n/a | n/a | AdamW fp32 states plus fp32 master copy |
-| KV cache | f32, full sequence | Inherited from the serving engine | n/a |
-| Quantization accepted | Q8_0 storage, dequantized at load | None; consumes what it is served | nf4 base under QLoRA; fp8 schema field, unimplemented |
+| KV cache | f32; global layers hold the context, sliding layers hold the window | Inherited from the serving engine | n/a |
+| Quantization accepted | None. A quantized checkpoint is refused by name | None; consumes what it is served | nf4 base under QLoRA; fp8 schema field, unimplemented |
 
 ## Model compute and weights
 
-**rust-harness.** The CPU backend computes in plain f32 and holds no other numeric type.
-Every supported storage type is dequantized to a dense `Vec<f32>` at load time; the
-supported set is F32, F16, BF16, and Q8_0, declared as the `GGML_*` constants in
-[`rust-harness/runtime/src/tensor.rs`](../../rust-harness/runtime/src/tensor.rs). Any other
-GGML type is a hard error naming the tensor, so an unsupported quantization surfaces at
-load rather than as silent garbage. Because BF16 is the published storage type for Gemma 4
-and the format the training tier emits, the widening to f32 is exact and the checkpoint's
-own values reach the forward pass unrounded.
+**rust-harness.** The CPU backend computes in plain f32 and performs no arithmetic in any
+other numeric type. Weights are *stored* at the width their checkpoint declares — bf16 stays
+bf16 — in the `Weight` enum in
+[`rust-harness/runtime/src/tensor.rs`](../../rust-harness/runtime/src/tensor.rs), and are
+widened to f32 at the point of use. Storage width and compute precision are separate
+decisions here, and conflating them is the most common misreading of this tier: there is no
+path that multiplies two bf16 values in bf16.
+
+The accepted set is the three float widths safetensors can carry: F32, F16, and BF16. It is
+enforced by `widen` in
+[`rust-harness/runtime/src/checkpoint.rs`](../../rust-harness/runtime/src/checkpoint.rs),
+which refuses any other dtype by name rather than approximating it — the error text states
+that the backend "computes at 16-bit precision or wider by design". A quantized checkpoint
+therefore cannot be loaded at all, deliberately, because the numerics have to line up with
+what the interpretability pipelines record. Because BF16 is the published storage type for
+Gemma 4 and the format the training tier emits, the widening to f32 is exact and the
+checkpoint's own values reach the forward pass unrounded.
+
+No GGUF reader remains in the runtime. `gguf.rs` and the `GGML_*` storage-type
+constants beside it were deleted at R10, along with the last artifact that needed them: the
+control vector, which is now a safetensors image
+([`schemas/control_vector_artifact.json`](../../schemas/control_vector_artifact.json)) as the
+probe already was. Every tensor the runtime reads — weights, probes, control vectors — arrives
+as safetensors, widened through one decoder.
 
 **training.** `precision.dtype` in
 [`training/recipes/schema.py`](../../training/recipes/schema.py) (`PrecisionConfig`) selects
@@ -128,7 +144,7 @@ bfloat16 type in any version. This is not a tunable: a `bf16` capture cannot run
 `tests/interp/test_harvest.py` enforces the split against the committed recipes.
 [`docs/interp/harvest-precision-and-resume.md`](../interp/harvest-precision-and-resume.md)
 owns the defect (KB-57), the SAELens reading behind it, and what the options cost; the
-ledger row is in [`docs/verification/known-bugs.md`](../verification/known-bugs.md).
+ledger row is in [`docs/verification/bugs/known-bugs.md`](../verification/bugs/known-bugs.md).
 
 **One field, two type systems.** `harvest.dtype` is a single recipe field that sets both
 the Arrow on-disk storage type *and* the precision the SAE is later trained at. The SAE
@@ -143,8 +159,26 @@ what makes an Arrow limitation into a compute-precision constraint.
 **rust-harness.** Probe-capture activations are a separate artifact and a separate format:
 `rust-harness/runtime/src/bin/activation-capture.rs` writes shards of f32 rows in the
 layout `interp/probes/capture.py` defines, so the Python probe toolkit consumes
-rust-served activations unchanged. These rows come from the quantized serving path itself,
-not from a full-precision workbench — see the hazard below.
+rust-served activations unchanged.
+
+float32 is not a free choice on either side: it is required by
+[`schemas/activation_capture.manifest.json`](../../schemas/activation_capture.manifest.json),
+which is the contract both writers answer to. The reasoning recorded there is the reverse of
+the Arrow case below — a shard holds activations of a bf16 model, widening bf16 to float32
+is exact, and float16 is refused outright because its five exponent bits saturate on
+residual-stream outliers that bf16 represents. bfloat16 on disk is unavailable for a third
+reason again: numpy has no bfloat16 dtype and `.npy` has no descriptor for it. Both writers
+emitted float16 before the contract constrained the field; those captures still load, but
+they are not numerically comparable to float32 ones, and a capture is a regenerable cache,
+so the remedy is to re-run rather than migrate.
+
+The two activation formats in this repository therefore reach opposite conclusions about
+fp16 from the same bf16 source data, and both are correct. The Arrow harvest admits fp16
+because magnitudes are measured per subject before a capture runs; the capture-shard
+contract refuses it because it constrains two writers across two languages with no such
+measurement in the loop. See
+[widening and narrowing](#widening-and-narrowing-which-direction-is-lossy) for the
+underlying asymmetry.
 
 ## Gradients and optimizer state
 
@@ -167,17 +201,50 @@ calibration record before sizing anything.
 
 ## KV cache
 
-The rust-harness CPU backend stores f32 K and V for the full sequence — four bytes per
-element, no quantization and no windowing in the cache itself. The budget estimate printed
-before a run is computed in `rust-harness/harness/src/main.rs`, which fixes
-`bytes_per_element` at 4 and reports the estimate in GiB. Windowed layers are estimated at
-their window size, so the printed figure is an upper bound: the true cost is context
-length for every layer.
+The rust-harness CPU backend stores K and V as f32 — four bytes per element, and no KV
+quantization option exists. This is the one place in the tier where f32 is a *storage*
+choice rather than a compute one, and it is the conservative direction: attention consumes K
+and V in f32, so caching them in f32 stores exactly the values the forward pass produced.
+Narrowing the cache to bf16 would introduce a rounding step the arithmetic does not
+otherwise have.
 
-This matters when choosing `--context`. The flag caps the budget below the model's trained
-window and is refused above it, and the warning exists because an f32 full-sequence cache
-at a long context exceeds what the CPU backend can hold in memory. There is no KV
-quantization option in the harness.
+**The cache is not narrowed, but it is bounded.** A sliding-window layer retains
+`window - 1 + group` rows rather than the whole sequence, where `group` is the prefill batch
+width (`DEFAULT_BATCH`, 64), plus a quarter of that as compaction slack. The arithmetic is
+`window_capacity` and `budget_bytes` in
+[`rust-harness/runtime/src/kv.rs`](../../rust-harness/runtime/src/kv.rs); the storage is the
+compacting `LayerKv` buffer in
+[`rust-harness/runtime/src/model/cpu.rs`](../../rust-harness/runtime/src/model/cpu.rs).
+Global layers still hold the full context, and shared-KV layers hold nothing of their own.
+The figure printed at startup is the design rather than an upper bound over it.
+
+Measured on the workstation against real E4B at its trained context of 131072 tokens:
+
+```
+[INFO] Weights: 13.90 GiB resident at bf16
+[INFO] KV cache: 131072 tokens, 4.05 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+```
+
+Of that 4.05 GiB, the four global layers at head width 512 account for 4.000 GiB and the
+20 sliding layers at head width 256 for 0.055 GiB; the 18 shared-KV layers cost nothing.
+Uncapped, the sliding layers would have held 10.0 GiB. The cache is now dominated by the
+global layers, which no window can shrink — so the remaining lever on KV memory is dtype or
+`--context`, not residency.
+
+`--context` caps the budget below the model's trained window and is refused above it. The
+2 GiB warning it exists to trigger now fires almost entirely on account of the global
+layers.
+
+**The cost of bounding it is rewindability**, which is a precision-adjacent fact worth
+stating here: a windowed layer cannot return to a position it has evicted, so `truncate`
+below `rewindable_from()` is an error rather than a silently short prefix. Conversation
+compaction routinely rewinds further than the horizon, and `Session::sync` clears and
+re-prefills when it does. The result is bit-identical, not approximate.
+
+The `HKV1` session snapshot records a dtype byte (0 = f32, 1 reserved for f16 payloads) in
+[`rust-harness/runtime/src/session.rs`](../../rust-harness/runtime/src/session.rs), so
+narrowing the cache later does not need a format break. Nothing writes the reserved value.
 
 For the containerized engines, the KV cache dtype is the engine's own setting; see
 [`docs/inference/parameters/llama-cpp-parameters.md`](../inference/parameters/llama-cpp-parameters.md)
@@ -187,7 +254,7 @@ and [`docs/inference/parameters/vllm-parameters.md`](../inference/parameters/vll
 
 | Tier | What is quantized | Where decided |
 |------|-------------------|---------------|
-| rust-harness | Q8_0 GGUF tensors, dequantized to f32 at load; no quantized arithmetic | `rust-harness/runtime/src/tensor.rs` |
+| rust-harness | Nothing. Weights are held at the checkpoint's published width (`tensor::Weight`) and widened to f32 per use; no quantized arithmetic | `rust-harness/runtime/src/tensor.rs` |
 | training | `peft.quantize_base = nf4` loads the frozen base in 4-bit via bitsandbytes (QLoRA), with `peft.compute_dtype` as the compute dtype over it; `distill.teacher_quantize` does the same for an online teacher | `training/recipes/schema.py`, `training/recipes/validate.py` |
 | training | `precision.dtype = fp8` with `fp8_backend` in `torchao` or `te`; validation of the dimension constraints is a no-op stub pending D8 | `training/recipes/validate.py` (`_check_fp8_dims`) |
 | interp | None of its own; it consumes whatever the serving container loaded | `docker-compose.inference.yaml` |
@@ -201,26 +268,34 @@ fp8, and cached-mode distillation rejects a quantized teacher.
 This is the sharpest precision coupling in the repository, and it crosses tier boundaries
 silently.
 
-Linear probes are fitted on bf16 activations. When monitored traffic is answered by a
-quantized model, the model that answered the request and the model whose activations the
-probe was fitted on are not the same model, and the monitor's scores describe the replay
-model rather than the served one. Nothing errors; the numbers simply stop meaning what
-they appear to mean.
+Linear probes are fitted on bf16 activations. Scoring one against a quantized model means
+the model that answered the request and the model whose activations the probe was fitted on
+are not the same model. Nothing errors; the numbers simply stop meaning what they appear to
+mean.
 
-The mitigation is the `llama-gpu-bf16` service in
-[`docker-compose.inference.yaml`](../../docker-compose.inference.yaml), started by `make
-fullprec-up`, which answers monitored traffic at the precision the probes were fitted at.
-The compose file carries the reason inline; the operating instructions, the port, the
-subject-model choice, and the GGUF conversion caveat are owned by
-[`docs/interp/writeback.md`](../interp/writeback.md). Read that section before running the
-probe monitor against any endpoint.
+**R10.5 removed the hazard from this path rather than mitigating it.** Probes are now scored
+in the process that answers the request, by the tap seam in the rust harness, which loads
+bf16 safetensors and refuses a quantized checkpoint. The score comes from the weights that
+produced the text, so there is no second model to compare against and no fidelity claim to
+qualify.
 
-Note that `rust-harness/runtime/src/bin/activation-capture.rs` takes the opposite approach
-for the same problem: rather than raising the serving precision to match the probe, it
-captures from the quantized serving path itself, so probes fitted on those rows describe
-the model that will answer. The two are alternative resolutions of one hazard, and mixing
-them — a probe fitted on workbench bf16 activations, evaluated against rust-captured
-quantized rows — reintroduces it.
+Two mitigations existed before that and are gone with it. `activation-capture.rs` once
+captured from a quantized serving path, so probes fitted on those rows described the model
+that would answer -- retired when the harness stopped reading quantized checkpoints. And an
+opt-in bf16 sibling of `llama-gpu` answered monitored traffic at the probes' precision so
+that an offline replay would at least match it -- deleted with the replay, since a
+precision-matched endpoint has nothing left to match. See
+[`docs/interp/writeback.md`](../interp/writeback.md).
+
+The hazard itself is undiminished — it is a property of the quantized llama.cpp and vLLM
+services, which are still what most traffic is answered by. What changed is that interp no
+longer observes those services at all: probe scoring happens only where the weights are
+bf16. That is a narrowing of what is monitored, not a resolution of the quantization
+question for the services themselves.
+
+The banner comment at the top of `activation-capture.rs` still describes the rows as
+"captured from the quantized serving path itself". That sentence is stale and this section
+is the correct account.
 
 ## Widening and narrowing: which direction is lossy
 

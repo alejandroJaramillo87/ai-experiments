@@ -21,6 +21,16 @@
       title: "Device memory (GB)",
       keys: ["gpu_mem_allocated_gb", "gpu_vram_used_gb"],
     },
+    // Host resident set size, written by the rust harness. Additive: a
+    // training run carries no rss_gb and renders this group empty, the same
+    // way a CPU-only harness run renders the device-memory group above.
+    { title: "Process memory (GB)", keys: ["rss_gb"] },
+    // Per-rung wall clock, written by the ladder. Its step axis is a rung
+    // index rather than a time step -- five ordered points, not a series --
+    // which is why only the duration is charted: the rungs' own measures are
+    // different quantities in different units, and a line through them would
+    // mean nothing. They stay in metrics.jsonl for jq.
+    { title: "Rung duration (s)", keys: ["rung_duration_s"] },
   ];
   var TRACKED = {};
   CHART_GROUPS.forEach(function (group) {

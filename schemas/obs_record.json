@@ -1,9 +1,10 @@
 {
   "contract": "obs_record",
+  "schema_version": 2,
   "description": "Run-level observability JSONL under ${OBS_LOG_DIR}/<cli>/: one event file per run plus an appended run catalog",
   "writers": [
     "common/obs/core.py (_JsonFormatter, record_run)",
-    "rust-harness/harness/src/obs.rs (RunLog)"
+    "rust-harness/obs/src/lib.rs (RunLog)"
   ],
   "readers": [
     "common/obs/catalog.py (read_runs, run_command)",
@@ -38,10 +39,174 @@
       "timestamp"
     ]
   },
+  "events": {
+    "run.header": {
+      "description": "The resolved configuration of a harness run: what the loader and the flags actually settled on, as opposed to what was asked for on the command line. Written once, immediately after the model is loaded.",
+      "fields": [
+        "model",
+        "model_hash",
+        "n_layers",
+        "dtype",
+        "weight_bytes",
+        "max_context",
+        "kv_bytes",
+        "kv_batch_group",
+        "threads",
+        "dot",
+        "batch",
+        "seed",
+        "temperature",
+        "max_tokens",
+        "binary_version",
+        "git_sha"
+      ],
+      "optional": [
+        "peak_rss_bytes",
+        "rewind_horizon",
+        "probe",
+        "probe_layer"
+      ],
+      "writers": [
+        "rust-harness/harness/src/runheader.rs (RunHeader::fields)"
+      ]
+    },
+    "ladder.header": {
+      "description": "The resolved configuration of a conformance-ladder run: the checkpoint, the reference directory, the size, and the engine tuning the climb actually used. Written once, immediately after the model is loaded and after the tuning is applied.",
+      "fields": [
+        "model",
+        "model_hash",
+        "n_layers",
+        "dtype",
+        "weight_bytes",
+        "reference",
+        "size",
+        "corpus_tokens",
+        "text_only",
+        "threads",
+        "dot",
+        "batch",
+        "binary_version",
+        "git_sha"
+      ],
+      "optional": [
+        "only_rung"
+      ],
+      "writers": [
+        "rust-harness/runtime/src/bin/ladder.rs (ladder_header)"
+      ]
+    },
+    "activation-capture.header": {
+      "description": "The resolved configuration of an activation capture: the checkpoint, the layers tapped, the dataset and its size, and the engine tuning the capture actually ran at. Written once, after the model is loaded, after the thread width is applied, and after the dataset is read -- so examples is a count rather than an expectation.",
+      "fields": [
+        "model",
+        "model_hash",
+        "n_layers",
+        "dtype",
+        "weight_bytes",
+        "layers",
+        "dataset",
+        "examples",
+        "out",
+        "text_only",
+        "threads",
+        "dot",
+        "batch",
+        "binary_version",
+        "git_sha"
+      ],
+      "optional": [],
+      "writers": [
+        "rust-harness/runtime/src/bin/activation-capture.rs (capture_header)"
+      ]
+    },
+    "attention-capture.header": {
+      "description": "The resolved configuration of an attention capture: the checkpoint, the layer and head filters, the prompt as a digest and a token count, and the engine tuning. Written once, after the model is loaded and the prompt tokenized, before the single prefill the capture taps.",
+      "fields": [
+        "model",
+        "model_hash",
+        "n_layers",
+        "dtype",
+        "weight_bytes",
+        "layers",
+        "heads",
+        "prompt_sha256",
+        "prompt_tokens",
+        "out",
+        "text_only",
+        "threads",
+        "dot",
+        "batch",
+        "binary_version",
+        "git_sha"
+      ],
+      "optional": [],
+      "writers": [
+        "rust-harness/runtime/src/bin/attention-capture.rs (attention_header)"
+      ]
+    },
+    "layer-diff.header": {
+      "description": "The resolved configuration of a residual-stream comparison: the checkpoint, the reference capture it was compared against, and the two tolerances the verdict was reached under. The tolerances are the reason this is its own event -- a pass at a loosened floor is a different claim from a pass at the default, and layer-diff writes no artifact, so its record is the only place the conditions of a quoted verdict survive.",
+      "fields": [
+        "model",
+        "model_hash",
+        "n_layers",
+        "dtype",
+        "weight_bytes",
+        "reference",
+        "reference_tokens",
+        "reference_dtype",
+        "cosine_floor",
+        "rel_l2_ceiling",
+        "text_only",
+        "threads",
+        "dot",
+        "batch",
+        "binary_version",
+        "git_sha"
+      ],
+      "optional": [],
+      "writers": [
+        "rust-harness/runtime/src/bin/layer-diff.rs (layer_diff_header)"
+      ]
+    },
+    "phase.start": {
+      "description": "Opens a coarse in-command span. File-only on both sides: the command's own status lines remain the human view of progress.",
+      "fields": [
+        "phase"
+      ],
+      "optional": [],
+      "writers": [
+        "common/obs/core.py (phase)",
+        "rust-harness/obs/src/lib.rs (RunLog::phase, EventSink::phase)"
+      ]
+    },
+    "phase.end": {
+      "description": "Closes the span opened by phase.start, carrying its wall-clock duration rounded to three decimals. Always fires: Python ends it from a finally block, Rust from Drop, so a span left by an exception or an early return still records its duration.",
+      "fields": [
+        "phase",
+        "duration_s"
+      ],
+      "optional": [],
+      "writers": [
+        "common/obs/core.py (phase)",
+        "rust-harness/obs/src/lib.rs (Phase::drop, SinkPhase::drop)"
+      ]
+    }
+  },
   "notes": {
     "extra_fields": "Both required sets are exact for the base record. Emitters add named fields on top (argv on cmd.start, exit_code and duration_s on cmd.end, exc_type and exc_msg on fail); the Python formatter refuses to let a caller field overwrite a base key, so the correlation join cannot be corrupted from above.",
     "run_id_format": "R-YYYYMMDD-HHMMSS-xxxxxx, a UTC stamp and six hex characters, minted independently by each writer.",
     "silent_skip": "read_runs skips a line it cannot parse rather than raising, so a writer that drifts off this contract presents as an empty runs table and not as an error. That is why the contract is asserted at the writers rather than left to the reader.",
-    "hand_rolled_json": "The Rust catalog line is formatted by hand (obs.rs), not through serde, so nothing in the type system keeps it aligned with the Python writer. This file is what keeps them aligned."
+    "hand_rolled_json": "The Rust catalog line is formatted by hand (the obs crate), not through serde, so nothing in the type system keeps it aligned with the Python writer. This file is what keeps them aligned.",
+    "events_section": "An additive, optional top-level key: a reader that does not know about it is unaffected, which is why this landed without a schema_version. Declares per-event fields on top of event.required, which stays exact for the base record.",
+    "schema_version": "Introduced at 2 by the run_dir change below, which is the first incompatible change this contract has taken -- every earlier one was additive. Version 1 is the retroactive name for every state of this file before that, and no reader has ever branched on it.",
+    "run_dir_semantic": "Changed in schema_version 2. run_dir was the process's working directory; it is now the run's own artifact directory, ${OBS_LOG_DIR}/<cli>/<run_id>/, which is what training/commands/report.py --run can open. The key and its type are unchanged, so a reader that only displays it is unaffected -- but one that resolved it against the filesystem now resolves somewhere else, which is why this is a bump and not an additive change. The Rust writer creates the directory lazily, on the first metrics write: common/obs/retention.py::prune globs R-*.jsonl and so would never reclaim an eagerly created empty directory. The path is recorded whether or not it exists, so run_dir carries one meaning rather than two.",
+    "two_sided_events": "phase.start and phase.end are written by both stacks, which makes them the stronger kind of declaration here: the field names, the empty msg, and duration_s rounded to three decimals are asserted against this file from Python and from Rust independently, so neither writer can drift without a gate failing. run.header remains the one-sided case below.",
+    "one_cli_many_commands": "Every binary in the Rust workspace writes under cli = \"harness\" with its own name as command, so one catalog and one `runs` view serve the whole tool suite -- symmetric with training and interp, and one directory is also one retention policy. That makes `runs` a reserved command name: common/obs/catalog.py drops rows whose command is literally `runs`, so a binary of that name would log correctly and be invisible in the table. Guarded at the writer, where a ninth binary gets named, by harness/src/cli.rs::no_binary_claims_the_name_the_catalog_reader_reserves.",
+    "per_tool_header_events": "Five header events exist rather than one shared one, and the reason is the strength of the assertion rather than the shape of the data. run.header's field list is asserted for key-set equality in both directions against a real harness run, so a field silently dropped from the header fails a test -- which is the whole reason U2 added it, after DotKind defaulted to Sequential for months with nothing printing the fold. A ladder has no sampler, no KV cache and no context window, so admitting it under run.header means moving seed, temperature, max_tokens, max_context, kv_bytes and kv_batch_group to optional, and an optional field is one no test can miss. The three capture headers added at U9c extend the same argument rather than reopening it: a capture has no rungs and no corpus size, layer-diff carries two tolerances nothing else has, and each of the three has a different notion of what it was run over -- a dataset, a prompt, a reference capture. Each event pinned exactly is the stronger contract, and every one of the five is declared with an empty or short optional list for that reason. The keys they share are spelled identically and carry the same units, so one jq filter reads all five.",
+    "one_sided_events": "run.header is written by the Rust harness alone, and deliberately so rather than pending: the Python tiers carry equivalent provenance through common/obs/context.py::run_context(), and imitating that block from Rust would emit a packages/gpu section that reads true and is not. binary_version plus runtime::envelope::git_sha() is the honest subset.",
+    "base_key_guard": "RunLog::event skips any caller field whose key is in the base set, mirroring common/obs/core.py:121-124. Rust had no such guard while write_event was private and every caller was in-file; a public emitter is what makes the rule need stating.",
+    "phase_names": "Phase names are emitter-chosen and this file does not enumerate them; common/obs/core.py::phase takes any string. The Rust side writes model.load from all five instrumented binaries, prefill and decode from the harness (one pair per turn or per served request, from Session::generate), and rung.L0 through rung.L4 from the ladder. Guarded by harness/tests/run_header.rs, runtime/tests/ladder_obs.rs and runtime/tests/capture_obs.rs, which assert the sequence a real run writes rather than a declaration here -- a name list in this file would be a second place to keep in step with no reader consuming it.",
+    "two_descriptors_one_event_file": "phase records reach the event file through two paths. RunLog::phase writes on the log's own descriptor; EventSink::phase writes on an independent O_APPEND duplicate, one whole line per write, the same concurrency contract the catalog and metrics file rely on. The sink exists because a RunLog::phase guard borrows the log, so a caller cannot open a span and then take &mut on the object doing the measured work -- Session::generate is exactly that case. A forked session does not inherit the sink: forks advance alongside their parent and phase records carry no session identity, so interleaved pairs would be unattributable and their durations wrong rather than missing."
   }
 }

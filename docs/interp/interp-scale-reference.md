@@ -93,7 +93,7 @@ reasons.
    checkpoints), memorization-versus-generalization attribution against a
    known corpus, and clean ablation-retrain loops.
 3. **Same block, same seams.** Because from-scratch models use the Gemma 4
-   block at reduced scale and `Config::from_gguf`
+   block at reduced scale and `ModelSpec::from_checkpoint`
    (`rust-harness/runtime/src/model/cpu.rs:56`) reads every dimension from
    GGUF metadata, every interpretability asset transfers unchanged: tap
    seam, steering hook, probe path, npz capture, goldens methodology. The

@@ -47,8 +47,11 @@ PRUNE_DIRS = {
 # Exempt by path component. Investigation and verification write-ups are dated
 # records: their value is that they capture the tree as it was on the day they
 # were written, so a reference that has since moved is accurate history rather
-# than drift. vendor/ is third-party and not ours to correct.
-EXEMPT_PARTS = ("investigations", "vendor")
+# than drift. vendor/ is third-party and not ours to correct. archive/ holds
+# closed campaign logs moved out of a live runbook -- same argument as
+# investigations/, and the reason a directory rather than a suffix: a log is
+# named after the campaign it records, not after being frozen.
+EXEMPT_PARTS = ("investigations", "vendor", "archive")
 EXEMPT_SUFFIXES = ("_investigation.md",)
 
 # Empty on purpose, and kept as a mechanism rather than deleted. docs/verification/
@@ -61,14 +64,20 @@ EXEMPT_SUFFIXES = ("_investigation.md",)
 # nothing and cost coverage of the runbook, which is the most path-dense
 # documentation in the tree and the documentation a human trusts most. Removing
 # it surfaced four references, all recorded in KNOWN_ABSENT below.
-EXEMPT_PREFIXES: tuple[str, ...] = ()
+#
+# Non-empty again as of 2026-08-14, for agent memory rather than for the
+# runbook. A triage agent's project note records what it concluded on a given
+# day, including the paths it read; it is an agent's own record and not
+# documentation of this tree, so a later move makes it inaccurate history
+# rather than drift to repair. check_retired_names.py has carried exactly this
+# prefix since it was written, and the two gates disagreeing about whether
+# agent memory is in scope was itself the defect -- surfaced when the
+# verification directory grew tier subdirectories and two notes citing the old
+# flat paths failed one gate but not the other.
+EXEMPT_PREFIXES: tuple[str, ...] = (".claude/agent-memory/",)
 
 # Exempt by name, each for a stated reason.
 EXEMPT_FILES = {
-    # An analysis of upstream llama.cpp and transformers sources at a pinned
-    # revision. Its paths describe those checkouts, not this tree, and no
-    # resolution rule here can tell one from the other.
-    "docs/rust-harness/gemma-4-ingestion.md",
     # The published Gemma 4 architecture reference, citing the same upstream
     # transformers and llama.cpp sources for the same reason.
     "docs/models/gemma-4.md",
@@ -106,7 +115,12 @@ METACHARS = set("*<>${}|()[]!?")
 # asserting that a path does *not* exist, a deliberate example of something that
 # must never be added, and an artifact created at run time rather than committed.
 # A path that is merely planned does not qualify unless the document is a roadmap
-# declaring it as scope.
+# declaring it as scope. A fourth kind was added when the Tier 3 stubs were
+# deleted: a dated campaign ledger naming a file that has since been removed,
+# where correcting the name would falsify the record of what was scoped on the
+# day. That is the same argument check_retired_names.py records for exempting
+# the same document, and it is entered here per reference rather than per
+# document so the ledger's remaining paths stay checked.
 KNOWN_ABSENT = {
     # Asserts the absence: "The workspace carries no ... .cargo/config.toml".
     (".styles/RUST_STYLE.md", ".cargo/config.toml"),
@@ -131,6 +145,12 @@ KNOWN_ABSENT = {
     # Generated on the workstation from the reference tokenizer; the sandbox
     # cannot reach it, which is why the test it feeds is #[ignore]d.
     ("docs/rust-harness/runtime-design.md", "fixtures/template_goldens.json"),
+    # Scoped by a dated QA campaign against the file as it stood; the Tier 3
+    # stubs were deleted in P9.7 and replaced by runtime/src/ladder.rs.
+    (
+        "docs/verification/rust-harness/rust-harness-qa.md",
+        "rust-harness/runtime/tests/eval_acceptance.rs",
+    ),
     # The postmortem command creates this log if it is absent.
     (".claude/commands/postmortem.md", "docs/research-log.md"),
     (".opencode/commands/postmortem.md", "docs/research-log.md"),
@@ -148,13 +168,16 @@ KNOWN_ABSENT = {
     # Installed-package paths inside the KB-59 row, naming the two site-packages
     # files whose interaction produced the defect. They describe the container's
     # environment, not this tree.
-    ("docs/verification/known-bugs.md", "torch/_native/registry.py"),
-    ("docs/verification/known-bugs.md", "triton/runtime/build.py"),
+    ("docs/verification/bugs/known-bugs.md", "torch/_native/registry.py"),
+    ("docs/verification/bugs/known-bugs.md", "triton/runtime/build.py"),
     # The same unwritten OBS-13 deliverable already exempted for the roadmap
     # above. The runbook step names it because the step is what would confirm it.
-    ("docs/verification/observability.md", "docs/observability/debugging-runs.md"),
+    (
+        "docs/verification/observability/observability.md",
+        "docs/observability/debugging-runs.md",
+    ),
     # Created on the host by the flight recorder at run time; nothing commits it.
-    ("docs/verification/rust-harness.md", "sessions/rust-harness/"),
+    ("docs/verification/rust-harness/rust-harness.md", "sessions/rust-harness/"),
 }
 
 BACKTICKED = re.compile(r"`([^`\n]+)`")

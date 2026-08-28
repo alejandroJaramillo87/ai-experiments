@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use runtime::model::cpu::{CpuModel, Tap};
+use runtime::model::cpu::{CpuModel, LastRowTap, Site, Tap};
 use runtime::model::Model;
 use runtime::tokenizer::Tokenizer;
 
@@ -38,7 +38,7 @@ const DATASET: [(&str, i64); 4] = [
 fn fixture_model() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../fixtures")
-        .join("tiny-gemma4.gguf")
+        .join("tiny-gemma4")
 }
 
 fn dataset_jsonl(rows: &[(&str, i64)]) -> String {
@@ -170,7 +170,10 @@ fn f32_rows(shard: &serde_json::Value, key: &str) -> Vec<Vec<f32>> {
 struct LastRows(Arc<Mutex<HashMap<usize, Vec<f32>>>>);
 
 impl Tap for LastRows {
-    fn on_residual(&mut self, layer: usize, _position: usize, x: &[f32]) {
+    fn on_residual(&mut self, layer: usize, site: Site, _position: usize, x: &[f32]) {
+        if site != Site::LayerOutput {
+            return;
+        }
         self.0.lock().unwrap().insert(layer, x.to_vec());
     }
 }
@@ -180,13 +183,16 @@ impl Tap for LastRows {
 /// so a comparison against these pins the row-to-example mapping instead of
 /// restating whatever order the binary happened to write.
 fn reference_rows(texts: &[&str], layer: usize) -> Vec<Vec<f32>> {
-    let image = std::fs::read(fixture_model()).unwrap();
-    let file = runtime::gguf::parse(&image).unwrap();
-    let tokenizer = Tokenizer::from_gguf(&file).unwrap();
+    let files = runtime::checkpoint::CheckpointFiles::read(&fixture_model()).unwrap();
+    let ck = runtime::checkpoint::parse(&files).unwrap();
+    let tokenizer = Tokenizer::from_file(
+        &runtime::tokenizer::resolve_tokenizer(&fixture_model(), None).unwrap(),
+    )
+    .unwrap();
     texts
         .iter()
         .map(|text| {
-            let mut model = CpuModel::from_gguf(&file, &image).unwrap();
+            let mut model = CpuModel::from_checkpoint(&ck).unwrap();
             let tap = LastRows::default();
             model.set_tap(Box::new(tap.clone()));
             let mut tokens = vec![tokenizer.bos()];
@@ -213,6 +219,18 @@ fn capture_writes_a_manifest_and_shard_for_the_requested_layers() {
     assert_eq!(m["count"], DATASET.len());
     assert_eq!(m["shards"], 1);
     assert_eq!(m["layers"], serde_json::json!([0, 1]));
+
+    // The site the rows came from, parsed back rather than string-compared:
+    // what the manifest must carry is the tap's own site, and a reader
+    // recovering it is the reason to store it at all.
+    assert_eq!(
+        m["site"].as_str().expect("manifest states a site"),
+        LastRowTap::SITE.to_string(),
+    );
+    assert_eq!(
+        m["site"].as_str().unwrap().parse::<Site>().unwrap(),
+        LastRowTap::SITE,
+    );
 
     assert!(c.out.join("shard_00000.npz").is_file());
     assert!(!c.out.join("shard_00001.npz").exists());

@@ -434,7 +434,7 @@ def test_canonical_template_is_identical_across_e2b_and_e4b(gguf_blocks):
 # 4. The line-number citations still resolve
 # --------------------------------------------------------------------------
 
-# docs/models/README.md warns that gemma-4.md and gemma-4-ingestion.md cite the
+# docs/models/README.md warns that gemma-4.md cites the
 # transcripts by line number and that nothing verifies them: the documentation
 # reference gate checks that a path exists, not that a line still says what a
 # document claims. This table is that missing check. Each entry is
@@ -446,73 +446,66 @@ CITATIONS = [
         # rows above, so a name-anchored needle would pass against a transcript
         # that had lost the values section entirely.
         "docs/models/gemma-4.md",
-        662,
+        714,
         "docs/models/gemma4-safetensors.txt",
         741,
         "value 0.0185546875",
     ),
     (
         "docs/models/gemma-4.md",
-        833,
+        855,
         "docs/models/gemma4-safetensors.txt",
         414,
         "self_attn.k_proj.weight [256, 1536]",
     ),
     (
         "docs/models/gemma-4.md",
-        833,
+        855,
         "docs/models/gemma4-safetensors.txt",
         529,
         "self_attn.k_proj.weight [512, 1536]",
     ),
     (
         "docs/models/gemma-4.md",
-        835,
+        857,
         "docs/models/gemma4-gguf.txt",
         613,
         "blk.{L}.attn_k.weight [1536, 256]",
     ),
     (
         "docs/models/gemma-4.md",
-        835,
+        857,
         "docs/models/gemma4-gguf.txt",
         625,
         "blk.{L}.attn_k.weight [1536, 512]",
     ),
     (
-        "docs/rust-harness/gemma-4-ingestion.md",
-        414,
+        "docs/models/gemma-4.md",
+        286,
         "docs/models/gemma4-gguf.txt",
         630,
         "rope_freqs.weight [256] F32",
     ),
     (
-        "docs/rust-harness/gemma-4-ingestion.md",
-        414,
+        "docs/models/gemma-4.md",
+        286,
         "docs/models/gemma4-gguf.txt",
         639,
         "rope_freqs.weight [256] F32",
     ),
     (
-        "docs/rust-harness/gemma-4-ingestion.md",
-        510,
+        "docs/models/gemma-4.md",
+        395,
         "docs/models/gemma4-gguf.txt",
         632,
         "per_layer_token_embd.weight [8960, 262144]",
     ),
     (
-        "docs/rust-harness/gemma-4-ingestion.md",
-        510,
+        "docs/models/gemma-4.md",
+        395,
         "docs/models/gemma4-gguf.txt",
         641,
         "per_layer_token_embd.weight [8960, 262144]",
-    ),
-    (
-        "docs/rust-harness/gemma-4-ingestion.md",
-        523,
-        "docs/models/gemma4-gguf.txt",
-        613,
-        "attn_k.weight",
     ),
 ]
 

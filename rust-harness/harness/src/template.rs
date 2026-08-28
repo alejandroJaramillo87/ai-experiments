@@ -31,10 +31,13 @@ pub const MODEL_TURN_OPEN: &str = "<|turn>model\n";
 pub const BOS: &str = "<bos>";
 
 /// Template revision, matching `CHAT_TEMPLATE_VERSION` in
-/// training/models/families.py:49. The two tiers render one conversation to
-/// one byte string, so a change to either must bump both in lockstep;
+/// training/models/families.py:49. The tiers render one conversation to one
+/// byte string, so a change to either must bump both in lockstep;
 /// tests/template_contract.rs pins them together.
-pub const CHAT_TEMPLATE_VERSION: u32 = 2;
+///
+/// The value itself lives in `runtime::tokenizer`, which the ladder's L0 rung
+/// can also see; this module renders with it and keeps the name callers use.
+pub const CHAT_TEMPLATE_VERSION: u32 = runtime::tokenizer::CHAT_TEMPLATE_VERSION;
 
 /// Every marker the Gemma 4 tokenizer defines
 /// (docs/models/gemma-4.md:472-480), including the ones this module never

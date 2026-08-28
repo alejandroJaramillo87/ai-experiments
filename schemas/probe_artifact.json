@@ -1,0 +1,63 @@
+{
+  "contract": "probe_artifact",
+  "description": "The probe the Python interp exporter writes and the Rust runtime scores with: a safetensors image of three f32 vectors, plus a JSON sidecar beside it at the same path with a .json extension",
+  "writers": [
+    "interp/probes/export.py (write_probe_from_probe)"
+  ],
+  "readers": [
+    "rust-harness/runtime/src/model/probe.rs (Probe::load)"
+  ],
+  "guarded_by": [
+    "rust-harness/runtime/tests/python_exporter_contract.rs",
+    "tests/interp/test_probe_export.py"
+  ],
+  "required": {
+    "sidecar": [
+      "artifact",
+      "bias",
+      "git_sha",
+      "layer",
+      "model_hash",
+      "name",
+      "schema_version",
+      "threshold",
+      "timestamp",
+      "width"
+    ],
+    "tensors": [
+      "mu",
+      "sigma",
+      "weights"
+    ]
+  },
+  "optional": {
+    "sidecar": [
+      "site"
+    ]
+  },
+  "values": {
+    "artifact": [
+      "probe"
+    ],
+    "site": [
+      "layer_output"
+    ]
+  },
+  "constraints": [
+    "weights, mu and sigma are 1-D f32 and share one width",
+    "the sidecar's width equals that shared width",
+    "sigma is strictly positive",
+    "bias and threshold are finite",
+    "layer is a 0-based decoder block index"
+  ],
+  "notes": {
+    "two_files": "The tensors are safetensors and the scalars are JSON beside them, rather than one container carrying both. The tensors then go where every other tensor in this repository goes - the same reader the model weights use, rust-harness/runtime/src/checkpoint.rs Image, under forbid(unsafe_code) - and the scalars stay readable without a parser. This replaced the probe half of the retired combined GGUF artifacts contract, which held both interp artifacts while both were GGUF; the control vector followed at R10 and is now schemas/control_vector_artifact.json.",
+    "sidecar_is_mandatory": "A probe image without its sidecar is refused, and the error names the path that was looked for. This is the opposite of the control vector's sibling manifest.json, whose absence is a warning (schemas/control_vector_artifact.json, manifest_is_advisory), and the asymmetry is the point: that manifest carries only provenance and an identity check, while this sidecar carries the layer, the site and the decision threshold. A probe missing it is unusable, not merely unchecked.",
+    "width_is_restated": "'width' duplicates what the tensor shapes already say, deliberately. It is the sidecar's one falsifiable claim about the image beside it: a sidecar paired with the wrong .safetensors is otherwise a well-formed pair, and a probe scored at the wrong width is a truncated dot product that returns a plausible number rather than an error.",
+    "site_defaults": "'site' names the tap the probe was trained on, and is optional. The reader defaults an absent site to layer_output, which is where the seam has always fired and therefore what every probe written before the key existed was trained at. The exporter writes it only when the probe manifest records one, because an exporter inventing a site would turn a fact nobody recorded into one the artifact asserts. Before this key the GGUF named the layer and left the site to a constant in probe.rs, so a probe file stated half of where it belonged.",
+    "non_finite_scalars": "JSON has no spelling for NaN or Infinity. json.dumps would emit a bare NaN, which serde_json rejects, so a non-finite bias or threshold is refused at the parse rather than by a value check. The exporter refuses it earlier and names the field, so the failure does not arrive as a parse error on a file that should never have been written.",
+    "comparison_is_semantic": "The committed fixtures are compared by parsed content - tensor names, widths, values, and the sidecar's keys and values - never byte for byte. The sidecar carries 'timestamp' and 'git_sha' from the shared report envelope, which differ on every regeneration; a byte comparison would report that as exporter drift.",
+    "float_exactness": "Fixture values are chosen to be exact in f32, so a round trip through the writer and the Rust reader is an equality comparison and needs no tolerance.",
+    "envelope": "The sidecar carries the shared report envelope from common/reports.py: schema_version, exactly one discriminator (artifact), a stamp (timestamp), and git_sha. report_header spells the discriminator 'report'; this artifact rewrites it to the 'artifact' spelling the envelope also allows, which is what interp/manifest.py's directory manifests use."
+  }
+}

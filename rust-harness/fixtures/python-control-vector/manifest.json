@@ -1,0 +1,22 @@
+{
+  "artifact": "control_vector",
+  "created": "2026-08-13T03:30:08Z",
+  "git_sha": "b5ec553dcec64ad5f032b4d449ce2af08b001b1d",
+  "layer_range": null,
+  "layers": [
+    0,
+    1,
+    3
+  ],
+  "method": "sae_row",
+  "model_hash": "fedcba9876543210",
+  "model_id": "contract-fixture/model",
+  "model_revision": "main",
+  "schema_version": 1,
+  "source": {
+    "sae_id": "fixture",
+    "sae_release": "contract-fixture"
+  },
+  "vector_xxhash": "cc8c2eead212980f",
+  "width": 4
+}

@@ -3,9 +3,13 @@
  *
  * Wires the full stack: permissions from permissions.yaml, a durable JSONL
  * transcript, the agent loop, and a SessionGenerator over the runtime. The
- * generator runs the hand-rolled CPU backend against the GGUF passed via
- * --model; the cuda backend (phase A) will slot in at the same seam.
+ * generator runs the hand-rolled CPU backend against the checkpoint passed
+ * via --model; the cuda backend (phase A) will slot in at the same seam.
  */
+
+// See the note in lib.rs: the binary is its own crate root, so the attribute
+// has to be repeated to cover it.
+#![forbid(unsafe_code)]
 
 use std::io::Write;
 use std::path::Path;
@@ -15,11 +19,17 @@ use anyhow::{Context, Result};
 
 use harness::agent::Agent;
 use harness::generator::SessionGenerator;
+use harness::interplog::{InterpLog, MonitorHandle};
 use harness::permissions::Permissions;
 use harness::tools::ToolCall;
 use harness::transcript::Transcript;
 
 /// Interactive Ask resolution: prompt on stderr, read one line from stdin.
+///
+/// The one stderr write in this binary that does not go through
+/// `runtime::status`. A prompt is not a status line: it must leave the cursor
+/// on the same line for the answer, and `status` has no emitter that omits the
+/// newline -- deliberately, since a tag whose line never ends is unparseable.
 fn ask_stdin(call: &ToolCall) -> bool {
     eprint!("allow {} {}? [y/N] ", call.name(), call.target());
     let _ = std::io::stderr().flush();
@@ -30,146 +40,109 @@ fn ask_stdin(call: &ToolCall) -> bool {
     matches!(line.trim(), "y" | "yes")
 }
 
-/// A live probe monitor: the loaded probe plus the shared state its tap
-/// fills during the run. Drained by `report_probe` after the task.
-struct MonitorHandle {
-    probe: std::sync::Arc<runtime::model::probe::Probe>,
-    state: std::sync::Arc<std::sync::Mutex<runtime::model::probe::MonitorState>>,
-}
+/// The forward-pass record a run accumulates, when one was asked for.
+///
+/// `None` rather than an empty vector, so "alignment was not requested" and
+/// "the model made no passes" stay distinguishable in the writer.
+type PassHandle = Option<std::sync::Arc<std::sync::Mutex<Vec<runtime::align::Pass>>>>;
 
-/// Sentinel an interp artifact carries when the weights it was fitted on
-/// have no recorded identity (`interp/probes/capture.py` defaults
-/// `model_hash` to it, and the exporters pass it through).
-const UNKNOWN_MODEL_HASH: &str = "unknown";
+// `UNKNOWN_MODEL_HASH`, `check_model_identity` and `control_vector_model_hash`
+// live in `harness::preflight`, which needs them to answer the same questions
+// before a model is loaded. They are `pub` there rather than crate-private
+// because this binary is a separate crate from the library it consumes.
 
-/// FIPS 180-4 SHA-256, hex. Duplicated from
-/// `runtime/src/bin/activation-capture.rs`, which writes the capture
-/// manifest's `model_hash` with it: items of a binary target cannot be
-/// imported, and the two digests must stay the same function or the
-/// identity check below compares nothing.
-fn sha256_hex(bytes: &[u8]) -> String {
-    const K: [u32; 64] = [
-        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
-        0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
-        0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f,
-        0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
-        0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
-        0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
-        0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116,
-        0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
-        0xc67178f2,
-    ];
-    let mut h: [u32; 8] = [
-        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
-        0x5be0cd19,
-    ];
-    let mut msg = bytes.to_vec();
-    let bit_len = (bytes.len() as u64) * 8;
-    msg.push(0x80);
-    while msg.len() % 64 != 56 {
-        msg.push(0);
-    }
-    msg.extend_from_slice(&bit_len.to_be_bytes());
-    for block in msg.chunks_exact(64) {
-        let mut w = [0u32; 64];
-        for (i, c) in block.chunks_exact(4).enumerate() {
-            w[i] = u32::from_be_bytes(c.try_into().unwrap());
+/// Print a preflight report and turn it into an exit code.
+///
+/// The only renderer over `preflight::Check`, which is why `checks` returns
+/// data and tags nothing itself.
+///
+/// A check's first detail line goes on the tagged line; any further lines are
+/// indented and **untagged**. That is the repo's error shape
+/// (`rust-harness/Makefile:70-86`): one tagged statement of what happened,
+/// then detail. `status::error_at` would tag every continuation, turning one
+/// finding into what reads like several.
+///
+/// Exit 1, not 2, when something would stop the run: 2 is reserved for a
+/// command line that was wrong to ask, and the whole value of `--status` is
+/// that the two are different answers. Warnings and skips do not fail.
+fn report(checks: &[harness::preflight::Check]) -> ExitCode {
+    use harness::preflight::Outcome;
+    for check in checks {
+        let mut lines = check.detail.lines();
+        let first = lines.next().unwrap_or_default();
+        let head = format!("{}: {first}", check.name);
+        match check.outcome {
+            Outcome::Ok => runtime::status::ok(&head),
+            Outcome::Warn => runtime::status::warn(&head),
+            Outcome::Error => runtime::status::error(&head),
+            Outcome::Skip => runtime::status::skip(&head),
         }
-        for i in 16..64 {
-            let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
-            let s1 = w[i - 2].rotate_right(17) ^ w[i - 2].rotate_right(19) ^ (w[i - 2] >> 10);
-            w[i] = w[i - 16]
-                .wrapping_add(s0)
-                .wrapping_add(w[i - 7])
-                .wrapping_add(s1);
-        }
-        let [mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut hh] = h;
-        for i in 0..64 {
-            let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
-            let ch = (e & f) ^ (!e & g);
-            let t1 = hh
-                .wrapping_add(s1)
-                .wrapping_add(ch)
-                .wrapping_add(K[i])
-                .wrapping_add(w[i]);
-            let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
-            let maj = (a & b) ^ (a & c) ^ (b & c);
-            let t2 = s0.wrapping_add(maj);
-            hh = g;
-            g = f;
-            f = e;
-            e = d.wrapping_add(t1);
-            d = c;
-            c = b;
-            b = a;
-            a = t1.wrapping_add(t2);
-        }
-        for (s, v) in h.iter_mut().zip([a, b, c, d, e, f, g, hh]) {
-            *s = s.wrapping_add(v);
+        for line in lines {
+            runtime::status::plain(&format!("        {line}"));
         }
     }
-    h.iter().map(|v| format!("{v:08x}")).collect()
-}
-
-/// Refuse an interp artifact fitted on weights other than the served ones.
-/// A probe scored against a different model, or a control vector added to
-/// its residual stream, produces meaningless output indistinguishable from
-/// a genuine flag or steer, so the pairing is refused the way every Python
-/// consumer refuses it (`interp/probes/registry.py` `require_match`,
-/// `interp/steering/wiring.py`). Only two real hashes can disagree: the
-/// `unknown` sentinel downgrades to a skipped check, which is what keeps
-/// Python-captured artifacts loading. The served digest arrives as a
-/// closure because producing it hashes a multi-gigabyte GGUF, a cost a
-/// skipped check must not pay.
-fn check_model_identity(
-    artifact: &str,
-    artifact_hash: &str,
-    served_sha256: impl FnOnce() -> String,
-) -> Result<()> {
-    if artifact_hash == UNKNOWN_MODEL_HASH {
-        eprintln!(
-            "[WARN] Model identity: {artifact} records model hash \
-             \"{UNKNOWN_MODEL_HASH}\", check skipped"
-        );
-        return Ok(());
+    match harness::preflight::failed(checks) {
+        true => ExitCode::from(1),
+        false => ExitCode::SUCCESS,
     }
-    let served = served_sha256();
-    anyhow::ensure!(
-        artifact_hash == served,
-        "{artifact} was trained on a different model: {artifact} model_hash \
-         {artifact_hash}, served model sha256 {served}"
-    );
-    Ok(())
 }
 
-/// The model hash recorded beside a control vector, when its artifact
-/// directory is intact. The vector GGUF itself carries only
-/// `controlvector.model_hint` — a model type, not an identity — so the
-/// sibling `manifest.json` the exporter writes (`interp/steering/export.py`)
-/// is the only hash available. A vector copied away from its manifest, or
-/// one whose manifest is unreadable, stays loadable and unchecked.
-fn control_vector_model_hash(path: &Path) -> Option<String> {
-    let text = std::fs::read_to_string(path.parent()?.join("manifest.json")).ok()?;
-    let manifest: serde_json::Value = serde_json::from_str(&text).ok()?;
-    manifest.get("model_hash")?.as_str().map(str::to_string)
+/// Parse `--control-vector-layer-range` as an inclusive pair of 0-based
+/// block indices.
+///
+/// The value is one argument holding two numbers, `"START END"`, rather than
+/// two arguments. That is the spelling `interp/steering/wiring.py`'s
+/// `steering_env` already emits into `CONTROL_VECTOR_LAYER_RANGE`, so the
+/// environment variable can be forwarded to this flag unmodified; llama.cpp
+/// took the same string as two shell words instead. Either separator run of
+/// whitespace is accepted because the variable is assembled by shell.
+fn parse_layer_range(value: &str) -> Result<(usize, usize), String> {
+    let parts: Vec<&str> = value.split_whitespace().collect();
+    let [start, end] = parts[..] else {
+        return Err(format!(
+            "--control-vector-layer-range: expected two numbers \"START END\", got {value:?}"
+        ));
+    };
+    let parsed = |s: &str| {
+        s.parse::<usize>()
+            .map_err(|_| format!("--control-vector-layer-range: {s:?} is not a block index"))
+    };
+    let (start, end) = (parsed(start)?, parsed(end)?);
+    if start > end {
+        return Err(format!(
+            "--control-vector-layer-range: start {start} is above end {end}"
+        ));
+    }
+    Ok((start, end))
 }
 
-/// Construct the generator over the CPU backend for the GGUF at
+/// Construct the generator over the CPU backend for the checkpoint at
 /// `model_path`, wrapping the model in the flight recorder when `record`
 /// names a path. There is no mock fallback in the shipping binary.
 #[allow(clippy::too_many_arguments)]
 fn build_generator(
     model_path: Option<&Path>,
+    tokenizer_path: Option<&Path>,
     record: Option<&Path>,
     control_vector: Option<&Path>,
     control_scale: f32,
+    control_layer_range: Option<(usize, usize)>,
     probe: Option<&Path>,
     sampling: runtime::sampler::SamplingParams,
     max_tokens: usize,
     context: Option<usize>,
     snapshot: Option<&Path>,
-) -> Result<(SessionGenerator, Option<MonitorHandle>, u64)> {
+    text_only: bool,
+    single_thread: bool,
+    align: bool,
+    keep_scores: bool,
+) -> Result<(
+    SessionGenerator,
+    Option<MonitorHandle>,
+    u64,
+    PassHandle,
+    harness::runheader::RunHeader,
+)> {
     use runtime::model::{
         cpu::{ControlVector, CpuModel},
         probe::{Probe, ProbeMonitor},
@@ -178,27 +151,57 @@ fn build_generator(
     };
     let Some(model_path) = model_path else {
         anyhow::bail!(
-            "no model: pass --model <path.gguf> to run on the CPU backend; \
+            "no model: pass --model <checkpoint-dir> to run on the CPU backend; \
              the cuda backend (roadmap phase A) has not landed"
         )
     };
-    let data = std::fs::read(model_path)
-        .with_context(|| format!("read model {}", model_path.display()))?;
-    let file = runtime::gguf::parse(&data).context("parse GGUF")?;
-    let mut cpu = CpuModel::from_gguf(&file, &data).context("load CPU model")?;
+    // Resolved before the load rather than after it, which is where this call
+    // used to sit. Two reasons, and the second is the one that matters:
+    // `CpuModel::load` resolves the same path internally, so hoisting removes
+    // a duplicate walk -- and it puts the failure under a frame this crate
+    // owns, which is the only place a remedy can attach without duplicating
+    // the message. `load`'s own context is the identical `read model {path}`
+    // string, so the chain a failing run records is unchanged; see
+    // `actionable::missing_checkpoint`.
+    let checkpoint_dir = runtime::checkpoint::resolve(model_path)
+        .with_context(|| harness::actionable::missing_checkpoint(model_path))?;
+    // `load` drops the checkpoint mapping before returning, so nothing below
+    // holds 15 GiB of page cache it will never read; see its doc comment.
+    let (mut cpu, model_hash) = CpuModel::load(model_path, text_only)?;
+    if single_thread {
+        cpu.set_threads(1);
+    }
+    // Model identity for the interp artifacts. The weights alone, not
+    // config.json: a checkpoint is a directory, and the weights are what an
+    // artifact was fitted on. Hashed from the file rather than from memory,
+    // and only when an artifact is actually present -- see
+    // `check_model_identity` on why the digest arrives as a closure.
+    let weights_path = checkpoint_dir.join(runtime::checkpoint::WEIGHTS_FILE);
     if let Some(path) = control_vector {
         let cv_data = std::fs::read(path)
             .with_context(|| format!("read control vector {}", path.display()))?;
-        let cv_file = runtime::gguf::parse(&cv_data).context("parse control-vector GGUF")?;
-        match control_vector_model_hash(path) {
-            Some(hash) => check_model_identity("control vector", &hash, || sha256_hex(&data))?,
-            None => eprintln!(
-                "[WARN] Model identity: no readable manifest.json beside {}, \
+        let cv_image = runtime::checkpoint::Image::parse(cv_data, "control vector")
+            .context("parse control-vector image")?;
+        match harness::preflight::control_vector_model_hash(path) {
+            Some(hash) => {
+                harness::preflight::check_model_identity(
+                    "--control-vector",
+                    path,
+                    model_path,
+                    &hash,
+                    || {
+                        runtime::digest::sha256_file(&weights_path)
+                            .with_context(|| format!("hash {}", weights_path.display()))
+                    },
+                )?;
+            }
+            None => runtime::status::warn(&format!(
+                "Model identity: no readable manifest.json beside {}, \
                  control vector unchecked",
                 path.display()
-            ),
+            )),
         }
-        let cv = ControlVector::from_gguf(&cv_file, &cv_data, control_scale)
+        let cv = ControlVector::from_image(&cv_image, control_scale, control_layer_range)
             .context("load control vector")?;
         cpu.set_control_vector(cv).context("apply control vector")?;
     }
@@ -206,16 +209,25 @@ fn build_generator(
     // then the tap, matching the documented tap semantics.
     let monitor = match probe {
         Some(path) => {
-            let p_data =
-                std::fs::read(path).with_context(|| format!("read probe {}", path.display()))?;
-            let p_file = runtime::gguf::parse(&p_data).context("parse probe GGUF")?;
-            let p = std::sync::Arc::new(Probe::from_gguf(&p_file, &p_data).context("load probe")?);
-            check_model_identity("probe", &p.model_hash, || sha256_hex(&data))?;
+            let p = std::sync::Arc::new(Probe::load(path).context("load probe")?);
+            harness::preflight::check_model_identity(
+                "--probe",
+                path,
+                model_path,
+                &p.model_hash,
+                || {
+                    runtime::digest::sha256_file(&weights_path)
+                        .with_context(|| format!("hash {}", weights_path.display()))
+                },
+            )?;
             anyhow::ensure!(
                 p.width() == cpu.config().embed_dim,
-                "probe width {} does not match model embedding dimension {}",
-                p.width(),
-                cpu.config().embed_dim
+                harness::actionable::probe_width(
+                    p.width(),
+                    cpu.config().embed_dim,
+                    path,
+                    model_path
+                )
             );
             anyhow::ensure!(
                 p.layer < cpu.config().n_layers,
@@ -223,18 +235,22 @@ fn build_generator(
                 p.layer,
                 cpu.config().n_layers
             );
-            let (tap, state) = ProbeMonitor::new(std::sync::Arc::clone(&p));
+            // Keeping every clean score is what the alignment artifact's
+            // second channel is; `probe-flags.jsonl` needs only the flags.
+            // Serve mode asks for it too: the interp log's per-request
+            // maximum is a maximum over every position, and taken over the
+            // flagged ones alone it would be a maximum over "already above
+            // threshold" and describe nothing.
+            let (tap, state) = ProbeMonitor::with_scores(std::sync::Arc::clone(&p), keep_scores);
             cpu.set_tap(Box::new(tap));
             Some(MonitorHandle { probe: p, state })
         }
         None => None,
     };
-    // --context caps the budget below the model's trained window; raising
-    // it above the GGUF value is refused because the model was not trained
-    // there. The KV estimate warns before a budget the CPU backend cannot
-    // realistically hold in memory (it stores f32 K/V for the full
-    // sequence, so windowed layers are estimated at their window size and
-    // the true cost is an upper bound of context length for every layer).
+    // --context caps the cache below the model's trained window; raising it
+    // above the checkpoint's max_position_embeddings is refused because the
+    // model was not trained there. The estimate below then warns before a
+    // context the CPU backend cannot realistically hold.
     let trained = cpu.config().context_length;
     let max_context = match context {
         Some(n) => {
@@ -246,27 +262,106 @@ fn build_generator(
         }
         None => trained,
     };
-    {
+    // An expression block, not a bare one: it yields the header. Every borrow
+    // of `cpu` still ends at its close, which matters because `cpu` is wrapped
+    // and moved into the session a few lines below -- lifting these locals out
+    // instead would extend `c: &Config` past that move.
+    let header = {
         let c = cpu.config();
-        let layers =
-            runtime::kv::interleaved_layers(c.n_layers, c.sliding_window_pattern, c.sliding_window);
-        let geometry = runtime::kv::KvGeometry {
-            n_kv_heads: c.n_kv_heads,
-            head_dim: c.head_dim,
-            bytes_per_element: 4, // CPU backend caches f32
+        let n_kv_heads = c.n_kv_heads;
+        let n_layers = c.n_layers;
+        // Geometry per layer, taken from the loaded spec rather than from one
+        // model-wide head width. Gemma 4's global layers are twice as wide as
+        // its sliding layers, so a single width silently under-reports the
+        // budget across every global layer -- enough to keep the warning below
+        // from firing on a checkpoint that would exceed it.
+        //
+        // Shared-KV layers are skipped rather than listed: they store nothing,
+        // and counting them over-reports by the whole shared tail -- 18 of
+        // E4B's 42 layers, 20 of E2B's 35.
+        let layers: Vec<_> = cpu
+            .layer_specs()
+            .iter()
+            .enumerate()
+            .filter(|(i, l)| l.kv_source == *i)
+            .map(|(_, l)| {
+                (
+                    l.kind,
+                    runtime::kv::KvGeometry {
+                        n_kv_heads,
+                        head_dim: l.head_dim,
+                        bytes_per_element: 4, // CPU backend caches f32
+                    },
+                )
+            })
+            .collect();
+        // The batch width is an input to the budget, not a detail: a windowed
+        // layer holds `window - 1 + group` rows, so the number below is only
+        // true for the batch this run will actually use. At `--batch whole`
+        // the group is the whole prefill and the cap saves nothing, which the
+        // figure then says out loud rather than under-reporting.
+        // Weights first, because it is the larger number and the one a reader
+        // is checking against the checkpoint on disk. A bf16 checkpoint held
+        // at its published width reports about the file's size; twice that
+        // would mean the loader had expanded it.
+        let (weight_bytes, width) = cpu.weight_bytes();
+        // Peak sampled here rather than at construction below. A later sample
+        // is a different number reported under the same name: this one is the
+        // high-water mark of the load, which is the diagnostic -- against the
+        // weight figure above it says whether the checkpoint mapping was
+        // dropped, since a load that kept it reports roughly twice the weights.
+        let peak_rss_bytes = runtime::peak_rss_bytes();
+        let group = cpu.batch().chunk(max_context);
+        let bytes = runtime::kv::budget_bytes(&layers, max_context, group);
+        let header = harness::runheader::RunHeader {
+            model: model_path.display().to_string(),
+            model_hash: format!("{model_hash:016x}"),
+            n_layers: n_layers as u64,
+            dtype: width.unwrap_or("mixed widths").to_string(),
+            weight_bytes: weight_bytes as u64,
+            peak_rss_bytes,
+            max_context: max_context as u64,
+            kv_bytes: bytes as u64,
+            kv_batch_group: group as u64,
+            rewind_horizon: cpu.rewind_horizon(max_context).map(|n| n as u64),
+            threads: cpu.threads() as u64,
+            dot: cpu.dot().label().to_string(),
+            batch: cpu.batch().label(),
+            seed: sampling.seed,
+            temperature: sampling.temperature,
+            max_tokens: max_tokens as u64,
+            binary_version: env!("CARGO_PKG_VERSION").to_string(),
+            git_sha: runtime::envelope::git_sha(),
+            probe: monitor.as_ref().map(|m| m.probe.name.clone()),
+            probe_layer: monitor.as_ref().map(|m| m.probe.layer as u64),
         };
-        let bytes = runtime::kv::budget_bytes(&layers, geometry, max_context);
-        let gib = bytes as f64 / (1024.0 * 1024.0 * 1024.0);
-        eprintln!("[INFO] KV budget: {max_context} tokens, estimated {gib:.2} GiB f32");
+        for line in header.lines() {
+            runtime::status::info(&line);
+        }
+        // Outside `lines()`, and the boundary is worth stating: the header
+        // renders facts about the configuration, and this is a judgement about
+        // one of them. A warning that fired from a field getter would fire in
+        // the record too, where it is not a fact anyone can compare across runs.
         if bytes > 2 << 30 {
-            eprintln!(
-                "[WARN] KV estimate above 2 GiB: consider --context to cap the budget \
-                 (compaction keeps long sessions inside it)"
+            runtime::status::warn(
+                "KV cache above 2 GiB: consider --context to cap it \
+                 (compaction keeps long sessions inside the cap)",
             );
         }
-    }
+        header
+    };
+    // Taken here because this is the last point the concrete backend is in
+    // hand: below, `cpu` is wrapped and moved into the session.
+    let passes: PassHandle = align.then(|| cpu.record_passes());
     let model: Box<dyn Model> = match record {
-        Some(path) => Box::new(RecordingModel::to_file(Box::new(cpu), path)?),
+        // The sampling parameters go into the recording's header, so a replay
+        // rebuilds the sampler that chose the tokens rather than a default
+        // one that would choose others.
+        Some(path) => Box::new(RecordingModel::to_file(
+            Box::new(cpu),
+            path,
+            Some(sampling.into()),
+        )?),
         None => Box::new(cpu),
     };
     let mut session = runtime::session::Session::new(model, max_context)?;
@@ -274,24 +369,34 @@ fn build_generator(
     // A header or weight-hash mismatch is loud and the stale file is
     // removed; a missing file is the normal first run. Whether the restored
     // tokens still match the transcript is settled later by sync's prefix
-    // matching, which degrades to a full re-prefill at worst.
-    let model_hash = runtime::session::fingerprint(&data);
+    // matching, which degrades to a full re-prefill at worst. `model_hash` was
+    // taken during the load, while the checkpoint was still open.
     if let Some(path) = snapshot {
         match std::fs::File::open(path) {
             Ok(f) => {
                 let mut reader = std::io::BufReader::new(f);
                 match session.restore(&mut reader, model_hash) {
-                    Ok(()) => eprintln!(
-                        "[INFO] Session restored: {} cached tokens from {}",
+                    Ok(()) => runtime::status::info(&format!(
+                        "Session restored: {} cached tokens from {}",
                         session.cached_len(),
                         path.display()
-                    ),
+                    )),
+                    // A snapshot is a cache, and the only thing lost by
+                    // discarding one is the prefill it would have saved. This
+                    // used to abort and ask for a rerun, which removed the
+                    // file and then made the user do by hand what the rerun
+                    // would do anyway. It matters more now that the payload
+                    // format is versioned against the KV layout: every
+                    // snapshot written before the sliding-window storage cap
+                    // is unreadable, and an upgrade should cost a line of
+                    // output rather than a failed startup.
                     Err(e) => {
                         let _ = std::fs::remove_file(path);
-                        anyhow::bail!(
-                            "restore session snapshot {}: {e:#} (stale file removed; rerun)",
+                        runtime::status::warn(&format!(
+                            "Session snapshot {} discarded: {e:#} \
+                             (starting with an empty cache)",
                             path.display()
-                        );
+                        ));
                     }
                 }
             }
@@ -299,9 +404,13 @@ fn build_generator(
             Err(e) => return Err(e).with_context(|| format!("open snapshot {}", path.display())),
         }
     }
-    let tokenizer = runtime::tokenizer::Tokenizer::from_gguf(&file).context("load tokenizer")?;
+    let tokenizer_path = runtime::tokenizer::resolve_tokenizer(model_path, tokenizer_path)?;
+    let tokenizer =
+        runtime::tokenizer::Tokenizer::from_file(&tokenizer_path).context("load tokenizer")?;
+    // The alignment table itself is started by the caller, which owns the
+    // handle it is written from; only the pass record has to be taken here.
     let generator = SessionGenerator::new(session, tokenizer, sampling, max_tokens)?;
-    Ok((generator, monitor, model_hash))
+    Ok((generator, monitor, model_hash, passes, header))
 }
 
 /// Drain the monitor state: write one JSONL record per flagged position to
@@ -328,14 +437,14 @@ fn report_probe(monitor: &MonitorHandle, out: &Path) -> Result<()> {
         });
         writeln!(file, "{record}").context("write probe flag record")?;
     }
-    eprintln!(
-        "[INFO] Probe {}: {} positions scored, {} flagged (threshold {}), flags at {}",
+    runtime::status::info(&format!(
+        "Probe {}: {} positions scored, {} flagged (threshold {}), flags at {}",
         monitor.probe.name,
         state.scored,
         state.flags.len(),
         monitor.probe.threshold,
         out.display()
-    );
+    ));
     Ok(())
 }
 
@@ -344,14 +453,16 @@ fn report_probe(monitor: &MonitorHandle, out: &Path) -> Result<()> {
 /// surfaces as a warning line; propagating it instead turned a completed,
 /// transcript-recorded task into exit 1 with the answer never printed.
 /// Returning the line rather than printing it keeps the policy testable
-/// without a live monitor.
+/// without a live monitor. The message is untagged: `runtime::status` owns the
+/// tag, and the caller applies it at the point of emission -- the same split
+/// `cli::extract` and `cli::inert` already use.
 fn fold_probe_report(
     task: Result<String>,
     reported: Result<()>,
 ) -> (Result<String>, Option<String>) {
     let warning = reported
         .err()
-        .map(|e| format!("[WARN] Probe flags not written: {e:#}"));
+        .map(|e| format!("Probe flags not written: {e:#}"));
     (task, warning)
 }
 
@@ -360,16 +471,33 @@ fn run(
     root: &Path,
     task: &str,
     model: Option<&Path>,
+    tokenizer: Option<&Path>,
     record: Option<&Path>,
     control_vector: Option<&Path>,
     control_scale: f32,
+    control_layer_range: Option<(usize, usize)>,
     probe: Option<&Path>,
     probe_out: Option<&Path>,
+    alignment_out: Option<&Path>,
+    interp_log: Option<&Path>,
+    // The log rather than its id. `run` is where the header becomes available
+    // -- `main` does not call `build_generator`, and `run` returns
+    // `Result<()>`, so there is nowhere to hand a header back up. Passing the
+    // log makes the dependency what it already was: `run` needed a shard of a
+    // RunLog that `main` still owns.
+    //
+    // This hands `run` the general ability to write events. U2 writes exactly
+    // one, `run.header`, immediately below.
+    run_log: &mut obs::RunLog,
     sampling: runtime::sampler::SamplingParams,
     max_tokens: usize,
     context: Option<usize>,
     compact_at: f32,
     chat: bool,
+    serve: Option<u16>,
+    serve_addr: std::net::IpAddr,
+    text_only: bool,
+    single_thread: bool,
 ) -> Result<()> {
     let transcript = Transcript::open(&root.join("session.jsonl")).context("session.jsonl")?;
     // HARNESS.md: persistent memory read once at startup and injected as a
@@ -378,20 +506,127 @@ fn run(
     // delta prefill keeps working).
     let memory = std::fs::read_to_string(root.join("HARNESS.md")).ok();
     let snapshot_path = root.join("session.kv");
-    let (mut generator, monitor, model_hash) = build_generator(
-        model,
-        record,
-        control_vector,
-        control_scale,
-        probe,
-        sampling,
-        max_tokens,
-        context,
-        Some(&snapshot_path),
-    )?;
+    // `model.load` brackets the whole of `build_generator`, which is what a
+    // human waiting on a cold start is actually waiting for: E4B's ~14 GiB
+    // dominates it, and the probe and control vector it also resolves are
+    // small enough not to distort the figure. The span closes when the guard
+    // drops at the end of the statement.
+    let (generator, monitor, model_hash, passes, header) = {
+        let span = run_log.phase("model.load");
+        let built = build_generator(
+            model,
+            tokenizer,
+            record,
+            control_vector,
+            control_scale,
+            control_layer_range,
+            probe,
+            sampling,
+            max_tokens,
+            context,
+            Some(&snapshot_path),
+            text_only,
+            single_thread,
+            alignment_out.is_some(),
+            // Serve mode keeps every clean score for the per-request maximum,
+            // but must not record passes: the pass list is the one artifact with
+            // no per-request drain, so under a long-lived server it would grow
+            // for the life of the process.
+            alignment_out.is_some() || serve.is_some(),
+        )?;
+        // Read from the span rather than a second `Instant`, so the figure
+        // printed here and the `duration_s` the guard is about to write are
+        // one number. A failed load prints nothing: the `?` above returns,
+        // the guard still records the time spent, and the terminal gets the
+        // actionable error instead of a claim that something loaded.
+        let seconds = span.elapsed_s();
+        drop(span);
+        runtime::status::info(&format!("Model load: {seconds:.2} s"));
+        built
+    };
+    // The resolved configuration, recorded once. The terminal already saw it
+    // as `header.lines()` inside `build_generator`; this is the same facts
+    // through the same struct, which is the property the stage is for.
+    run_log.event(
+        "info",
+        "run.header",
+        "resolved run configuration",
+        &header.fields(),
+    );
+    // The metrics file's header, carrying the same struct the event above
+    // does, so the dashboard's header strip and the terminal agree. This is
+    // also what creates the run directory -- see `RunLog::metrics_header` --
+    // so it must precede the sink below, which opens a second handle onto the
+    // file it writes.
+    //
+    // The envelope's `git_sha` comes from the header rather than being
+    // appended here. `RunHeader` already carries it (from
+    // runtime::envelope::git_sha), and `obs::metrics_header` guards only its
+    // own six envelope keys -- so a second git_sha would be emitted, not
+    // skipped, leaving a duplicate key whose meaning depends on which one the
+    // reader keeps. That is the failure `schemas/obs_record.json`'s
+    // base_key_guard note is about, and it does not stop at the base keys.
+    //
+    // `obs` cannot derive the sha itself: it must not depend on `runtime`,
+    // which is the crate that will depend on it.
+    run_log.metrics_header(&header.fields());
+    let mut generator = generator
+        .observing_metrics(run_log.metrics_sink())
+        .observing_phases(run_log.event_sink());
+    // Started here rather than in `build_generator`, which does not own the
+    // handle the artifact is written from.
+    let alignment = alignment_out.map(|_| generator.record_alignment());
     // The task's outcome is held rather than propagated: the bookkeeping
     // below runs either way, so flags collected before a failure survive it.
-    let result = if chat {
+    let result = if let Some(port) = serve {
+        // Serve mode: the OpenAI-shaped endpoint the interp pipeline calls.
+        // The control vector and probe monitor are already installed on the
+        // model, so a served request runs through the same taps a task does.
+        //
+        // This blocks until the process is signalled, so the end-of-run
+        // bookkeeping below is unreachable in this mode. That is why
+        // observation here is per request rather than per run: --interp-log
+        // opens an append-only log and every completed request drains the
+        // monitor into it. The session snapshot has no such treatment and is
+        // simply not taken -- a served session's KV is the accumulation of
+        // unrelated callers' traffic, which is not a thing to resume.
+        let listener = std::net::TcpListener::bind((serve_addr, port))
+            .with_context(|| format!("binding {serve_addr}:{port}"))?;
+        let model_name = model
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "synthetic".to_string());
+        runtime::status::info(&format!(
+            "Serving on http://{serve_addr}:{port} (model {model_name})"
+        ));
+        let log = match interp_log {
+            Some(dir) => {
+                let log = InterpLog::open(dir, harness::server::SERVICE_NAME);
+                if log.is_enabled() {
+                    runtime::status::info(&format!("Interp log: {}", dir.display()));
+                } else {
+                    // A warning, not a failure: the endpoint's contract is to
+                    // answer requests, and it can still do that.
+                    runtime::status::warn(&format!(
+                        "Interp log not opened under {}",
+                        dir.display()
+                    ));
+                }
+                log
+            }
+            None => InterpLog::disabled(),
+        };
+        if monitor.is_some() && !log.is_enabled() {
+            runtime::status::warn(
+                "--probe without --interp-log: scores are computed and discarded, \
+                 because a served run has no end at which to report them",
+            );
+        }
+        let state = std::sync::Arc::new(
+            harness::server::ServerState::new(generator, model_name, sampling, max_tokens)
+                .observing(log, monitor),
+        );
+        return harness::server::serve(listener, state);
+    } else if chat {
         // Chat mode: REPL over the generator, no tools or permissions. The
         // probe monitor and control vector are already installed on the
         // model, so interp flags apply to chat turns unchanged.
@@ -407,7 +642,7 @@ fn run(
         )
         .map(|turns| {
             // Replies were already streamed to stdout; the summary is status.
-            eprintln!("[INFO] Chat ended: {turns} model turns");
+            runtime::status::info(&format!("Chat ended: {turns} model turns"));
             String::new()
         })
     } else {
@@ -444,12 +679,12 @@ fn run(
                 Ok(())
             });
         match saved {
-            Ok(()) => eprintln!(
-                "[INFO] Session snapshot: {} cached tokens at {}",
+            Ok(()) => runtime::status::info(&format!(
+                "Session snapshot: {} cached tokens at {}",
                 generator.session().cached_len(),
                 snapshot_path.display()
-            ),
-            Err(e) => eprintln!("[WARN] Session snapshot not saved: {e:#}"),
+            )),
+            Err(e) => runtime::status::warn(&format!("Session snapshot not saved: {e:#}")),
         }
     }
     let result = match &monitor {
@@ -458,108 +693,165 @@ fn run(
             let reported = report_probe(monitor, probe_out.unwrap_or(&default_out));
             let (result, warning) = fold_probe_report(result, reported);
             if let Some(warning) = warning {
-                eprintln!("{warning}");
+                runtime::status::warn(&warning);
             }
             result
         }
         None => result,
     };
+    // Observation, like the probe flags: a failure here is a warning, never
+    // the task's exit code. The same reasoning as `fold_probe_report` --
+    // turning a completed, transcript-recorded task into exit 1 because an
+    // artifact could not be written loses the answer as well as the artifact.
+    if let (Some(out), Some(alignment)) = (alignment_out, alignment.as_ref()) {
+        let a = alignment.lock().expect("alignment lock");
+        let passes = passes
+            .as_ref()
+            .map(|p| p.lock().expect("pass record lock").clone())
+            .unwrap_or_default();
+        let scores = monitor
+            .as_ref()
+            .map(|m| m.state.lock().expect("monitor state lock").scores.clone())
+            .unwrap_or_default();
+        let probe_name = monitor.as_ref().map(|m| m.probe.name.clone());
+        // A projection of the run header, not a second build of the same
+        // facts. `alignment.rs` gains no dependency on `runheader.rs` -- it
+        // stays the narrower artifact view -- but the values come from one
+        // place. This also removes a sharp edge: `model_hash` used to be
+        // `&format!(..)`, a borrow of a temporary living on lifetime
+        // extension; it is now a plain field borrow.
+        let run_id = run_log.run_id().unwrap_or("unknown").to_string();
+        let stamp = harness::alignment::Header {
+            run_id: &run_id,
+            model_hash: &header.model_hash,
+            probe: probe_name.as_deref(),
+            probe_layer: monitor.as_ref().map(|m| m.probe.layer),
+        };
+        match harness::alignment::write(out, &stamp, &a, &passes, &scores) {
+            Ok(()) => runtime::status::info(&format!(
+                "Alignment: {} positions, {} passes -> {}",
+                a.rows.len(),
+                passes.len(),
+                out.display()
+            )),
+            Err(e) => runtime::status::warn(&format!("Alignment not written: {e:#}")),
+        }
+    }
     result?;
     Ok(())
 }
 
-/// Refuse a flag value that is itself a flag, naming both. The extractor
-/// takes the word after a flag as its value, so an omitted value swallows
-/// the flag that follows: the swallowed flag never applies, its own value
-/// falls into the task text, and the run exits 0 having done something the
-/// user never asked for. Only the `--` spelling this parser recognizes is
-/// refused; a negative number or a path starting with `-` is a value.
-fn flag_value_error(flag: &str, value: &str) -> Option<String> {
-    value
-        .starts_with("--")
-        .then(|| format!("[ERROR] {flag}: expected a value, found the flag {value}"))
-}
-
 fn main() -> ExitCode {
-    const USAGE: &str = "usage: harness --model <path.gguf> [--record <path>] \
-         [--trace-chrome <path>] [--control-vector <path.gguf>] \
-         [--control-vector-scale <f>] [--probe <path.gguf>] \
-         [--probe-out <path>] [--temperature <f>] [--top-p <f>] \
-         [--seed <n>] [--max-tokens <n>] [--context <n>] \
-         [--compact-at <f>] (--chat | <task description>)";
-    let mut args: Vec<String> = std::env::args().skip(1).collect();
-    // Snapshot before flag extraction mutates args: cmd.start records the
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    // The meta flags answer and exit before anything is parsed, loaded or
+    // logged. They print to stdout, which does not weaken the stdout-is-payload
+    // rule: requested help is this invocation's payload, exactly as argparse
+    // treats it in the Python tiers. A usage *error* stays on stderr at exit 2.
+    // Exiting here also means no obs record, matching the rule that a query is
+    // not a run -- and matching the usage errors below, which likewise return
+    // before RunLog::begin.
+    //
+    // Only the region before `--` is scanned, so a task containing the word
+    // --help is still a task.
+    let meta: Vec<&String> = args.iter().take_while(|a| *a != "--").collect();
+    if meta.iter().any(|a| *a == "--help" || *a == "-h") {
+        println!("{}", harness::cli::help());
+        return ExitCode::SUCCESS;
+    }
+    if meta.iter().any(|a| *a == "--version" || *a == "-V") {
+        println!("harness {}", env!("CARGO_PKG_VERSION"));
+        return ExitCode::SUCCESS;
+    }
+    drop(meta);
+    // Snapshot before extraction consumes args: cmd.start records the
     // invocation as given, program name excluded (the shape common/obs logs).
     let argv_full = args.clone();
-    // --model <path.gguf>: checkpoint for the CPU backend.
-    // --record <path>: wrap the model in the flight recorder, appending every
-    // forward call to a JSONL file replayable as a MockModel script.
-    // --trace-chrome <path>: write a Perfetto-loadable trace of the span
-    // timeline. No subscriber is installed otherwise, so spans cost nothing.
-    // --control-vector <path.gguf>: steering directions in the llama.cpp
-    // control-vector layout, added to the residual stream per layer.
-    // --control-vector-scale <f>: multiplier on the directions (default 1.0).
-    // --probe <path.gguf>: linear probe (interp/probes/export.py layout)
-    // scored in-band at every position of its layer through the tap seam.
-    // --probe-out <path>: JSONL file for flagged positions (default
-    // probe-flags.jsonl in the working directory).
-    // --temperature <f> / --top-p <f> / --seed <n>: sampling parameters
-    // (defaults 0.8 / 0.95 / 0; seed 0 replays a run exactly).
-    // --max-tokens <n>: per-turn generation budget (default 256).
-    // --context <n>: cap the context budget below the model's trained
-    // window (never above it; the GGUF value is the default and maximum).
-    // --compact-at <f>: automatic-compaction threshold as a fraction of the
-    // context budget (default 0.8, must be in (0, 1]).
     let mut model: Option<std::path::PathBuf> = None;
+    let mut tokenizer: Option<std::path::PathBuf> = None;
     let mut record: Option<std::path::PathBuf> = None;
     let mut trace_chrome: Option<std::path::PathBuf> = None;
     let mut control_vector: Option<std::path::PathBuf> = None;
     let mut control_scale_arg: Option<std::path::PathBuf> = None;
+    let mut control_range_arg: Option<std::path::PathBuf> = None;
     let mut probe: Option<std::path::PathBuf> = None;
     let mut probe_out: Option<std::path::PathBuf> = None;
+    let mut alignment_out: Option<std::path::PathBuf> = None;
+    let mut interp_log: Option<std::path::PathBuf> = None;
     let mut temperature_arg: Option<std::path::PathBuf> = None;
     let mut top_p_arg: Option<std::path::PathBuf> = None;
+    let mut top_k_arg: Option<std::path::PathBuf> = None;
     let mut seed_arg: Option<std::path::PathBuf> = None;
     let mut max_tokens_arg: Option<std::path::PathBuf> = None;
     let mut context_arg: Option<std::path::PathBuf> = None;
     let mut compact_at_arg: Option<std::path::PathBuf> = None;
-    for (flag, slot) in [
-        ("--model", &mut model),
-        ("--record", &mut record),
-        ("--trace-chrome", &mut trace_chrome),
-        ("--control-vector", &mut control_vector),
-        ("--control-vector-scale", &mut control_scale_arg),
-        ("--probe", &mut probe),
-        ("--probe-out", &mut probe_out),
-        ("--temperature", &mut temperature_arg),
-        ("--top-p", &mut top_p_arg),
-        ("--seed", &mut seed_arg),
-        ("--max-tokens", &mut max_tokens_arg),
-        ("--context", &mut context_arg),
-        ("--compact-at", &mut compact_at_arg),
-    ] {
-        if let Some(i) = args.iter().position(|a| a == flag) {
-            if i + 1 >= args.len() {
-                eprintln!("{USAGE}");
+    let mut serve_arg: Option<std::path::PathBuf> = None;
+    let mut serve_addr_arg: Option<std::path::PathBuf> = None;
+    // The scan borrows every slot mutably, so it lives in a block: the typed
+    // parsing below reads those same locals, and the borrows have to be dead by
+    // then. Deleting the braces produces a borrow error pointing at the first
+    // reader rather than here.
+    let parsed = {
+        let mut slots: [(&'static str, &mut Option<std::path::PathBuf>); 20] = [
+            ("--model", &mut model),
+            ("--record", &mut record),
+            ("--trace-chrome", &mut trace_chrome),
+            ("--control-vector", &mut control_vector),
+            ("--control-vector-scale", &mut control_scale_arg),
+            ("--control-vector-layer-range", &mut control_range_arg),
+            ("--probe", &mut probe),
+            ("--tokenizer", &mut tokenizer),
+            ("--probe-out", &mut probe_out),
+            ("--alignment-out", &mut alignment_out),
+            ("--interp-log", &mut interp_log),
+            ("--temperature", &mut temperature_arg),
+            ("--top-p", &mut top_p_arg),
+            ("--top-k", &mut top_k_arg),
+            ("--seed", &mut seed_arg),
+            ("--max-tokens", &mut max_tokens_arg),
+            ("--context", &mut context_arg),
+            ("--compact-at", &mut compact_at_arg),
+            ("--serve", &mut serve_arg),
+            ("--serve-addr", &mut serve_addr_arg),
+        ];
+        match harness::cli::extract(args, &mut slots) {
+            Ok(parsed) => parsed,
+            Err(error) => {
+                runtime::status::error(&error);
+                runtime::status::plain(&harness::cli::usage());
                 return ExitCode::from(2);
             }
-            if let Some(error) = flag_value_error(flag, &args[i + 1]) {
-                eprintln!("{error}");
-                return ExitCode::from(2);
-            }
-            *slot = Some(std::path::PathBuf::from(args.remove(i + 1)));
-            args.remove(i);
         }
+    };
+    // Flags given without the flag they need. Generalized from the one
+    // hand-written case (--serve-addr), so the steering companions are checked
+    // too: --control-vector-scale without a vector used to be ignored.
+    let missing = harness::cli::missing_requirements(&parsed.given);
+    if !missing.is_empty() {
+        for message in &missing {
+            runtime::status::error(message);
+        }
+        return ExitCode::from(2);
     }
+    let args = parsed.rest;
     let control_scale = match control_scale_arg {
         Some(v) => match v.to_string_lossy().parse::<f32>() {
             Ok(s) if s.is_finite() => s,
             _ => {
-                eprintln!("[ERROR] --control-vector-scale: not a finite number");
+                runtime::status::error("--control-vector-scale: not a finite number");
                 return ExitCode::from(2);
             }
         },
         None => 1.0,
+    };
+    let control_layer_range = match control_range_arg {
+        Some(v) => match parse_layer_range(&v.to_string_lossy()) {
+            Ok(range) => Some(range),
+            Err(error) => {
+                runtime::status::error(&error);
+                return ExitCode::from(2);
+            }
+        },
+        None => None,
     };
     // Sampler::new treats out-of-range values as config bugs and panics, so
     // user input is range-checked here and rejected as a usage error instead.
@@ -568,7 +860,7 @@ fn main() -> ExitCode {
         match v.to_string_lossy().parse::<f32>() {
             Ok(t) if t.is_finite() && t >= 0.0 => sampling.temperature = t,
             _ => {
-                eprintln!("[ERROR] --temperature: expected a finite number >= 0");
+                runtime::status::error("--temperature: expected a finite number >= 0");
                 return ExitCode::from(2);
             }
         }
@@ -577,7 +869,21 @@ fn main() -> ExitCode {
         match v.to_string_lossy().parse::<f32>() {
             Ok(p) if p > 0.0 && p <= 1.0 => sampling.top_p = p,
             _ => {
-                eprintln!("[ERROR] --top-p: expected a number in (0, 1]");
+                runtime::status::error("--top-p: expected a number in (0, 1]");
+                return ExitCode::from(2);
+            }
+        }
+    }
+    if let Some(v) = top_k_arg {
+        // Zero is a usage error rather than a synonym for absence: it would
+        // otherwise have to mean either "keep nothing", which is not a
+        // distribution, or "keep everything", which reads as its opposite.
+        match v.to_string_lossy().parse::<usize>() {
+            Ok(k) if k >= 1 => sampling.top_k = Some(k),
+            _ => {
+                runtime::status::error(
+                    "--top-k: expected an integer >= 1 (omit the flag for no cutoff)",
+                );
                 return ExitCode::from(2);
             }
         }
@@ -586,7 +892,7 @@ fn main() -> ExitCode {
         match v.to_string_lossy().parse::<u64>() {
             Ok(s) => sampling.seed = s,
             _ => {
-                eprintln!("[ERROR] --seed: expected an unsigned integer");
+                runtime::status::error("--seed: expected an unsigned integer");
                 return ExitCode::from(2);
             }
         }
@@ -595,7 +901,7 @@ fn main() -> ExitCode {
         Some(v) => match v.to_string_lossy().parse::<usize>() {
             Ok(n) if n >= 1 => n,
             _ => {
-                eprintln!("[ERROR] --max-tokens: expected an integer >= 1");
+                runtime::status::error("--max-tokens: expected an integer >= 1");
                 return ExitCode::from(2);
             }
         },
@@ -605,7 +911,7 @@ fn main() -> ExitCode {
         Some(v) => match v.to_string_lossy().parse::<usize>() {
             Ok(n) if n >= 1 => Some(n),
             _ => {
-                eprintln!("[ERROR] --context: expected an integer >= 1");
+                runtime::status::error("--context: expected an integer >= 1");
                 return ExitCode::from(2);
             }
         },
@@ -615,23 +921,114 @@ fn main() -> ExitCode {
         Some(v) => match v.to_string_lossy().parse::<f32>() {
             Ok(f) if f > 0.0 && f <= 1.0 => f,
             _ => {
-                eprintln!("[ERROR] --compact-at: expected a number in (0, 1]");
+                runtime::status::error("--compact-at: expected a number in (0, 1]");
                 return ExitCode::from(2);
             }
         },
         None => 0.8,
     };
-    // --chat: interactive REPL instead of a one-shot task; the two are
-    // mutually exclusive, so leftover positional args are a usage error.
-    let chat = if let Some(i) = args.iter().position(|a| a == "--chat") {
-        args.remove(i);
-        true
-    } else {
-        false
+    // The bare flags carry no value, so the scan recorded only that they were
+    // given. Their help text lives in the table with everything else.
+    let given = |name: &str| parsed.given.contains(&name);
+    let text_only = given("--text-only");
+    let single_thread = given("--single-thread");
+    let chat = given("--chat");
+    let status = given("--status");
+    let deep = given("--deep");
+    // --serve <port>: the OpenAI-shaped endpoint on loopback instead of a
+    // task or a REPL. Mutually exclusive with both, and like --chat it takes
+    // no positional task text.
+    let serve = match serve_arg {
+        Some(v) => match v.to_string_lossy().parse::<u16>() {
+            Ok(p) if p >= 1 => Some(p),
+            _ => {
+                runtime::status::error("--serve: expected a port in 1..=65535");
+                return ExitCode::from(2);
+            }
+        },
+        None => None,
     };
-    if args.is_empty() != chat {
-        eprintln!("{USAGE}");
+    if [chat, serve.is_some(), status]
+        .iter()
+        .filter(|m| **m)
+        .count()
+        > 1
+    {
+        runtime::status::error("--chat, --serve and --status are mutually exclusive");
         return ExitCode::from(2);
+    }
+    let serve_addr = match serve_addr_arg {
+        Some(v) => match v.to_string_lossy().parse::<std::net::IpAddr>() {
+            Ok(addr) => addr,
+            Err(_) => {
+                runtime::status::error(&format!(
+                    "--serve-addr: expected an IP address, got {}",
+                    v.display()
+                ));
+                return ExitCode::from(2);
+            }
+        },
+        None => std::net::IpAddr::from([127, 0, 0, 1]),
+    };
+    // Flags accepted but with nothing to act on. A warning rather than an
+    // error: setting sampling defaults uniformly and then pinning one run to
+    // greedy is a coherent thing for a script to do, and the request log is
+    // documented as ignored outside --serve rather than being lost. What was
+    // wrong was doing it silently.
+    if sampling.temperature == 0.0 {
+        for message in harness::cli::inert(&parsed.given, harness::cli::GREEDY) {
+            runtime::status::warn(&message);
+        }
+    }
+    if serve.is_none() {
+        for message in harness::cli::inert(&parsed.given, harness::cli::NOT_SERVING) {
+            runtime::status::warn(&message);
+        }
+    }
+    // The digest is produced only when an identity check asks for it, so
+    // --deep with neither artifact reads nothing and reported nothing. The
+    // laziness is right -- hashing 15 GiB for a comparison nobody made would
+    // be the defect -- but a script that passed --deep and saw no complaint
+    // would believe the weights had been verified. No `status &&` guard: the
+    // requires edge has already refused --deep outside --status.
+    if probe.is_none() && control_vector.is_none() {
+        for message in harness::cli::inert(&parsed.given, harness::cli::NO_ARTIFACT) {
+            runtime::status::warn(&message);
+        }
+    }
+    // A task is positional text; the three flag modes take none. Exactly one
+    // of the four must be selected.
+    if args.is_empty() != (chat || serve.is_some() || status) {
+        runtime::status::plain(&harness::cli::usage());
+        return ExitCode::from(2);
+    }
+    // --status answers from the filesystem and returns. Placed here for two
+    // reasons: after every parse and range check, so it reports on the run
+    // that was actually asked for rather than on a half-validated one; and
+    // before `RunLog::begin` below, because a query is not a run and
+    // cataloguing it would pollute the runs table the way `command == "runs"`
+    // does on the Python side. Before the trace guard too, so no subscriber is
+    // installed and no trace file appears for a preflight.
+    if status {
+        // `REQUIRED` in the flag table feeds the usage line and nothing else,
+        // so nothing has rejected a missing --model by this point. A run
+        // discovers it inside `build_generator` and exits 1; here it is a
+        // usage mistake, which is what exit 2 is for.
+        let Some(model) = model.as_deref() else {
+            runtime::status::error("--status: no model to inspect, pass --model <checkpoint-dir>");
+            runtime::status::plain(&harness::cli::usage());
+            return ExitCode::from(2);
+        };
+        return report(&harness::preflight::checks(&harness::preflight::Request {
+            model,
+            probe: probe.as_deref(),
+            control_vector: control_vector.as_deref(),
+            control_scale,
+            control_layer_range,
+            interp_log: interp_log.as_deref(),
+            text_only,
+            deep,
+        }));
     }
     // The guard flushes the trace file on drop at the end of main.
     let _trace_guard = match trace_chrome {
@@ -653,38 +1050,60 @@ fn main() -> ExitCode {
     let root = match std::env::current_dir() {
         Ok(d) => d,
         Err(e) => {
-            eprintln!("[ERROR] Working directory: {e}");
+            runtime::status::error(&format!("Working directory: {e}"));
             return ExitCode::from(1);
         }
     };
     // Run-level obs records in the shared common/obs contract. Usage errors
     // above return before a run id exists, matching the Python dispatch;
     // without a writable OBS_LOG_DIR the log degrades to a silent no-op.
-    let mut run_log = harness::obs::RunLog::begin(if chat { "chat" } else { "task" }, &argv_full);
+    let kind = match (chat, serve.is_some()) {
+        (_, true) => "serve",
+        (true, _) => "chat",
+        _ => "task",
+    };
+    let mut run_log = obs::RunLog::begin(kind, &argv_full);
     match run(
         &root,
         &task,
         model.as_deref(),
+        tokenizer.as_deref(),
         record.as_deref(),
         control_vector.as_deref(),
         control_scale,
+        control_layer_range,
         probe.as_deref(),
         probe_out.as_deref(),
+        alignment_out.as_deref(),
+        interp_log.as_deref(),
+        &mut run_log,
         sampling,
         max_tokens,
         context,
         compact_at,
         chat,
+        serve,
+        serve_addr,
+        text_only,
+        single_thread,
     ) {
         // The answer, if any, was printed by `run` before its bookkeeping.
         Ok(()) => {
-            run_log.end(0, &root);
+            run_log.end(0);
             ExitCode::SUCCESS
         }
         Err(e) => {
-            eprintln!("[ERROR] Task failed: {e:#}");
+            runtime::status::error(&format!("Task failed: {e:#}"));
+            // The remedy is a second emission rather than part of the line
+            // above, and that is what keeps this arm honest: `fail` records
+            // `exc_msg` as the same `{e:#}`, so advice folded into the
+            // diagnosis would be advice in every fail record. See
+            // `harness::actionable`.
+            if let Some(remedy) = harness::actionable::render(&e) {
+                runtime::status::plain(&remedy);
+            }
             run_log.fail(&e, 1);
-            run_log.end(1, &root);
+            run_log.end(1);
             ExitCode::from(1)
         }
     }
@@ -693,49 +1112,12 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Still used by the probe fixtures below, which write a sidecar carrying
+    // the sentinel so the identity check does not hash anything.
+    use harness::preflight::UNKNOWN_MODEL_HASH;
 
-    #[test]
-    fn sha256_matches_the_fips_test_vectors() {
-        // The same vectors the capture writer's copy is pinned to, so the
-        // two implementations cannot drift into different digests.
-        assert_eq!(
-            sha256_hex(b""),
-            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-        );
-        assert_eq!(
-            sha256_hex(b"abc"),
-            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
-        );
-    }
-
-    #[test]
-    fn model_identity_accepts_an_artifact_hash_equal_to_the_served_digest() {
-        let served = sha256_hex(b"gguf bytes");
-        check_model_identity("probe", &served, || sha256_hex(b"gguf bytes"))
-            .expect("an artifact fitted on the served weights is the matching case");
-    }
-
-    #[test]
-    fn model_identity_refuses_a_mismatch_and_names_both_hashes() {
-        let artifact = sha256_hex(b"weights the probe was trained on");
-        let served = sha256_hex(b"weights actually loaded");
-        let err = check_model_identity("probe", &artifact, || served.clone())
-            .expect_err("two real hashes that disagree are a refusal")
-            .to_string();
-        assert!(err.contains(&artifact), "{err}");
-        assert!(err.contains(&served), "{err}");
-    }
-
-    #[test]
-    fn model_identity_skips_the_unknown_sentinel_without_hashing_the_model() {
-        let mut hashed = false;
-        check_model_identity("probe", UNKNOWN_MODEL_HASH, || {
-            hashed = true;
-            String::new()
-        })
-        .expect("unknown is the capture default, not a mismatch");
-        assert!(!hashed, "a skipped check must not hash the model");
-    }
+    // The model-identity and control-vector-manifest tests moved to
+    // `harness::preflight` with the functions they cover, unmodified.
 
     #[test]
     fn a_probe_report_failure_warns_and_leaves_a_completed_task_completed() {
@@ -748,7 +1130,14 @@ mod tests {
             "the answer"
         );
         let warning = warning.expect("the discarded flags must still be reported");
-        assert!(warning.starts_with("[WARN] "), "{warning}");
+        // Untagged: the tag belongs to `runtime::status` at the emission
+        // site, so what this pins is the wording and the fact that a line is
+        // produced at all -- which is what the test was ever about.
+        assert!(!warning.contains("[WARN]"), "{warning}");
+        assert!(
+            warning.starts_with("Probe flags not written: "),
+            "{warning}"
+        );
         assert!(warning.contains("create probe output"), "{warning}");
     }
 
@@ -768,72 +1157,45 @@ mod tests {
         );
     }
 
-    /// Minimal probe GGUF in the `interp/probes/export.py` layout, enough
-    /// for `Probe::from_gguf`; the scoring math is covered by the runtime's
+    /// A minimal probe artifact in `dir`, in the layout
+    /// `interp/probes/export.py` writes: the safetensors image and the JSON
+    /// sidecar beside it. The scoring math is covered by the runtime's
     /// reference test, so the values here are arbitrary.
-    fn probe_gguf() -> Vec<u8> {
-        let mut w = runtime::synth::GgufWriter::new();
-        w.kv_str("general.architecture", "probe");
-        w.kv_str("probe.name", "report-probe");
-        w.kv_str("probe.model_hash", UNKNOWN_MODEL_HASH);
-        w.kv_u32("probe.layer", 0);
-        w.kv_f32("probe.bias", 0.0);
-        w.kv_f32("probe.threshold", 0.5);
-        w.tensor_f32("probe.weights", &[2], &[1.0, 1.0]);
-        w.tensor_f32("probe.mu", &[2], &[0.0, 0.0]);
-        w.tensor_f32("probe.sigma", &[2], &[1.0, 1.0]);
-        w.finish()
+    fn write_probe(dir: &std::path::Path) -> std::path::PathBuf {
+        let path = dir.join("probe.safetensors");
+        std::fs::write(
+            &path,
+            runtime::synth::build_f32_safetensors(&[
+                ("weights", &[1.0, 1.0][..]),
+                ("mu", &[0.0, 0.0][..]),
+                ("sigma", &[1.0, 1.0][..]),
+            ])
+            .expect("write the probe image"),
+        )
+        .expect("write the probe image");
+        std::fs::write(
+            path.with_extension("json"),
+            format!(
+                r#"{{"schema_version": 1, "artifact": "probe",
+                   "timestamp": "2026-01-01T00:00:00+0000", "git_sha": "abcdef0",
+                   "name": "report-probe", "model_hash": "{UNKNOWN_MODEL_HASH}",
+                   "layer": 0, "bias": 0.0, "threshold": 0.5, "width": 2}}"#
+            ),
+        )
+        .expect("write the probe sidecar");
+        path
     }
 
     #[test]
     fn probe_flags_are_written_under_a_parent_directory_that_does_not_exist_yet() {
-        let image = probe_gguf();
-        let file = runtime::gguf::parse(&image).expect("parse probe GGUF");
+        let dir = tempfile::tempdir().expect("tempdir");
         let probe = std::sync::Arc::new(
-            runtime::model::probe::Probe::from_gguf(&file, &image).expect("load probe"),
+            runtime::model::probe::Probe::load(&write_probe(dir.path())).expect("load probe"),
         );
         let (_tap, state) = runtime::model::probe::ProbeMonitor::new(std::sync::Arc::clone(&probe));
         let monitor = MonitorHandle { probe, state };
-        let dir = tempfile::tempdir().expect("tempdir");
         let out = dir.path().join("absent").join("flags.jsonl");
         report_probe(&monitor, &out).expect("a missing parent directory is created, not a failure");
         assert!(out.is_file(), "{}", out.display());
-    }
-
-    #[test]
-    fn a_flag_value_that_is_itself_a_flag_is_refused_naming_the_flag_and_the_value() {
-        // `--probe-out --max-tokens 4 hello` without a path: the old parser
-        // stored "--max-tokens" as the probe output, dropped the token
-        // budget, and pushed "4" into the task text, all at exit 0.
-        let error = flag_value_error("--probe-out", "--max-tokens")
-            .expect("an omitted value must not swallow the following flag");
-        assert!(error.starts_with("[ERROR] "), "{error}");
-        assert!(error.contains("--probe-out"), "{error}");
-        assert!(error.contains("--max-tokens"), "{error}");
-    }
-
-    #[test]
-    fn a_flag_value_that_only_looks_flag_adjacent_is_accepted() {
-        // Refusing more than the `--` spelling would reject legitimate
-        // values: a negative scale, or a path whose name starts with a dash.
-        assert_eq!(flag_value_error("--probe-out", "flags.jsonl"), None);
-        assert_eq!(flag_value_error("--control-vector-scale", "-1.5"), None);
-        assert_eq!(flag_value_error("--model", "./-weights.gguf"), None);
-    }
-
-    #[test]
-    fn control_vector_model_hash_reads_the_manifest_beside_the_vector() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let vector = dir.path().join("vector.gguf");
-        assert_eq!(control_vector_model_hash(&vector), None);
-        std::fs::write(
-            dir.path().join("manifest.json"),
-            r#"{"artifact": "control_vector", "model_hash": "deadbeef"}"#,
-        )
-        .expect("write manifest");
-        assert_eq!(
-            control_vector_model_hash(&vector),
-            Some("deadbeef".to_string())
-        );
     }
 }

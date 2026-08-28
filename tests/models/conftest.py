@@ -1,6 +1,5 @@
 """Shared fixtures for the model header-transcriber tests."""
 
-import sys
 from pathlib import Path
 
 import pytest
@@ -10,11 +9,20 @@ from tests.models import specbuild
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
-# The committed fixture written by runtime/src/synth.rs::GgufWriter, and the
-# independent pure-Python reader of it. Together they are the one cross-check
-# in this suite that shares no author with the code under test.
-RUST_FIXTURE_DIR = REPO_ROOT / "rust-harness" / "fixtures"
-TINY_GGUF = RUST_FIXTURE_DIR / "tiny-gemma4.gguf"
+# Was written by the upstream `gguf` package through interp/steering/export.py,
+# back when the control vector was a GGUF; R10 moved that artifact to
+# safetensors and this file stopped being regenerable. It is kept frozen and
+# moved here, out of rust-harness/fixtures, because rust-harness no longer
+# reads or writes GGUF at all.
+#
+# Freezing costs nothing that matters. The property this fixture is here for
+# is that neither the bash reader under test nor the Python reader it is
+# checked against had a hand in producing it, and a file no in-tree code can
+# rewrite has that property more strongly than one regenerated on demand. Any
+# small exporter-written GGUF serves: this suite is about the container, and
+# the container is unchanged -- training/export still produces GGUF for
+# llama.cpp, which is why scripts/models/gguf_header_transcript.sh survives.
+TINY_GGUF = REPO_ROOT / "tests" / "models" / "fixtures" / "tiny-exporter-written.gguf"
 
 
 @pytest.fixture
@@ -49,18 +57,12 @@ def transcribe(run_script, tmp_path):
 
 @pytest.fixture
 def reference_parse_gguf():
-    """The in-tree independent GGUF reader from the rust-harness fixtures.
+    """The independent GGUF reader the bash script is checked against.
 
-    Imported by path because rust-harness is not a Python package. Skips
-    rather than fails when numpy is absent, since reference_logits.py imports
-    it at module scope for the forward pass this suite does not use.
+    Skips rather than fails when numpy is absent, since the reader returns
+    tensor payloads as arrays.
     """
-    numpy = pytest.importorskip("numpy", reason="reference_logits.py imports numpy")
-    del numpy
-    sys.path.insert(0, str(RUST_FIXTURE_DIR))
-    try:
-        import reference_logits
+    pytest.importorskip("numpy", reason="the reference reader returns numpy arrays")
+    from tests.models.gguf_reference_reader import parse_gguf
 
-        return reference_logits.parse_gguf
-    finally:
-        sys.path.remove(str(RUST_FIXTURE_DIR))
+    return parse_gguf

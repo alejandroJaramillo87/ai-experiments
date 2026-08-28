@@ -11,11 +11,33 @@
 use anyhow::Result;
 
 use super::grammar::{Grammar, Vocab};
-use super::model::{Logits, Model, Token};
+use super::model::{record::Selection, Logits, Model, Token};
 use super::sampler::Sampler;
 
 const SNAPSHOT_MAGIC: &[u8; 4] = b"HKV1";
-const SNAPSHOT_VERSION: u32 = 1;
+/// Version 2: cross-layer KV sharing. A shared-KV layer stores no rows, so the
+/// backend payload for a checkpoint with a shared tail is shorter than a
+/// version 1 snapshot of the same weights.
+///
+/// The bump is what makes that safe, and `model_hash` is not: the hash
+/// fingerprints the *weights*, so a snapshot written by the previous binary
+/// over the same file carries a matching hash and a payload the current reader
+/// would walk at the wrong offsets. Refusing on version is a clear error where
+/// reinterpreting would be silent.
+///
+/// Version 3: `model_hash` is now `checkpoint::fingerprint`, which identifies a
+/// checkpoint by its header rather than by hashing every weight byte. The
+/// payload format is unchanged and a version 2 snapshot is still numerically
+/// valid, so this bump buys a message rather than safety. Without it a snapshot
+/// written by the previous binary fails on a hash mismatch, which reads as a
+/// changed or corrupt checkpoint -- the one thing that did not happen.
+///
+/// Version 4: the backend payload gained a per-layer `base`, because capping
+/// sliding-window storage means a layer's row count is no longer implied by
+/// `cached_len`. Unlike the version 3 bump this one is safety and not just a
+/// message -- a version 3 payload read as version 4 would take the first
+/// layer's first eight bytes of K as a base and misalign everything after it.
+const SNAPSHOT_VERSION: u32 = 4;
 const SNAPSHOT_DTYPE_F32: u8 = 0;
 /// Tokens moved per `write_all`/`read_exact` when saving and restoring.
 ///
@@ -29,7 +51,21 @@ const SNAPSHOT_TOKEN_BLOCK: usize = 1024;
 /// compatibility checks. Corruption and mismatch detection only — not a
 /// cryptographic guarantee.
 pub fn fingerprint(data: &[u8]) -> u64 {
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    fingerprint_from(FNV_OFFSET_BASIS, data)
+}
+
+/// FNV-1a offset basis, the state `fingerprint` starts from.
+const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
+
+/// Continue an FNV-1a hash over a further block.
+///
+/// FNV is a streaming hash, so hashing two blocks in sequence equals hashing
+/// their concatenation. Exposed because `checkpoint::fingerprint` identifies a
+/// checkpoint from several disjoint regions -- its config, its header, its
+/// length -- and combining separate hashes by XOR would let two regions cancel
+/// each other. Chaining has no such case.
+pub fn fingerprint_from(seed: u64, data: &[u8]) -> u64 {
+    let mut hash = seed;
     for &b in data {
         hash ^= b as u64;
         hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
@@ -48,6 +84,34 @@ pub struct Session {
     // valid. Reusing them saves a redundant replay forward pass per
     // generation; a truncate-only sync invalidates them.
     tail_logits: Option<Logits>,
+    /// Phase records for the two halves of a generation, disabled by default.
+    ///
+    /// A sink rather than a `&mut RunLog` for two independent reasons, either
+    /// of which alone would force it: the served generator lives behind
+    /// `Arc<ServerState>` and can never produce one, and a `RunLog::phase`
+    /// guard borrows the log, which would collide with the `&mut self` that
+    /// `generate` needs for the work the span is measuring.
+    events: obs::EventSink,
+    /// The most recent `sync`'s delta and how long it took. See `Prefill`.
+    last_prefill: Prefill,
+}
+
+/// What the most recent `sync` pushed through the forward pass.
+///
+/// `tokens` is the *delta*, not the transcript length: the cache covers
+/// whatever prefix matched, and only the remainder costs a forward pass. On
+/// the second turn of a chat that is a handful of tokens against a prompt of
+/// thousands, and reporting the prompt length instead would claim work delta
+/// prefill skipped. Zero is the honest answer for a transcript the cache
+/// already held.
+///
+/// `seconds` times the `Model::prefill` call alone. The one-token tail replay
+/// in `ensure_tail_logits` is not counted -- that token was charged to the
+/// sync that first appended it.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Prefill {
+    pub tokens: usize,
+    pub seconds: f64,
 }
 
 /// Outcome of one generation: sampled tokens (EOS excluded) and whether EOS
@@ -71,7 +135,32 @@ impl Session {
             max_context,
             tokens: Vec::new(),
             tail_logits: None,
+            events: obs::EventSink::disabled(),
+            last_prefill: Prefill::default(),
         })
+    }
+
+    /// Record `prefill` and `decode` phases into the run's event file.
+    ///
+    /// One pair per `generate` call, which is one pair per agent turn, per
+    /// chat turn, or per served request. Deliberately not per token: the
+    /// event file is unbounded on a server, and a pair of records for every
+    /// token would make it grow with generation rather than with requests.
+    /// The per-token series lives in `metrics.jsonl`, which is what that file
+    /// is for.
+    pub fn observing_phases(&mut self, sink: obs::EventSink) {
+        self.events = sink;
+    }
+
+    /// What the most recent `sync` prefilled, for a caller that wants to show
+    /// it.
+    ///
+    /// This module prints nothing and gains no flag to make it print: the
+    /// library records, and the binary decides whether a human should see it.
+    /// That is what keeps `ladder`, `long-context-golden` and every test call
+    /// site silent without an opt-in to thread through them.
+    pub fn last_prefill(&self) -> Prefill {
+        self.last_prefill
     }
 
     pub fn cached_len(&self) -> usize {
@@ -116,7 +205,22 @@ impl Session {
         // before failing, and behind when a tail replay dropped a position
         // and then failed. Both lengths already equal `common` on the normal
         // path, where the two truncates below are no-ops.
-        let keep = common.min(self.model.cached_len());
+        let mut keep = common.min(self.model.cached_len());
+        // A sliding-window cache evicts rather than masks, so it cannot rewind
+        // past its window. Compaction rewinds much further than that by
+        // construction — it rewrites the middle of the transcript and the
+        // summarizing turn opens a fresh sequence, so `common` lands near zero
+        // — which makes this the routine path after a compaction rather than
+        // an edge case. Rebuilding is correct and merely slower; erroring here
+        // would break the feature at exactly the point it is invoked.
+        if keep > 0 && keep < self.model.rewindable_from() {
+            tracing::debug!(
+                keep,
+                floor = self.model.rewindable_from(),
+                "rewind past the sliding window: clearing and re-prefilling"
+            );
+            keep = 0;
+        }
         if self.model.cached_len() > keep {
             self.model.truncate(keep)?;
         }
@@ -126,8 +230,18 @@ impl Session {
         }
         let delta = &transcript[keep..];
         span.record("delta_len", delta.len());
+        // Recorded before the `?`: a sync that fails partway still spent the
+        // time, and a caller rendering the figure should not be told the work
+        // never happened.
+        self.last_prefill = Prefill {
+            tokens: delta.len(),
+            seconds: 0.0,
+        };
         if !delta.is_empty() {
-            self.tail_logits = Some(self.model.prefill(delta)?);
+            let started = std::time::Instant::now();
+            let logits = self.model.prefill(delta);
+            self.last_prefill.seconds = started.elapsed().as_secs_f64();
+            self.tail_logits = Some(logits?);
             self.tokens.extend_from_slice(delta);
         }
         Ok(delta.len())
@@ -167,7 +281,24 @@ impl Session {
         max_tokens: usize,
         mut on_token: impl FnMut(Token),
     ) -> Result<Generation> {
-        let mut active = self.begin_generation(transcript, vocab, grammar)?;
+        // The two phases bracket the two halves this method already has:
+        // `begin_generation` syncs the cache and runs the prompt through the
+        // forward pass, and the loop below is the token-at-a-time decode.
+        // Both guards own their descriptors, so opening one does not stop the
+        // `&mut self` call it is measuring -- see `obs::EventSink`.
+        //
+        // The prefill span closes at the end of this statement rather than at
+        // a `drop`, because `begin_generation` borrows `self` for as long as
+        // `active` lives; the block is what bounds the span to the work.
+        // Duplicated before the borrow starts: `active` holds `&mut self` for
+        // the rest of this call, so `self.events` is unreachable from the
+        // point `begin_generation` returns.
+        let events = self.events.duplicate();
+        let mut active = {
+            let _span = events.phase("prefill");
+            self.begin_generation(transcript, vocab, grammar)?
+        };
+        let _decode = events.phase("decode");
         let mut out = Vec::new();
         while out.len() < max_tokens {
             match active.step(sampler)? {
@@ -314,6 +445,19 @@ impl Session {
             max_context: self.max_context,
             tokens: self.tokens.clone(),
             tail_logits: self.tail_logits.clone(),
+            // Deliberately not inherited. A fork exists to be advanced
+            // alongside its parent -- that is what the subagent interleaver
+            // does -- and `phase` records carry no session identity, so two
+            // sessions writing into one event file would produce overlapping
+            // prefill/decode pairs that no reader could attribute. Worse than
+            // absent: a `duration_s` covering a span another session's work
+            // was interleaved into is a wrong number rather than a missing
+            // one. The `agent.fork` tracing span already marks the boundary.
+            events: obs::EventSink::disabled(),
+            // A fork has prefilled nothing of its own yet. Inheriting the
+            // parent's figure would attribute its wait to a session that did
+            // not do the work.
+            last_prefill: Prefill::default(),
         })
     }
 }
@@ -350,6 +494,21 @@ impl ActiveGeneration<'_> {
             .expect("begin_generation established tail logits");
         let tok = sampler.sample(logits, mask.as_deref())?;
         span.record("token", tok);
+        // Tell the model which token was chosen and where that left the
+        // sampler. Every backend ignores this; the flight recorder writes it,
+        // because logits alone let a replay reproduce the distribution and
+        // then draw from it again.
+        //
+        // Before the EOS check, so a recording states that the run chose to
+        // stop rather than leaving a reader to infer it from a missing line.
+        // `draws` is read after the sample, so it counts this step's draw.
+        // The position is the one the token occupies; the logits it came from
+        // are the recorded row one position earlier.
+        self.session.model.record_selection(Selection {
+            position: self.session.tokens.len(),
+            token: tok,
+            draws: sampler.draws(),
+        })?;
         if tok == self.vocab.eos() {
             self.done = true;
             return Ok(None);
@@ -411,6 +570,7 @@ mod tests {
         Sampler::new(SamplingParams {
             temperature: 0.0,
             top_p: 1.0,
+            top_k: None,
             seed: 0,
         })
     }
@@ -421,6 +581,42 @@ mod tests {
         assert_eq!(s.sync(&[1, 2, 3]).unwrap(), 3);
         assert_eq!(s.sync(&[1, 2, 3, 4, 5]).unwrap(), 2);
         assert_eq!(s.cached_len(), 5);
+    }
+
+    #[test]
+    fn the_recorded_prefill_is_the_delta_and_not_the_transcript() {
+        let mut s = Session::new(Box::new(MockModel::new(27, vec![])), 4096).unwrap();
+        assert_eq!(s.last_prefill().tokens, 0, "nothing prefilled yet");
+
+        s.sync(&[1, 2, 3]).unwrap();
+        assert_eq!(s.last_prefill().tokens, 3);
+
+        // The whole transcript is cached, so the forward pass runs on nothing.
+        // Reporting 5 here -- the transcript length -- would claim work delta
+        // prefill skipped, which is the specific lie this figure exists to
+        // avoid.
+        s.sync(&[1, 2, 3, 4, 5]).unwrap();
+        assert_eq!(s.last_prefill().tokens, 2);
+        s.sync(&[1, 2, 3, 4, 5]).unwrap();
+        assert_eq!(s.last_prefill().tokens, 0);
+
+        // A rewind re-prefills the suffix from the divergence, not the whole
+        // transcript.
+        s.sync(&[1, 2, 9, 9]).unwrap();
+        assert_eq!(s.last_prefill().tokens, 2);
+    }
+
+    #[test]
+    fn the_tail_replay_is_not_charged_to_the_next_prefill() {
+        let mut s = Session::new(Box::new(MockModel::new(27, vec![])), 4096).unwrap();
+        s.sync(&[1, 2, 3]).unwrap();
+        // Drop the cached logits so `ensure_tail_logits` has to replay the
+        // final token through `Model::prefill`. That token was counted when
+        // the sync above appended it; counting it again would inflate every
+        // figure taken after a restored session.
+        s.tail_logits = None;
+        s.ensure_tail_logits().unwrap();
+        assert_eq!(s.last_prefill().tokens, 3, "still the sync's own delta");
     }
 
     #[test]
@@ -885,6 +1081,7 @@ mod tests {
         let mut sampler = Sampler::new(SamplingParams {
             temperature: 1.0,
             top_p: 1.0,
+            top_k: None,
             seed: 5,
         });
         let gen = s

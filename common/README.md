@@ -7,7 +7,7 @@ stack that records what every command did.
 This is a contract package, not a utility bin. Several of the shapes defined here are
 re-implemented in another language and checked across the boundary, so a change that looks
 local is not. `common/obs/core.py` defines the run-event and catalog record shapes that
-`rust-harness/harness/src/obs.rs` writes independently; `rust-harness/harness/tests/obs_contract.rs`
+`rust-harness/obs/src/lib.rs` writes independently; `rust-harness/harness/tests/obs_contract.rs`
 feeds a Rust-written catalog to `common.obs.catalog.read_runs` to prove the two still agree.
 Read `schemas/README.md` before changing a record shape.
 

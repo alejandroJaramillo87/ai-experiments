@@ -1,5 +1,5 @@
 [workspace]
-members = ["harness", "runtime"]
+members = ["harness", "obs", "runtime"]
 resolver = "2"
 
 # Release optimization with debug info retained: required by cargo flamegraph
@@ -21,8 +21,8 @@ rust-version = "1.87"
 # Codifies the level the quality gate already enforces
 # (`cargo clippy --workspace --all-targets -- -D warnings`) so a plain
 # `cargo build` or an editor's rust-analyzer reports the same errors the gate
-# does, instead of warnings a person can scroll past. Both crates opt in with
-# `[lints] workspace = true`.
+# does, instead of warnings a person can scroll past. Every member opts in
+# with `[lints] workspace = true`.
 #
 # Deliberately not adopted: clippy::pedantic and clippy::nursery. Triage found
 # roughly 400 hits that are noise for this codebase, and two families are
@@ -33,14 +33,47 @@ rust-version = "1.87"
 [workspace.lints.rust]
 warnings = "deny"
 
+# Format parsing is the one area where this workspace takes an upstream
+# dependency instead of implementing in-tree, because for a checkpoint format
+# the reference implementation and the specification are the same artifact.
+# See the dependency paragraph in /.styles/RUST_STYLE.md.
 [workspace.dependencies]
 anyhow = "1.0"
 # flock only: the obs run-log holds a shared lock so the Python retention
 # pruner treats the live event file as in use (common/obs/retention.py)
 libc = "0.2"
+# Checkpoint container: the per-tensor schema of model.safetensors -- name,
+# Dtype, shape, byte range -- through `tensor::TensorInfo`. HuggingFace's own
+# crate, so it tracks the format rather than a transcription of it.
+#
+# The loader reads the container envelope itself (an 8-byte length, then that
+# much JSON) because `SafeTensors::read_metadata` requires a buffer as long as
+# the whole file and so cannot be handed a header -- which would mean mapping a
+# 15 GB checkpoint to learn where its tensors start. Only the envelope is ours;
+# every field inside an entry still deserializes into the crate's type, and
+# `the_envelope_reader_agrees_with_safetensors_own_reader` fails if the two
+# ever disagree.
+safetensors = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
+# tokenizer.json loading and encoding only. HuggingFace's own crate, and the
+# reason this workspace does not hand-roll the tokenizer: Gemma 4 ships a BPE
+# vocabulary with 514906 merges behind a Replace normalizer and a Split
+# pre-tokenizer, and a conformant reimplementation of that pipeline is how the
+# project would acquire a second silent tokenizer bug after the first one.
+#
+# The feature set is load-bearing, not tidiness. The defaults are
+# ["progressbar", "onig", "esaxx_fast"]; onig and esaxx_fast are C/C++, and
+# neither the agent image nor the release builder carries a C++ toolchain.
+# fancy-regex is the pure-Rust regex engine tokenizers offers in place of onig,
+# and it is mandatory rather than optional: with no engine selected the crate
+# fails to compile on an unresolved SysRegex. Leaving esaxx_fast off keeps
+# esaxx-rs on its pure-Rust path, and leaving http/hf-hub off keeps the gate
+# network-free and suits a container that runs with network_mode: none.
+# After any version bump, re-check with `cargo tree -p runtime -i cc`, which
+# must report no match.
+tokenizers = { version = "0.23", default-features = false, features = ["fancy-regex"] }
 tokio = { version = "1", features = ["rt", "macros", "sync", "time", "process"] }
 tempfile = "3"
 tracing = "0.1"

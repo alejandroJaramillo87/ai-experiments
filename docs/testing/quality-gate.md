@@ -26,7 +26,13 @@ Ten steps, cheapest first, failing on the first error:
    reading `## Open (3)` must have three rows beneath it.
 9. `scripts/docs/check_kb_refs.py` — fails when a known-bug id cited in source has no ledger
    row, or the reverse.
-10. `shellcheck --severity=warning` — shell scripts, enumerated with `find`.
+10. `scripts/docs/check_runbook_entries.py` — fails when a verification entry names a test
+    function that does not exist, or is marked `VERIFIED` with neither pasted evidence nor a
+    named check.
+11. `scripts/docs/check_surface_census.py` — enumerates the rust-harness binaries and flags
+    from their `Flag` literals and fails when one is named in no runbook. The only gate here
+    that starts from the code rather than the documentation.
+12. `shellcheck --severity=warning` — shell scripts, enumerated with `find`.
 
 Note what is absent: **`make quality` does not run pytest.** See
 [The full gate](#the-full-gate) below.
@@ -127,6 +133,40 @@ interface.
 [../../AGENTS.md](../../AGENTS.md) applies: exactly one such job at a time across every
 worktree, regardless of how many sessions are open. The target prints the reminder rather than
 enforcing it.
+
+## The correctness ladder
+
+Neither gate measures whether the inference engine computes the right numbers. `make quality`
+and `make quality-full` are machinery gates: they prove the code builds, the tests agree with
+themselves, and the documentation resolves. A forward pass with a transposed weight or a wrong
+norm convention passes both and emits fluent text.
+
+That is what the correctness ladder is for. Five rungs, each against `transformers` rather than
+against any earlier output of ours, run on the workstation under their own target:
+
+```
+cd rust-harness
+make ladder SIZE=quick MODEL=<checkpoint-dir>      # also standard, deep
+```
+
+It is deliberately outside `make quality`. The gate is mandatory before every push and has to
+stay fast, and the ladder loads the real checkpoint. The half that does run inside the gate is
+Tier T: the same rungs against a tiny Gemma 4 that `transformers` itself built, committed
+whole, measured in milliseconds.
+
+The target passes `--text-only` by default, because the released E4B carries a vision and an
+audio tower the CPU backend refuses to load and the ladder has no rung that could measure
+either. `TEXT_ONLY=0` restores the refusal for a checkpoint that is text-only already.
+
+`SIZE` selects how much work the perplexity and greedy rungs do. It is a third variable
+alongside `HW` and `TIER` and means neither of them; the sizes are nested prefixes of one
+corpus, so a `deep` run reproduces a `quick` run's number on its first tokens exactly.
+
+Like `quality-full`, the target refuses in a contained sandbox before doing any work, and it
+loads the checkpoint, so the one-GPU-consumer-at-a-time rule applies. See
+[../../rust-harness/README.md](../../rust-harness/README.md) for the rungs and
+[../../rust-harness/fixtures/reference/README.md](../../rust-harness/fixtures/reference/README.md)
+for the reference artifacts.
 
 ## Provisioning
 

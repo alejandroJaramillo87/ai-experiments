@@ -1,6 +1,6 @@
 # Documentation gate tests
 
-Unit tests for the five documentation gates in `scripts/docs/`, all of which run in
+Unit tests for the seven documentation gates in `scripts/docs/`, all of which run in
 `make quality` as standalone scripts as well as under pytest here.
 
 Most of these gates share a failure mode, and it is not the one a reader expects: the risk
@@ -24,6 +24,9 @@ the host-environment reporters in `scripts/utils/`.
 | `test_retired_names.py` | `scripts/docs/check_retired_names.py` | `pattern_for` precision, `RETIRED` table invariants, `find_retired` line numbers, `wants_scan`, `is_exempt`; then the full-tree gate |
 | `test_make_targets.py` | `scripts/docs/check_make_targets.py` | `extract_refs` separating commands from the English verb, `target_exists` pattern-rule matching, `collect_targets` across all three Makefiles, `KNOWN_ABSENT` invariants; then the full-tree gate |
 | `test_doc_counts.py` | `scripts/docs/check_doc_counts.py` | `find_sections` heading classification and section extent, `count_body` table-versus-list rules, `is_year`; then the full-tree gate |
+| `test_doc_tallies.py` | `scripts/docs/check_doc_counts.py`, its second pattern | `find_tallies` and `count_statuses` against the four shapes that defeat a naive count — a bolded inline status mid-paragraph, a parent entry with no status of its own, non-contiguous entry numbering, and a kind followed by a date and a parenthetical — plus the empty-set guard |
+| `test_runbook_entries.py` | `scripts/docs/check_runbook_entries.py` | `find_entries`, `has_evidence` and `find_citations` against the four shapes that defeated the first implementation — a parent entry heading children with their own statuses, an `Observed (` parenthetical whose colon is on a later line, a gate-backed entry with no Observed block at all, and a cited test class rather than a function — plus the empty-set guard |
+| `test_surface_census.py` | `scripts/docs/check_surface_census.py` | `surface` enumeration and the `--help` exclusion, whole-word binary matching so prose about layers does not satisfy `layer-diff`, and the empty-set guard, which matters more here than anywhere: an enumeration that collects nothing reports every element as covered |
 | `test_kb_refs.py` | `scripts/docs/check_kb_refs.py` | `extract_citations` including the reserved next identifier, `collect_defined` across both ledgers, `is_exempt`; then the full-tree gate |
 
 ## Notes

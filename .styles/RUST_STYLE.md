@@ -59,6 +59,26 @@ Pin dependencies in `[workspace.dependencies]` and reference them from members a
 present and how much of it is used, for example `libc` noted as `flock only`. A dependency
 without a justification comment is incomplete.
 
+**Checkpoint formats are the one standing exception to implementing in-tree.** For a model
+format the reference implementation and the specification are the same artifact, so a
+transcription of it is a guess that compiles. The workspace learned this the expensive way: a
+hand-rolled SentencePiece unigram tokenizer read a Gemma 4 vocabulary that is BPE, and every
+prompt it segmented against real weights was wrong. `safetensors` and `tokenizers` are
+HuggingFace's own crates and track the formats they define, so they are preferred over
+reimplementation. The exception is bounded — it covers parsing a checkpoint and nothing
+downstream of it. Numerics, sampling, the KV cache and the forward pass stay in-tree, where
+determinism is enforceable.
+
+Two constraints ride along. Select features so the graph stays pure Rust: neither the agent
+image nor the release builder carries a C++ toolchain, and `cargo tree -p runtime -i cc` must
+report no match. And nothing may pull a network client into the gate, which is offline by
+contract.
+
+The `Prohibited` list below rules out an RNG crate *in place of* the seeded in-tree generators.
+It governs what the harness uses for sampling and fixture synthesis, not what a transitive
+dependency happens to link; the in-tree seeded generators remain the only source of randomness
+the harness itself calls. New lockfile entries under a format crate are not a violation.
+
 ## Errors
 
 Use `anyhow`. The workspace defines no error enums, implements no `std::error::Error`, and does
@@ -99,20 +119,43 @@ noise; a panicking test is a failing test.
 
 ## Unsafe code
 
-The `runtime` crate forbids unsafe entirely:
+The `runtime` and `harness` crates contain no unsafe code, and are written so that none can be
+added without editing the crate attribute (`harness` carries it in both `lib.rs` and `main.rs`,
+since a binary is its own crate root and the attribute does not propagate):
 
 ```rust
-// forbid, not deny: a module-level allow cannot lift it, and this crate
-// produces training and interpretability numerics.
 #![forbid(unsafe_code)]
 ```
 
-Choose `forbid` over `deny` for any crate where a later module-level `#[allow]` would be a
-mistake rather than an escape hatch.
+**This was `deny` for one memory map, and the round trip back is the useful part of the
+story.** `CheckpointFiles::read` mapped `model.safetensors` rather than reading it, because a
+15 GB checkpoint otherwise cost a private copy of the whole file on top of the loader's
+buffers. `memmap2::Mmap::map` is unsafe and has no safe wrapper, and `forbid` cannot be lifted
+at a call site, so the attribute weakened to `deny` and the call carried an
+`#[allow(unsafe_code)]` with a `SAFETY` comment naming the assumption it could not discharge:
+that nothing rewrites a checkpoint underneath a running harness.
 
-Where `unsafe` is unavoidable, confine it to the smallest possible block and precede every
-occurrence with a `// SAFETY:` comment that reasons about the specific obligation — descriptor
-ownership, pointer validity, lifetime — rather than asserting that the call is safe:
+Two things then changed. The storage-preserving loader began copying every tensor out of the
+map anyway, so the map's zero-copy justification expired; and positioned reads
+(`FileExt::read_exact_at`) turned out to do the same job with *less* resident memory, because
+bytes read that way land in page cache the kernel owns rather than in this process. Removing
+the map also removed the undischargeable obligation outright — a file rewritten underneath a
+mapping is undefined behaviour, while a file rewritten underneath a `pread` is an error value
+a caller can report.
+
+The lesson to carry, since the same trade will be offered again: **an `unsafe` accepted for a
+performance reason should be revisited when the surrounding code changes, because the reason
+can expire quietly.** This one outlived its justification by two packages. Prefer `forbid`,
+and reach for `deny` only where a specific unavoidable call can be named in the attribute's
+own comment — and write that comment so a later reader can tell whether the reason still
+holds.
+
+Where `unsafe` is unavoidable — as in the `obs` crate, which calls `libc::flock`, and which
+exists as a separate member so that the crates depending on it need not — confine it to the
+smallest possible block and precede every occurrence with a `// SAFETY:`
+comment that reasons about the specific obligation: descriptor ownership, pointer validity,
+lifetime, external mutation. Do not assert that the call is safe. Where the obligation cannot
+be discharged in Rust, say so plainly and name the assumption being made instead:
 
 ```rust
 // SAFETY: 'events' owns the descriptor and stays alive past this call,
@@ -141,7 +184,7 @@ facade — callers name the module they depend on. Group implementations of one 
 directory with `mod.rs` holding the trait, as `runtime/src/model/` does for `cpu`, `mock`,
 `probe`, and `record`.
 
-Binaries live in `src/bin/` with kebab-case names (`gguf-info`, `activation-capture`);
+Binaries live in `src/bin/` with kebab-case names (`checkpoint-info`, `activation-capture`);
 `main.rs` stays a thin entry point over library modules.
 
 Naming follows standard Rust casing: `snake_case` for functions and modules, `CamelCase` for
@@ -314,7 +357,7 @@ the `release-with-debug` profile) and `make debug-record` / `make debug-replay` 
 - `mul_add` and any FMA-introducing rewrite — breaks bit-identical replay
 - Reordering floating-point arithmetic for style
 - `thiserror` or hand-rolled error enums where `anyhow` with context suffices
-- `unsafe` in `runtime`, which forbids it at the crate level
+- `unsafe` in `runtime` beyond the one allowed checkpoint map, which the crate attribute names
 - `unsafe` anywhere without a specific `// SAFETY:` justification
 - An RNG crate in place of the seeded in-tree generators
 - `test_` prefixes on test names

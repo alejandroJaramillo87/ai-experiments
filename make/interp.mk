@@ -1,9 +1,10 @@
 ##@ Interpretability (interp Phase 0 I1 - separate compose file; GPU inference must be down)
 
-.PHONY: fullprec-down fullprec-up harvest harvest-check-hooks interp-build interp-dirs
-.PHONY: interp-down interp-gc interp-shell interp-smoke interp-up logproxy-down logproxy-up
+.PHONY: harvest harvest-check-hooks interp-build interp-dirs
+.PHONY: interp-down interp-gc interp-shell interp-smoke interp-up
 .PHONY: organism organism-check-seal organism-generate organism-seal organism-verify
-.PHONY: probe-capture probe-eval probe-monitor probe-train sae-eval sae-train steer-down
+.PHONY: probe-capture probe-eval probe-export probe-monitor probe-train sae-eval
+.PHONY: sae-train steer-down
 .PHONY: steer-extract steer-scorecard steer-up
 
 INTERP_COMPOSE := docker-compose.interp.yaml
@@ -42,25 +43,31 @@ interp-dirs: ## Create the /mnt/ai-data/interp storage tree on the host
 # Steered service and the host->container mapping of the vectors mount.
 # Mirrors interp/steering/wiring.py steering_env/container_vector_path:
 # a change to the env vars or path map must land on both sides.
-STEER_SERVICE ?= llama-gpu
-VECTOR_CONTAINER = $(patsubst /mnt/ai-data/interp/vectors%,/app/vectors%,$(VECTOR))/vector.gguf
+#
+# The subject is the rust harness, not llama-gpu. R10 retired llama.cpp
+# steering: the two entrypoints no longer read CONTROL_VECTOR, and the vector
+# is safetensors, which llama.cpp cannot load. The three variable names are
+# unchanged because steering_env emits them and the harness serve entrypoint
+# reads them.
+STEER_SERVICE ?= harness-serve
+VECTOR_CONTAINER = $(patsubst /mnt/ai-data/interp/vectors%,/app/vectors%,$(VECTOR))/vector.safetensors
 
 steer-extract: ## Extract and export a control vector in the workbench (ARGS="--method repeng --model ... --pairs ... --out ...")
 	@./scripts/interp/preflight.sh
 	docker compose -f $(INTERP_COMPOSE) run --rm interp python -m interp steer-extract $(ARGS)
 
-steer-up: ## Recreate the service steered (VECTOR=/mnt/ai-data/interp/vectors/<name> [SCALE=1.0] [LAYER_RANGE="start end"] [STEER_SERVICE=llama-gpu])
+steer-up: ## Recreate the service steered (VECTOR=/mnt/ai-data/interp/vectors/<name> [SCALE=1.0] [LAYER_RANGE="start end"] [STEER_SERVICE=harness-serve])
 	@test -n "$(VECTOR)" || { echo "VECTOR=/mnt/ai-data/interp/vectors/<name> is required"; exit 2; }
-	@test -f "$(VECTOR)/vector.gguf" || { echo "vector not found: $(VECTOR)/vector.gguf"; exit 1; }
+	@test -f "$(VECTOR)/vector.safetensors" || { echo "vector not found: $(VECTOR)/vector.safetensors"; exit 1; }
 	@case "$(VECTOR)" in /mnt/ai-data/interp/vectors/*) ;; *) echo "VECTOR must live under /mnt/ai-data/interp/vectors (the mounted tree)"; exit 1;; esac
 	CONTROL_VECTOR="$(VECTOR_CONTAINER)" CONTROL_VECTOR_SCALE="$(SCALE)" \
 	CONTROL_VECTOR_LAYER_RANGE="$(LAYER_RANGE)" \
-	docker compose -f $(INFER_COMPOSE) up -d --force-recreate $(STEER_SERVICE)
+	docker compose -f $(HARNESS_COMPOSE) up -d --force-recreate $(STEER_SERVICE)
 	@echo "$(GREEN)$(STEER_SERVICE) recreated steered: $(VECTOR_CONTAINER)$(if $(SCALE), scale $(SCALE),)$(RESET)"
 
 steer-down: ## Recreate the service unsteered (restores production state)
 	CONTROL_VECTOR= CONTROL_VECTOR_SCALE= CONTROL_VECTOR_LAYER_RANGE= \
-	docker compose -f $(INFER_COMPOSE) up -d --force-recreate $(STEER_SERVICE)
+	docker compose -f $(HARNESS_COMPOSE) up -d --force-recreate $(STEER_SERVICE)
 	@echo "$(GREEN)$(STEER_SERVICE) recreated unsteered$(RESET)"
 
 steer-scorecard: ## Run the three-arm scorecard against live services (VECTOR=... ATTRIBUTE="..." [ARGS=...])
@@ -75,31 +82,20 @@ probe-capture: ## Capture labeled activations in the workbench (ARGS="--model ..
 probe-train: ## Train and register probes from a capture (ARGS="--capture ... --name ...")
 	docker compose -f $(INTERP_COMPOSE) run --rm interp python -m interp probe-train $(ARGS)
 
+# No preflight and no GPU: this reads a registered probe and rewrites it in
+# the format the harness reader takes. probe-train leaves probe.npz, which is
+# Python-only; harness-serve's HARNESS_PROBE needs the safetensors image.
+probe-export: ## Export a registered probe as the safetensors image harness-serve loads (ARGS="--probe /mnt/ai-data/interp/probes/<name>")
+	uv run python -m interp probe-export $(ARGS)
+
 probe-eval: ## Regenerate a probe evaluation report with black-box baselines (serving-dependent; ARGS="--probe ... --label-name ...")
 	uv run python -m interp probe-eval $(ARGS)
 
-probe-monitor: ## Replay a serving-log window and score probes (batch; refuses while inference is up; ARGS="--window 7d --probes ... --model ... --model-hash ...")
-	@./scripts/interp/preflight.sh
+# No preflight, and no --model: the scores are already in the log, taken by
+# the process that served each request. Nothing here loads a model, so this
+# runs while inference is up.
+probe-monitor: ## Aggregate a served-request log window into a probe report (ARGS="--window 7d [--probes ...] [--log-dir ...]")
 	docker compose -f $(INTERP_COMPOSE) run --rm interp python -m interp probe-monitor $(ARGS)
-
-logproxy-up: ## Start the request-logging proxy on 127.0.0.1:8012 (opt-in; compose profile interp)
-	docker compose -f $(INFER_COMPOSE) --profile interp up -d interp-logproxy
-	@echo "$(GREEN)logproxy up: point clients at http://127.0.0.1:8012 (logs under /mnt/ai-data/interp/logs)$(RESET)"
-
-logproxy-down: ## Stop the request-logging proxy
-	docker compose -f $(INFER_COMPOSE) --profile interp rm -sf interp-logproxy
-
-fullprec-up: ## Start the full-precision monitored path: bf16 endpoint on 8004 plus the proxy pointed at it
-	docker compose -f $(INFER_COMPOSE) --profile interp up -d llama-gpu-bf16
-	LOGPROXY_TARGET_URL=http://llama-gpu-bf16:8004 \
-	LOGPROXY_TARGET_SERVICE=llama-gpu-bf16 \
-	docker compose -f $(INFER_COMPOSE) --profile interp up -d --force-recreate interp-logproxy
-	@echo "$(GREEN)full-precision path up: clients point at http://127.0.0.1:8012$(RESET)"
-	@echo "logs land under /mnt/ai-data/interp/logs/llama-gpu-bf16"
-	@echo "replay with: make probe-monitor ARGS=\"--log-dir /mnt/ai-data/interp/logs/llama-gpu-bf16 ...\""
-
-fullprec-down: ## Stop the full-precision monitored path (leaves port 8002 untouched)
-	docker compose -f $(INFER_COMPOSE) --profile interp rm -sf interp-logproxy llama-gpu-bf16
 
 ##@ Interpretability harvesting (interp Phase 4 P4-D2 - workbench batch job; GPU inference must be down)
 

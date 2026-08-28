@@ -55,7 +55,8 @@ is ever read; the reproduction bypassed the binary's own load path.
 
 ## X-06 (low)
 
-`runtime/src/gguf.rs:210` — `is_vision_tensor` is dead code with no caller.
+`gguf.rs:210` — `is_vision_tensor` is dead code with no caller. Resolved at R10, which
+deleted the module: the last GGUF artifact the runtime read moved to safetensors.
 
 Reproduction: not required at this severity.
 

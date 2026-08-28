@@ -1,1 +1,24 @@
-/target
+# Cargo build output, at any depth rather than only at this directory.
+#
+# Unanchored deliberately. The anchored `/target` this replaces matched only
+# `rust-harness/target`, and a cargo run with a *relative* CARGO_TARGET_DIR of
+# `rust-harness/target` while the shell was already inside `rust-harness/`
+# built into `rust-harness/rust-harness/target` instead -- one directory
+# outside the rule, and 3.7 GB of build output was committed before anyone
+# noticed. An unanchored pattern cannot be escaped by nesting.
+target/
+
+# Harness runtime state, when the binary is run from this directory rather
+# than from the container's working directory.
+#
+# `main.rs` opens `<root>/session.jsonl` on every run, and the interp seam
+# writes `probe-flags.jsonl` beside it. In the container that root is
+# `/sessions`, which the repository .gitignore already covers; a `cargo run`
+# or a profiling run started here puts them in the worktree instead, where
+# they show up as untracked files that look like something worth committing
+# and are not. They are per-run state: a transcript of one conversation.
+#
+# Not a test artifact. The tests write into `tempfile::tempdir()` and clean up
+# after themselves; this is only ever the real binary having been run.
+/session.jsonl
+/probe-flags.jsonl

@@ -228,6 +228,7 @@ fn test_200_forced_tool_calls_produce_zero_malformed_calls() {
     let params = SamplingParams {
         temperature: 0.8,
         top_p: 0.95,
+        top_k: None,
         seed: 7,
     };
 

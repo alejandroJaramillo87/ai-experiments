@@ -6,10 +6,18 @@ the parent repository's observability tooling gains a small serve mode plus
 an HTML view that polls the event file. The same view pointed at a finished
 run replays it, so the feature doubles as a post-hoc run inspector.
 
-This is a design awaiting host verification. Implementation is blocked on
-the workstation agent and chat runs (runbook entries RH.8 and RH.11), which
-decide which events are worth watching and what cadences real-model rates
-justify. No code changes accompany this document.
+**Partly built, and the unbuilt half is the live one.** The record stream this
+document proposed exists: the U campaign landed phase spans, per-tool header
+events and a `metrics.jsonl` that the snapshot dashboard already renders. What
+remains a design is the serve mode and the polling page under
+[Viewer](#viewer) — watching a run *as it happens*, rather than reading it
+afterwards. That half was never blocked on RH.8 and RH.11 in the end; it is
+unbuilt because nothing has yet needed it.
+
+Where this document proposed a shape and the implementation took a different
+one, the implemented shape is what is recorded below.
+[observability.md](observability.md) is the reference for what is built;
+this document keeps only the design that is not.
 
 ## Table of contents
 
@@ -24,11 +32,20 @@ justify. No code changes accompany this document.
 While a run executes, the terminal shows almost nothing. An agent task
 prints its answer to stdout once the task ends and a chat turn prints its
 reply once the turn ends — neither streams tokens, because
-`harness/src/stream.rs` is not wired to an entry point — and status lines
-and the probe flag summary reach stderr at the same late moment. No current
-tool shows the state of the run as it evolves: KV cache fill against the
-budget (how close is compaction), prefill and decode rates, which tool call
-is executing, subagent forks in flight. On the workstation, where a
+`harness/src/stream.rs` is not wired to an entry point — and the probe flag
+summary reaches stderr at the same late moment.
+
+Part of that gap has since closed at the terminal. The run header states the
+resolved configuration before the work starts, and a completed operation
+reports what it cost: `Model load: 53.50 s`, then `Prefill: 234 tokens in
+1.90 s (123 tok/s)` on every turn. Those are summaries after the fact, which
+is the distinction that keeps this document alive — they say what a step took
+once it is over, and say nothing while it runs.
+
+So what is still unshown is the state of a run *as it evolves*: KV cache fill
+against the budget (how close is compaction), rates while the work is
+happening rather than after, which tool call is executing, subagent forks in
+flight. On the workstation, where a
 real-model run may take minutes, that live view is the difference between
 watching a scrolling terminal and watching the experiment: a stuck tool
 call, a runaway prefill, or a probe firing storm becomes visible during the
@@ -44,7 +61,7 @@ the CPU backend.
 
 ## Event stream
 
-`harness/src/obs.rs` already writes an event file at
+`obs/src/lib.rs` writes an event file at
 `${OBS_LOG_DIR}/harness/<run_id>.jsonl` in the shared obs contract (fields
 `ts`, `level`, `run_id`, `cli`, `command`, `pid`, `event`, `msg`, plus
 per-event extras), bracketed by `cmd.start` and `cmd.end`. Live visibility
@@ -53,16 +70,49 @@ new transport, and every existing reader (runs catalog, retention pruner)
 continues to work unchanged because unknown `event` values pass through
 stateless readers.
 
-Proposed catalog, final grain to be decided after RH.8 and RH.11:
+### What the file carries today
+
+Five binaries write it. Beyond the `cmd.start`/`fail`/`cmd.end` bracket, each
+run emits one per-tool header event naming its resolved configuration, and a
+`phase.start`/`phase.end` pair around each timed operation.
+`schemas/obs_record.json` is the contract; `observability.md` is the reference.
+
+**The phase grain landed as a pair, not as one discrete event.** This document
+proposed a single `phase` record carrying `prefill`, `decode`, or `tool` with a
+tool name. What shipped is `phase.start` and `phase.end`, both written by the
+Python and the Rust stacks, with the end record carrying `duration_s` rounded
+to three decimals. A pair is what lets a reader see a phase that is still open
+— which is exactly what a live viewer needs and a single end-of-phase record
+cannot give it. The names actually written:
+
+| Phase | Written by |
+|-------|------------|
+| `model.load` | all five instrumented binaries |
+| `prefill`, `decode` | the harness, one pair per turn or served request |
+| `rung.L0` through `rung.L4` | the ladder |
+
+**There is no `tool` phase**, and its absence is a decision rather than an
+oversight: `harness/src/tools.rs` already opens a `tool.exec` tracing span,
+which `--trace-chrome` renders, and duplicating it into the obs file would put
+the same measurement in two contracts.
+
+### Still proposed
+
+These have no implementation and no contract entry. The grain is a design
+sketch, to be settled against a real run rather than in advance:
 
 | Event | Kind | Payload sketch |
 |-------|------|----------------|
-| `phase` | discrete | `prefill`, `decode`, or `tool` with the tool name |
 | `progress` | periodic | tokens processed, cache fill vs budget, tokens/second |
 | `compaction` | discrete | replaced range, summary length in tokens |
 | `snapshot` | discrete | `saved` or `restored`, cached token count |
 | `fork` / `join` | discrete | subagent identifier |
 | `probe` | periodic | flag count since the previous record |
+
+`progress` is the one with a partial answer already: `metrics.jsonl` carries a
+per-token `tokens_per_s` and `rss_gb` series for the harness and a per-rung
+series for the ladder. What it does not carry is cache fill against the budget,
+which is the number that says how close a run is to compaction.
 
 Two rules keep the stream cheap and safe:
 
@@ -103,10 +153,15 @@ minimal serve mode:
 
 ## Sequencing
 
-1. Workstation runs RH.8 and RH.11 establish which events matter and what
-   real-model rates look like; observed pain points scope the catalog.
-2. Harness emission lands as one commit, sandbox-testable end to end: the
-   tiny fixture model exercises every event type, and Tier 1 tests assert
-   the record shapes against the obs contract.
-3. The parent-repository viewer and serve mode land as a second commit,
-   testable in the sandbox by replaying a recorded event file.
+Steps 1 and 2 are done, by a different route than planned: the U campaign
+landed the record stream against the tiny fixture without waiting on RH.8 and
+RH.11, and `harness/tests/obs_contract.rs` and `runtime/tests/ladder_obs.rs`
+assert the shapes against the obs contract. What is left:
+
+1. Decide which of the events under [Still proposed](#still-proposed) are worth
+   emitting, from a real workstation run rather than in advance. The `progress`
+   record is the one with an established need and a partial answer already.
+2. The parent-repository viewer and serve mode land as one commit, testable in
+   the sandbox by replaying a recorded event file. The snapshot dashboard
+   (`report --run`) already renders a finished harness run, so this step is the
+   polling endpoint and the live page, not a viewer from nothing.

@@ -4,23 +4,19 @@ Design and reference documentation for `rust-harness`, the single-binary Rust co
 with the Gemma 4 inference runtime linked in as a library crate.
 
 This directory holds documentation only. The workspace itself lives at `/rust-harness`, and its
-`README.md` covers layout, test tiers, and build commands. Verification records for the harness
-live in `/docs/verification/`, not here.
+`README.md` covers layout, test tiers, build commands, the command-line surface (`--help`,
+`--status`, exit codes), and what a run reports while it works. Verification records for the
+harness live in `/docs/verification/`, not here.
 
 ## Design
 
 | Document | Description |
 |----------|-------------|
+| [roadmap.md](roadmap.md) | The R-numbered work items in five phases, the `IF-` interp feature specifications, and what each estimate turned out to be worth |
 | [runtime-design.md](runtime-design.md) | Harness and runtime architecture: agent loop, the library-crate runtime, and the implementation roadmap |
 | [observability.md](observability.md) | Observability and debuggability as first-class code, in three phases preceding the CUDA backend |
 | [observation-frames.md](observation-frames.md) | What the agent loop and chat mode contribute to the training and interpretability programs, and the acceptance bar for new features |
-| [live-events.md](live-events.md) | Live run-state events as JSONL, with a serve mode and HTML view that also replays finished runs |
-
-## Model reference
-
-| Document | Description |
-|----------|-------------|
-| [gemma-4-ingestion.md](gemma-4-ingestion.md) | What the runtime requires to ingest a Gemma 4 checkpoint: the GGUF metadata contract, the Hugging Face to GGUF translation, and every architecture feature the backend refuses by name |
+| [live-events.md](live-events.md) | Watching a run in progress: what the record stream already carries, and the unbuilt serve mode and polling view |
 
 ## Forward looking
 
@@ -28,12 +24,16 @@ live in `/docs/verification/`, not here.
 |----------|-------------|
 | [rust-harness-optimization-candidates.md](../optimizations/ideation/rust-harness-optimization-candidates.md) | Recorded menu of x86 CPU backend optimizations, each blocked on host verification and a measured baseline |
 
-## Roadmap
+## Backend phases
 
-Phases and their acceptance checks. This lives here rather than in the workspace
-`README.md` because a roadmap describes a moment: nothing forces an update when the moment
-passes, so it belongs beside the design documents that share that property rather than in the
-file a newcomer reads to learn what the harness is.
+Backend bring-up phases and their acceptance checks. This lives here rather than in the
+workspace `README.md` because a roadmap describes a moment: nothing forces an update when the
+moment passes, so it belongs beside the design documents that share that property rather than
+in the file a newcomer reads to learn what the harness is.
+
+These lettered phases are the backend ladder and are not the same list as the R-numbered work
+items in [roadmap.md](roadmap.md); the two intersect only where a work item names a phase as a
+dependency.
 
 | Phase | Deliverable | Acceptance check |
 |-------|-------------|------------------|
@@ -47,6 +47,6 @@ file a newcomer reads to learn what the harness is.
 ## Related documentation
 
 - [../inference/README.md](../inference/README.md) — the llama.cpp and vLLM serving stack, which the harness does not replace
-- [../verification/rust-harness.md](../verification/rust-harness.md) — host verification runbook
-- [../verification/rust-harness-qa.md](../verification/rust-harness-qa.md) — sandbox quality audit
+- [../verification/rust-harness/rust-harness.md](../verification/rust-harness/rust-harness.md) — host verification runbook
+- [../verification/rust-harness/rust-harness-qa.md](../verification/rust-harness/rust-harness-qa.md) — sandbox quality audit
 - [../interp/rust-harness-interp.md](../interp/rust-harness-interp.md) — running the write-back interpretability path on this runtime

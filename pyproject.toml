@@ -142,9 +142,15 @@ interp = [
     "plotly==6.9.0",
     "ipywidgets==8.1.8",
     "pynvml==12.0.0",
-    # Write-back path (interp Phase 3 W1/W2): control-vector extraction and GGUF export,
+    # Write-back path (interp Phase 3 W1/W2): control-vector extraction and export,
     # artifact manifests. scikit-learn (probes) lives in core. xxhash repeats the training
     # group's pin (groups may overlap).
+    #
+    # gguf is NOT pinned here, and was until R10. interp/steering/export.py wrote the
+    # control vector in the llama.cpp control-vector GGUF layout because llama.cpp read
+    # it; that path is retired and the exporter writes safetensors, which the group
+    # already carries transitively through transformers. The sandbox group keeps its own
+    # gguf pin, for tests/models reading the GGUF headers training/export still produces.
     #
     # repeng is NOT pinned here: 0.4.0 (the latest release) requires numpy<2.0 and
     # references the removed np.float_ alias, so it neither resolves nor imports against
@@ -260,10 +266,14 @@ pythonpath = ["tests/training"]
 # the workstation opts in with -m hw_smoke / -m hw_full (a command-line -m
 # replaces this one). Every tests/hardware/ test carries exactly one tier
 # marker and at least one resource marker.
-addopts = "-m 'not hw_smoke and not hw_full'"
+# Every hw_* marker below must appear in this expression: a tier marker absent
+# from it runs by default, so a sandbox with no hardware fails on collection
+# rather than deselecting. tests/hardware/test_markers.py enforces the pairing.
+addopts = "-m 'not hw_smoke and not hw_full and not hw_e4b'"
 markers = [
     "hw_smoke: workstation smoke tier — under five minutes total, no model downloads, temporary-directory writes only; the before-every-session gate",
     "hw_full: workstation full tier — may allocate near-capacity VRAM/RAM/disk and load real models; run per verification phase and after environment changes",
+    "hw_e4b: needs the real Gemma 4 E4B checkpoint on disk rather than a transcript or fixture; a provisioning precondition carried alongside a tier marker, deselected by default because no sandbox has the checkpoint",
     "gpu: exercises the RTX 5090 (CUDA, VRAM, GPU-adjacent extensions)",
     "cpu: exercises the Ryzen 9950X (AVX-512, CPUAdam, affinity)",
     "ram: exercises host memory (huge pages, pinned buffers, replay residency)",

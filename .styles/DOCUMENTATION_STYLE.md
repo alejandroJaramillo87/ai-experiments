@@ -41,8 +41,11 @@ records by exactly those two patterns (`EXEMPT_PARTS`, `EXEMPT_SUFFIXES`). A fro
 named anything else is gated as though it were living, and the gate will demand that its
 historical paths still resolve.
 
-`docs/verification/` is exempt by directory prefix for the same reason, so operational
-runbooks belong there rather than beside living reference documentation.
+`docs/verification/` is **not** exempt. It was, by directory prefix, until 2026-08-08; both
+gates now carry an empty `EXEMPT_PREFIXES` with the reasoning recorded in
+`check_doc_refs.py`, because the exemption bought nothing and cost coverage of the most
+path-dense documentation in the tree. Operational runbooks still belong there, but their
+paths are checked like any other document's.
 
 ## Writing Standards
 

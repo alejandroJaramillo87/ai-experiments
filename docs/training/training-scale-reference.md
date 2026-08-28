@@ -139,7 +139,7 @@ its own architecture, and choosing the Gemma block (attention layout, norm
 placement, activation, local/global attention pattern) at smaller
 dimensions makes phase 4 models first-class citizens of the entire
 substrate — runtime, tap seam, probe path, KV snapshots, goldens — on day
-one. This is verified, not assumed: `Config::from_gguf`
+one. This is verified, not assumed: `ModelSpec::from_checkpoint`
 (`rust-harness/runtime/src/model/cpu.rs:56`) gates only on the architecture
 string starting with `gemma` and reads every dimension (layers, heads,
 embedding width, FFN width, sliding-window pattern, RoPE base) from GGUF

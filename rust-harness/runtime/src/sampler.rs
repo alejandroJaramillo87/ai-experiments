@@ -1,12 +1,12 @@
 /*
- * sampler — temperature/top-p sampling with optional grammar masking.
+ * sampler — temperature/top-k/top-p sampling with optional grammar masking.
  *
  * Deterministic given a seed: randomness comes from a 64-bit LCG rather than
  * an OS entropy source, so Tier 2 tests replay exactly. The mask is applied
- * before temperature and top-p, making grammar-illegal tokens unrepresentable
- * regardless of their probability mass. Non-finite logits (NaN, +/-inf) are
- * excluded from the support: a backend bug producing NaN surfaces as an
- * empty-support error instead of silently skewed sampling.
+ * before temperature and the truncations, making grammar-illegal tokens
+ * unrepresentable regardless of their probability mass. Non-finite logits
+ * (NaN, +/-inf) are excluded from the support: a backend bug producing NaN
+ * surfaces as an empty-support error instead of silently skewed sampling.
  */
 
 use anyhow::{ensure, Result};
@@ -17,6 +17,13 @@ use super::model::{Logits, Token};
 pub struct SamplingParams {
     pub temperature: f32,
     pub top_p: f32,
+    /// Rank cutoff, or `None` for no rank cutoff at all.
+    ///
+    /// `Option` rather than the conventional sentinel zero, so "disabled" has
+    /// exactly one spelling. A `top_k` of zero would otherwise have to mean
+    /// either "keep nothing", which is not a distribution, or "keep
+    /// everything", which reads as the opposite of what it says.
+    pub top_k: Option<usize>,
     pub seed: u64,
 }
 
@@ -25,6 +32,7 @@ impl Default for SamplingParams {
         Self {
             temperature: 0.8,
             top_p: 0.95,
+            top_k: None,
             seed: 0,
         }
     }
@@ -33,6 +41,7 @@ impl Default for SamplingParams {
 pub struct Sampler {
     params: SamplingParams,
     state: u64,
+    draws: u64,
 }
 
 impl Sampler {
@@ -49,10 +58,46 @@ impl Sampler {
             "top_p must be in (0, 1], got {}",
             params.top_p
         );
+        assert!(
+            params.top_k != Some(0),
+            "top_k must be >= 1; omit it (None) to sample without a rank cutoff"
+        );
         // Avoid the LCG's zero fixed point without changing seeded behavior.
         Self {
             params,
             state: params.seed.wrapping_add(0x9e3779b97f4a7c15),
+            draws: 0,
+        }
+    }
+
+    /// The parameters this sampler was constructed with, so a caller
+    /// recording a run can state them without being handed a second copy to
+    /// keep in step with this one.
+    pub fn params(&self) -> SamplingParams {
+        self.params
+    }
+
+    /// How many values have been drawn from the LCG since construction.
+    ///
+    /// Together with the seed this is the sampler's whole position in its
+    /// stream, and it is not derivable from the token count: the greedy path
+    /// draws nothing, and `Session`'s over-budget step consumes a draw before
+    /// it fails. A recording that wants to resume, rather than restart, has
+    /// to observe it.
+    pub fn draws(&self) -> u64 {
+        self.draws
+    }
+
+    /// Advance the stream by `n` values without sampling, so a replay can
+    /// resume at a recorded draw count instead of from the seed.
+    ///
+    /// Iterative rather than the closed-form LCG jump: recorded counts are
+    /// generation-length, the loop is visibly the same state transition
+    /// `next_unit` performs, and a jump formula is a second implementation of
+    /// the generator that could disagree with the first.
+    pub fn skip_draws(&mut self, n: u64) {
+        for _ in 0..n {
+            self.next_unit();
         }
     }
 
@@ -61,6 +106,7 @@ impl Sampler {
             .state
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
+        self.draws += 1;
         ((self.state >> 40) as f32) / ((1u64 << 24) as f32)
     }
 
@@ -85,15 +131,29 @@ impl Sampler {
         let supported = |i: usize, l: f32| l.is_finite() && mask.is_none_or(|m| m[i]);
 
         if self.params.temperature <= 0.0 {
-            // Argmax without the candidate allocation. `>=` keeps the last
-            // index on ties, matching the previous max_by behavior that the
-            // Tier 2 scripts rely on.
+            // Argmax without the candidate allocation. Strictly `>`, so a tie
+            // keeps the *first* supported index, which is what `torch.argmax`
+            // returns and therefore what greedy decoding has to do to be
+            // comparable against the reference implementation at all.
+            //
+            // This read `>=` until the correctness ladder needed greedy
+            // parity. Leaving the sampler on the other convention while the
+            // ladder used torch's would have made the ladder pass while the
+            // shipping decoder did something else -- the precise shape of
+            // gate that proves nothing. Exact ties are rare in f32 over a
+            // 262144-wide vocabulary but not absent: grammar masking and
+            // logit-softcap saturation both produce them, and both are here.
+            //
+            // `metrics::argmax_first` is the same rule without a mask, and
+            // the two are pinned to agree by a test below rather than shared
+            // as one function: threading an optional mask through a metrics
+            // helper would complicate it for a single caller.
             let mut best: Option<(Token, f32)> = None;
             let mut support = 0usize;
             for (i, &l) in logits.0.iter().enumerate() {
                 if supported(i, l) {
                     support += 1;
-                    if best.is_none_or(|(_, b)| l >= b) {
+                    if best.is_none_or(|(_, b)| l > b) {
                         best = Some((i as Token, l));
                     }
                 }
@@ -129,8 +189,20 @@ impl Sampler {
             c.1 /= total;
         }
 
-        // Top-p: keep the smallest probability-sorted prefix covering top_p.
         candidates.sort_by(|a, b| b.1.total_cmp(&a.1));
+
+        // Top-k before top-p, which is the conventional order and also the
+        // cheap one: both truncations want the same descending sort, and
+        // taking the rank cutoff first shortens the prefix scan below. The
+        // order is observable -- top-k then top-p keeps at most k tokens,
+        // while the reverse could keep more -- so it is stated rather than
+        // left to fall out of the code. A k at or above the support truncates
+        // nothing.
+        if let Some(k) = self.params.top_k {
+            candidates.truncate(k);
+        }
+
+        // Top-p: keep the smallest probability-sorted prefix covering top_p.
         let mut cum = 0.0;
         let mut cut = candidates.len();
         for (i, c) in candidates.iter().enumerate() {
@@ -167,6 +239,18 @@ mod tests {
         Sampler::new(SamplingParams {
             temperature,
             top_p,
+            top_k: None,
+            seed,
+        })
+    }
+
+    /// The same, with a rank cutoff. Separate from `sampler` so the existing
+    /// tests keep reading as assertions about temperature and top-p alone.
+    fn sampler_k(temperature: f32, top_p: f32, top_k: usize, seed: u64) -> Sampler {
+        Sampler::new(SamplingParams {
+            temperature,
+            top_p,
+            top_k: Some(top_k),
             seed,
         })
     }
@@ -182,11 +266,34 @@ mod tests {
     }
 
     #[test]
-    fn temperature_zero_is_argmax_and_ties_pick_the_last_index() {
+    fn temperature_zero_is_argmax_and_ties_pick_the_first_index_as_torch_does() {
         let mut s = sampler(0.0, 0.95, 0);
         assert_eq!(s.sample(&logits(&[0.1, 2.0, 0.3]), None).unwrap(), 1);
-        // Flat logits: last index wins, preserved for script determinism.
-        assert_eq!(s.sample(&logits(&[1.0, 1.0, 1.0]), None).unwrap(), 2);
+        // Flat logits: the first index wins. This test asserted the last
+        // index until greedy parity with transformers became a gate; the
+        // choice is arbitrary in isolation and is not arbitrary once a
+        // reference implementation exists to disagree with.
+        assert_eq!(s.sample(&logits(&[1.0, 1.0, 1.0]), None).unwrap(), 0);
+        assert_eq!(s.sample(&logits(&[0.0, 2.0, 2.0, 1.0]), None).unwrap(), 1);
+    }
+
+    #[test]
+    fn greedy_sampling_and_the_metrics_argmax_resolve_ties_the_same_way() {
+        // The two implementations exist separately because the sampler
+        // carries a mask and the metric does not. That is a reason for two
+        // functions, not for two conventions, so the agreement is asserted
+        // rather than assumed -- a later edit to either one fails here.
+        let mut s = sampler(0.0, 0.95, 0);
+        for row in [
+            vec![1.0f32, 1.0, 1.0],
+            vec![0.0, 2.0, 2.0, 1.0],
+            vec![-3.0, -1.0, -5.0],
+            vec![5.0, 4.0, 3.0],
+        ] {
+            let got = s.sample(&logits(&row), None).unwrap();
+            let want = crate::metrics::argmax_first(&row) as Token;
+            assert_eq!(got, want, "row {row:?}");
+        }
     }
 
     #[test]
@@ -252,6 +359,137 @@ mod tests {
         for _ in 0..50 {
             assert_eq!(s.sample(&l, None).unwrap(), 1);
         }
+    }
+
+    #[test]
+    fn skipping_draws_lands_where_drawing_them_would_have() {
+        // The property that makes a recorded draw count usable: a sampler
+        // fast-forwarded past n draws continues the same sequence as one that
+        // spent them sampling. Asserted on the tokens rather than the raw
+        // state, since the tokens are what a replay has to reproduce.
+        let l = logits(&[0.1, 0.5, 0.2, 0.9]);
+        let mut spent = sampler(0.8, 0.95, 42);
+        for _ in 0..7 {
+            spent.sample(&l, None).unwrap();
+        }
+        let mut skipped = sampler(0.8, 0.95, 42);
+        skipped.skip_draws(spent.draws());
+        for _ in 0..10 {
+            assert_eq!(
+                skipped.sample(&l, None).unwrap(),
+                spent.sample(&l, None).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn the_draw_count_tracks_the_stochastic_path_and_the_greedy_path_draws_nothing() {
+        // One draw per stochastic sample, and none at all at temperature
+        // zero -- so the count is not a restatement of the token count, and a
+        // recording cannot infer it from the transcript length.
+        let l = logits(&[0.1, 0.5, 0.2, 0.9]);
+        let mut stochastic = sampler(0.8, 0.95, 1);
+        assert_eq!(stochastic.draws(), 0);
+        for expected in 1..=5u64 {
+            stochastic.sample(&l, None).unwrap();
+            assert_eq!(stochastic.draws(), expected);
+        }
+        let mut greedy = sampler(0.0, 0.95, 1);
+        for _ in 0..5 {
+            greedy.sample(&l, None).unwrap();
+        }
+        assert_eq!(greedy.draws(), 0, "the argmax path consumed a draw");
+    }
+
+    #[test]
+    fn a_failed_sample_still_reports_the_draws_it_did_not_take() {
+        // An empty support fails before reaching the generator, so a caller
+        // recording the count after an error records a position the sampler
+        // is actually at.
+        let mut s = sampler(0.8, 0.95, 0);
+        s.sample(&logits(&[0.0, 1.0]), Some(&[false, false]))
+            .unwrap_err();
+        assert_eq!(s.draws(), 0);
+    }
+
+    #[test]
+    fn top_k_of_one_degenerates_to_the_most_probable_token() {
+        // The rank sibling of tiny_top_p_degenerates_to_the_most_probable_token:
+        // with top_p wide open, the cutoff is entirely top-k's doing.
+        let l = logits(&[0.0, 3.0, 1.0]);
+        let mut s = sampler_k(1.0, 1.0, 1, 11);
+        for _ in 0..50 {
+            assert_eq!(s.sample(&l, None).unwrap(), 1);
+        }
+    }
+
+    #[test]
+    fn top_k_excludes_a_token_top_p_alone_would_have_kept() {
+        // Three equally probable tokens: top_p = 1.0 keeps all three, and a
+        // seeded run reaches every one of them. Ranking to two must make the
+        // third unreachable, which is the property top-k exists for -- and
+        // which asserting only the kept tokens' presence would not show.
+        let l = logits(&[1.0, 1.0, 1.0]);
+        let mut open = sampler(1.0, 1.0, 3);
+        let mut seen_open = [false; 3];
+        for _ in 0..200 {
+            seen_open[open.sample(&l, None).unwrap() as usize] = true;
+        }
+        assert_eq!(seen_open, [true, true, true]);
+
+        let mut ranked = sampler_k(1.0, 1.0, 2, 3);
+        let mut seen_ranked = [false; 3];
+        for _ in 0..200 {
+            seen_ranked[ranked.sample(&l, None).unwrap() as usize] = true;
+        }
+        assert!(
+            !seen_ranked[2],
+            "top_k = 2 sampled the third-ranked token: {seen_ranked:?}"
+        );
+    }
+
+    #[test]
+    fn a_top_k_at_or_above_the_support_changes_nothing() {
+        // Not merely "still valid": bit-identical to the same seed without a
+        // cutoff, because a no-op truncation must not perturb the draw stream.
+        let l = logits(&[0.1, 0.5, 0.2, 0.9]);
+        let mut without = sampler(0.8, 0.95, 42);
+        let mut at = sampler_k(0.8, 0.95, 4, 42);
+        let mut above = sampler_k(0.8, 0.95, 999, 42);
+        for _ in 0..20 {
+            let want = without.sample(&l, None).unwrap();
+            assert_eq!(at.sample(&l, None).unwrap(), want);
+            assert_eq!(above.sample(&l, None).unwrap(), want);
+        }
+    }
+
+    #[test]
+    fn top_k_ranks_the_masked_support_not_the_whole_vocabulary() {
+        // The mask is applied first, so the two highest logits being masked
+        // out must not consume the k. Were the rank taken over the raw
+        // vocabulary, top_k = 1 here would keep a masked token and the sample
+        // would have no legal support at all.
+        let l = logits(&[9.0, 8.0, 1.0, 0.5]);
+        let mask = [false, false, true, true];
+        let mut s = sampler_k(1.0, 1.0, 1, 5);
+        for _ in 0..50 {
+            assert_eq!(s.sample(&l, Some(&mask)).unwrap(), 2);
+        }
+    }
+
+    #[test]
+    fn top_k_does_not_reach_the_greedy_path() {
+        // Temperature zero is an argmax; a rank cutoff is meaningless there
+        // and must not become a special case that quietly changes the answer.
+        let l = logits(&[0.1, 2.0, 0.3]);
+        assert_eq!(sampler_k(0.0, 0.95, 1, 0).sample(&l, None).unwrap(), 1);
+        assert_eq!(sampler_k(0.0, 0.95, 3, 0).sample(&l, None).unwrap(), 1);
+    }
+
+    #[test]
+    #[should_panic(expected = "top_k")]
+    fn a_top_k_of_zero_is_rejected_at_construction() {
+        sampler_k(0.8, 0.95, 0, 0);
     }
 
     #[test]

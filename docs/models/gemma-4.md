@@ -279,6 +279,32 @@ the frequencies, not of a narrowed slice.
 Sliding-attention layers use `rope_type: default` with `head_dim` of 256 and no
 `partial_rotary_factor`, so all 256 dimensions rotate.
 
+#### How the converted files express it
+
+llama.cpp cannot express a zero-padded frequency vector through metadata, so the converter
+writes the padding as a tensor. `rope_freqs.weight [256] F32` appears once per file
+(`docs/models/gemma4-gguf.txt` lines 630 and 639), holding 64 entries of 1.0 followed by 192
+entries of 1e30. Those are divisors: dividing an inverse frequency by 1e30 drives the angle to
+approximately zero, reproducing the Hugging Face identity. The converter records the tensor as
+a workaround, because the Hugging Face split-half ordering is `cc000000ss000000` while ggml's
+neox rotation supports only `ccss000000000000`, and the head cannot be rearranged without
+breaking `use_alternative_attention`.
+
+Two consequences for anything reading a converted file:
+
+- `gemma4.rope.dimension_count = 512` is the **width of the rotation operation**, not a claim
+  that 512 dimensions receive a non-trivial rotation. A reader that treats it as the count of
+  rotating dimensions and skips `rope_freqs.weight` produces wrong logits without erroring.
+- `gemma4.rope.dimension_count_swa = 256` is `head_dim_swa * partial_rotary_factor_swa`. With
+  `head_dim` 256 and no sliding-layer partial factor the default of 1.0 applies, so the sliding
+  regime genuinely rotates its full width. `rope_freqs.weight` applies to the full-attention
+  layers only.
+
+There is no `rope_type` key in the converted form: the type is expressed structurally, through
+`rope_freqs.weight` plus the full-width `dimension_count`. The rust harness reads the published
+checkpoint rather than a converted file and derives the same divisors from
+`partial_rotary_factor` directly (`cpu.rs`, `rope_rotating_pairs`).
+
 ## E-series exclusive features
 
 This section is the practical core of the document. Each item below is present in E2B and E4B
@@ -345,6 +371,32 @@ model-level projection (`per_layer_model_projection`) and a 256-wide normalizati
 The per-layer table is large. On E2B it holds 262144 × 8960 = 2,348,810,240 parameters,
 exceeding the entire transformer body. Any memory plan for the E-series that omits it is wrong
 by more than a factor of two.
+
+### The `per_layer` substring does not survive conversion
+
+The six families are named consistently in the published checkpoint and inconsistently in the
+converted one. Half of them lose the `per_layer` substring:
+
+| Hugging Face name | llama.cpp name | Contains `per_layer` |
+|---|---|---|
+| `model.embed_tokens_per_layer` | `per_layer_token_embd` | yes |
+| `model.per_layer_model_projection` | `per_layer_model_proj` | yes |
+| `model.per_layer_projection_norm` | `per_layer_proj_norm` | yes |
+| `model.layers.{bid}.per_layer_input_gate` | `blk.{bid}.inp_gate` | no |
+| `model.layers.{bid}.per_layer_projection` | `blk.{bid}.proj` | no |
+| `model.layers.{bid}.post_per_layer_input_norm` | `blk.{bid}.post_norm` | no |
+
+`post_per_layer_input_norm` becomes `blk.{bid}.post_norm`, which additionally collides in
+appearance with the ordinary Gemma post-norm naming and is distinguishable from
+`blk.{bid}.post_attention_norm` and `blk.{bid}.post_ffw_norm` only by knowing the architecture.
+
+The substring was once how a backend detected the feature, and it worked only because the three
+file-level tensors retain it and are present in every per-layer-embedding checkpoint
+(`docs/models/gemma4-gguf.txt` lines 632-635 and 641). It was sound for refusal and would have
+been unsound for enumeration: a whitelist keyed on the same substring silently omits `inp_gate`,
+`proj`, and `post_norm` — three of the six families, and every per-block one. This is why the
+rust harness lists all six by name in `PLE_TOP_LEVEL_TENSORS` and `PLE_LAYER_TENSORS` and
+requires them together, rather than finding them by substring.
 
 ## Cross-layer KV cache sharing
 
@@ -691,9 +743,9 @@ like a hazard and each resolves differently:
   the freeze filters iterate, so no freeze pattern can expose it to an optimizer. See
   [docs/training/gemma-4-training.md](../training/gemma-4-training.md).
 
-What remains is the rust harness, which does not read the tensor under either name — a gap
-that matters only when Gemma 4 support is implemented there, and which is recorded in
-[docs/rust-harness/gemma-4-ingestion.md](../rust-harness/gemma-4-ingestion.md).
+**The rust harness is unaffected.** It was the outstanding gap while Gemma 4 support was being
+built; the backend now reads the tensor and applies it as the layer's last operation
+(`OPTIONAL_LAYER_TENSORS` in `cpu.rs`, and the `layer_output_scale` multiply).
 
 ### The per-layer embedding data path
 
@@ -786,6 +838,72 @@ it applies, `v_proj` is not constructed at all (lines 1206-1212) and the forward
 `with_scale=False` (line 1201). Key and value therefore share the projection output, not the
 post-norm post-rotary tensor.
 
+### The shared-KV weight conflict
+
+The modeling code and the released weights disagree about whether shared-KV layers carry key
+and value projections at all. Both sides are quoted below because the disagreement is real and
+neither source is obviously the stale one.
+
+**What the code says.** `Gemma4TextAttention.__init__` guards four modules behind
+`if not self.is_kv_shared_layer:` — `k_norm`, `v_norm`, `k_proj`, and `v_proj`
+(`docs/models/gemma4-upstream.txt` lines 1213-1227, upstream 1198-1212), under the comment
+"Layers sharing kv states don't need any weight matrices". For E2B that means 15 of 35 layers
+construct them.
+
+**What the weights say.** All 35 E2B layers carry `k_proj`, `v_proj`, and `k_norm`. The
+safetensors headers record 28 at head width 256 and 7 at 512
+(`docs/models/gemma4-safetensors.txt` lines 414 and 529); the GGUF inventory lists
+`attn_k.weight`, `attn_v.weight`, and `attn_k_norm.weight` for the same 35 blocks
+(`docs/models/gemma4-gguf.txt` lines 613 and 625). Note `k_norm` is inside the same guard, so
+the surplus is four tensor families and not two.
+
+**The converter is not the cause.** `conversion/gemma.py` computes `first_kv_shared_layer_idx`
+and uses it for one purpose only — widening the feed-forward layers when `use_double_wide_mlp`
+is set (`docs/models/gemma4-upstream.txt` lines 4851-4854, upstream 682-686). It never filters
+key or value tensors. The GGUF therefore mirrors the safetensors, and the safetensors are where
+the surplus originates.
+
+**The file contradicts itself, which is the sharpest evidence available.** E2B's published FFN
+widths are not uniform: 20 layers at 12288 and 15 at 6144
+(`docs/models/gemma4-gguf.txt` lines 617-622). That split is `num_kv_shared_layers = 20` applied
+by the converter. So the same boundary value is simultaneously honored — the trailing 20 layers
+are double-wide — and contradicted, because those same 20 layers also carry the key and value
+projections the code says a shared layer does not have. Whatever produced these files acted on
+`num_kv_shared_layers` for the MLP and not for attention.
+
+Two readings were possible, and they were not equally cheap to be wrong about:
+
+| Reading | Implication | Cost if wrong |
+|---------|-------------|---------------|
+| The code is authoritative; the tensors are residue | Shared layers read a donor's K/V; the surplus tensors are dead | 18 of E4B's 42 layers attend over the wrong keys — fluent, wrong output, no error |
+| The weights are authoritative; the code is ahead of them | Every layer computes its own K/V, and `num_kv_shared_layers` describes cache reuse only | Wasted memory, correct output |
+
+**Resolved 2026-08-09 in favor of the modeling code.** RH.1a check 1 in
+[docs/verification/rust-harness/rust-harness.md](../verification/rust-harness/rust-harness.md) measured the distribution
+*shape* of all four attention projections in every E2B layer, rather than their scale. Scale
+does not separate the two readings: `initializer_range` places an untrained tensor at
+approximately the same standard deviation as a trained one. Shape does.
+
+Across the 20 shared layers, `k_proj` and `v_proj` hold a `|mean| / std` ratio of 0.8217 with a
+spread of 0.0010 and excess kurtosis between -0.64 and -0.63 on every layer — a truncated
+normal with its tails intact. In those same layers `q_proj` and `o_proj`, which the modeling
+code does construct, average 0.7295 and 0.7635 with positive excess kurtosis, matching the
+trained projections in layers 0-14. Two tensors of one module cannot lose kurtosis relative to
+their initialization while the two beside them gain it, so the disputed tensors were allocated
+and never entered the gradient path.
+
+The surplus `k_proj`, `v_proj`, and `k_norm` are therefore initialization residue that
+`transformers` allocates and the converter faithfully copies. The `rust-harness` CPU backend
+implements this reading. The choice is marked in the loader and pinned by
+`a_shared_layers_own_key_and_value_weights_are_deliberately_unread` in
+`rust-harness/runtime/src/model/cpu.rs`, which remains a tripwire rather than evidence: it
+asserts the tensors stay unread, so it passes by construction and fails only if someone changes
+the loader without reading this section.
+
+One caveat belongs in the record. This is statistical inference over weight distributions, not
+a logit comparison. RH.1a check 2 — greedy generation through the harness against
+`transformers` on the same prompt — remains listed as confirmation and is not blocking.
+
 ## Per-tier support
 
 What each tier does with a real checkpoint today. The target is E2B and E4B; 12B and 31B are
@@ -794,28 +912,41 @@ out of scope until the E-series pair is settled.
 The distinction that matters here is between reading the geometry and running the model. All
 three tiers read it generically — no layer count, width, or stride is hardcoded in any of them,
 and the schedule comes from the `layer_types` array rather than a stride constant. Loading a
-checkpoint and producing logits is a separate question, and for the CPU backend the answer is
-currently no for both variants.
+checkpoint and producing logits is a separate question, and for the CPU backend every
+architectural feature the two E-series variants declare is now implemented.
 
 | Tier | E2B | E4B | What decides it |
 |------|-----|-----|-----------------|
-| `rust-harness` CPU backend | Refused | Refused | `check_supported` rejects per-layer embeddings, which both variants carry |
+| `rust-harness` CPU backend | Yes (unverified against real weights) | Yes (unverified against real weights) | Every declared feature implemented; correctness checked against synthetic fixtures only |
 | `rust-harness` GGUF metadata reader | Yes | Yes | Every value read by key; schedule decoded from the bool array, E2B stride 5 and E4B 6 |
 | `training` | Yes | Yes | `spec_from_hf_config` maps any config carrying the field names; reference recipes exist for both |
 | `interp` | Yes | Yes (no recipe) | No geometry constants at all; hook path and width resolve from the loaded config |
 
-Three refusals stand between the CPU backend and a real checkpoint. Each is a declared
-unimplemented feature that fails loudly, not a silent wrong answer:
+Per-layer embeddings, per-layer feed-forward widths, per-layer head dimensions, dual RoPE, the
+per-layer output scale, final logit softcapping, and cross-layer KV sharing were all refusals
+and are now implemented. Sharing was the last of them, and the order mattered: the per-layer
+embedding refusal was the binding one on a real file, so implementing it first left the
+shared-KV metadata key as the only thing standing between a released checkpoint and a load
+that would have given all 42 layers independent caches. That key was briefly a refusal in its
+own right for exactly that reason, and is now read.
 
-- **Per-layer embeddings.** `check_supported` bails on any tensor whose name contains
-  `per_layer`. Both variants have them, so both are refused. This is the binding one.
-- **Cross-layer KV sharing.** A layer with `attn_q` but no `attn_k`/`attn_v` is refused. Note
-  this signature does not actually fire on the released checkpoints, which carry K and V on
-  every block — see the first open question below.
-- **Per-layer feed-forward widths.** `Config::from_gguf` refuses a `feed_forward_length` that
-  varies per layer, because a single `Config::ffn_dim` cannot express it. This affects E2B
-  only: `use_double_wide_mlp` doubles the MLP on its KV-shared tail, so its array holds two
-  widths, while E4B sets the flag false and ships one.
+Two caveats on the "yes" in the table above, both material:
+
+- **No real weights have been run through it.** Every feature is verified against synthetic
+  fixtures and, where the arithmetic allows, an independent recomputation. Two implementations
+  written from the same documents agree on a shared misreading; only Google's actual
+  checkpoint breaks that tie, and that run is workstation-only.
+- **The shared-KV weight layout follows the modeling code, which the checkpoints contradict.**
+  Shared layers' own `attn_k` and `attn_v` are left unread. This was the highest-risk
+  assumption in the backend until 2026-08-09, when weight-distribution statistics showed the
+  surplus tensors are untrained initialization residue — see
+  [The shared-KV weight conflict](#the-shared-kv-weight-conflict). The reading is now
+  corroborated by the checkpoint itself rather than by the modeling source alone.
+
+The tensor signature for sharing — a layer with `attn_q` but no `attn_k`/`attn_v` — is no
+longer a refusal, because it is now the legitimate shape of a shared layer. It survives
+inverted: a layer that *owns* its cache and lacks those tensors has nothing to attend over, and
+that is still refused.
 
 `training` and `interp` need no such work. Their E-series gap is coverage rather than
 capability: every interp recipe under `training/recipes/interp/` names an E2B subject, so E4B
@@ -826,17 +957,12 @@ is supported but unexercised there.
 Recorded rather than guessed. Resolve these against the `transformers` implementation at the
 pinned revision before relying on any assumption about them.
 
-- **Whether the released E-series checkpoints match the shared-KV weight layout of the modeling
-  code.** `modeling_gemma4.py` line 1199 constructs `k_proj` and `v_proj` only when
-  `not self.is_kv_shared_layer`, which for E2B implies 15 layers carrying key and value
-  projections. The E2B safetensors headers record `k_proj.weight` on all 35 language-model layers
-  (28 at `[256, 1536]` and 7 at `[512, 1536]`, `docs/models/gemma4-safetensors.txt` lines 414 and 529),
-  and the GGUF inventory likewise lists `attn_k.weight` for all 35 blocks
-  (`docs/models/gemma4-gguf.txt` lines 613 and 625). The code and the checkpoint disagree about whether
-  shared layers carry key and value weights. Whether the surplus tensors are unused residue, or
-  the released weights predate the code, was not settled from the sources read. This matters
-  because it means the absence of `attn_k` is **not** a reliable shared-KV signature for these
-  files.
+- ~~**Whether the released E-series checkpoints match the shared-KV weight layout of the
+  modeling code.**~~ Resolved 2026-08-09 in favor of the modeling code; the surplus tensors are
+  untrained residue. The evidence and the measurement are in
+  [The shared-KV weight conflict](#the-shared-kv-weight-conflict). Retained here struck through
+  rather than deleted because this was the only open question the CPU backend had to answer in
+  order to run, and its resolution licenses code that is already written.
 - **Tensor-level data for 12B and 31B.** Not collected. All statements about those two models
   derive from `config.json`.
 - **`use_bidirectional_attention: "vision"`.** Present on 12B and 31B, `null` on the E-series.

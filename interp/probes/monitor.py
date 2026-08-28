@@ -1,18 +1,23 @@
-"""Async probe monitor (W4): batch replay of serving logs, not a daemon.
+"""Probe monitor (W4): aggregate the scores the serving process already took.
 
-Reads a window of W3 request logs, reconstructs each request's text, runs a
-single batched bf16 capture per replay through the workbench model, and scores
-every requested registered probe via the W2 score path. Runs as batch work:
-it refuses to start while an inference service is healthy (the GPU belongs to
-serving during serving) — asynchronous replay is the design, not a compromise,
-since llama-server has no activation read path.
+Reads a window of served-request logs and reports each probe's score
+distribution, the records over threshold, and the drift versus the previous
+run over the same probe set.
 
-Output: one report JSON per run under the monitor directory plus
-flagged.jsonl beside it (records over threshold — alerting is a file, not a
-pager). Malformed log records are counted as skipped, never a crash. The
-report includes deltas versus the previous run over the same probe set — the
-drift signal later phases build on — plus the target services observed in the
-window and what their precision means for the scores (see replay_fidelity).
+It does not run a model. Every record carries the probe scores computed in the
+process that answered the request, by the tap seam in
+`rust-harness/harness/src/interplog.rs`, so there is nothing left to replay.
+That is the whole difference from the stage this replaced: llama-server had no
+activation read path, so scoring meant re-running a second copy of the model
+offline over a request log a proxy had captured. Three things went with the
+replay -- the proxy, the GPU contention that made this batch work, and the
+fidelity caveat, which existed because the replay model was bf16 while the
+serving model was quantized. Scores now come from the weights that produced
+the text, so there is no gap left to describe.
+
+Output: one report JSON per run under the monitor directory plus flagged.jsonl
+beside it (records over threshold -- alerting is a file, not a pager).
+Malformed log records are counted as skipped, never a crash.
 """
 
 from __future__ import annotations
@@ -25,24 +30,19 @@ import re
 import numpy as np
 
 from interp.manifest import git_sha, text_sha256, utc_now
-from interp.probes.registry import Probe, load_probe
-from interp.probes.score import score_texts
 
 DEFAULT_LOG_ROOT = "/mnt/ai-data/interp/logs"
 DEFAULT_MONITOR_ROOT = "/mnt/ai-data/interp/monitor"
 RETENTION_DAYS = 30
-# Serving targets that run at the same precision the probes were fitted at. A replay over
-# traffic served by one of these describes the serving model itself, not an approximation.
-FULL_PRECISION_SERVICES = ("llama-gpu-bf16",)
-HEALTH_URLS = (
-    "http://127.0.0.1:8002/v1/health",  # llama-gpu
-    "http://127.0.0.1:8003/health",  # vllm-gpu
-    "http://127.0.0.1:8004/v1/health",  # llama-gpu-bf16 (full-precision monitored path)
-)
+
+# Reports are comparable only against reports produced the same way. Recorded
+# in every report and matched by `previous_report`, so a drift delta cannot be
+# computed across a change in how the score was obtained.
+SCORED_IN_BAND = "in_band"
 
 
 class MonitorError(Exception):
-    """Preconditions failed: services up, no probes, or empty window."""
+    """Preconditions failed: no probes, or an empty window."""
 
 
 def parse_window(window: str) -> datetime.timedelta:
@@ -51,20 +51,6 @@ def parse_window(window: str) -> datetime.timedelta:
         raise MonitorError(f"bad --window {window!r}: use forms like 7d or 12h")
     value, unit = int(match.group(1)), match.group(2)
     return datetime.timedelta(**{"days" if unit == "d" else "hours": value})
-
-
-def services_up(health_urls: tuple[str, ...] = HEALTH_URLS) -> list[str]:
-    """URLs of inference services currently answering their healthchecks."""
-    import requests
-
-    up = []
-    for url in health_urls:
-        try:
-            if requests.get(url, timeout=3).status_code == 200:
-                up.append(url)
-        except requests.RequestException:
-            continue
-    return up
 
 
 def enforce_retention(
@@ -85,7 +71,13 @@ def enforce_retention(
 
 
 def reconstruct_text(record: dict, include_response: bool = True) -> str | None:
-    """Rebuild the text a replay scores from one W3 log record."""
+    """Rebuild the text a record describes, for the report's top-record ids.
+
+    No longer feeds a scorer -- the score is in the record. It is still what
+    identifies a record to a person reading the report, and the id is a hash
+    of it, so a record whose text cannot be rebuilt is skipped rather than
+    reported under an id that means nothing.
+    """
     parts = []
     messages = record.get("messages")
     if isinstance(messages, list):
@@ -100,6 +92,31 @@ def reconstruct_text(record: dict, include_response: bool = True) -> str | None:
     return "\n".join(parts) if parts else None
 
 
+def probe_score(record: dict) -> tuple[str, float, float] | None:
+    """The (probe name, score, threshold) one record carries, or None.
+
+    The score is the maximum over the request's scored positions, which is the
+    statistic the serving process records: one number per request, the same
+    granularity the report has always been built from.
+
+    `None` covers a record served without a probe loaded, which is ordinary
+    (the endpoint answers whether or not interp asked it to observe) and is
+    counted as skipped rather than treated as a zero. A zero would drag every
+    distribution toward it.
+    """
+    probe = record.get("probe")
+    if not isinstance(probe, dict):
+        return None
+    name = probe.get("name")
+    score = probe.get("max_score")
+    threshold = probe.get("threshold")
+    if not isinstance(name, str):
+        return None
+    if not isinstance(score, (int, float)) or not isinstance(threshold, (int, float)):
+        return None
+    return name, float(score), float(threshold)
+
+
 def read_log_window(
     log_dir: str,
     since: datetime.datetime,
@@ -107,7 +124,13 @@ def read_log_window(
 ) -> tuple[list[dict], dict]:
     """Load records in [since, until); count skips by reason, never crash."""
     records: list[dict] = []
-    skipped = {"malformed_json": 0, "no_timestamp": 0, "out_of_window": 0, "no_text": 0}
+    skipped = {
+        "malformed_json": 0,
+        "no_timestamp": 0,
+        "out_of_window": 0,
+        "no_text": 0,
+        "no_scores": 0,
+    }
     if not os.path.isdir(log_dir):
         return records, skipped
     for name in sorted(os.listdir(log_dir)):
@@ -137,43 +160,27 @@ def read_log_window(
                 if text is None:
                     skipped["no_text"] += 1
                     continue
+                scored = probe_score(record)
+                if scored is None:
+                    skipped["no_scores"] += 1
+                    continue
                 record["_text"] = text
                 record["_id"] = text_sha256(record["timestamp"] + text)[:16]
+                record["_probe"], record["_score"], record["_threshold"] = scored
                 records.append(record)
     return records, skipped
 
 
-def replay_fidelity(target_services: list[str]) -> str:
-    """State the relationship between the replayed model and the serving model.
+def previous_report(
+    monitor_dir: str, probe_names: list[str], scored: str = SCORED_IN_BAND
+) -> dict | None:
+    """Most recent prior report over the same probe set, for the drift delta.
 
-    Probes are fitted on activations captured from a bf16 model and stored
-    exactly as float32, so a replay describes the served model exactly only
-    when serving also ran at full precision. Derived from
-    the records' target_service rather than asserted, so a report over mixed or
-    quantized traffic cannot claim a fidelity it does not have.
+    Matched on `scored` as well as the probe set. A report built from scores
+    the serving process took and one built by replaying a second model are two
+    measurements of different things; subtracting them would present the
+    change in method as drift in the model.
     """
-    if target_services and all(s in FULL_PRECISION_SERVICES for s in target_services):
-        return (
-            "replay and serving ran at the same precision: these scores describe "
-            "the model that answered the logged traffic"
-        )
-    if any(s in FULL_PRECISION_SERVICES for s in target_services):
-        return (
-            "mixed-precision window: some records were served at full precision "
-            "and some quantized, so these scores describe the replay model rather "
-            "than any single serving model. Replay one target service at a time "
-            "(--log-dir selects one) for a fidelity claim"
-        )
-    return (
-        "the replay model runs at bf16 while the logged traffic was served "
-        "quantized, so these scores describe the replay model's internals, not "
-        "the serving model's. Route monitored traffic through the full-precision "
-        "endpoint (make fullprec-up) to remove the difference"
-    )
-
-
-def previous_report(monitor_dir: str, probe_names: list[str]) -> dict | None:
-    """Most recent prior report over the same probe set, for the drift delta."""
     if not os.path.isdir(monitor_dir):
         return None
     for name in sorted(os.listdir(monitor_dir), reverse=True):
@@ -184,6 +191,8 @@ def previous_report(monitor_dir: str, probe_names: list[str]) -> dict | None:
             with open(path, encoding="utf-8") as f:
                 report = json.load(f)
         except (OSError, json.JSONDecodeError):
+            continue
+        if report.get("scored") != scored:
             continue
         if sorted(report.get("probes", {})) == sorted(probe_names):
             return report
@@ -201,32 +210,23 @@ def distribution(scores: np.ndarray, threshold: float) -> dict:
 
 
 def run_monitor(
-    probe_dirs: list[str],
-    replay_model: str,
-    replay_model_hash: str,
     log_dir: str,
     monitor_root: str = DEFAULT_MONITOR_ROOT,
     window: str = "7d",
+    probes: list[str] | None = None,
     max_records: int | None = None,
     top_n: int = 20,
-    capture_fn=None,
-    health_check=services_up,
     now: datetime.datetime | None = None,
 ) -> dict:
-    """Replay a log window, score every probe, write report + flagged.jsonl."""
-    up = health_check()
-    if up:
-        raise MonitorError(
-            f"inference services are up ({', '.join(up)}); the monitor is batch "
-            "work that owns the GPU — stop serving first (make down)"
-        )
+    """Aggregate a log window into a report plus flagged.jsonl.
 
-    probes: list[Probe] = [
-        load_probe(d, expect_model_hash=replay_model_hash) for d in probe_dirs
-    ]
-    if not probes:
-        raise MonitorError("no probes given")
-
+    `probes` filters by name; omitted, every probe appearing in the window is
+    reported. There is no probe artifact to load: the record names its probe
+    and carries the threshold that probe was scored against, and the serving
+    process already refused any probe fitted on weights other than the ones it
+    serves. Checking the pairing again here would re-derive a weaker version
+    of a guarantee that has already been enforced at the point it matters.
+    """
     now = now or datetime.datetime.now(datetime.UTC)
     since = now - parse_window(window)
     # Read the window before enforcing retention: a --window longer than the
@@ -235,6 +235,11 @@ def run_monitor(
     records, skipped = read_log_window(log_dir, since, now)
     removed = enforce_retention(log_dir, now=now)
     total = len(records) + sum(skipped.values())
+    if probes:
+        wanted = set(probes)
+        dropped_by_filter = [r for r in records if r["_probe"] not in wanted]
+        records = [r for r in records if r["_probe"] in wanted]
+        skipped["other_probe"] = len(dropped_by_filter)
     dropped = 0
     if max_records is not None and len(records) > max_records:
         # newest-first up to the cap; say what was dropped (W4 decision 5)
@@ -242,13 +247,12 @@ def run_monitor(
         dropped = len(records) - max_records
         records = records[:max_records]
     if not records:
-        raise MonitorError(f"no replayable records in window {window} under {log_dir}")
+        raise MonitorError(f"no scored records in window {window} under {log_dir}")
 
-    texts = [r["_text"] for r in records]
-    scores = score_texts(probes, texts, replay_model, capture_fn=capture_fn)
+    by_probe: dict[str, list[dict]] = {}
+    for record in records:
+        by_probe.setdefault(record["_probe"], []).append(record)
 
-    # Records carry the service that answered them (logproxy.py base_record), so replay
-    # fidelity is read off the window rather than assumed from configuration
     target_services = sorted(
         {
             r["target_service"]
@@ -262,24 +266,33 @@ def run_monitor(
     run_dir = os.path.join(monitor_dir, run_name)
     os.makedirs(run_dir, exist_ok=True)
 
-    prior = previous_report(monitor_dir, [p.name for p in probes])
+    prior = previous_report(monitor_dir, sorted(by_probe))
     report_probes = {}
     flagged_path = os.path.join(run_dir, "flagged.jsonl")
     flagged_count = 0
     with open(flagged_path, "w", encoding="utf-8") as flagged_file:
-        for probe in probes:
-            probe_scores = scores[probe.name]
-            dist = distribution(probe_scores, probe.threshold)
+        for name, probe_records in sorted(by_probe.items()):
+            probe_scores = np.array([r["_score"] for r in probe_records], dtype=float)
+            # The threshold each record was scored against. They agree unless
+            # the served probe was re-exported mid-window; the maximum is the
+            # conservative reading, and the disagreement is reported rather
+            # than averaged away.
+            thresholds = sorted({r["_threshold"] for r in probe_records})
+            threshold = max(thresholds)
+            dist = distribution(probe_scores, threshold)
+            dist["threshold"] = threshold
+            if len(thresholds) > 1:
+                dist["thresholds_observed"] = thresholds
             order = np.argsort(-probe_scores)[:top_n]
             dist["top_records"] = [
                 {
-                    "id": records[int(i)]["_id"],
+                    "id": probe_records[int(i)]["_id"],
                     "score": round(float(probe_scores[int(i)]), 4),
                 }
                 for i in order
             ]
             if prior:
-                prior_dist = prior["probes"].get(probe.name, {})
+                prior_dist = prior["probes"].get(name, {})
                 if "mean" in prior_dist:
                     dist["delta_vs_previous"] = {
                         "mean": round(dist["mean"] - prior_dist["mean"], 4),
@@ -290,15 +303,15 @@ def run_monitor(
                         ),
                         "previous_run": prior["run"],
                     }
-            report_probes[probe.name] = dist
-            for i in np.flatnonzero(probe_scores > probe.threshold):
+            report_probes[name] = dist
+            for i in np.flatnonzero(probe_scores > threshold):
                 flagged_file.write(
                     json.dumps(
                         {
-                            "probe": probe.name,
-                            "id": records[int(i)]["_id"],
+                            "probe": name,
+                            "id": probe_records[int(i)]["_id"],
                             "score": round(float(probe_scores[int(i)]), 4),
-                            "timestamp": records[int(i)]["timestamp"],
+                            "timestamp": probe_records[int(i)]["timestamp"],
                         }
                     )
                     + "\n"
@@ -306,18 +319,17 @@ def run_monitor(
                 flagged_count += 1
 
     report = {
-        "schema_version": 1,
+        "schema_version": 2,
         "kind": "probe_monitor",
         "run": run_name,
         "timestamp": utc_now(),
         "git_sha": git_sha(),
-        "replay_model": replay_model,
-        "replay_model_hash": replay_model_hash,
+        "scored": SCORED_IN_BAND,
         "window": window,
         "log_dir": log_dir,
         "counts": {
             "total": total,
-            "replayed": len(records),
+            "reported": len(records),
             "skipped": skipped,
             "dropped_over_cap": dropped,
             "flagged": flagged_count,
@@ -325,7 +337,11 @@ def run_monitor(
         },
         "probes": report_probes,
         "target_services": target_services,
-        "note": replay_fidelity(target_services),
+        "note": (
+            "scores were taken in the process that answered each request, so "
+            "they describe the model that produced the text; there is no "
+            "replay and no precision gap to state"
+        ),
     }
     with open(os.path.join(run_dir, "report.json"), "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)

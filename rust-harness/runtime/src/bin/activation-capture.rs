@@ -15,11 +15,12 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::sync::{Arc, Mutex};
 
-use anyhow::{bail, ensure, Context, Result};
+use anyhow::{ensure, Context, Result};
+use runtime::cli::{Flag, Kind, Spec};
+use runtime::digest::sha256_hex;
 
-use runtime::model::cpu::{CpuModel, Tap};
+use runtime::model::cpu::{CpuModel, LastRowTap};
 use runtime::model::Model;
 use runtime::npz::{npy_f32, npy_i64, NpzWriter};
 use runtime::tokenizer::Tokenizer;
@@ -30,22 +31,6 @@ const SHARD_SIZE: usize = 2048;
 struct Example {
     text: String,
     label: i64,
-}
-
-/// Keeps only the most recent row per requested layer; after a prefill the
-/// surviving rows are the last position's.
-#[derive(Clone)]
-struct LastRowTap {
-    layers: Vec<usize>,
-    rows: Arc<Mutex<HashMap<usize, Vec<f32>>>>,
-}
-
-impl Tap for LastRowTap {
-    fn on_residual(&mut self, layer: usize, _position: usize, x: &[f32]) {
-        if self.layers.contains(&layer) {
-            self.rows.lock().unwrap().insert(layer, x.to_vec());
-        }
-    }
 }
 
 fn load_dataset(path: &Path) -> Result<Vec<Example>> {
@@ -73,105 +58,6 @@ fn load_dataset(path: &Path) -> Result<Vec<Example>> {
     Ok(examples)
 }
 
-fn sha256_hex(bytes: &[u8]) -> String {
-    // FIPS 180-4 SHA-256; hand-rolled to keep the workspace dependency-free.
-    // Verified against the standard test vectors in the tests below.
-    const K: [u32; 64] = [
-        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
-        0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
-        0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f,
-        0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
-        0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
-        0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
-        0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116,
-        0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
-        0xc67178f2,
-    ];
-    let mut h: [u32; 8] = [
-        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
-        0x5be0cd19,
-    ];
-    let mut msg = bytes.to_vec();
-    let bit_len = (bytes.len() as u64) * 8;
-    msg.push(0x80);
-    while msg.len() % 64 != 56 {
-        msg.push(0);
-    }
-    msg.extend_from_slice(&bit_len.to_be_bytes());
-    for block in msg.chunks_exact(64) {
-        let mut w = [0u32; 64];
-        for (i, c) in block.chunks_exact(4).enumerate() {
-            w[i] = u32::from_be_bytes(c.try_into().unwrap());
-        }
-        for i in 16..64 {
-            let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
-            let s1 = w[i - 2].rotate_right(17) ^ w[i - 2].rotate_right(19) ^ (w[i - 2] >> 10);
-            w[i] = w[i - 16]
-                .wrapping_add(s0)
-                .wrapping_add(w[i - 7])
-                .wrapping_add(s1);
-        }
-        let [mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut hh] = h;
-        for i in 0..64 {
-            let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
-            let ch = (e & f) ^ (!e & g);
-            let t1 = hh
-                .wrapping_add(s1)
-                .wrapping_add(ch)
-                .wrapping_add(K[i])
-                .wrapping_add(w[i]);
-            let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
-            let maj = (a & b) ^ (a & c) ^ (b & c);
-            let t2 = s0.wrapping_add(maj);
-            hh = g;
-            g = f;
-            f = e;
-            e = d.wrapping_add(t1);
-            d = c;
-            c = b;
-            b = a;
-            a = t1.wrapping_add(t2);
-        }
-        for (s, v) in h.iter_mut().zip([a, b, c, d, e, f, g, hh]) {
-            *s = s.wrapping_add(v);
-        }
-    }
-    h.iter().map(|v| format!("{v:08x}")).collect()
-}
-
-fn git_sha() -> String {
-    std::process::Command::new("git")
-        .args(["rev-parse", "HEAD"])
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        .unwrap_or_else(|| "unknown".to_string())
-}
-
-fn utc_now() -> String {
-    // Seconds since the epoch rendered as UTC without a time library.
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let days = secs / 86_400;
-    let (h, m, s) = (secs % 86_400 / 3600, secs % 3600 / 60, secs % 60);
-    // Civil-date conversion (Howard Hinnant's algorithm).
-    let z = days as i64 + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let year = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let day = doy - (153 * mp + 2) / 5 + 1;
-    let month = if mp < 10 { mp + 3 } else { mp - 9 };
-    let year = if month <= 2 { year + 1 } else { year };
-    format!("{year:04}-{month:02}-{day:02}T{h:02}:{m:02}:{s:02}Z")
-}
-
 /// The shard slicing assumes exactly one captured row per example per layer.
 /// Checking that before anything is written keeps a future divergence between
 /// the per-layer keying of `collected` and the capture loop's iteration from
@@ -196,11 +82,99 @@ fn check_row_counts(
     Ok(())
 }
 
-fn run(model_path: &Path, dataset_path: &Path, layers: &[usize], out_dir: &Path) -> Result<()> {
-    let data = std::fs::read(model_path)
-        .with_context(|| format!("read model {}", model_path.display()))?;
-    let file = runtime::gguf::parse(&data).context("parse GGUF")?;
-    let mut model = CpuModel::from_gguf(&file, &data).context("load CPU model")?;
+/// What the capture was asked to do, as the command line resolved it.
+///
+/// Grouped rather than passed as separate arguments because `run` and the
+/// header below want the same set: two parameter lists over one set of facts
+/// is two things to keep in step, and the header going out of step with the
+/// run is the exact failure the header exists to prevent.
+struct Request<'a> {
+    model: &'a Path,
+    dataset: &'a Path,
+    layers: &'a [usize],
+    out: &'a Path,
+    text_only: bool,
+    single_thread: bool,
+}
+
+/// The resolved configuration of a capture run, as obs fields.
+///
+/// A per-binary header event rather than a share of `run.header` or
+/// `ladder.header`, for the reason `schemas/obs_record.json`'s
+/// `per_tool_header_events` note gives: each of those field lists is asserted for
+/// key-set equality in both directions, and admitting a third writer with a
+/// different shape means moving the differences to `optional` -- an optional
+/// field being one no test can miss. Three events pinned exactly beats one
+/// pinned loosely. The keys shared with the other headers are spelled
+/// identically and carry the same units, so one `jq` filter reads all of them.
+///
+/// `model_hash` is the u64 load fingerprint, not the sha256 the manifest
+/// carries. The manifest's digest identifies the *weights the activations came
+/// from*, which is the claim the harness checks a probe against; this
+/// identifies the checkpoint the run loaded, and it is already computed. A
+/// second sha256 of ~14 GiB per run to say the same thing twice is the cost
+/// U2 declined for the harness header and this declines for the same reason.
+fn capture_header(
+    req: &Request,
+    model_hash: u64,
+    examples: usize,
+    model: &CpuModel,
+) -> Vec<(&'static str, obs::Value)> {
+    let (weight_bytes, width) = model.weight_bytes();
+    let requested: Vec<String> = req.layers.iter().map(usize::to_string).collect();
+    vec![
+        ("model", obs::Value::Str(req.model.display().to_string())),
+        ("model_hash", obs::Value::Str(format!("{model_hash:016x}"))),
+        ("n_layers", obs::Value::Int(model.config().n_layers as u64)),
+        (
+            "dtype",
+            obs::Value::Str(width.unwrap_or("mixed widths").to_string()),
+        ),
+        ("weight_bytes", obs::Value::Int(weight_bytes as u64)),
+        // In the order asked for, not the manifest's sorted spelling: a header
+        // records what the run was configured with, and `--layers 24,8` and
+        // `--layers 8,24` are the same capture asked for two ways.
+        ("layers", obs::Value::Str(requested.join(","))),
+        (
+            "dataset",
+            obs::Value::Str(req.dataset.display().to_string()),
+        ),
+        ("examples", obs::Value::Int(examples as u64)),
+        ("out", obs::Value::Str(req.out.display().to_string())),
+        ("text_only", obs::Value::Bool(req.text_only)),
+        ("threads", obs::Value::Int(model.threads() as u64)),
+        ("dot", obs::Value::Str(model.dot().label().to_string())),
+        ("batch", obs::Value::Str(model.batch().label())),
+        (
+            "binary_version",
+            obs::Value::Str(env!("CARGO_PKG_VERSION").to_string()),
+        ),
+        ("git_sha", obs::Value::Str(runtime::envelope::git_sha())),
+    ]
+}
+
+fn run(req: &Request, log: &mut obs::RunLog) -> Result<()> {
+    // Named for what the body below has always called them, so the request
+    // struct is a change to the signature and not to the capture.
+    let (model_path, dataset_path, out_dir) = (req.model, req.dataset, req.out);
+    let (layers, text_only, single_thread) = (req.layers, req.text_only, req.single_thread);
+    // `load` drops the checkpoint mapping before returning; see its doc
+    // comment for why no caller here should open one itself.
+    let (mut model, fingerprint) = {
+        let _span = log.phase("model.load");
+        CpuModel::load(model_path, text_only)?
+    };
+    // The manifest records the identity of the weights these activations were
+    // read from, and the harness refuses a probe whose recorded hash does not
+    // match what it serves -- so this digest and `harness`'s must stay the
+    // same function over the same bytes. Both now stream the weights file
+    // through `digest::sha256_file` rather than hashing a mapping, which is
+    // what lets the mapping be dropped above.
+    let weights_path =
+        runtime::checkpoint::resolve(model_path)?.join(runtime::checkpoint::WEIGHTS_FILE);
+    if single_thread {
+        model.set_threads(1);
+    }
     let config = *model.config();
     for &l in layers {
         ensure!(
@@ -209,13 +183,25 @@ fn run(model_path: &Path, dataset_path: &Path, layers: &[usize], out_dir: &Path)
             config.n_layers
         );
     }
-    let tokenizer = Tokenizer::from_gguf(&file).context("load tokenizer")?;
+    let tokenizer_path = runtime::tokenizer::resolve_tokenizer(model_path, None)?;
+    let tokenizer = Tokenizer::from_file(&tokenizer_path).context("load tokenizer")?;
     let examples = load_dataset(dataset_path)?;
 
-    let tap = LastRowTap {
-        layers: layers.to_vec(),
-        rows: Arc::new(Mutex::new(HashMap::new())),
-    };
+    // After `set_threads`, so the header reports the width the capture actually
+    // ran at rather than the one it was asked for -- the distinction this
+    // record exists for, `DotKind` having defaulted to `Sequential` for months
+    // with nothing printing the fold. And after `load_dataset`, so `examples`
+    // is a required field rather than an optional one: a dataset that cannot be
+    // read is a failed run with a `fail` record, not a run with a header
+    // missing a key.
+    log.event(
+        "info",
+        "activation-capture.header",
+        "resolved capture configuration",
+        &capture_header(req, fingerprint, examples.len(), &model),
+    );
+
+    let tap = LastRowTap::new(layers.to_vec());
     model.set_tap(Box::new(tap.clone()));
 
     // One f32 row per example per layer, captured at the last prompt token
@@ -223,7 +209,7 @@ fn run(model_path: &Path, dataset_path: &Path, layers: &[usize], out_dir: &Path)
     let mut collected: HashMap<usize, Vec<f32>> = layers.iter().map(|&l| (l, Vec::new())).collect();
     for (i, example) in examples.iter().enumerate() {
         model.truncate(0).context("reset KV cache")?;
-        tap.rows.lock().unwrap().clear();
+        tap.clear();
         let mut tokens = vec![tokenizer.bos()];
         tokens.extend(tokenizer.encode(&example.text)?);
         ensure!(
@@ -234,22 +220,21 @@ fn run(model_path: &Path, dataset_path: &Path, layers: &[usize], out_dir: &Path)
             config.context_length
         );
         model.prefill(&tokens)?;
-        let rows = tap.rows.lock().unwrap();
         for &l in layers {
-            let row = rows
-                .get(&l)
+            let row = tap
+                .row(l)
                 .with_context(|| format!("example {}: no tap row for layer {l}", i + 1))?;
             collected
                 .get_mut(&l)
                 .expect("initialized above")
                 .extend(row.iter().copied());
         }
-        eprintln!(
-            "[RUN] Example {}/{}: {} tokens",
+        runtime::status::run(&format!(
+            "Example {}/{}: {} tokens",
             i + 1,
             examples.len(),
             tokens.len()
-        );
+        ));
     }
     check_row_counts(&collected, layers, config.embed_dim, examples.len())?;
 
@@ -299,9 +284,21 @@ fn run(model_path: &Path, dataset_path: &Path, layers: &[usize], out_dir: &Path)
         "schema_version": 1,
         "artifact": "activation_capture",
         "model_id": model_name,
-        "model_revision": "gguf",
-        "model_hash": sha256_hex(&data),
+        // The container the weights were read from, not a revision -- the
+        // field name is the interp capture-shard schema's and predates this
+        // backend. It said "gguf" while a GGUF was loaded and must not keep
+        // saying so now that a checkpoint is, because the interp toolkit reads
+        // this to know what produced a shard.
+        "model_revision": "safetensors",
+        "model_hash": runtime::digest::sha256_file(&weights_path)
+            .with_context(|| format!("hash {}", weights_path.display()))?,
         "layers": sorted_layers,
+        // Which point of each layer the rows came from. "layers" alone names
+        // half of where an activation was taken, and a shard is readable
+        // today only because there is exactly one site -- a property of this
+        // moment, not of the format. From Site's own Display, so the stored
+        // text cannot drift from the value a reader parses back.
+        "site": LastRowTap::SITE.to_string(),
         "position": "last",
         "dataset_path": dataset_path.display().to_string(),
         "dataset_sha256": sha256_hex(&dataset_bytes),
@@ -310,19 +307,19 @@ fn run(model_path: &Path, dataset_path: &Path, layers: &[usize], out_dir: &Path)
         "count": examples.len(),
         "shards": shards,
         "capture_backend": "rust-harness-cpu",
-        "git_sha": git_sha(),
-        "created": utc_now(),
+        "git_sha": runtime::envelope::git_sha(),
+        "created": runtime::envelope::utc_now(),
     });
     let tmp = out_dir.join("manifest.json.tmp");
     std::fs::write(&tmp, serde_json::to_string_pretty(&manifest)?)?;
     std::fs::rename(&tmp, out_dir.join("manifest.json"))?;
-    eprintln!(
-        "[OK] Capture: {} examples, {} layers, {} shards -> {}",
+    runtime::status::ok(&format!(
+        "Capture: {} examples, {} layers, {} shards -> {}",
         examples.len(),
         layers.len(),
         shards,
         out_dir.display()
-    );
+    ));
     Ok(())
 }
 
@@ -343,33 +340,122 @@ fn parse_layers(arg: &str) -> Result<Vec<usize>> {
     Ok(layers)
 }
 
+const SPEC: Spec = Spec {
+    program: "activation-capture",
+    summary: "Write last-token residual activations for the requested layers in the\n\
+              interp capture shard format.",
+    positionals: "",
+    required: &["--model", "--dataset", "--layers", "--out"],
+    flags: &[
+        Flag {
+            name: "--help",
+            kind: Kind::Bare,
+            help: "print this help and exit",
+        },
+        Flag {
+            name: "-h",
+            kind: Kind::Bare,
+            help: "print this help and exit",
+        },
+        Flag {
+            name: "--model",
+            kind: Kind::Value("<checkpoint-dir>"),
+            help: "the checkpoint to capture from; required",
+        },
+        Flag {
+            name: "--dataset",
+            kind: Kind::Value("<examples.jsonl>"),
+            help: "one JSON object per line, each with a text field and a label; required",
+        },
+        Flag {
+            name: "--layers",
+            kind: Kind::Value("<l0,l1,...>"),
+            help: "decoder layers to tap, comma separated and distinct; required",
+        },
+        Flag {
+            name: "--out",
+            kind: Kind::Value("<dir>"),
+            help:
+                "capture directory to write shards, examples.jsonl and manifest.json into; required",
+        },
+        Flag {
+            name: "--text-only",
+            kind: Kind::Bare,
+            help: "treat a multimodal checkpoint as its text tower",
+        },
+        Flag {
+            name: "--single-thread",
+            kind: Kind::Bare,
+            help: "run the row split on one thread; results are bit-identical at every width",
+        },
+    ],
+};
+
 fn main() -> ExitCode {
-    const USAGE: &str = "usage: activation-capture --model <path.gguf> \
-         --dataset <examples.jsonl> --layers <l0,l1,...> --out <dir>";
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let get = |flag: &str| -> Option<String> {
-        args.iter()
-            .position(|a| a == flag)
-            .and_then(|i| args.get(i + 1).cloned())
+    if runtime::cli::handled_help(&SPEC, &args) {
+        return ExitCode::SUCCESS;
+    }
+    // Snapshotted before parsing, so the record carries what was typed rather
+    // than what survived it.
+    let argv_full = args.clone();
+    let (mut model, mut dataset, mut layers_arg, mut out) = (None, None, None, None);
+    let parsed = {
+        let mut slots: [(&'static str, &mut Option<String>); 4] = [
+            ("--model", &mut model),
+            ("--dataset", &mut dataset),
+            ("--layers", &mut layers_arg),
+            ("--out", &mut out),
+        ];
+        match runtime::cli::extract(&SPEC, args, &mut slots) {
+            Ok(p) => p,
+            Err(e) => return runtime::cli::usage_error(&SPEC, &e),
+        }
     };
-    let parsed: Result<()> = (|| {
-        let model = get("--model").map(PathBuf::from);
-        let dataset = get("--dataset").map(PathBuf::from);
-        let out = get("--out").map(PathBuf::from);
-        let layers_arg = get("--layers");
-        let (Some(model), Some(dataset), Some(out), Some(layers_arg)) =
-            (model, dataset, out, layers_arg)
-        else {
-            bail!("missing required flag");
-        };
-        let layers = parse_layers(&layers_arg)?;
-        run(&model, &dataset, &layers, &out)
-    })();
-    match parsed {
-        Ok(()) => ExitCode::SUCCESS,
+    if let Some(extra) = parsed.rest.first() {
+        return runtime::cli::usage_error(&SPEC, &format!("Unexpected argument: {extra}"));
+    }
+    // Two failure kinds, two exit codes. A command line that cannot be acted on
+    // is exit 2 through `usage_error`; a capture that was asked for correctly
+    // and then failed is exit 1 below. This binary used to return 1 for both.
+    if let Some(absent) = runtime::cli::missing_required(&SPEC, &parsed) {
+        return runtime::cli::usage_error(&SPEC, &absent);
+    }
+    let expect = |v: Option<String>| v.expect("checked by missing_required above");
+    let layers = match parse_layers(&expect(layers_arg)) {
+        Ok(l) => l,
+        Err(e) => return runtime::cli::usage_error(&SPEC, &format!("--layers: {e:#}")),
+    };
+    // Opened only once the arguments are known good, so a usage mistake leaves
+    // no row in the catalog -- and after `handled_help` above, so a query is
+    // not a run. `cli` is "harness" for the whole workspace, with the binary
+    // name as `command`.
+    let mut log = obs::RunLog::begin("activation-capture", &argv_full);
+    let (model, dataset, out) = (
+        PathBuf::from(expect(model)),
+        PathBuf::from(expect(dataset)),
+        PathBuf::from(expect(out)),
+    );
+    let outcome = run(
+        &Request {
+            model: &model,
+            dataset: &dataset,
+            layers: &layers,
+            out: &out,
+            text_only: parsed.has("--text-only"),
+            single_thread: parsed.has("--single-thread"),
+        },
+        &mut log,
+    );
+    match outcome {
+        Ok(()) => {
+            log.end(0);
+            ExitCode::SUCCESS
+        }
         Err(e) => {
-            eprintln!("[ERROR] Capture failed: {e:#}");
-            eprintln!("{USAGE}");
+            runtime::status::error(&format!("Capture failed: {e:#}"));
+            log.fail(&e, 1);
+            log.end(1);
             ExitCode::from(1)
         }
     }
@@ -380,15 +466,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn sha256_matches_the_fips_test_vectors() {
-        assert_eq!(
-            sha256_hex(b""),
-            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-        );
-        assert_eq!(
-            sha256_hex(b"abc"),
-            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
-        );
+    fn the_flag_table_is_well_formed() {
+        SPEC.check().expect("this binary's own flag table");
     }
 
     #[test]
@@ -422,13 +501,5 @@ mod tests {
             err.contains("layer 1: captured 6 rows for 3 examples"),
             "{err}"
         );
-    }
-
-    #[test]
-    fn utc_now_renders_a_plausible_iso_timestamp() {
-        let t = utc_now();
-        assert_eq!(t.len(), 20);
-        assert!(t.ends_with('Z') && t.contains('T'), "{t}");
-        assert!(t.starts_with("20"), "{t}");
     }
 }

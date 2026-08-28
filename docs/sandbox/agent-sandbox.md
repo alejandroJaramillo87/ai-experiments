@@ -176,12 +176,13 @@ stay tracked. This deliberately avoids mounting `/mnt/ai-data`, which stays on t
 list.
 
 Two consequences follow from the copy. Each worktree needs its own, unless the worktree and the
-model store share a filesystem and the file is hardlinked instead. And the CPU backend
-dequantizes every tensor to f32 at load, so resident cost far exceeds on-disk size: E2B's body
-plus main embedding is roughly 2.28B parameters (~9.1GB as f32) and E4B's roughly 4.67B
-(~18.7GB). The container limit is 32GB for that reason.
+model store share a filesystem and the file is hardlinked instead. And the CPU backend copies
+every tensor out of the map at load, so resident cost is roughly the checkpoint's own size on
+top of the page cache: E2B's body plus main embedding is roughly 2.28B parameters and E4B's
+roughly 4.67B, which at the published BF16 is about 4.6GB and 9.3GB. The backend held weights
+as f32 until P10.5, at twice those figures, which is why the container limit is 32GB.
 
-Header inspection needs none of that memory. `gguf-info` reads only the metadata and tensor
+Header inspection needs none of that memory. `checkpoint-info` reads only the metadata and tensor
 directory, never the weight payload, so architecture reconciliation and tokenizer questions are
 answerable well inside the limit.
 

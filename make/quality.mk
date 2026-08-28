@@ -62,6 +62,23 @@ format: ## Format code with ruff
 # about the right answer. It was added after a count in docs/verification/ drifted from 56 to
 # an actual 66 and sat that way for several sessions with nothing able to see it.
 #
+# check_runbook_entries.py checks the two structural properties of a verification entry that
+# a reader would otherwise have to take on trust. A gate-backed entry pastes no output; it
+# names the test function asserting its signal, so its honesty is a reference into the tree,
+# and renaming a test is a one-line edit that leaves the runbook claiming coverage nothing
+# provides. The second half is cruder: a VERIFIED entry must offer evidence of one of the two
+# legal kinds. Neither says an entry is correct -- whether pasted output demonstrates a signal
+# needs a reader, and five entries marked verified against output that did not demonstrate
+# theirs is what opened the campaign that added this file.
+#
+# check_surface_census.py is the only gate here that starts from the code. Every other one
+# reads the documentation and asks whether it is true, which cannot see a feature nobody
+# thought to document: `attention-capture` and `layer-diff` shipped as binaries named once
+# each in prose, and `long-context-golden` and `tiny-model` were named nowhere at all. It
+# enumerates the rust-harness command line from the `Flag` literals and subtracts what the
+# runbooks mention. A mention is a low bar deliberately -- whether the mention verifies
+# anything is the check above's question, and a reader's.
+#
 # check_kb_refs.py holds the ends of a cross-reference together. Thirty-one known-bug ids sit
 # in permanent source comments and one is asserted as a literal string by a test, so a
 # deleted ledger row breaks a reference in the direction hardest to notice: the code still
@@ -113,6 +130,8 @@ endif
 	$(RUN_PY) python scripts/docs/check_make_targets.py
 	$(RUN_PY) python scripts/docs/check_doc_counts.py
 	$(RUN_PY) python scripts/docs/check_kb_refs.py
+	$(RUN_PY) python scripts/docs/check_runbook_entries.py
+	$(RUN_PY) python scripts/docs/check_surface_census.py
 	@files=$$(find . -name '*.sh' -type f \
 	    -not -path './.git/*' -not -path './.venv/*' \
 	    -not -path './node_modules/*' -not -path '*/target/*' \
@@ -129,6 +148,12 @@ endif
 # minutes, no model downloads, temporary-directory writes only. full may allocate
 # near-capacity VRAM and load real models, so it is opt-in -- a gate nobody will run is not
 # a gate.
+#
+# e4b is full plus the checks that need the real Gemma 4 E4B checkpoint on disk. It is a
+# provisioning precondition rather than a third tier of hardware stress: the same GPU runs
+# it, and what separates it is whether a 14 GiB checkpoint is present. Kept opt-in for the
+# reason the marker is deselected by default -- no sandbox has the checkpoint, and a tier
+# that fails for an absent file teaches everyone to ignore it.
 #
 # Deliberately not named TIER. make/agents.mk:86 already owns that variable with a different
 # accepted set (sandbox|full) and a `?=` default; a second `?=` in this file would win by
@@ -154,9 +179,10 @@ ifdef AI_SANDBOX
 	exit 1
 else
 	@case "$(HW)" in \
-	  smoke|full) ;; \
+	  smoke|full|e4b) ;; \
 	  *) printf '[ERROR] quality-full: unknown HW: %s\n' "$(HW)"; \
-	     printf '  Accepted: smoke (under five minutes, default), full (near-capacity VRAM, real models)\n'; \
+	     printf '  Accepted: smoke (under five minutes, default), full (near-capacity VRAM, real models),\n'; \
+	     printf '            e4b (full plus the checks needing the real E4B checkpoint on disk)\n'; \
 	     printf '  Command: make quality-full HW=full\n'; \
 	     exit 1;; \
 	esac
@@ -171,9 +197,21 @@ else
 	$(MAKE) quality
 	$(MAKE) test
 	$(RUN_PY) pytest -m hw_smoke -v
-	@if [ "$(HW)" = full ]; then \
+	@case "$(HW)" in full|e4b) \
 	  printf '[RUN] hardware full tier: near-capacity VRAM and real model loads\n'; \
-	  $(RUN_PY) pytest -m hw_full -v; \
+	  $(RUN_PY) pytest -m hw_full -v;; \
+	esac
+	@if [ "$(HW)" = e4b ]; then \
+	  printf '[RUN] E4B tier: checks that need the real checkpoint on disk\n'; \
+	  if [ -z "$(HARNESS_E4B_MODEL)" ]; then \
+	    printf '[ERROR] quality-full HW=e4b: HARNESS_E4B_MODEL is unset, so every check would skip its way to green\n'; \
+	    printf '  Found: the tier names the checkpoint through one variable so no test hard-codes a path.\n'; \
+	    printf '  Solution: point it at the instruction-tuned safetensors directory\n'; \
+	    printf '  Command: make quality-full HW=e4b HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B-it\n'; \
+	    exit 1; \
+	  fi; \
+	  HARNESS_E4B_MODEL="$(HARNESS_E4B_MODEL)" $(RUN_PY) pytest -m hw_e4b -v; \
+	  HARNESS_E4B_MODEL="$(HARNESS_E4B_MODEL)" $(MAKE) -C rust-harness test-e4b; \
 	fi
 endif
 

@@ -135,8 +135,8 @@ class TestIsExempt:
             # protecting nothing: the one genuinely stale document under this
             # directory is the conformance investigation, which stays exempt
             # through EXEMPT_PARTS and EXEMPT_SUFFIXES either way.
-            "docs/verification/known-bugs.md",
-            "docs/verification/training-phase2.md",
+            "docs/verification/bugs/known-bugs.md",
+            "docs/verification/training/training-phase2.md",
         ],
     )
     def test_living_documents_are_in_scope(self, mod, rel):

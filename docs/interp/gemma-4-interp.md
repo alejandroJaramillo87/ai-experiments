@@ -106,7 +106,7 @@ That makes the uniform-width assumption throughout the tier sound:
 - `/interp/sae/evaluate.py:88-89` infers `d_model` from the cached rows.
 - `/interp/steering/export.py:41-43` **hard-refuses** a direction set whose per-layer shapes
   differ: `directions must share one 1-D width`.
-- `/interp/probes/export.py:31-35` applies the same refusal to probe weights.
+- `/interp/probes/export.py` applies the same refusal to probe weights.
 
 Those refusals would fire if per-layer widths ever reached the residual stream. They do not
 here. Recording this explicitly matters because the assumption is load-bearing and was
@@ -265,22 +265,22 @@ This settles the contested finding tracked in `/docs/verification/investigations
 
 ## Export safety
 
-Both GGUF writers in this tier stay inside the limits of the `rust-harness` reader, which
-accepts F32, F16, BF16, and Q8_0 tensors and int32, float32, bool, and string metadata arrays:
+This tier writes two artifacts the `rust-harness` reader opens, and only one is still GGUF:
 
-| Writer | Architecture | Metadata | Tensors |
-|--------|--------------|----------|---------|
-| `/interp/steering/export.py:33-57` | `controlvector` | one string, one uint32 | `direction.{layer}`, float32 |
-| `/interp/probes/export.py:23-53` | `probe` | two strings, one uint32, two float32 | `probe.weights`, `probe.mu`, `probe.sigma`, float32 |
+| Writer | Format | Scalars | Tensors |
+|--------|--------|---------|---------|
+| `/interp/steering/export.py` | GGUF, architecture `controlvector` | one string, one uint32 | `direction.{layer}`, float32 |
+| `/interp/probes/export.py` | safetensors plus a JSON sidecar | `name`, `model_hash`, `layer`, `bias`, `threshold`, `width`, optional `site` | `weights`, `mu`, `sigma`, float32 |
 
-Neither writes an array-valued metadata key, and both write float32. The Rust reader at
-`/rust-harness/runtime/src/model/probe.rs:41-58` demands exactly these types, and probe and
-steering artifacts stay float32 regardless of the model's storage type — they are small, and
-exactness in the direction vectors is worth more than their size.
+Neither writes an array-valued metadata key, and both write float32. Probe and steering
+artifacts stay float32 regardless of the model's storage type — they are small, and exactness
+in the direction vectors is worth more than their size.
 
-The **model** GGUF path is a separate contract: those files are BF16, which the reader now
-decodes losslessly, and what still refuses them is architectural rather than format-level. See
-`/docs/rust-harness/gemma-4-ingestion.md`.
+There is no longer a **model** GGUF path to contrast them with. The runtime reads the published
+checkpoint — `config.json` and `model.safetensors` — and keeps each weight at its declared
+width; the probe has since followed it to safetensors, so the steering artifact is the only
+GGUF container the runtime still opens. See
+[../rust-harness/runtime-design.md](../rust-harness/runtime-design.md).
 
 ## Ecosystem gaps
 

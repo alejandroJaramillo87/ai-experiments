@@ -30,12 +30,17 @@ used by scorecards and evaluation output is in [report_schema.md](report_schema.
 | Metrics file | `<run_dir>/metrics.jsonl` | A sink inside the tracker fan-out |
 | Snapshot dashboard | `<run_dir>/run.html` | `report`, on demand |
 
-`<cli>` is `training` or `interp`. `OBS_LOG_DIR` defaults to `/mnt/ai-data/logs`
+`<cli>` is `training`, `interp` or `harness`. `OBS_LOG_DIR` defaults to `/mnt/ai-data/logs`
 (`common/obs/core.py`, `DEFAULT_LOG_DIR`), which is not reachable from an agent sandbox — set
 the variable to a local path to exercise any of this off the workstation.
 
 `<run_dir>` is the directory the training loop creates,
 `${run.output_root}/${run.name}/<timestamp>/` (`training/recipes/loader.py`, `create_run_dir`).
+The rust harness places it differently — `${OBS_LOG_DIR}/harness/<run_id>/`, a sibling of the
+event file — and creates it lazily, on the first metrics write, because
+`common/obs/retention.py` prunes by an `R-*.jsonl` glob that never matches a directory. Either
+way `run_dir` names the directory holding that run's `metrics.jsonl`, which is what
+`report --run` opens.
 The event file and the metrics file are joined by the `run_id`: the metrics header carries it,
 and the event file records the run directory once the command creates one, as a `run.dir`
 event. Either file locates the other.
@@ -264,5 +269,5 @@ $ python -m training runs --json | jq -r '.[] | select(.exit_code != 0) | .run_d
 - [../../schemas/README.md](../../schemas/README.md) — the cross-language record contracts,
   including `obs_record.json`
 - [../../common/README.md](../../common/README.md) — the `common/obs/` package itself
-- [../verification/observability.md](../verification/observability.md) — the verification record
+- [../verification/observability/observability.md](../verification/observability/observability.md) — the verification record
   for this stack

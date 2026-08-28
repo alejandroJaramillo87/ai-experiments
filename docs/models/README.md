@@ -10,9 +10,10 @@ transcripts that verify them.
 | [gemma-4.md](gemma-4.md) | Gemma 4 dense family (E2B, E4B, 12B, 31B): general architecture reference, and the citation target of [../verification/investigations/gemma-4-conformance_investigation.md](../verification/investigations/gemma-4-conformance_investigation.md) |
 
 Each tier keeps its own scoped Gemma 4 document, covering what that tier's code consumes:
-[../rust-harness/gemma-4-ingestion.md](../rust-harness/gemma-4-ingestion.md) for the runtime,
-[../training/gemma-4-training.md](../training/gemma-4-training.md) for training, and
-[../interp/gemma-4-interp.md](../interp/gemma-4-interp.md) for interp.
+[../training/gemma-4-training.md](../training/gemma-4-training.md) for training and
+[../interp/gemma-4-interp.md](../interp/gemma-4-interp.md) for interp. The runtime has none:
+it reads the published checkpoint directly, so what it requires is stated here and in
+[../rust-harness/runtime-design.md](../rust-harness/runtime-design.md).
 
 ## Header transcripts
 
@@ -57,7 +58,7 @@ Both scripts default to `/tmp`, so `--out` is required to land the file here.
 $ ./scripts/models/upstream_source_transcript.sh --out docs/models/gemma4-upstream.txt
 ```
 
-**`gemma-4.md` and `../rust-harness/gemma-4-ingestion.md` cite these transcripts by line
+**`gemma-4.md` cites these transcripts by line
 number, and regenerating shifts those numbers.** That used to be a warning asking a human to
 re-check six citations by hand. `../../tests/models/test_gemma4_facts_contract.py` now asserts
 each one, so a shifted citation fails a test instead. The documentation reference gate still

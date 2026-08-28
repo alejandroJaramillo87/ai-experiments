@@ -731,7 +731,7 @@ later item ids stay stable. There is no work to execute under this id.
 #### OBS-15: rig console (optional)
 
 - **Goal**: one grand dashboard — a long-lived, always-available page
-  indexing every run across both CLIs, with links into per-run live and
+  indexing every run across all three tiers, with links into per-run live and
   snapshot views.
 - **Status**: not started, and optional by design. Implement only if living with
   OBS-12 shows the ephemeral viewer is insufficient.
@@ -740,11 +740,18 @@ later item ids stay stable. There is no work to execute under this id.
   definition, a `make` target, documentation.
 - **Design**:
   - The same stateless viewer gains an index mode: it reads
-    `${OBS_LOG_DIR}/<cli>/runs.jsonl` for both CLIs, renders a landing page
-    of recent runs (id, command, when, duration, exit code), and links each
-    to its live view. It mounts `${OBS_LOG_DIR}` and the run output roots
-    read-only, keeping the no-write-path guarantee structural.
-  - Deployment follows the `interp-logproxy` precedent: a small compose
+    `${OBS_LOG_DIR}/<cli>/runs.jsonl` for all three tiers — `training`,
+    `interp` and `harness` — renders a landing page of recent runs (id,
+    command, when, duration, exit code), and links each to its live view. It
+    mounts `${OBS_LOG_DIR}` and the run output roots read-only, keeping the
+    no-write-path guarantee structural.
+  - **`harness` is a tier, not a CLI**, and the distinction decides whether
+    this item is built correctly. It is one catalog written by five Rust
+    binaries under one `cli` name, so an index that enumerates Python
+    entry points finds `training` and `interp` and silently omits the whole
+    rust workspace. Enumerate the directories under `${OBS_LOG_DIR}`, or name
+    the three; do not derive the list from the Python CLIs.
+  - Deployment follows the `harness-serve` precedent: a small compose
     service with a healthcheck, port 8010, localhost-bound unless the
     compose file is deliberately edited, started and stopped through a
     `make` target.
@@ -752,8 +759,10 @@ later item ids stay stable. There is no work to execute under this id.
     server is insufficient — the same discipline the original roadmap
     applied to live refresh, one level up. The decision point and rationale
     are recorded here rather than pre-committed.
-- **Acceptance check** (host): the console lists runs from both CLIs and
-  opens a live per-run view; the container holds only read-only mounts.
+- **Acceptance check** (host): the console lists runs from all three tiers —
+  including at least one rust-harness run, which is the tier an index built
+  from the Python CLIs would omit — and opens a live per-run view; the
+  container holds only read-only mounts.
   Record the procedure in the observability reference doc.
 - **Out of scope**: everything the non-goals exclude — no database, no
   authentication, no multi-run comparison views in the first version.
@@ -828,13 +837,33 @@ stamp their own records, and passing the id as a request header to the
 inference services. This is explicitly deferred from the first version and is
 not required by any item above.
 
-The rust harness (`rust-harness/harness/src/obs.rs`) is a second,
+The rust workspace (`rust-harness/obs/src/lib.rs`) is a second,
 contract-compatible writer of this file layout: it mints the same run id
-format and writes `cmd.start`/`fail`/`cmd.end` events and a catalog line
-under `${OBS_LOG_DIR}/harness/`, holding the same shared flock the
-retention pruner probes. The JSONL files are the integration seam — no
-code is shared, and the stateless readers above consume harness runs
-unchanged. The rust writer also specifies the receiving half of the
+format and writes `cmd.start`/`fail`/`cmd.end` events, `phase.start`/`phase.end`
+spans, a resolved-configuration header event, and a catalog line under
+`${OBS_LOG_DIR}/harness/`, holding the same shared flock the retention pruner
+probes. Five binaries write today — `harness`, `ladder`,
+`activation-capture`, `attention-capture` and `layer-diff` — sharing one `cli`
+name with the binary name as `command`, so the whole workspace is one tier from
+a reader's point of view rather than one per tool. The other three binaries are
+silent by decision rather than by omission: `checkpoint-info` is a sub-second
+inspector, and `long-context-golden` and `tiny-model` are fixture writers whose
+artifact is the record. The rule is to record a run someone will later want to
+find, not a question someone asked and got an answer to.
+
+Two of the five details above are narrower than the shared shape suggests, and
+`docs/rust-harness/observability.md` owns both. The header is **five events**,
+not one — `run.header`, `ladder.header`, `activation-capture.header`,
+`attention-capture.header` and `layer-diff.header` — because a ladder has no
+sampler and a capture has no rungs, so one shared event would move most of its
+fields to optional and retire the key-set assertion the events exist for. And
+only `harness` and `ladder` open a per-run directory with a `metrics.jsonl`:
+the three capture binaries have no series to plot, so they write a header and a
+`model.load` timing and nothing more.
+
+The JSONL files are the integration seam — no code is shared, and the stateless
+readers above consume harness runs unchanged. The rust writer also specifies the
+receiving half of the
 deferred propagation: when `OBS_RUN_ID` is set in its environment, the
 harness records it as a `parent_run_id` field on `cmd.start` while still
 minting its own run id.

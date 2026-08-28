@@ -48,8 +48,8 @@ PRUNE_DIRS = {
 # The two documents that may define an id: the live ledger and the frozen archive
 # holding the closed history moved out of it.
 LEDGERS = (
-    "docs/verification/known-bugs.md",
-    "docs/verification/ledger-archive.md",
+    "docs/verification/bugs/known-bugs.md",
+    "docs/verification/bugs/ledger-archive.md",
 )
 
 # Files scanned for citations. Wider than the doc gates because the point of the

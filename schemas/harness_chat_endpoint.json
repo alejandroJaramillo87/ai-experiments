@@ -1,0 +1,78 @@
+{
+  "contract": "harness_chat_endpoint",
+  "description": "the OpenAI-shaped HTTP surface the rust harness serves under --serve, and that common/serving.py calls",
+  "writers": [
+    "rust-harness/harness/src/server.rs"
+  ],
+  "readers": [
+    "common/serving.py",
+    "interp/steering/scorecard.py"
+  ],
+  "guarded_by": [
+    "rust-harness/harness/tests/serving_contract.rs",
+    "rust-harness/harness/tests/server.rs",
+    "tests/training/test_serving.py"
+  ],
+  "paths": {
+    "GET /v1/health": "200 with a JSON body. Every caller checks the status code and nothing else, so the body is informational.",
+    "POST /v1/chat/completions": "one completion, whole; see request and response below"
+  },
+  "request": {
+    "required": [
+      "messages"
+    ],
+    "optional": [
+      "model",
+      "temperature",
+      "top_p",
+      "top_k",
+      "max_tokens",
+      "seed",
+      "stream"
+    ],
+    "message_fields": [
+      "role",
+      "content"
+    ],
+    "roles": [
+      "system",
+      "user",
+      "assistant"
+    ]
+  },
+  "response": {
+    "required": [
+      "id",
+      "object",
+      "created",
+      "model",
+      "choices",
+      "usage"
+    ],
+    "choice_fields": [
+      "index",
+      "message",
+      "finish_reason"
+    ],
+    "usage_fields": [
+      "prompt_tokens",
+      "completion_tokens",
+      "total_tokens"
+    ]
+  },
+  "values": {
+    "object": "chat.completion",
+    "choices[].message.role": "assistant",
+    "choices[].finish_reason": "stop | length"
+  },
+  "notes": {
+    "model_is_ignored": "The served checkpoint is a command-line argument, so there is nothing in the request to select. common/serving.py sends the literal \"default\" and interp/steering/scorecard.py omits the field entirely; both must work, which is why it is optional rather than merely unused.",
+    "no_streaming": "stream: true is refused with 400 rather than answered with a whole body. No interp client streams, and silently returning a non-streamed response would misreport what happened. If a streaming client ever appears, harness/src/stream.rs already carries a chunk streamer whose drop-the-receiver cancellation is an HTTP client disconnect.",
+    "status_codes": "post_chat maps 4xx to ServingError (terminal) and 5xx to ServingTransientError (retryable), so the split decides whether a caller retries. Anything the client must fix -- bad JSON, an unknown role, an out-of-range sampling value, a stream request -- is 400. A generation failure is 500.",
+    "per_request_seed": "seed selects the sampler's stream for that request alone. Two requests carrying the same seed sample alike however many requests ran between them, which a server holding one long-lived sampler could not promise. Absent, it falls back to the --seed the process was started with.",
+    "usage_is_real": "prompt_tokens counts the encoded prompt and completion_tokens the tokens returned, which excludes the EOS that ended the turn. Callers record these into eval and scorecard artifacts, so zeros would be a silent falsehood rather than a missing field.",
+    "concurrency": "One generation at a time: runtime Model is Send but not Sync and every generation path takes &mut self. Chat requests serialize behind a mutex the health handler never takes, so a health probe answers during a reply that may run for minutes. The registry entry records concurrency=1.",
+    "not_a_compose_service": "Unlike the llama.cpp and vLLM entries, this one is a binary the human starts. swap_model refuses it by name (common/serving.py NON_COMPOSE_SERVICES) rather than running docker compose against a service that does not exist.",
+    "http_subset": "HTTP/1.1 with a Content-Length body only. No keep-alive -- every response closes the connection -- and a chunked request body is refused rather than mis-parsed. urllib, which is what every caller uses, sends neither."
+  }
+}

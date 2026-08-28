@@ -13,7 +13,6 @@ import numpy as np
 import pytest
 
 from common.reports import validate_report
-from tests.interp.conftest import fake_capture
 
 
 class TestOrganismVerification:
@@ -98,7 +97,7 @@ class TestProbeEvaluation:
 
 
 class TestProbeMonitor:
-    def test_run_monitor_report_conforms(self, probe_dir, tmp_path):
+    def test_run_monitor_report_conforms(self, tmp_path):
         from interp.probes.monitor import run_monitor
 
         now = datetime.datetime(2026, 7, 15, tzinfo=datetime.UTC)
@@ -110,20 +109,26 @@ class TestProbeMonitor:
                     json.dumps(
                         {
                             "timestamp": f"2026-07-14T0{i}:00:00.000000Z",
+                            "target_service": "harness",
                             "prompt": f"a neg prompt {i}",
                             "response_text": "a reply",
+                            "probe": {
+                                "name": "test-probe",
+                                "layer": 4,
+                                "site": "layer_output",
+                                "threshold": 0.5,
+                                "scored": 6,
+                                "position_first": 0,
+                                "max_score": 0.1 * i,
+                                "flags": [],
+                            },
                         }
                     )
                     + "\n"
                 )
         report = run_monitor(
-            [probe_dir],
-            "test-model",
-            "modelhash-1",
             str(log_dir),
             monitor_root=str(tmp_path / "monitor"),
-            capture_fn=fake_capture,
-            health_check=lambda: [],
             now=now,
         )
         validate_report(report)

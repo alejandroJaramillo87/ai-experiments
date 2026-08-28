@@ -96,7 +96,7 @@ class TestIsExempt:
     @pytest.mark.parametrize(
         "rel",
         [
-            "docs/verification/known-bugs.md",
+            "docs/verification/bugs/known-bugs.md",
             "interp/harvest.py",
             "docs/interp/README.md",
         ],

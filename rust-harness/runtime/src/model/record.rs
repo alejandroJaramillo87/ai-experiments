@@ -10,6 +10,13 @@
  * One position holds one branch: a recording that writes the same position
  * from two different token histories is refused at load rather than merged,
  * see `replay`.
+ *
+ * A recording also carries the *selection* — which token the sampler chose at
+ * each position, under which parameters, and how far into its draw stream
+ * that left it. Logits alone are a claim about the distribution, and a replay
+ * driven from them re-rolls the dice: same file, different transcript, with
+ * nothing to see. The selection lines are what make a replay reproduce the
+ * run.
  */
 
 use std::fs::File;
@@ -23,10 +30,70 @@ use serde::{Deserialize, Serialize};
 use super::mock::MockModel;
 use super::{Logits, Model, Token};
 
-/// First line of a recording: dimensions needed to rebuild a script.
+/// First line of a recording: dimensions needed to rebuild a script, and the
+/// sampling parameters if the run had any.
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 struct Header {
     vocab_size: usize,
+    /// Absent when the recorder was constructed without them, which is what
+    /// `RecordingModel::new` does and what every recording written before
+    /// selections existed looks like. Skipped on serialize rather than
+    /// written as null, so those recordings are byte-identical to what they
+    /// were and still parse here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    sampling: Option<SamplingProvenance>,
+}
+
+/// The sampling parameters a recording was produced under.
+///
+/// A restatement of `sampler::SamplingParams` rather than that type serialized
+/// directly: the recording is a file format with its own compatibility
+/// obligations, and a field added to the sampler for a reason of its own
+/// should not silently change what a recorder writes. The conversion is one
+/// function, below, and is where the two are held together.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct SamplingProvenance {
+    pub temperature: f32,
+    pub top_p: f32,
+    #[serde(default)]
+    pub top_k: Option<usize>,
+    pub seed: u64,
+}
+
+impl From<crate::sampler::SamplingParams> for SamplingProvenance {
+    fn from(p: crate::sampler::SamplingParams) -> Self {
+        Self {
+            temperature: p.temperature,
+            top_p: p.top_p,
+            top_k: p.top_k,
+            seed: p.seed,
+        }
+    }
+}
+
+impl From<SamplingProvenance> for crate::sampler::SamplingParams {
+    fn from(p: SamplingProvenance) -> Self {
+        Self {
+            temperature: p.temperature,
+            top_p: p.top_p,
+            top_k: p.top_k,
+            seed: p.seed,
+        }
+    }
+}
+
+/// What a sampler chose at one absolute position, and where that left it.
+///
+/// `draws` is the sampler's cumulative draw count *after* the selection, so a
+/// replay resuming at this point seeds from the header and calls
+/// `Sampler::skip_draws` with the count from the previous selection. The
+/// greedy path draws nothing and reports the count unchanged, which is
+/// correct and not a gap: there is nothing to resynchronize.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct Selection {
+    pub position: usize,
+    pub token: Token,
+    pub draws: u64,
 }
 
 /// Logits observed at one absolute cache position.
@@ -42,8 +109,10 @@ struct Row<L> {
 }
 
 /// One forward call: where it started, what it consumed, what it produced.
-/// `prefill` yields one row (the final position); `prefill_all` yields one
-/// row per appended token. Generic for the reason `Row` is.
+/// `prefill` yields one row (the final position); `prefill_all` yields one row
+/// per appended token, and `prefill_from` one per token from its offset on, so
+/// `rows` is not in general as long as `tokens`. Generic for the reason `Row`
+/// is.
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 struct Record<T, R> {
     start: usize,
@@ -57,6 +126,28 @@ type RecordedRow<'a> = Row<&'a [f32]>;
 /// A record as it is read back, owning everything it parsed.
 type ParsedRecord = Record<Vec<Token>, Vec<Row<Vec<f32>>>>;
 
+/// A selection as it is written and read: one field, so the line cannot be
+/// confused with a `Record`.
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+struct SelectionLine {
+    selected: Selection,
+}
+
+/// One non-header line of a recording.
+///
+/// Untagged with `Forward` first, which keeps every line a pre-selection
+/// recorder wrote byte-identical: a forward record requires `start`, `tokens`
+/// and `rows`, none of which a selection line carries, and `selected` is a
+/// field no forward record has. The two shapes are therefore mutually
+/// unparseable rather than merely unlikely to collide, and a test below
+/// asserts it instead of leaving the argument in this comment.
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+enum Line {
+    Forward(ParsedRecord),
+    Selected(SelectionLine),
+}
+
 /// Sink shared by a recording model and all of its forks, so a session tree
 /// writes one interleaved stream ordered by call completion.
 type SharedWriter = Arc<Mutex<Box<dyn Write + Send>>>;
@@ -69,9 +160,19 @@ pub struct RecordingModel {
 impl RecordingModel {
     /// Wrap `inner`, writing the recording to `writer`. The header is written
     /// immediately so even an empty recording identifies its vocabulary.
-    pub fn new(inner: Box<dyn Model>, writer: Box<dyn Write + Send>) -> Result<Self> {
+    ///
+    /// `sampling` states the parameters the run will sample under, or `None`
+    /// where the caller has none to state. Selections record either way and
+    /// still pin which token was chosen; without the parameters a reader
+    /// cannot rebuild the sampler that chose them.
+    pub fn new(
+        inner: Box<dyn Model>,
+        writer: Box<dyn Write + Send>,
+        sampling: Option<SamplingProvenance>,
+    ) -> Result<Self> {
         let header = Header {
             vocab_size: inner.vocab_size(),
+            sampling,
         };
         let writer: SharedWriter = Arc::new(Mutex::new(writer));
         write_line(&writer, &header)?;
@@ -79,10 +180,16 @@ impl RecordingModel {
     }
 
     /// Wrap `inner`, recording to a file at `path` (truncated if present).
-    pub fn to_file(inner: Box<dyn Model>, path: &Path) -> Result<Self> {
+    /// `sampling` states the parameters the run will sample under, or `None`
+    /// where the caller has none to state.
+    pub fn to_file(
+        inner: Box<dyn Model>,
+        path: &Path,
+        sampling: Option<SamplingProvenance>,
+    ) -> Result<Self> {
         let file = File::create(path)
             .with_context(|| format!("create recording file {}", path.display()))?;
-        Self::new(inner, Box::new(BufWriter::new(file)))
+        Self::new(inner, Box::new(BufWriter::new(file)), sampling)
     }
 
     fn record(&self, start: usize, tokens: &[Token], rows: &[RecordedRow<'_>]) -> Result<()> {
@@ -147,13 +254,25 @@ impl Model for RecordingModel {
     }
 
     fn prefill_all(&mut self, tokens: &[Token]) -> Result<Vec<Logits>> {
+        self.prefill_from(tokens, 0)
+    }
+
+    // Overridden rather than inherited, for two reasons that both matter. The
+    // default would call this type's `prefill_all` and discard the head of the
+    // result, which throws away the saving the method exists for -- the inner
+    // backend would still fold the embedding table for every dropped row.
+    // And it would record those rows: a recording is a claim about what the
+    // run produced, and a row the caller never saw is not one. Replay is keyed
+    // by absolute position with unrecorded positions falling back, so a
+    // recording that starts partway into a prefill is well formed.
+    fn prefill_from(&mut self, tokens: &[Token], first: usize) -> Result<Vec<Logits>> {
         let start = self.inner.cached_len();
-        let produced = self.inner.prefill_all(tokens)?;
+        let produced = self.inner.prefill_from(tokens, first)?;
         let rows: Vec<RecordedRow<'_>> = produced
             .iter()
             .enumerate()
             .map(|(i, l)| Row {
-                position: start + i,
+                position: start + first + i,
                 logits: &l.0[..],
             })
             .collect();
@@ -163,6 +282,15 @@ impl Model for RecordingModel {
 
     fn truncate(&mut self, len: usize) -> Result<()> {
         self.inner.truncate(len)
+    }
+
+    fn record_selection(&self, selection: Selection) -> Result<()> {
+        write_line(
+            &self.writer,
+            &SelectionLine {
+                selected: selection,
+            },
+        )
     }
 
     fn fork(&self) -> Result<Box<dyn Model>> {
@@ -223,6 +351,30 @@ fn position_bound(vocab_size: usize) -> usize {
 /// divergent position. Keeping both branches would need a branch-keyed
 /// recording format, which this one is not.
 pub fn replay(reader: impl BufRead) -> Result<MockModel> {
+    Ok(load(reader)?.0)
+}
+
+/// Everything a recording says about how its tokens were chosen: the sampling
+/// parameters from the header, if it carried any, and the selections in the
+/// order they were written.
+///
+/// A recording with no selections is not an error — the recorder is wrapped
+/// around the model, and a run that only prefilled never sampled — so the
+/// vector is simply empty and a caller expecting otherwise says so itself.
+#[derive(Debug, Default, PartialEq)]
+pub struct Recorded {
+    pub sampling: Option<SamplingProvenance>,
+    pub selections: Vec<Selection>,
+}
+
+/// Load a recording as both a scripted `MockModel` and the selection record
+/// that says what the run did with it. `replay` is this without the second
+/// half, for the callers that only need the script.
+pub fn replay_with_selections(reader: impl BufRead) -> Result<(MockModel, Recorded)> {
+    load(reader)
+}
+
+fn load(reader: impl BufRead) -> Result<(MockModel, Recorded)> {
     let mut lines = reader.lines();
     let header_line = lines
         .next()
@@ -235,11 +387,24 @@ pub fn replay(reader: impl BufRead) -> Result<MockModel> {
     // Token consumed at each absolute position: the only branch identity the
     // recorded `start`/`tokens` metadata carries.
     let mut history: Vec<Option<Token>> = Vec::new();
+    let mut recorded = Recorded {
+        sampling: header.sampling,
+        selections: Vec::new(),
+    };
     let bound = position_bound(header.vocab_size);
     for (n, line) in lines.enumerate() {
         let line = line.with_context(|| format!("read recording line {}", n + 2))?;
-        let record: ParsedRecord = serde_json::from_str(&line)
-            .with_context(|| format!("parse recording line {}", n + 2))?;
+        let record = match serde_json::from_str::<Line>(&line)
+            .with_context(|| format!("parse recording line {}", n + 2))?
+        {
+            Line::Forward(record) => record,
+            // Selections carry no logits, so they neither extend the script
+            // nor participate in the branch checks below.
+            Line::Selected(line) => {
+                recorded.selections.push(line.selected);
+                continue;
+            }
+        };
         // Saturating: a `start` near the top of the usize range must reach
         // the bound check below rather than overflow on the way to it.
         let end = record.start.saturating_add(record.tokens.len());
@@ -305,14 +470,19 @@ pub fn replay(reader: impl BufRead) -> Result<MockModel> {
         .into_iter()
         .map(|logits| logits.unwrap_or_else(|| vec![0.0; header.vocab_size]))
         .collect();
-    Ok(MockModel::new(header.vocab_size, script))
+    Ok((MockModel::new(header.vocab_size, script), recorded))
 }
 
 /// Load a recording file as a scripted `MockModel`.
 pub fn replay_file(path: &Path) -> Result<MockModel> {
+    Ok(replay_file_with_selections(path)?.0)
+}
+
+/// Load a recording file as a script plus its selection record.
+pub fn replay_file_with_selections(path: &Path) -> Result<(MockModel, Recorded)> {
     let file =
         File::open(path).with_context(|| format!("open recording file {}", path.display()))?;
-    replay(std::io::BufReader::new(file))
+    replay_with_selections(std::io::BufReader::new(file))
 }
 
 #[cfg(test)]
@@ -332,6 +502,14 @@ mod tests {
     }
 
     fn recording_of(run: impl FnOnce(&mut RecordingModel)) -> Vec<u8> {
+        recording_with(None, run)
+    }
+
+    /// The same, stating the sampling parameters the run was made under.
+    fn recording_with(
+        sampling: Option<SamplingProvenance>,
+        run: impl FnOnce(&mut RecordingModel),
+    ) -> Vec<u8> {
         let buf = Arc::new(Mutex::new(Vec::new()));
         struct SharedBuf(Arc<Mutex<Vec<u8>>>);
         impl Write for SharedBuf {
@@ -345,6 +523,7 @@ mod tests {
         let mut m = RecordingModel::new(
             Box::new(scripted(4, 8)),
             Box::new(SharedBuf(Arc::clone(&buf))),
+            sampling,
         )
         .unwrap();
         run(&mut m);
@@ -447,9 +626,12 @@ mod tests {
         // mirrors and makes the next snapshot describe a cache the transcript
         // does not.
         let inner = MockModel::new(8, vec![]);
-        let mut m =
-            RecordingModel::new(Box::new(inner), Box::new(FailsAfter { lines: 2, seen: 0 }))
-                .unwrap();
+        let mut m = RecordingModel::new(
+            Box::new(inner),
+            Box::new(FailsAfter { lines: 2, seen: 0 }),
+            None,
+        )
+        .unwrap();
         m.prefill(&[1, 2]).unwrap();
         let committed = m.cached_len();
 
@@ -562,6 +744,119 @@ mod tests {
             .err()
             .expect("expected error");
         assert!(err.to_string().contains("18446744073709551615"), "{err}");
+    }
+
+    #[test]
+    fn a_forward_record_and_a_selection_line_are_mutually_unparseable() {
+        // The untagged Line enum is only safe because the two shapes cannot
+        // be read as each other: a forward record requires start, tokens and
+        // rows, and a selection line carries none of them. Asserted rather
+        // than argued, since a field added to either type could quietly make
+        // one shape a subset of the other and route lines to the wrong arm.
+        let forward = r#"{"start":0,"tokens":[1],"rows":[{"position":0,"logits":[0.0,1.0]}]}"#;
+        let selection = r#"{"selected":{"position":3,"token":7,"draws":4}}"#;
+        assert!(serde_json::from_str::<ParsedRecord>(selection).is_err());
+        assert!(serde_json::from_str::<SelectionLine>(forward).is_err());
+        assert!(matches!(
+            serde_json::from_str::<Line>(forward).unwrap(),
+            Line::Forward(_)
+        ));
+        assert!(matches!(
+            serde_json::from_str::<Line>(selection).unwrap(),
+            Line::Selected(_)
+        ));
+    }
+
+    #[test]
+    fn a_recording_without_sampling_parameters_writes_the_header_it_always_did() {
+        // The header field is skipped when absent rather than written null,
+        // so every recording made before selections existed is byte-identical
+        // to what this writer now produces -- which is what keeps the
+        // determinism digest above meaningful across the format change.
+        assert_eq!(
+            serde_json::to_string(&Header {
+                vocab_size: 4,
+                sampling: None
+            })
+            .unwrap(),
+            r#"{"vocab_size":4}"#
+        );
+        let old = b"{\"vocab_size\":2}\n{\"start\":0,\"tokens\":[1],\"rows\":[]}\n";
+        let (_, recorded) = replay_with_selections(std::io::BufReader::new(&old[..])).unwrap();
+        assert_eq!(recorded, Recorded::default());
+    }
+
+    #[test]
+    fn the_header_carries_the_sampling_parameters_a_replay_needs() {
+        let params = crate::sampler::SamplingParams {
+            temperature: 0.8,
+            top_p: 0.95,
+            top_k: Some(40),
+            seed: 7,
+        };
+        // Through the writer and back through the reader, rather than
+        // asserting on the struct: what a replay recovers is the property.
+        let bytes = recording_with(Some(params.into()), |_| {});
+        let (_, recorded) = replay_with_selections(std::io::BufReader::new(&bytes[..])).unwrap();
+        let back: crate::sampler::SamplingParams = recorded.sampling.unwrap().into();
+        assert_eq!(back.top_k, Some(40));
+        assert_eq!(back.seed, 7);
+        assert_eq!(back.temperature, params.temperature);
+        assert_eq!(back.top_p, params.top_p);
+    }
+
+    #[test]
+    fn selections_are_recorded_and_read_back_in_order() {
+        let bytes = recording_of(|m| {
+            m.prefill(&[9, 9]).unwrap();
+            m.record_selection(Selection {
+                position: 2,
+                token: 3,
+                draws: 1,
+            })
+            .unwrap();
+            m.record_selection(Selection {
+                position: 3,
+                token: 1,
+                draws: 2,
+            })
+            .unwrap();
+        });
+        let (_, recorded) = replay_with_selections(std::io::BufReader::new(&bytes[..])).unwrap();
+        assert_eq!(
+            recorded.selections,
+            vec![
+                Selection {
+                    position: 2,
+                    token: 3,
+                    draws: 1
+                },
+                Selection {
+                    position: 3,
+                    token: 1,
+                    draws: 2
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn selection_lines_do_not_enter_the_position_script() {
+        // A selection names a position, and the script is position-keyed, so
+        // the one thing that must not happen is a selection overwriting the
+        // logits recorded at the same position.
+        let bytes = recording_of(|m| {
+            m.prefill(&[9, 9, 9]).unwrap(); // records position 2
+            m.record_selection(Selection {
+                position: 2,
+                token: 0,
+                draws: 1,
+            })
+            .unwrap();
+        });
+        let mut replayed = replay(std::io::BufReader::new(&bytes[..])).unwrap();
+        replayed.prefill(&[9, 9]).unwrap();
+        assert_eq!(replayed.prefill(&[9]).unwrap().0, vec![0.0, 0.0, 1.0, 0.0]);
     }
 
     #[test]

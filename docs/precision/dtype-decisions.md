@@ -12,7 +12,7 @@ a forward pass has not.
 
 - [The one-sentence answer per tier](#the-one-sentence-answer-per-tier)
 - [Why rust-harness computes in f32](#why-rust-harness-computes-in-f32)
-- [Why the harness accepts four GGUF storage types](#why-the-harness-accepts-four-gguf-storage-types)
+- [Why the harness accepts three float widths and no quantization](#why-the-harness-accepts-three-float-widths-and-no-quantization)
 - [Why training computes in bf16 and not fp16](#why-training-computes-in-bf16-and-not-fp16)
 - [Where the dtype constants live, and whether to pin one](#where-the-dtype-constants-live-and-whether-to-pin-one)
 - [Can all three tiers share one dtype](#can-all-three-tiers-share-one-dtype)
@@ -21,7 +21,7 @@ a forward pass has not.
 
 | Tier | Compute | Storage | The governing reason |
 |------|---------|---------|----------------------|
-| rust-harness | f32 | Reads F32, F16, BF16, Q8_0; writes f32 probe shards | It is the reference implementation the CUDA backend is diffed against; a second numeric type is a second source of disagreement |
+| rust-harness | f32 | Holds weights at their published width; writes f32 probe shards | It is the reference implementation the CUDA backend is diffed against; a second *compute* type is a second source of disagreement, but storage width is free because widening is exact |
 | interp | The subject model's dtype, so bf16 in practice | fp16 or fp32 in Arrow, per measured magnitudes | Arrow has no bfloat16 in any version, so the storage format cannot follow the compute one |
 | training | bf16 | Checkpoints in the parameter dtype, so bf16 | Activation magnitudes in a forward pass are unbounded in advance and fp16 saturates at 65504 |
 
@@ -39,13 +39,13 @@ the other does not. Overflow does not choose between them.
 
 What does choose between them is the harness's purpose.
 [`docs/rust-harness/observability.md`](../rust-harness/observability.md) records it: the CPU
-backend is hand-rolled single-threaded loops, Candle was evaluated and rejected, and "the bar is
+backend is hand-rolled plain f32 loops, Candle was evaluated and rejected, and "the bar is
 correctness and readability, not throughput" — the backend exists to be the reference the CUDA
 path is diffed against. Under that bar:
 
-- **One numeric type in the runtime is one fewer thing that can disagree.** Every supported GGUF
-  storage type dequantizes to a dense `Vec<f32>` at load, so the forward pass has a single
-  representation and no conversion sites to get wrong.
+- **One numeric type in the runtime is one fewer thing that can disagree.** Every arithmetic
+  operation in the forward pass is on f32, so there is a single representation to reason about
+  and no conversion site inside the numerics to get wrong.
 - **Rust has no scalar bf16 arithmetic.** `f32` and `f64` are language primitives with hardware
   operations; bf16 is a library type (`half::bf16`) whose scalar ops are emulated as
   widen-compute-narrow. Computing in bf16 on the CPU would mean converting to f32 per operation
@@ -55,40 +55,95 @@ path is diffed against. Under that bar:
   checkpoint's own values reach the forward pass unrounded, so f32 costs no fidelity against
   the weights as published.
 
-The cost is memory: f32 weights are twice the bytes of the file they came from. That is a real
-cost and it is priced as a candidate optimization in
-[`docs/optimizations/ideation/rust-harness-optimization-candidates.md`](../optimizations/ideation/rust-harness-optimization-candidates.md),
-which proposes keeping weights resident in their storage format. That proposal is about
-residency; it does not change the compute dtype.
+### Computing in f32 is not the same as storing in f32
+
+The harness holds each weight tensor in **the width its checkpoint declares** and widens per
+use: `tensor::Weight` in the runtime, loaded by `Checkpoint::weight`. A bf16 checkpoint stays
+bf16 in memory. The arithmetic is still f32 — every multiply and every accumulation — so
+nothing above changes.
+
+The two are separable precisely because widening is exact. Widening at load and widening at use
+produce the same f32 bits in the same order, so the choice buys memory and bandwidth and costs
+no fidelity and no determinism: `cpu.rs`'s
+`a_bf16_checkpoint_and_its_widened_twin_produce_identical_logits` compares the two arrangements
+bit for bit. E4B was measured at 42 GB resident before the change — a 15 GB file expanded to
+28 GiB of f32 with the map still faulted in behind it — and holding it at bf16 removes the
+expansion: 28.15 GiB peak on the workstation afterwards, with the ladder table identical in
+every digit. The residual is the map itself, still counted while its pages are resident.
+
+Halving the bytes read per token did *not* halve the time — 5%, at the same thread width —
+and the reason is recorded in
+[`rust-harness-optimization-candidates.md`](../optimizations/ideation/rust-harness-optimization-candidates.md):
+the engine sat at both its bandwidth ceiling and a scalar-compute floor at once, and this
+change moved only the first. That is a performance finding and not a precision one. Nothing
+above depends on it.
+
+Two constraints on that, both load-bearing:
+
+- **Storage-preserving means never narrowing.** An f32 checkpoint stays f32. Narrowing one to
+  bf16 to save memory would be a real precision change, and it would be a change to the model
+  rather than to the loader. `an_f32_checkpoint_is_not_narrowed` is the guard.
+- **This applies to weights, not to the KV cache.** A weight is read from a file that already
+  chose its width; a KV entry is *computed* in f32 and would be narrowed on write, which is
+  lossy. Narrowing the cache is a separate decision with a separate measurement, and the `HKV1`
+  snapshot format reserves a dtype byte for the day it is taken.
+
+  The cache was instead made smaller without touching its dtype: a sliding-window layer now
+  retains `window - 1 + group` rows rather than the whole sequence, which took the E4B cache
+  from 14.05 GiB to 4.05 GiB at the trained context of 131072 tokens. That is the residency
+  lever spent. What remains is 4.000 GiB of global layers, which hold the context by
+  definition, so any further reduction is a dtype decision and would be the lossy kind.
+  [README.md](README.md#kv-cache) records the measurement.
+
+This is also a fidelity statement and not only a memory one. Interpretability runs at bf16, so a
+substrate that stores what it studies is describing the same object its experiments are about.
+
+What remains resident beyond the weights themselves — the mapping they were copied out of —
+is a residency question rather than a dtype one, and is tracked in
+[`docs/optimizations/ideation/rust-harness-optimization-candidates.md`](../optimizations/ideation/rust-harness-optimization-candidates.md).
+Neither that nor anything else on that list changes the compute dtype.
 
 **What would change this decision:** the harness acquiring a throughput obligation, or a CUDA
 backend whose numerics need diffing against a bf16 CPU path rather than an f32 one. Neither is
 true today.
 
-## Why the harness accepts four GGUF storage types
+## Why the harness accepts three float widths and no quantization
 
-`GGML_F32`, `GGML_F16`, `GGML_BF16`, and `GGML_Q8_0` are declared in
-[`rust-harness/runtime/src/tensor.rs`](../../rust-harness/runtime/src/tensor.rs), and any other
-GGML type is a hard error naming the tensor. The question is whether to narrow that set to BF16
-alone, since BF16 is the reference format.
+Model weights arrive as a Hugging Face checkpoint — `config.json` plus `model.safetensors` —
+and `widen` in
+[`rust-harness/runtime/src/checkpoint.rs`](../../rust-harness/runtime/src/checkpoint.rs) admits
+exactly F32, F16, and BF16. Any other dtype is a hard error naming the tensor and the reason.
 
-**Keep all four.** The set is not a policy about what we should use; it is the set of things
-that exist in files we might be handed:
+**The refusal of quantized weights is the decision, and it is deliberate rather than
+unimplemented.** For a model format the reference implementation and the specification are the
+same artifact, so a converter's metadata can only imply what a checkpoint states; that argument
+is recorded in the repository's `AGENTS.md` and is why GGUF stopped being a model format here.
+On top of it sits the precision argument: this workspace computes at bf16 or wider on purpose,
+because the numerics have to line up with what the interpretability pipelines record. A probe
+fitted on bf16 activations and evaluated against int8-served activations is measuring a
+different model, and no error announces it.
 
-- Narrowing removes the ability to *read* a file, not the ability to *prefer* a format. The
-  preference is already expressed where it matters —
-  [`docs/rust-harness/gemma-4-ingestion.md`](../rust-harness/gemma-4-ingestion.md) records BF16
-  as "the reference format rather than a tolerated one", and refuses requantization to Q8_0
-  because interp fits probes on those exact weights.
-- Q8_0 support is what makes the quantized serving path measurable at all. The rust probe
-  capture (`rust-harness/runtime/src/bin/activation-capture.rs`) exists specifically to capture
-  from the quantized path, so probes describe the model that will answer requests. Dropping Q8_0
-  would delete that capability.
-- The dequantize-at-load design means each type costs one small conversion function and nothing
-  in the hot path. There is no ongoing complexity to recover by removing them.
+**The three float widths are kept, and the set is not a preference.** It is the set of widths a
+checkpoint we might be handed can declare. F32 and F16 cost one conversion function each and
+nothing in the hot path, and refusing them would remove the ability to *read* a file rather than
+the ability to *prefer* BF16. BF16 is the reference format rather than a tolerated one: it is
+what Gemma 4 is published in and what the training tier produces, so widening it to f32 is
+lossless and the checkpoint's own values reach the forward pass unrounded.
 
-**What would change this decision:** a supported type acquiring a nontrivial maintenance burden,
-or evidence that one of them is silently wrong. Neither is a reason to preemptively narrow.
+**GGUF is no longer read here.** `gguf.rs` and the `GGML_*` storage-type constants
+in `tensor.rs` were deleted at R10. They had survived P8b to read one artifact, the
+control-vector image `interp/steering/export.py` writes, kept in that container only because
+llama.cpp read it too; retiring the llama.cpp steering path removed that reason, and the
+artifact followed the probe to safetensors
+([`schemas/control_vector_artifact.json`](../../schemas/control_vector_artifact.json),
+[`schemas/probe_artifact.json`](../../schemas/probe_artifact.json)). `GGML_Q8_0` had already
+gone with the model path that needed it. What remains in `tensor.rs` is the F16 and BF16
+widening the safetensors loader uses, which is a dtype question and not a container one.
+
+**What would change this decision:** a checkpoint we need to read that is published only in a
+quantized format, which would be a decision about which model to study rather than about the
+loader. Nothing about performance would change it; quantization here buys memory at the cost of
+the thing the tier exists to measure.
 
 ## Why training computes in bf16 and not fp16
 
@@ -123,7 +178,8 @@ The constants exist and are already the single source per tier:
 
 | Constant | Governs | File |
 |----------|---------|------|
-| `GGML_F32`, `GGML_F16`, `GGML_BF16`, `GGML_Q8_0` | GGUF storage types the runtime accepts | `rust-harness/runtime/src/tensor.rs` |
+| `widen` | Safetensors dtypes the model loader accepts: F32, F16, BF16 | `rust-harness/runtime/src/checkpoint.rs` |
+| `GGML_F32`, `GGML_F16`, `GGML_BF16` | GGUF storage types accepted in the interp control-vector artifact, not in models or probes | `rust-harness/runtime/src/tensor.rs` |
 | `DTYPE_BYTES` | Bytes per element for the disk and budget arithmetic | `interp/harvest.py` |
 | `ARROW_STORAGE_DTYPES` | The subset Arrow can store, so the subset a capture can be taken at | `interp/harvest.py` |
 | `DTYPE_NAMES` | Recipe spelling to the SAELens/torch name; shared with `interp/sae/train.py` | `interp/harvest.py` |
@@ -166,6 +222,9 @@ So the honest summary is:
 - **bf16 wherever a real forward pass happens**, and wherever weights are stored.
 - **fp16 for measured activation storage**, exact for bf16 data whose magnitudes have been
   probed, and half the disk of fp32 — which is what made the 1.38 TB reference capture fit.
+  This is the Arrow harvest only. Probe capture shards are float32 by contract, because that
+  format has two writers in two languages and no per-subject measurement in the loop; see
+  [README.md](README.md#activation-storage-on-disk).
 - **f32 in the Rust reference backend**, exactly widened from bf16 and therefore not a divergent
   answer.
 

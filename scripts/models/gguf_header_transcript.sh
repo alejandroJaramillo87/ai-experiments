@@ -9,34 +9,30 @@
 # the tensor directory. On a 15GB file that is a few megabytes at the front, so
 # the run costs seconds and needs no GPU.
 #
-# Written to answer three questions rust-harness needs settled before it can
-# parse a real Gemma 4 file:
+# Written to answer what a GGUF a llama.cpp service is about to serve actually
+# contains:
 #
-#   1. Which metadata value types appear, and whether runtime/src/gguf.rs
-#      accepts them as array element types. gguf.rs additionally requires GGUF
-#      version 3 exactly.
-#   2. Which special tokens and chat template the tokenizer block carries. That
-#      is the input to the turn markers in harness/src/template.rs, which
-#      harness/src/generator.rs lists in PROMPT_SPECIALS.
-#   3. Which ggml tensor types appear, and whether runtime/src/tensor.rs can
-#      load them.
+#   1. Which metadata value types appear, and which keys are array-valued.
+#   2. Which special tokens and chat template the tokenizer block carries.
+#   3. Which ggml tensor types appear, and in what proportion.
 #
-# The accepted sets for 1 and 3 are READ FROM THE RUST SOURCE at run time, not
-# copied here. They were copied once, as {0,1,8} for tensors and {5,6,8} for
-# array elements, with line citations that had already drifted. Both sets were
-# wrong: tensor.rs had gained BF16 (type 30) and gguf.rs had gained bool arrays
-# (element type 7). The transcript therefore reported every BF16 tensor and
-# every bool array as REFUSED -- on Gemma 4 checkpoints that is 318 of 601
-# tensors in the E2B base file, and the sliding_window_pattern key. A reader
-# would conclude the harness could not load the model it was built for.
-# A copy cannot be kept honest by review; a derivation cannot drift.
+# It used to answer a fourth question -- whether rust-harness could load the
+# file -- and derived the accepted type sets by reading runtime/src/tensor.rs
+# and runtime/src/gguf.rs at run time rather than copying them, because a copy
+# had already drifted and reported 318 of 601 tensors in the E2B base file as
+# REFUSED when tensor.rs had in fact gained BF16.
+#
+# R10 removed the question rather than the derivation. rust-harness reads no
+# GGUF at all now: P8b deleted the GGUF model path, and R10 deleted gguf.rs
+# with the last artifact that used it. A loadability verdict against a reader
+# that does not exist is worse than a drifted one, so the verdicts are gone and
+# what remains is the inventory. GGUF is llama.cpp's format here, produced by
+# training/export/ and served by the llama services.
 #
 # Host-side only: /mnt/ai-data is not reachable from an agent sandbox.
 
 set -euo pipefail
 
-# Resolved from the script location so the derived type sets work from any cwd.
-RUST_SRC_ROOT=${RUST_SRC_ROOT:-"$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/rust-harness"}
 
 MODEL_ROOT=${MODEL_ROOT:-/mnt/ai-data/models}
 OUT=${OUT:-/tmp/gguf-transcript.txt}
@@ -72,7 +68,7 @@ fi
 # .styles/RUST_STYLE.md requires of the npz and probe tests, and it runs on a
 # host whose virtualenv may not be provisioned.
 read_gguf() {
-    python3 - "$1" "$RUST_SRC_ROOT" <<'PYEOF'
+    python3 - "$1" <<'PYEOF'
 import os
 import re
 import struct
@@ -101,54 +97,10 @@ GGML_TYPES = {
 
 # What rust-harness will actually accept, read from the Rust source rather than
 # restated here. See the note in the file header for why this is derived.
-RUST_SRC = sys.argv[2] if len(sys.argv) > 2 else ""
-
-
-def _read_rust(relpath):
-    if not RUST_SRC:
-        return ""
-    try:
-        with open(os.path.join(RUST_SRC, relpath), encoding="utf-8") as fh:
-            return fh.read()
-    except OSError:
-        return ""
-
-
-def _loadable_tensor_types():
-    """GGML type ids that tensor.rs dequantizes, via its GGML_* constants."""
-    src = _read_rust("runtime/src/tensor.rs")
-    consts = dict(re.findall(r"pub const (GGML_\w+): u32 = (\d+);", src))
-    # Arms of the dequantize match; the catch-all bails.
-    arms = set(re.findall(r"^\s+(GGML_\w+) =>", src, re.MULTILINE))
-    return {int(consts[a]) for a in arms if a in consts}
-
-
-def _ok_array_element_types():
-    """Array element type ids gguf.rs decodes rather than bailing on."""
-    src = _read_rust("runtime/src/gguf.rs")
-    block = re.search(r"fn array\(.*?\n    \}", src, re.DOTALL)
-    if not block:
-        return set()
-    return {int(n) for n in re.findall(r"^\s+(\d+) => MetaValue::",
-                                       block.group(0), re.MULTILINE)}
-
-
-def _required_gguf_version():
-    src = _read_rust("runtime/src/gguf.rs")
-    m = re.search(r"pub const GGUF_VERSION: u32 = (\d+);", src)
-    return int(m.group(1)) if m else 0
-
-
-RUST_HARNESS_LOADABLE = _loadable_tensor_types()
-RUST_HARNESS_ARRAY_OK = _ok_array_element_types()
-RUST_HARNESS_GGUF_VERSION = _required_gguf_version()
-
-# Refuse to emit verdicts derived from nothing. An empty set would mark every
-# tensor REFUSED, which reads as a finding rather than as a broken script.
-if not (RUST_HARNESS_LOADABLE and RUST_HARNESS_ARRAY_OK
-        and RUST_HARNESS_GGUF_VERSION):
-    sys.exit("cannot read the accepted type sets from rust-harness at "
-             f"{RUST_SRC!r}; refusing to emit REFUSED verdicts derived from nothing")
+# GGUF version this reader transcribes. A container property from the GGUF
+# specification, not a consumer's requirement: it was read out of gguf.rs until
+# R10 deleted that file, and nothing in this repository parses GGUF now.
+GGUF_VERSION = 3
 
 SCALARS = {
     T_UINT8: ("<B", 1), T_INT8: ("<b", 1), T_UINT16: ("<H", 2),
@@ -240,13 +192,11 @@ with open(path, "rb") as f:
     n_tensors = struct.unpack("<Q", r.raw(8))[0]
     n_kv = struct.unpack("<Q", r.raw(8))[0]
 
-    # This reader handles v2 and v3 alike, but rust-harness does not:
-    # gguf.rs:17 pins GGUF_VERSION = 3 and :127-130 rejects anything else. A
-    # transcript taken from a v2 file describes a file the harness refuses to
-    # open, so say so here rather than let the transcript imply otherwise.
-    if version != RUST_HARNESS_GGUF_VERSION:
-        print(f"version {version}: REFUSED by gguf.rs"
-              f" (requires exactly {RUST_HARNESS_GGUF_VERSION})")
+    # This reader handles v2 and v3 alike. v2 is noted rather than refused:
+    # the transcript describes whatever it was given, and the version is part
+    # of that description.
+    if version != GGUF_VERSION:
+        print(f"note: version {version}, not the expected {GGUF_VERSION}")
     print(f"gguf version: {version}")
     print(f"tensor count: {n_tensors}")
     print(f"metadata kv count: {n_kv}")
@@ -271,9 +221,8 @@ with open(path, "rb") as f:
     for key in sorted(k for k in kv if not k.startswith("tokenizer.")):
         if kv_types[key] == T_ARRAY:
             et = elem_types.get(key)
-            flag = "" if et in RUST_HARNESS_ARRAY_OK else "   <-- REFUSED by gguf.rs"
             print(f"{key} [array of {TYPE_NAMES.get(et, f'?{et}')},"
-                  f" n={len(kv[key])}]{flag}")
+                  f" n={len(kv[key])}]")
             per_layer = len(kv[key]) in block_counts
             print(f"    {summarize(kv[key], None if per_layer else 24)}")
         else:
@@ -284,21 +233,8 @@ with open(path, "rb") as f:
     print("=== array-valued keys by element type ===")
     print()
     for et, count in sorted(Counter(elem_types.values()).items()):
-        verdict = ("accepted" if et in RUST_HARNESS_ARRAY_OK
-                   else "REFUSED by gguf.rs")
         print(f"element type {et} ({TYPE_NAMES.get(et, '?')}):"
-              f" {count} keys -- {verdict}")
-
-    refused = sorted(k for k, et in elem_types.items()
-                     if et not in RUST_HARNESS_ARRAY_OK)
-    print()
-    if refused:
-        print("keys rust-harness will refuse:")
-        for k in refused:
-            et = elem_types[k]
-            print(f"  {k} (element type {et} = {TYPE_NAMES.get(et, '?')})")
-    else:
-        print("no array key uses a refused element type")
+              f" {count} keys")
 
     print()
     print("=== tokenizer metadata ===")
@@ -364,10 +300,8 @@ with open(path, "rb") as f:
 
     print("ggml tensor types present:")
     for t, c in sorted(type_counts.items(), key=lambda kv: -kv[1]):
-        verdict = ("loadable" if t in RUST_HARNESS_LOADABLE
-                   else "REFUSED by tensor.rs")
         print(f"  {GGML_TYPES.get(t, f'unknown({t})')} (type {t}):"
-              f" {c} tensors -- {verdict}")
+              f" {c} tensors")
 
     print()
     print("inventory, layer indices collapsed:")

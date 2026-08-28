@@ -6,7 +6,7 @@ GGUF export, wiring validation, and the scorecard orchestration run for real
 against tmp-dir artifacts. The scorecard's service controller and chat POST
 seam are faked so no Docker or network is touched. Asserted contracts: exit
 codes (0 success, 1 failure, 2 invalid usage), styled [OK]/[RUN]/[ERROR]
-lines, and on-disk artifacts (vector.gguf, manifest.json, scorecard.json).
+lines, and on-disk artifacts (vector.safetensors, manifest.json, scorecard.json).
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ import numpy as np
 from common.serving import ServingError
 from interp import cli
 from interp.manifest import file_xxhash, load_manifest
-from interp.steering.export import export_control_vector
+from interp.steering.export import VECTOR_NAME, export_control_vector
 from interp.steering.extract import DirectionSet
 
 
@@ -42,7 +42,7 @@ def direction_set(layers=(1, 2, 3), width=16, method="repeng") -> DirectionSet:
 
 
 class TestSteerExtract:
-    def test_repeng_success_exports_real_gguf(self, tmp_path, monkeypatch, capsys):
+    def test_repeng_success_exports_a_real_image(self, tmp_path, monkeypatch, capsys):
         # Only the torch-bound backend is faked; export runs for real, so the
         # printed hash must match both manifest and file on disk.
         calls = {}
@@ -74,7 +74,7 @@ class TestSteerExtract:
         )
         assert args.func(args) == 0
 
-        vector_path = os.path.join(out_dir, "vector.gguf")
+        vector_path = os.path.join(out_dir, VECTOR_NAME)
         assert os.path.isfile(vector_path)
         manifest = load_manifest(out_dir)
         assert manifest["model_hash"] == "h1"
@@ -85,7 +85,7 @@ class TestSteerExtract:
 
         captured = capsys.readouterr().err
         assert "[RUN] Extracting repeng vector: test/model" in captured
-        assert f"[OK] Vector exported: {out_dir}/vector.gguf" in captured
+        assert f"[OK] Vector exported: {out_dir}/{VECTOR_NAME}" in captured
         assert "[OK] Layers: 3, width: 16" in captured
         assert f"[OK] Vector xxhash: {manifest['vector_xxhash']}" in captured
 
@@ -165,11 +165,11 @@ class TestSteerExtract:
         assert "[OK] Layers: 1, width: 16" in captured
 
     def test_export_error_is_styled_failure(self, tmp_path, monkeypatch, capsys):
-        # Real export refuses 0-based layers; the handler turns the
+        # Real export refuses negative block indices; the handler turns the
         # ExportError into exit 1 and writes no artifact.
         monkeypatch.setattr(
             "interp.steering.extract.extract_repeng",
-            lambda *a, **k: direction_set(layers=(0, 1)),
+            lambda *a, **k: direction_set(layers=(-1, 1)),
         )
         pairs = tmp_path / "pairs.jsonl"
         pairs.write_text('{"positive": "a", "negative": "b"}\n')
@@ -180,8 +180,8 @@ class TestSteerExtract:
         assert args.func(args) == 1
         captured = capsys.readouterr().err
         assert "[ERROR] Extraction failed:" in captured
-        assert "1-based" in captured
-        assert not os.path.exists(os.path.join(out_dir, "vector.gguf"))
+        assert "non-negative" in captured
+        assert not os.path.exists(os.path.join(out_dir, VECTOR_NAME))
 
     def test_unwritable_out_dir_is_styled_failure(self, tmp_path, monkeypatch, capsys):
         # --out colliding with an existing regular file raises a real OSError
@@ -328,7 +328,7 @@ class TestSteerScorecard:
         assert "restored to its unsteered state" in captured
 
     def test_invalid_vector_dir_is_styled_failure(self, tmp_path, capsys):
-        # WiringError arm: no vector.gguf under --vector; validation fails
+        # WiringError arm: no vector.safetensors under --vector; validation fails
         # before prompts are read or any controller is constructed.
         args = parse(
             [

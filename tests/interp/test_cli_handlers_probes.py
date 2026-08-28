@@ -1,5 +1,5 @@
 """interp probe CLI handlers (interp/commands/probe_{capture,train,eval,
-monitor}.py) driven through build_parser() with real tmp-dir pipeline
+export,monitor}.py) driven through build_parser() with real tmp-dir pipeline
 execution. The only fakes sit at the torch/service seams: the bf16 nnsight
 capture (capture_activations), the subject/judge chat services
 (interp.steering.scorecard.chat), and the healthcheck HTTP client
@@ -12,8 +12,6 @@ from __future__ import annotations
 import datetime
 import json
 import os
-
-import requests
 
 from interp import cli
 from tests.interp.conftest import fake_capture
@@ -288,8 +286,55 @@ class TestProbeEval:
         assert "manifest not found" in printed
 
 
+class TestProbeExport:
+    """The step between probe-train's probe.npz and the image harness-serve
+    loads. Without it a registered probe cannot reach the serving process at
+    all, which is why the handler exists rather than only the library call."""
+
+    def test_export_writes_the_pair_beside_the_probe(self, probe_dir, capsys):
+        assert run_cli(["probe-export", "--probe", probe_dir]) == 0
+        image = os.path.join(probe_dir, "probe.safetensors")
+        assert os.path.isfile(image)
+        assert os.path.isfile(os.path.join(probe_dir, "probe.json"))
+        printed = capsys.readouterr().err
+        assert f"[OK] Image written: {image}" in printed
+
+    def test_out_overrides_the_default_path(self, probe_dir, tmp_path, capsys):
+        out = tmp_path / "elsewhere" / "p.safetensors"
+        out.parent.mkdir()
+        assert run_cli(["probe-export", "--probe", probe_dir, "--out", str(out)]) == 0
+        assert out.is_file()
+        assert out.with_suffix(".json").is_file()
+
+    def test_an_image_the_harness_cannot_see_is_a_warning(self, probe_dir, capsys):
+        # harness-serve mounts only /mnt/ai-data/interp/probes, so an image
+        # written anywhere else is unreachable from the container. Printing a
+        # HARNESS_PROBE command for it would hand over one that fails at
+        # startup with "Probe not found".
+        assert run_cli(["probe-export", "--probe", probe_dir]) == 0
+        printed = capsys.readouterr().err
+        assert "HARNESS_PROBE" not in printed
+        assert "harness-serve mounts only that tree" in printed
+
+    def test_a_tampered_probe_is_a_styled_failure(self, probe_dir, capsys):
+        # The registry validates the hash on load, and the handler must style
+        # that refusal rather than let RegistryError escape as a traceback.
+        with open(os.path.join(probe_dir, "probe.npz"), "ab") as f:
+            f.write(b"tamper")
+        assert run_cli(["probe-export", "--probe", probe_dir]) == 1
+        printed = capsys.readouterr().err
+        assert "[ERROR] Export failed:" in printed
+        assert "hash" in printed
+
+    def test_missing_probe_dir_is_a_styled_failure(self, tmp_path, capsys):
+        assert run_cli(["probe-export", "--probe", str(tmp_path / "nope")]) == 1
+        printed = capsys.readouterr().err
+        assert "[ERROR] Export failed:" in printed
+        assert "manifest not found" in printed
+
+
 def write_log_window(tmp_path) -> str:
-    """A W3 log file of 12 replayable records inside the default 7d window
+    """A served-request log of 12 scored records inside the default 7d window
     (the handler passes now=None, so timestamps must be near real time)."""
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
@@ -303,8 +348,19 @@ def write_log_window(tmp_path) -> str:
             json.dumps(
                 {
                     "timestamp": stamp,
+                    "target_service": "harness",
                     "messages": [{"role": "user", "content": f"request {i}"}],
                     "response_text": "a neg response" if i % 2 else "a pos response",
+                    "probe": {
+                        "name": "test-probe",
+                        "layer": 4,
+                        "site": "layer_output",
+                        "threshold": 0.5,
+                        "scored": 8,
+                        "position_first": 0,
+                        "max_score": round(0.08 * i, 4),
+                        "flags": [],
+                    },
                 }
             )
         )
@@ -313,31 +369,13 @@ def write_log_window(tmp_path) -> str:
 
 
 class TestProbeMonitor:
-    def test_replay_scores_and_writes_report(
-        self, tmp_path, probe_dir, monkeypatch, capsys
-    ):
-        monkeypatch.setattr(
-            "interp.probes.capture.capture_activations", fake_capture_activations
-        )
-
-        def down(url, timeout=None, **kwargs):
-            raise requests.RequestException("connection refused")
-
-        monkeypatch.setattr("requests.get", down)  # healthchecks: all down
+    def test_aggregates_scores_and_writes_report(self, tmp_path, capsys):
         log_dir = write_log_window(tmp_path)
         monitor_root = str(tmp_path / "monitor")
         assert (
             run_cli(
                 [
                     "probe-monitor",
-                    "--probes",
-                    "test-probe",
-                    "--probes-root",
-                    os.path.dirname(probe_dir),
-                    "--model",
-                    "test-model",
-                    "--model-hash",
-                    "modelhash-1",
                     "--log-dir",
                     log_dir,
                     "--monitor-root",
@@ -347,8 +385,8 @@ class TestProbeMonitor:
             == 0
         )
         printed = capsys.readouterr().err
-        assert "[RUN] Monitor replay: window 7d, 1 probes" in printed
-        assert "[OK] Replayed 12/12 records" in printed
+        assert "[RUN] Monitor: window 7d" in printed
+        assert "[OK] Reported 12/12 records" in printed
         assert "[OK] test-probe: mean " in printed
         assert "over-threshold" in printed
         run_dirs = os.listdir(monitor_root)
@@ -357,40 +395,50 @@ class TestProbeMonitor:
         assert f"[OK] Report written: {run_dir}/report.json" in printed
         with open(os.path.join(run_dir, "report.json")) as f:
             report = json.load(f)
-        assert report["counts"]["replayed"] == 12
-        assert report["replay_model_hash"] == "modelhash-1"
+        assert report["counts"]["reported"] == 12
+        assert report["scored"] == "in_band"
         assert "test-probe" in report["probes"]
         assert os.path.isfile(os.path.join(run_dir, "flagged.jsonl"))
 
-    def test_refuses_while_services_answer_healthchecks(
-        self, tmp_path, monkeypatch, capsys
-    ):
+    def test_runs_while_inference_is_up(self, tmp_path, monkeypatch, capsys):
+        # The refusal this replaces existed because scoring meant replaying a
+        # model on the GPU that serving owned. Nothing here loads a model, so
+        # a healthy service is no longer a reason to refuse -- and monitoring
+        # traffic you cannot monitor while it is being served is not
+        # monitoring.
         class UpResponse:
             status_code = 200
 
         monkeypatch.setattr(
             "requests.get", lambda url, timeout=None, **kwargs: UpResponse()
         )
+        log_dir = write_log_window(tmp_path)
         assert (
             run_cli(
                 [
                     "probe-monitor",
-                    "--probes",
-                    "test-probe",
-                    "--probes-root",
-                    str(tmp_path / "probes"),
-                    "--model",
-                    "test-model",
-                    "--model-hash",
-                    "h",
                     "--log-dir",
-                    str(tmp_path / "logs"),
+                    log_dir,
+                    "--monitor-root",
+                    str(tmp_path / "monitor"),
+                ]
+            )
+            == 0
+        )
+
+    def test_an_empty_window_is_a_failure_naming_the_directory(self, tmp_path, capsys):
+        empty = tmp_path / "logs"
+        empty.mkdir()
+        assert (
+            run_cli(
+                [
+                    "probe-monitor",
+                    "--log-dir",
+                    str(empty),
                     "--monitor-root",
                     str(tmp_path / "monitor"),
                 ]
             )
             == 1
         )
-        printed = capsys.readouterr().err
-        assert "[ERROR] Monitor failed: inference services are up" in printed
-        assert "stop serving first" in printed
+        assert "[ERROR] Monitor failed: no scored records" in capsys.readouterr().err

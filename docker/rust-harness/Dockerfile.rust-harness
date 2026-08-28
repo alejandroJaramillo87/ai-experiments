@@ -2,7 +2,7 @@
 # with the integrated CPU inference runtime). The container exists for build
 # reproducibility, not sandboxing: the same pinned toolchain and locked
 # dependency graph produce the same binary on any machine. Verified by
-# runbook entry RH.12 (docs/verification/rust-harness.md).
+# runbook entry RH.12 (docs/verification/rust-harness/rust-harness.md).
 
 # Builder image: pinned rust toolchain. Re-resolve with:
 #   docker buildx imagetools inspect rust:1.94-slim-trixie
@@ -39,6 +39,12 @@ USER appuser
 WORKDIR /work
 
 COPY --from=builder --chown=appuser:appuser /build/rust-harness/target/release/harness /app/harness
+
+# The serving service overrides ENTRYPOINT with this script, which builds the
+# argument list from the environment. Compose cannot pass a flag conditionally,
+# and the steering variables are optional; the interactive service keeps the
+# bare binary below and takes its arguments on the command line.
+COPY --chown=appuser:appuser docker/rust-harness/entrypoint.serve.sh /app/entrypoint.serve.sh
 
 # /work is the session root (session.jsonl, probe-flags.jsonl); the compose
 # file binds a writable host directory here and /app/models read-only.

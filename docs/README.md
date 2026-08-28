@@ -79,9 +79,9 @@ Design and reference documentation for the `rust-harness` workspace.
 | Document | Description |
 |----------|-------------|
 | [rust-harness/README.md](rust-harness/README.md) | Directory index |
+| [rust-harness/roadmap.md](rust-harness/roadmap.md) | The scheduled work in five phases, the interp feature specifications, and what each estimate turned out to be worth |
 | [rust-harness/runtime-design.md](rust-harness/runtime-design.md) | Harness and runtime architecture, and the implementation roadmap |
 | [rust-harness/observability.md](rust-harness/observability.md) | Observability and debuggability as first-class code |
-| [rust-harness/gemma-4-ingestion.md](rust-harness/gemma-4-ingestion.md) | What the runtime requires to ingest a Gemma 4 checkpoint, and what it refuses |
 | [rust-harness/observation-frames.md](rust-harness/observation-frames.md) | What the agent loop and chat mode contribute to the training and interp programs, and the acceptance bar for new features |
 | [rust-harness/live-events.md](rust-harness/live-events.md) | Live run-state events as JSONL, with a serve mode and an HTML view that also replays finished runs |
 
@@ -93,7 +93,6 @@ audit.
 
 | Document | Description |
 |----------|-------------|
-| [rust-harness/gemma-4-ingestion.md](rust-harness/gemma-4-ingestion.md) | Gemma 4 for the inference runtime: GGUF contract, translation, refusals (E2B, E4B) |
 | [training/gemma-4-training.md](training/gemma-4-training.md) | Gemma 4 for the training tier: parameter accounting, memory, tensor names, tokenizer (E2B, E4B) |
 | [interp/gemma-4-interp.md](interp/gemma-4-interp.md) | Gemma 4 for the interp tier: residual width, layer counts, hook hazards (E2B, E4B) |
 | [models/gemma-4.md](models/gemma-4.md) | Gemma 4 dense family (E2B, E4B, 12B, 31B): general architecture reference, and the citation target of `verification/investigations/gemma-4-conformance_investigation.md` |
@@ -207,6 +206,13 @@ everything under `docs/verification/`.
 What was decided and why at implementation time. Bodies are never edited; a reference that has
 since moved is accurate history rather than drift.
 
+**A frozen record is not a source to check the tree against, and an audit should not read it as
+one.** These files describe the code as it stood on their date, so they accumulate names,
+formats and commands that no longer exist — `docs/verification/investigations/` alone still
+carries hundreds of references to the GGUF model loader deleted in P8b. That is correct and
+must stay. Anything sweeping the tree for stale facts should skip these paths, as both
+documentation gates already do, rather than rediscover the same expired history each time.
+
 | Location | Contents |
 |----------|----------|
 | [training/investigations/](training/investigations/) | D3-D10, F1-F8, and P2 deliverable investigations, plus [the unified-CLI investigation](training/investigations/unified_cli_investigation.md) (20 documents, 2026-07-14 to 2026-07-15). [README.md](training/investigations/README.md) carries the directory's conventions |
@@ -237,16 +243,16 @@ is whoever is running the checks, and the human's pasted output is the evidence.
 |----------|----------|
 | [verification/README.md](verification/README.md) | The manual verification campaign: recording protocol and phase order |
 | [verification/step-zero-environment.md](verification/step-zero-environment.md) | Lockfile, images, smoke tests, quality gate (blocks all phases) |
-| [verification/training-phase0.md](verification/training-phase0.md) | Phase 0 deliverables |
-| [verification/training-phase1.md](verification/training-phase1.md) | F1 through F8 |
-| [verification/training-phase2.md](verification/training-phase2.md) | P2-D1 through P2-D5 |
-| [verification/interp.md](verification/interp.md) | The interpretability tier |
-| [verification/observability.md](verification/observability.md) | OBS-V1 to OBS-V8: the observability stack on the workstation |
-| [verification/rust-harness.md](verification/rust-harness.md) | The rust-harness CPU backend on the real E4B GGUF |
-| [verification/rust-harness-qa.md](verification/rust-harness-qa.md) | Q0-Q6: the sandbox-executable code-quality campaign |
-| [verification/hardware-stress.md](verification/hardware-stress.md) | One-time firmware stability soak for the BIOS undervolt profile |
-| [verification/known-bugs.md](verification/known-bugs.md) | The defect ledger the runbook entries cross-reference |
-| [verification/ledger-archive.md](verification/ledger-archive.md) | Closed defect history moved out of the ledger, and the candidates the panel refused |
+| [verification/training/training-phase0.md](verification/training/training-phase0.md) | Phase 0 deliverables |
+| [verification/training/training-phase1.md](verification/training/training-phase1.md) | F1 through F8 |
+| [verification/training/training-phase2.md](verification/training/training-phase2.md) | P2-D1 through P2-D5 |
+| [verification/interp/interp.md](verification/interp/interp.md) | The interpretability tier |
+| [verification/observability/observability.md](verification/observability/observability.md) | OBS-V1 to OBS-V8: the observability stack on the workstation |
+| [verification/rust-harness/rust-harness.md](verification/rust-harness/rust-harness.md) | The rust-harness CPU backend on the real E4B GGUF |
+| [verification/rust-harness/rust-harness-qa.md](verification/rust-harness/rust-harness-qa.md) | Q0-Q6: the sandbox-executable code-quality campaign |
+| [verification/hardware/hardware-stress.md](verification/hardware/hardware-stress.md) | One-time firmware stability soak for the BIOS undervolt profile |
+| [verification/bugs/known-bugs.md](verification/bugs/known-bugs.md) | The defect ledger the runbook entries cross-reference |
+| [verification/bugs/ledger-archive.md](verification/bugs/ledger-archive.md) | Closed defect history moved out of the ledger, and the candidates the panel refused |
 
 ## Performance Summary
 

@@ -24,42 +24,6 @@ import struct
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-RUST_SRC = Path(__file__).resolve().parents[2] / "rust-harness"
-
-
-def _rust(relpath: str) -> str:
-    return (RUST_SRC / relpath).read_text()
-
-
-def rust_loadable_tensor_types() -> set[int]:
-    """GGML type ids ``runtime/src/tensor.rs`` dequantizes.
-
-    Derived rather than restated. Three copies of this set existed -- here, in
-    ``gguf_header_transcript.sh``, and in the Rust source itself -- and the two
-    copies had drifted to ``{0, 1, 8}`` after tensor.rs gained BF16, so the
-    transcript reported every BF16 tensor in a Gemma 4 checkpoint as refused.
-    """
-    src = _rust("runtime/src/tensor.rs")
-    consts = dict(re.findall(r"pub const (GGML_\w+): u32 = (\d+);", src))
-    arms = set(re.findall(r"^\s+(GGML_\w+) =>", src, re.MULTILINE))
-    out = {int(consts[a]) for a in arms if a in consts}
-    assert out, "no loadable tensor types derived from tensor.rs"
-    return out
-
-
-def rust_ok_array_element_types() -> set[int]:
-    """GGUF array element type ids ``runtime/src/gguf.rs`` decodes."""
-    src = _rust("runtime/src/gguf.rs")
-    block = re.search(r"fn array\(.*?\n    \}", src, re.DOTALL)
-    assert block, "could not locate fn array in gguf.rs"
-    out = {
-        int(n)
-        for n in re.findall(r"^\s+(\d+) => MetaValue::", block.group(0), re.MULTILINE)
-    }
-    assert out, "no array element types derived from gguf.rs"
-    return out
-
-
 # Bytes per element, for computing safetensors data_offsets.
 DTYPE_BYTES = {"BF16": 2, "F16": 2, "F32": 4, "F64": 8, "I8": 1, "BOOL": 1}
 
@@ -71,8 +35,9 @@ GGUF_BOOL = 7
 GGUF_STRING = 8
 GGUF_ARRAY = 9
 
-# ggml tensor type ids. Which of them the harness loads is not restated here:
-# ask rust_loadable_tensor_types(), which reads runtime/src/tensor.rs.
+# ggml tensor type ids. Nothing in this repository loads GGUF any more -- R10
+# deleted the last reader -- so these name the types the specs under test are
+# built from, and no loadability verdict is derived from them.
 GGML_F32 = 0
 GGML_F16 = 1
 GGML_Q8_0 = 8
@@ -350,14 +315,6 @@ class GgufSpec:
     def array_element_types(self) -> dict[str, int]:
         return {k: et for k, _, _, et in self.kvs if et is not None}
 
-    def refused_array_keys(self) -> list[str]:
-        ok = rust_ok_array_element_types()
-        return sorted(k for k, et in self.array_element_types().items() if et not in ok)
-
-    def refused_tensor_types(self) -> list[int]:
-        ok = rust_loadable_tensor_types()
-        return sorted(t for t in self.tensor_type_tally() if t not in ok)
-
 
 def _gguf_string(s: str) -> bytes:
     b = s.encode()
@@ -379,8 +336,8 @@ def _gguf_value(vtype: int, value, elem_type: int | None) -> bytes:
 
 def write_gguf(path: Path, spec: GgufSpec, *, magic: bytes = b"GGUF") -> Path:
     """Writes a GGUF file from a spec, including versions and types no
-    in-tree writer produces (bool arrays, BF16, v2), which is why this cannot
-    reuse runtime/src/synth.rs::GgufWriter."""
+    in-tree writer produces (bool arrays, BF16, v2). Since R10 nothing in the
+    tree writes GGUF at all, so there is nothing left to reuse either."""
     out = bytearray(magic + struct.pack("<I", spec.version))
     out += struct.pack("<Q", len(spec.tensors))
     out += struct.pack("<Q", len(spec.kvs))
@@ -426,8 +383,10 @@ def gemma_gguf_spec(**overrides) -> GgufSpec:
             ("gemma4.block_count", GGUF_UINT32, 7, None),
             ("gemma4.embedding_length", GGUF_UINT32, 8, None),
             ("gemma4.rope.freq_base", GGUF_FLOAT32, 1000000.0, None),
-            # docs/verification/rust-harness-qa.md:736-740 predicts the
-            # converter writes this as a bool array, which gguf.rs refuses.
+            # The 2026-07-30 QA campaign predicted the converter writes this
+            # as a bool array, which the since-deleted gguf.rs refused. See
+            # docs/verification/archive/rust-harness-qa-campaigns.md; the
+            # campaign log is frozen, so it carries no current line numbers.
             (
                 "gemma4.attention.sliding_window_pattern",
                 GGUF_ARRAY,

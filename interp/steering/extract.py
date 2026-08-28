@@ -4,7 +4,8 @@ method "repeng": contrastive prompt pairs through repeng's ControlVector.train
 on the bf16 HF checkpoint (the default). method "sae_row": a single feature's
 decoder row from a pretrained SAE (Gemma Scope via SAELens) placed at its
 layer, zero elsewhere. Both return the same in-memory DirectionSet; export.py
-turns it into control-vector GGUF. There is no third method: hand-rolled
+writes it as a safetensors image plus a JSON manifest beside it
+(schemas/control_vector_artifact.json). There is no third method: hand-rolled
 activation-difference extraction is what repeng already does.
 
 Extraction is batch GPU work for the workbench container (bf16 substrate
@@ -31,8 +32,15 @@ class ExtractionError(Exception):
 class DirectionSet:
     """Per-layer steering directions plus the provenance export.py records.
 
-    directions maps layer index (1-based, llama.cpp control-vector convention)
-    to a float32 vector of the residual-stream width.
+    directions maps a 0-based decoder block index to a float32 vector of the
+    residual-stream width: the direction is added to the output residual of
+    that block.
+
+    The index has always been the block itself, never the block plus one.
+    Until R10 the exporter additionally refused index 0, because llama.cpp
+    and repeng describe this numbering as 1-based and leave the first block
+    unsteerable; that floor went with the llama.cpp steering path, and the
+    indices it admitted did not move.
     """
 
     directions: dict[int, np.ndarray]

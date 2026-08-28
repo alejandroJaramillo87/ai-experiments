@@ -1,15 +1,24 @@
 ---
 name: gemma4-synth-fixture-root
-description: Most rust-harness Gemma 4 findings share one root - the single synthetic fixture (synth.rs / fixtures/tiny-gemma4.gguf) encodes conventions the spec contradicts, so the whole rust test tier is blind to them
+description: Most rust-harness Gemma 4 findings share one root - the single synthetic GGUF fixture (synth.rs) encoded conventions the spec contradicts, so the whole rust test tier is blind to them
 metadata:
   type: project
-verified: 2026-08-06
+verified: 2026-08-10
+closed: 2026-08-10
 stale_when: rust-harness/fixtures/ gains a second Gemma-shaped fixture at a separating geometry, or synth.rs stops asserting bos=1/eos=2
 ---
 
-`/work/rust-harness/runtime/src/synth.rs` (`TinySpec` + `build_tiny_model`) produces
-`fixtures/tiny-gemma4.gguf`, the only Gemma-shaped checkpoint in the tree. Every rust golden,
-determinism test, probe-identity test, and the numpy cross-check load it. It declares
+**CLOSED.** Its own `stale_when` fired: `TinySpec::e4b_shaped()` added a second Gemma-shaped
+fixture at a separating geometry (S5), and the weight path then moved off GGUF entirely (P2-P8).
+`fixtures/tiny-gemma4/` and `fixtures/tiny-gemma4-e4b/` are now checkpoints, and every item
+below is either fixed or unrepresentable in the current tree. Kept as the record of why the
+rust test tier was once blind to a family of findings at once.
+
+The record as written:
+
+`/work/rust-harness/runtime/src/synth.rs` (`TinySpec` + `build_tiny_model`) produced a single
+Gemma-shaped GGUF fixture, then the only one in the tree. Every rust golden,
+determinism test, probe-identity test, and the numpy cross-check loaded it. It declares
 `general.architecture = gemma4` while encoding several conventions the spec contradicts, so a
 family of audit findings share this one root:
 

@@ -1,7 +1,7 @@
 """The Python obs writers against the cross-language record contract.
 
 Run-level observability is written by two implementations — common/obs for the
-Python CLIs, rust-harness/harness/src/obs.rs for the harness — and read by one,
+Python CLIs, rust-harness/obs/src/lib.rs for the harness — and read by one,
 the Python runs, retention, and viewer tooling. schemas/obs_record.json is the
 key set both must emit; this module holds the Python side to it, and
 rust-harness/harness/tests/obs_contract.rs holds the Rust side.
@@ -112,3 +112,91 @@ class TestCatalogContract:
         stamp = read_runs(catalog_path("interp"))[0]["timestamp"]
         assert len(stamp) >= 19
         assert stamp[10] == "T"
+
+
+class TestDeclaredEvents:
+    """The `events` section, asserted from the side that owns the file.
+
+    Deliberately not "Python emits run.header" -- Python has no model to
+    describe, and a test asserting an event this tier will never write would
+    be theatre. What this side can check is that the declaration is honest:
+    that every declared writer exists, that no declared field silently
+    redefines a base key, and that a one-sided event says so rather than
+    reading as a gap somebody should close.
+    """
+
+    def test_every_declared_event_names_a_writer_that_exists(self, contract):
+        # The Rust half cannot make this claim: its build context is
+        # rust-harness/ alone, so it cannot see whether a path elsewhere in
+        # the tree is real. This side can, which is the whole reason the
+        # contract is asserted at both writers rather than one.
+        for name, spec in contract["events"].items():
+            assert spec["writers"], f"{name} declares no writer"
+            for writer in spec["writers"]:
+                path = writer.split(" ")[0]
+                assert os.path.exists(os.path.join(REPO_ROOT, path)), (
+                    f"{name} names a writer that does not exist: {path}"
+                )
+
+    def test_no_declared_field_collides_with_a_base_key(self, contract):
+        # A declared field named `run_id` would be dropped by both writers'
+        # base-key guards, so the contract would promise a key no record can
+        # ever carry.
+        base = set(contract["event"]["required"])
+        for name, spec in contract["events"].items():
+            declared = set(spec["fields"]) | set(spec.get("optional", []))
+            assert not (declared & base), (
+                f"{name} redeclares base keys: {declared & base}"
+            )
+
+    def test_phase_emits_exactly_the_fields_it_declares(self, contract, tmp_path):
+        """The two-sided half of the phase contract.
+
+        Unlike run.header, this tier really does write these events, so this
+        side can assert the records rather than only the declaration. The Rust
+        half asserts the same two field sets against the same file from
+        rust-harness/harness/tests/obs_contract.rs, so neither writer can
+        drift without one of the two failing -- which is what makes a
+        two-sided event the stronger kind of contract entry.
+        """
+        from common.obs import core
+
+        run_id = core.configure("training", log_dir=str(tmp_path))
+        with core.phase("model.load"):
+            pass
+
+        path = tmp_path / "training" / f"{run_id}.jsonl"
+        records = [json.loads(line) for line in path.read_text().splitlines()]
+        base = set(contract["event"]["required"])
+        for name in ("phase.start", "phase.end"):
+            written = [r for r in records if r.get("event") == name]
+            assert len(written) == 1, f"{name} was not written exactly once"
+            declared = set(contract["events"][name]["fields"]) | set(
+                contract["events"][name].get("optional", [])
+            )
+            # Both directions: containment alone would let a field be declared
+            # and never written, the likelier drift for a fixed record.
+            assert set(written[0]) - base == declared, name
+            assert written[0]["phase"] == "model.load"
+            # File-only on both sides, so msg stays empty rather than
+            # doubling as the phase name.
+            assert written[0]["msg"] == ""
+
+    def test_the_phase_events_declare_both_writers(self, contract):
+        # The counterpart to run.header's one-sidedness below: these two are
+        # written by both stacks, and saying so is what tells the next reader
+        # that a missing Python writer would be a bug rather than a decision.
+        for name in ("phase.start", "phase.end"):
+            writers = contract["events"][name]["writers"]
+            assert any("common/obs" in w for w in writers), (name, writers)
+            assert any("rust-harness" in w for w in writers), (name, writers)
+
+    def test_the_run_header_declares_its_one_sidedness(self, contract):
+        # run.header is Rust-only by decision, not by omission. The Python
+        # tiers carry equivalent provenance through run_context(), and
+        # imitating that block from Rust would emit a packages/gpu section
+        # that reads true and is not. Asserting no common/obs writer is
+        # listed is what keeps that a declaration rather than a pending task.
+        writers = contract["events"]["run.header"]["writers"]
+        assert not any("common/obs" in w for w in writers), writers
+        assert any("rust-harness" in w for w in writers), writers

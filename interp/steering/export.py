@@ -1,16 +1,28 @@
-"""Control-vector GGUF export (W1 decision 2).
+"""Control-vector safetensors export (W1 decision 2, format per R10).
 
-One exporter for both extraction methods, writing the llama.cpp control-vector
-layout (ggml-org/llama.cpp PR 5970): architecture "controlvector", a
-model_hint string, layer_count, and one float32 tensor per layer named
-"direction.<layer>" (1-based). Using the gguf package directly for repeng
-vectors too — instead of repeng's own exporter — keeps a single deterministic
-code path, which is what makes the re-export-reproduces-the-same-hash
-acceptance check meaningful.
+One exporter for both extraction methods, writing one float32 tensor per
+steered decoder block named "block.<index>", 0-based. Using safetensors
+directly for repeng vectors too -- instead of repeng's own exporter -- keeps
+a single deterministic code path, which is what makes the
+re-export-reproduces-the-same-hash acceptance check meaningful.
 
-Artifacts land at <out>/<name>/: vector.gguf plus manifest.json. Downstream
-tools (wiring.py, make steer-up) refuse a vector whose manifest model hash
-does not match the served model's base checkpoint.
+The format is safetensors rather than the llama.cpp control-vector GGUF
+layout (ggml-org/llama.cpp PR 5970) this exporter wrote until R10. That
+layout was not a choice: llama.cpp read the file as --control-vector-scaled,
+so the format belonged to the consumer. R9 gave the rust harness an HTTP
+endpoint and R10 retired the llama.cpp steering path, leaving one reader,
+in this repository, which already reads safetensors everywhere else.
+
+The block numbering flipped with the format, and the tensor prefix was
+renamed in the same step so it cannot flip silently. llama.cpp and repeng
+number control vectors from 1 and leave block 0 unsteerable; probes
+(interp/probes/export.py) number layers from 0. Keeping "direction.<N>"
+while changing its base would have made every pre-R10 vector load and steer
+one block early with no error anywhere. "block.<N>" makes it a load failure.
+
+Artifacts land at <out>/<name>/: vector.safetensors plus manifest.json.
+Downstream tools (wiring.py, make steer-up) refuse a vector whose manifest
+model hash does not match the served model's base checkpoint.
 """
 
 from __future__ import annotations
@@ -22,39 +34,39 @@ import numpy as np
 from interp.manifest import file_xxhash, git_sha, utc_now, write_manifest
 from interp.steering.extract import DirectionSet
 
-VECTOR_NAME = "vector.gguf"
-ARCH = "controlvector"
+VECTOR_NAME = "vector.safetensors"
+BLOCK_PREFIX = "block."
 
 
 class ExportError(Exception):
-    """The direction set cannot be written as a control-vector GGUF."""
+    """The direction set cannot be written as a control-vector image."""
 
 
-def write_control_vector_gguf(
-    directions: dict[int, np.ndarray], path: str, model_hint: str = "unknown"
-) -> None:
-    """Write direction tensors in llama.cpp control-vector GGUF layout."""
-    import gguf
+def write_control_vector(directions: dict[int, np.ndarray], path: str) -> None:
+    """Write direction tensors as a safetensors image of `block.<index>`."""
+    from safetensors.numpy import save_file
 
     if not directions:
         raise ExportError("direction set is empty")
     widths = {v.shape for v in directions.values()}
     if len(widths) != 1 or len(next(iter(widths))) != 1:
         raise ExportError(f"directions must share one 1-D width, got shapes {widths}")
-    if min(directions) < 1:
-        raise ExportError(
-            f"layer indices must be 1-based (llama.cpp convention), got {min(directions)}"
-        )
+    if min(directions) < 0:
+        raise ExportError(f"block indices must be non-negative, got {min(directions)}")
+    # A non-finite direction is added to every position's residual, so it
+    # turns the whole stream to NaN and the model emits noise rather than
+    # failing. Refused here, where the offending block can be named.
+    for block, v in sorted(directions.items()):
+        if not np.isfinite(v).all():
+            raise ExportError(f"direction for block {block} holds a non-finite value")
 
-    writer = gguf.GGUFWriter(path, ARCH)
-    writer.add_string(f"{ARCH}.model_hint", model_hint)
-    writer.add_uint32(f"{ARCH}.layer_count", max(directions))
-    for layer in sorted(directions):
-        writer.add_tensor(f"direction.{layer}", directions[layer].astype(np.float32))
-    writer.write_header_to_file()
-    writer.write_kv_data_to_file()
-    writer.write_tensors_to_file()
-    writer.close()
+    save_file(
+        {
+            f"{BLOCK_PREFIX}{block}": directions[block].astype(np.float32)
+            for block in sorted(directions)
+        },
+        path,
+    )
 
 
 def export_control_vector(
@@ -63,14 +75,10 @@ def export_control_vector(
     model_hash: str = "unknown",
     layer_range: tuple[int, int] | None = None,
 ) -> dict:
-    """Write vector.gguf plus its manifest; return the manifest."""
+    """Write vector.safetensors plus its manifest; return the manifest."""
     os.makedirs(out_dir, exist_ok=True)
     vector_path = os.path.join(out_dir, VECTOR_NAME)
-    write_control_vector_gguf(
-        direction_set.directions,
-        vector_path,
-        model_hint=str(direction_set.source.get("model_type", "unknown")),
-    )
+    write_control_vector(direction_set.directions, vector_path)
 
     manifest = {
         "schema_version": 1,

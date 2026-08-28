@@ -887,6 +887,16 @@ severity, then tier, then file. These are the findings a reader may act on direc
 
 - upheld: Read /work/rust-harness/runtime/src/sampler.rs:16-31 directly: SamplingParams holds exactly {temperature, top_p, seed} and Default yields temperature 0.8, top_p 0.95, seed 0 — verbatim as the finding states. Spec /work/docs/models/gemma-4.md lines 494-496 are verbatim "temperature": 1.0, "top_k": 64, "top_p": 0.95. Refutation attempts all failed: (1) grep -rn 'top_k\|top-k\|topk\|TopK' /work/rust-harness/ returns zero hits (repo-wide top_k hits are only training/ distillation cache width, unrelated); (2) sample() at sampler.rs:70-155 truncates solely via cumulative top_p (candidates.truncate(cut), line 143) with no rank bound, so tokens past rank 64 stay reachable when the top 64 miss 0.95 mass; (3) the only mask is the grammar legality mask (generator.rs:22), not a rank mask, and no caller builds one; (4) SamplingParams is never populated from checkpoint metadata — nothing in rust-harness reads generation_config.json (only training/export/merge.py:187 copies the filename), and all construction sites are test literals plus main.rs:566 ::default(); (5) 0.8 is undeclared — README:116-117 names the flags without values, and the only documented 0.8 is the unrelated --compact-at threshold. main.rs:566/USAGE 487-488 confirm the propagation site with no --top-k flag.
 
+> **Annotation 2026-08-15 — outside the frozen record; the finding above is preserved as
+> written.** GC-120's `top_k` half is falsified as of this date. The audit's "`top_k` appears
+> nowhere in rust-harness (grep: zero hits)" was true on 2026-08-01 and no longer holds:
+> `rust-harness/harness/src/cli.rs:283` defines a `--top-k <n>` flag, and
+> `rust-harness/runtime/src/sampler.rs:26` carries `pub top_k: Option<usize>` applied as a rank
+> cutoff before top-p. The default remains no rank cutoff rather than the published 64, so the
+> flag makes the checkpoint's recipe expressible without making it the default. Nothing else in
+> GC-120 is re-audited here — in particular the temperature half is not rechecked — and no
+> sentence of the finding is reworded.
+
 ### GC-121 Single rope_freq_base throughout: the dual-RoPE refusal fires only if the converter names a second rope key
 
 | Field | Value |

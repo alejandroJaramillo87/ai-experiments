@@ -30,8 +30,9 @@ rather than competing for VRAM. Most `make interp-*` targets first run
 
 The artifact formats crossing into Rust are the reason this tier has cross-language tests:
 `interp/probes/capture.py` defines the npz capture shard that
-`rust-harness/runtime/src/npz.rs` writes, and `interp/probes/export.py` and
-`interp/steering/export.py` write the probe and control-vector GGUFs that the harness reads.
+`rust-harness/runtime/src/npz.rs` writes; `interp/probes/export.py` writes the probe the
+harness reads (safetensors plus a JSON sidecar) and `interp/steering/export.py` the
+control-vector image (safetensors plus a sibling manifest).
 Those contracts are in `schemas/`.
 
 ## Entry points

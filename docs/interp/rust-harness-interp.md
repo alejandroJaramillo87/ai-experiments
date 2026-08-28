@@ -11,6 +11,7 @@ monitoring) on the `rust-harness` runtime instead of llama.cpp. Bridges the
 - [The tap seam](#the-tap-seam)
 - [Steering](#steering)
 - [Activation capture](#activation-capture)
+- [Finding the run behind a capture](#finding-the-run-behind-a-capture)
 - [In-band monitoring](#in-band-monitoring)
 - [What stays in Python](#what-stays-in-python)
 - [Validation](#validation)
@@ -27,13 +28,66 @@ different numerical world than the quantized serving path), and interventions
 limited to launch flags. The rust runtime is owned code behind narrow trait
 seams, so the same three capabilities become in-band:
 
-1. **Tap**: activations are recorded from the serving path itself, quantized
-   numerics included, closing the bf16-versus-quantized capture gap by
-   construction.
+1. **Tap**: activations are recorded from the serving path itself, so the
+   capture and the served forward pass are the same computation rather than two
+   that resemble each other.
 2. **Steer**: control vectors load from the same GGUF artifact
    `interp/steering` already exports, applied inside the forward pass.
 3. **Monitor**: a probe dot-product per position is one `Tap` implementation,
    with no proxy or log-replay machinery.
+
+**The capture gap dissolved rather than closed, and the difference matters.**
+The original argument for the tap was that it would record quantized numerics,
+so a probe would at last see the values the served model actually computes. That
+is no longer what happens. The rust runtime reads the published checkpoint and
+holds each weight at its published width, so there is no quantization on the
+serving path to capture — the bf16 workbench and the rust serving path now
+compute in the same numerical world, and the gap is absent instead of
+instrumented. The tap is still worth having for the other two reasons: it is
+in-band, and it is the same code path that serves. But a probe trained on rust
+captures is no longer studying a different model from one trained on a bf16
+workbench, and any claim resting on that distinction is void.
+
+The llama.cpp path above remains quantized, so the gap is real there. It is the
+reason not to treat the two backends' captures as interchangeable.
+
+### Reaching the harness over HTTP
+
+The first of the three workarounds now has a replacement. `--serve <port>`
+exposes the two paths the interp pipeline calls, `/v1/chat/completions` and
+`/v1/health`, and `common/serving.py` carries a `harness` entry pointing at
+port 8005:
+
+```bash
+cd rust-harness && cargo build --release --bin harness
+./target/release/harness --model <checkpoint-dir> --text-only --serve 8005
+```
+
+Every sampling flag becomes a per-request default, and a request may override
+any of them including `seed` — which is the point of a research endpoint, and
+is what the OpenAI-compatible servers accept and ignore. The interp flags apply
+unchanged, so `--probe` and `--control-vector` are installed on the model that
+answers the request rather than on a replay of it. The wire contract is
+`schemas/harness_chat_endpoint.json`.
+
+Verified against real E4B in [RH.14](../verification/rust-harness/rust-harness.md): the
+Python client completes a chat with no change but the registry entry, and two
+greedy requests return byte-identical text.
+
+R11 retired the log proxy, the replay stage and the fidelity caveat together:
+the harness writes one record per served request carrying the scores its own
+tap took, so there is nothing left to capture from outside or to recompute
+offline. Serving still blocks until the process is signalled, so the end-of-run
+`probe-flags.jsonl` report is still not written under `--serve` -- but nothing
+is lost with it, because the per-request drain writes the same flags into the
+log as it goes, and does so while the process is alive rather than after. The
+one artifact with no per-request equivalent is the session KV snapshot, which a
+served session has no use for: its cache is the accumulation of unrelated
+callers' traffic and is not a thing to resume. And the CPU
+backend decodes at **5.5-5.8 tokens/second** (measured against real E4B in
+[RH.14](../verification/rust-harness/rust-harness.md)), so `chat_completion`'s 120-second
+default covers only about 660 tokens and a 256-token scorecard call takes
+roughly 45 s. Pass an explicit `timeout`, and size a sweep accordingly.
 
 No SAE artifacts are required: contrastive direction extraction and linear
 probes need only captures produced by the harness itself. Published SAEs
@@ -45,34 +99,111 @@ directions through the same control-vector format.
 `runtime/src/model/cpu.rs` defines the seam:
 
 ```rust
+#[non_exhaustive]
+pub enum Site {
+    LayerOutput,
+}
+
 pub trait Tap: Send {
-    fn on_residual(&mut self, layer: usize, position: usize, x: &[f32]);
+    fn on_residual(&mut self, layer: usize, site: Site, position: usize, x: &[f32]);
+
+    fn wants_attention(&self) -> bool { false }
+    fn on_attention(&mut self, layer: usize, position: usize,
+                    head: usize, first: usize, w: &[f32]) {}
 }
 ```
 
-The tap fires after each decoder layer's final residual add. This matches
-the hidden state nnsight exposes as `block.output[0]`, which is what
-`interp/probes/capture.py` records — probes trained on Python captures and
-rust captures observe the same tensor. Taps are optional (`None` costs one
-branch per layer), do not transfer across forks, and fire after steering is
-applied, so captures observe the stream downstream layers actually consume.
+`Site` names which point of the layer a row came from. One variant today, and
+the seam fires only that one; the field exists because a tap keyed on the layer
+alone records "layer 7" for a row whose meaning is fixed by this paragraph
+rather than by the value, and a stored row carries that ambiguity into the
+artifact. It is `#[non_exhaustive]`, so a second point is additive for a tap in
+another crate. Implementations take the site they want by comparison
+(`if site != Site::LayerOutput { return; }`); within `runtime` a `match` with a
+wildcard arm is an unreachable pattern while the enum has one variant, and the
+gate runs `-D warnings`.
+
+The tap fires on the decoder layer's output, which under Gemma 4 is not the
+final residual add. A layer applies, in order: the attention residual, the
+feed-forward residual, the per-layer-embedding residual, then a multiply by
+`layer_output_scale`. The scale is the module's last operation, so the tap
+fires after it. Stored scales run 0.0186 to 0.879, a spread of roughly 54x
+across the stack, so the distinction is not academic — tapping before the
+multiply would report a differently scaled tensor at every layer.
+
+This still matches the hidden state nnsight exposes as `block.output[0]`,
+which is what `interp/probes/capture.py` records: the Python forward hook
+receives the already-scaled tensor, so no correction factor is needed and
+none is applied. Probes trained on Python captures and rust captures observe
+the same tensor. Taps are optional (`None` costs one branch per layer), do
+not transfer across forks, and fire after steering is applied, so captures
+observe the stream downstream layers actually consume.
+
+### Attention weights
+
+The second fire site, and the first one inside the layer. It is a pair of
+trait methods rather than a `Site` variant, which is the part worth
+understanding before adding a third.
+
+`Site` keys `on_residual`, whose argument is a residual row of width
+`embed_dim`. An attention distribution is not that: it is over key timesteps,
+its length varies with the position and the layer's window, and it is
+meaningless without the query head it belongs to. Threading it through
+`on_residual` would break the width invariant every existing tap relies on and
+would make the activation-capture shard key `layer_<L>` ambiguous, which
+`schemas/activation_capture.manifest.json` reserves for a second *residual*
+site. So the rule is: a point that yields a residual row is a `Site`; a point
+that yields something else is a method, as the pre-stack stages already are.
+
+The fire is between the softmax and the weighted-V fold, the one place the
+distribution exists as a value. The slice is borrowed out of the scratch
+buffer, so nothing is copied and no arithmetic moves — this backend
+materializes a score vector per query head rather than fusing the softmax into
+a tiled kernel, which is why no second code path is needed here and why a
+tiled backend will owe one.
+
+Three things the seam states that a consumer cannot recover on its own. The
+weights are post-softmax, so they sum to one; pre-softmax logits are a
+different quantity and are not offered. The vector spans `first ..= position`
+in absolute key positions, and `first` is not derivable from the vector's
+length, because a global layer early in the sequence and a sliding layer past
+its window can hand over vectors of the same length naming different spans.
+And `head` is a *query* head, whose KV head is `head / (n_heads / n_kv_heads)`;
+the per-layer head width — 256 on a sliding Gemma 4 layer against 512 on a
+global one — does not enter, because what varies here is a key count.
+
+`wants_attention` defaults to false and is asked once per forward pass. This
+is the first site whose volume is quadratic in the context, so opt-in is per
+site rather than per tap: a probe monitor pays a compare, not a capture.
+
+`runtime/src/bin/attention-capture.rs` is the consumer, writing
+`attention.npz` and a manifest under
+[schemas/attention_capture.manifest.json](../../schemas/attention_capture.manifest.json).
+Both `--layers` and `--heads` are required, for the same quadratic reason.
 
 ## Steering
 
-`ControlVector::from_gguf` reads the llama.cpp control-vector layout that
-`interp/steering/export.py` writes: one f32 tensor per layer named
-`direction.<layer>`, width equal to the embedding dimension. `direction.N`
-steers decoder block `N`, matching llama.cpp and the repeng training
-semantics that produce these files, so the same `vector.gguf` steers the
-same block here as under `llama-cpu` and `llama-gpu`. Numbering starts at
-1 and block 0 is unsteerable, as upstream. `scale * direction` is added to
-the residual after the named block.
-Steering carries across forks, so a steered agent's subagents serve the same
-steered model. Binary flags:
+`ControlVector::from_image` reads the safetensors image that
+`interp/steering/export.py` writes: one 1-D f32 tensor per steered decoder
+block named `block.<index>`, width equal to the embedding dimension.
+`block.N` steers block `N`, 0-based, and `block.0` is legal. Until R10 this
+was a GGUF whose tensors carried a `direction.` prefix and whose index 0 was
+refused, because llama.cpp read the file and repeng numbers from 1; retiring
+the llama.cpp steering path removed both constraints.
+
+`scale * direction` is added to the named block's output, after that block's
+`layer_output_scale` multiply and before the tap fires, so a capture observes
+the steered stream that downstream blocks actually consume. Steering carries
+across forks, so a steered agent's subagents serve the same steered model.
+
+`--control-vector-layer-range` selects a band, inclusive and 0-based,
+replacing llama.cpp's flag of the same name. It drops the blocks outside the
+range as the image is read rather than testing them per token. Binary flags:
 
 ```bash
-$ harness --model model.gguf --control-vector vector.gguf \
-    --control-vector-scale 1.0 <task>
+$ harness --model <checkpoint-dir> \
+    --control-vector <vector-dir>/vector.safetensors \
+    --control-vector-scale 1.0 [--control-vector-layer-range "4 20"] <task>
 ```
 
 ## Activation capture
@@ -83,7 +214,7 @@ registry, evaluate) consumes rust-served activations unchanged:
 
 ```bash
 $ cargo run -p runtime --bin activation-capture -- \
-    --model model.gguf --dataset examples.jsonl --layers 3,5 --out <dir>
+    --model <checkpoint-dir> --dataset examples.jsonl --layers 3,5 --out <dir>
 ```
 
 - Shards `shard_00000.npz` and onward hold `layer_<L>` float32 rows (last
@@ -97,13 +228,24 @@ $ cargo run -p runtime --bin activation-capture -- \
   raises `KeyError: 'BF16'`). The schema pins the value at
   `/schemas/activation_capture.manifest.json`.
 - `examples.jsonl` and a schema-1 `manifest.json` complete the directory.
-  The manifest records `capture_backend: "rust-harness-cpu"` and a
-  `model_hash` over the GGUF file.
-- The `tokenizer_fingerprint` derives from the GGUF vocabulary, not the
-  Hugging Face tokenizer object, so it is not comparable to fingerprints
-  from Python captures. It keeps rust-captured artifacts internally
-  consistent across capture, train, and score, which is the property the
-  fingerprint check protects.
+  The manifest records `site: "layer_output"` — which point of each layer the
+  rows were taken at, written from `LastRowTap::SITE` so the stored text cannot
+  drift from the value a reader parses back. The shard keys stay `layer_<L>`:
+  with one site the key is unambiguous, and renaming it would break
+  `load_capture` for no information gain. A second *residual* site is what
+  makes the key ambiguous, and the schema note records the cost of that day.
+  The attention-weight site does not: it is a separate trait method writing a
+  separate artifact, and no row of it ever reaches a capture shard, which is
+  part of why it was added that way. The manifest also
+  records `capture_backend: "rust-harness-cpu"`,
+  `model_revision: "safetensors"`, and a `model_hash` over
+  `model.safetensors`.
+- The `tokenizer_fingerprint` is a sha256 over the model path and vocabulary
+  size with no chat template, so it is not comparable to fingerprints from
+  Python captures. Both sides now read the same tokenizer.json, so the
+  incomparability is a matter of formula rather than of vocabulary. It keeps
+  rust-captured artifacts internally consistent across capture, train, and
+  score, which is the property the fingerprint check protects.
 - `dataset_sha256` is likewise per-backend: Rust hashes the file's raw bytes,
   Python hashes text-mode `f.read()`, which normalizes CRLF. The two agree on
   an LF dataset and differ on a CRLF one, and a test asserts both halves so a
@@ -123,23 +265,62 @@ repeated-layer guards are exercised against Rust-written output. The tests
 that reach the parent tree skip when it or numpy is unavailable; the
 artifact-shape half always runs.
 
+## Finding the run behind a capture
+
+`activation-capture`, `attention-capture` and `layer-diff` each write a run
+record to the shared observability catalog under
+`${OBS_LOG_DIR}/harness/`, so a capture directory is traceable to the
+invocation that produced it. `make harness-runs` lists them alongside harness
+and ladder runs.
+
+The manifest already carried provenance about the *artifact* — `model_hash`,
+`dataset_sha256`, `git_sha`, `created`. What it never carried was provenance
+about the *run*: the thread count, the dot kind, the batch kind and how long
+the load took are absent from every manifest, and their absence is what let
+the fold default to the reference kernel unnoticed for months. Each binary now
+emits one header event naming its resolved configuration, and brackets its
+checkpoint load as a `model.load` phase.
+
+`layer-diff` is the one this matters most for, because it writes no artifact
+at all: its output is a table and a verdict, so the tolerances a pass was
+reached under used to survive only in the terminal that produced it. Its
+header records `cosine_floor` and `rel_l2_ceiling`, which is what makes a
+quoted verdict re-readable. A divergence found exits 1 with no failure record
+— it is a completed run that answered no, not a crash.
+
+None of the three opens a per-run directory or writes a `metrics.jsonl`: two
+have no series to plot, and a directory holding only a header is one the
+retention pruner would never reclaim. See
+[../rust-harness/observability.md](../rust-harness/observability.md).
+
+**The three also answer `--help` now, and reject an unknown flag at exit 2
+naming it.** Before that, a misspelled flag was silently ignored and the
+capture proceeded with the wrong configuration, or failed with a message that
+named neither the missing flag nor the misspelling. Every command in this
+document is unaffected — the flags were already correct — but a command
+mistyped from one now fails at the argument, not in the middle of a load.
+
 ## In-band monitoring
 
 A trained linear probe runs inside the forward pass as one `Tap`
 implementation (`runtime/src/model/probe.rs`). The exporter
 `interp/probes/export.py` converts a registered probe artifact
-(`probe.npz` plus manifest, hash-validated on load) into a single GGUF
-file: architecture `probe`, f32 tensors `probe.weights`, `probe.mu`, and
-`probe.sigma`, and KV metadata `probe.bias`, `probe.layer` (0-based),
-`probe.threshold`, `probe.name`, and `probe.model_hash`. The rust side
+(`probe.npz` plus manifest, hash-validated on load) into a safetensors
+image of the f32 vectors `weights`, `mu` and `sigma`, plus a JSON sidecar
+beside it at the same path with a `.json` extension carrying `name`,
+`model_hash`, `layer` (0-based), `bias`, `threshold`, `width`, and an
+optional `site`. The sidecar is required: it holds the layer and the
+decision threshold, so an image without it is unusable rather than merely
+unchecked, and `Probe::load` refuses it naming the path it looked for.
+Contract: `schemas/probe_artifact.json`. The rust side
 scores with the same math as `interp/probes/score.py` —
 `sigmoid(((x - mu) / sigma) . w + bias)`, flagged when strictly above the
 trained threshold — and the parity is golden-tested against the numpy
 reference.
 
 ```bash
-$ harness --model model.gguf --probe probe.gguf \
-    [--probe-out flags.jsonl] <task>
+$ harness --model <checkpoint-dir> --probe probe.safetensors \
+    [--probe-out flags.jsonl] [--alignment-out alignment.jsonl] <task>
 ```
 
 Every position of the probe's layer is scored, a granularity the Python
@@ -151,6 +332,45 @@ only: monitored and unmonitored runs produce bit-identical logits, which
 the golden test asserts. Because taps do not transfer across forks, a
 monitored agent's subagents run unmonitored; extending monitoring across
 forks is future work.
+
+### Token-to-text alignment
+
+`probe-flags.jsonl` answers "did anything cross the threshold". It cannot
+answer "what was the model writing when it did", and over tens of thousands
+of positions that is the only question worth asking. `--alignment-out`
+writes the artifact that closes the gap
+(`harness/src/alignment.rs`, contract in `schemas/alignment.json`): a header
+line carrying the run id, then one row per position with
+
+| Field | Meaning |
+|-------|---------|
+| `position` | absolute cache position, the same numbering the tap reports |
+| `role` | `content`, or `scaffold` for a position the chat template wrote |
+| `byte_start`, `byte_end` | half-open byte range in the header's decoded `text` |
+| `pass`, `phase` | the forward call that computed the position, and `prefill` or `decode` |
+| `score` | the probe score taken there, when a probe was loaded |
+
+Concatenating every row's span in position order reproduces the text exactly,
+which is the property the artifact is tested against. Byte offsets rather than
+character offsets, because the tokenizer is byte-oriented and byte-fallback
+pieces exist; a codepoint split across several of them is attributed whole to
+the position that completes it.
+
+Every position gets a row, scaffolding included. Omitting one would renumber
+every position after it and the artifact's indices would stop being the run's.
+The run id is the one `obs::mint_run_id` mints, so this artifact and the run's
+event log join without a second identifier.
+
+`pass` is there because the prefill/decode bit alone stopped being sufficient
+once batching landed: it cannot distinguish a position computed alongside its
+neighbours from one computed alone, and those are different conditions. It is
+minted in `CpuModel::prefill_groups`, the one place a batch boundary is
+decided.
+
+Turning this on makes the model record its passes and the monitor keep every
+clean score, both of which grow with the run, so it is off by default. Nothing
+in the Python interp toolkit reads the artifact yet; the contract's own notes
+record that as a gap.
 
 The workload shape matters for what monitored positions mean. Agent tasks
 are prefill-heavy: most scored positions are the model reading
@@ -205,16 +425,19 @@ reader the probe toolkit actually calls, rather than through a bespoke
 texts by position, are exercised against a Rust-written directory
 (`runtime/tests/activation_capture.rs`).
 
-In the other direction, `runtime/tests/python_exporter_contract.rs` loads
-probe and control-vector GGUFs written by `interp/probes/export.py` and
-`interp/steering/export.py` through `Probe::from_gguf` and
-`ControlVector::from_gguf`. Two committed fixtures
-(`fixtures/python-probe.gguf`, `fixtures/python-control-vector.gguf`) are
-exporter output, so the parse assertions run wherever the workspace builds; a
-further test re-runs the exporters and compares parsed content, which is what
-notices an exporter that has drifted from the committed bytes. The comparison
-is semantic rather than byte for byte, because a `gguf` version bump may
-legitimately change padding.
+In the other direction, `runtime/tests/python_exporter_contract.rs` loads the
+probe and the control vector written by `interp/probes/export.py` and
+`interp/steering/export.py` through `Probe::load` and
+`ControlVector::from_image`. The committed fixtures
+(`fixtures/python-probe.safetensors` with its `python-probe.json`, and the
+`fixtures/python-control-vector/` directory holding `vector.safetensors` and
+its `manifest.json`) are exporter output, so the parse assertions run wherever
+the workspace builds; a further test re-runs the exporters and compares parsed
+content, which is what notices an exporter that has drifted from the committed
+bytes. The comparison is semantic rather than byte for byte: a `safetensors`
+version bump may legitimately change header key order, and the probe sidecar
+and the vector manifest carry a timestamp and a git sha that differ on every
+regeneration.
 
 The layer numbering is what made this worth closing. `probe.layer` is 0-based
 and `direction.<N>` is 1-based; each side enforced its own rule and nothing
@@ -246,9 +469,10 @@ the language boundary. One residual stream survives, so none of that changes.
 
 Retaining PLE shifts what a tapped vector means. Each layer sums a
 token-identity embedding lookup with a projection of the input embedding and
-adds the result to the residual stream at the end of the block. The tap point
-stays well defined, and it stays the same tensor the Python capture path
-records, because the injection lands before the block's output. What changes
+adds the result to the residual stream after the feed-forward residual. The
+tap point stays well defined, and it stays the same tensor the Python capture
+path records, because the injection lands before both the
+`layer_output_scale` multiply and the block's output. What changes
 is the interpretation: a component of the tapped vector is a function of the
 current token identity and the layer index alone, not of context. A probe
 trained on that stream may therefore score partly on token identity, and a
@@ -265,7 +489,8 @@ than a semantic direction is visible rather than assumed away.
 
 The tap seam is part of the `Model` backend contract from now on: the CUDA
 backend (roadmap phase A) must implement `Tap` delivery with the same
-semantics (post-layer residual, steering applied first). On the GPU this
+semantics: the layer output after the `layer_output_scale` multiply, with
+steering applied first. On the GPU this
 implies a device-to-host copy per tapped layer; taps stay optional so the
 untapped serving path pays nothing. The full set of CUDA-backend
 interpretability constraints (determinism requirement, provenance world,
@@ -279,6 +504,12 @@ revised live ladder) is recorded in
 | Tap seam, steering, capture, goldens (sandbox) | done | — |
 | Real-model capture and contrastive extraction on the workstation | pending | E4B architecture reconciliation, CPU backend speed measurement |
 | In-band probe monitor as a `Tap` implementation (sandbox) | done | — |
+| Attention-weight tap site and `attention-capture` (sandbox) | done | — |
+| Sliding-versus-global contrast read off a real E4B long-context run | pending | E4B architecture reconciliation |
+| Per-head attention output as a third site | pending | — |
+| `--serve` endpoint answering `common/serving.py` (sandbox) | done | — |
+| The endpoint answering interp's clients against real E4B | done | RH.14, 5.5-5.8 tokens/s |
+| The log proxy and the replay stage retired | pending | the workstation run above |
 | Monitor with a probe trained on real-model rust captures | pending | real-model capture on the workstation |
 | Probe quality evaluated separately on prefill and decode positions | pending | real-model capture on the workstation |
 | CUDA tap parity | pending | roadmap phase A |

@@ -1,26 +1,163 @@
 /*
- * tiny-model — write the synthetic tiny-model GGUF fixture to a path.
+ * tiny-model — write the synthetic tiny-model fixtures to a path.
  *
  * The output is deterministic in the default TinySpec seed, so regenerating
  * the committed fixture always reproduces identical bytes; the committed
  * Python reference (fixtures/reference_logits.py) reads the same file.
+ *
+ * Given a stem, writes three artifacts describing one model:
+ *
+ *   <stem>.tokenizer.json          the vocabulary, for the tokenizers crate
+ *   <stem>/config.json             the checkpoint's architecture
+ *   <stem>/model.safetensors       the checkpoint's weights
+ *
+ * All three come from one TinySpec, so a fixture set cannot describe two
+ * different models.
  */
 
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use runtime::synth::{build_tiny_model, TinySpec};
+use runtime::cli::{Flag, Kind, Spec};
+use runtime::synth::{
+    build_tiny_config_json, build_tiny_safetensors, build_tiny_tokenizer_json,
+    merge_fixture_tokenizer_json, TinySpec,
+};
+
+/// Drop a trailing `.gguf`, so the stem is the same whether the caller names
+/// the image or the fixture. Every other artifact hangs off this.
+fn stem_of(path: &str) -> &str {
+    match Path::new(path).extension().map(|e| e == "gguf") {
+        Some(true) => &path[..path.len() - 5],
+        _ => path,
+    }
+}
+
+/// Write `bytes` to `path`, reporting either way. Returns false on failure so
+/// the caller can stop at the first one rather than leaving a half-written
+/// fixture set that looks complete.
+fn write(path: &Path, bytes: &[u8]) -> bool {
+    if let Some(dir) = path.parent() {
+        if !dir.as_os_str().is_empty() {
+            if let Err(e) = std::fs::create_dir_all(dir) {
+                runtime::status::error(&format!("Create {}: {e}", dir.display()));
+                return false;
+            }
+        }
+    }
+    match std::fs::write(path, bytes) {
+        Ok(()) => {
+            runtime::status::ok(&format!(
+                "Wrote {} bytes to {}",
+                bytes.len(),
+                path.display()
+            ));
+            true
+        }
+        Err(e) => {
+            runtime::status::error(&format!("Write {}: {e}", path.display()));
+            false
+        }
+    }
+}
+
+const SPEC: Spec = Spec {
+    program: "tiny-model",
+    summary: "Write a synthetic fixture checkpoint, or the merge-list tokenizer that no\n\
+              model fixture can carry.",
+    positionals: "<output-stem> [e4b] | <output.json> bpe",
+    required: &[],
+    flags: &[
+        Flag {
+            name: "--help",
+            kind: Kind::Bare,
+            help: "print this help and exit",
+        },
+        Flag {
+            name: "-h",
+            kind: Kind::Bare,
+            help: "print this help and exit",
+        },
+    ],
+};
 
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let [path] = args.as_slice() else {
-        eprintln!("usage: tiny-model <output.gguf>");
-        return ExitCode::from(2);
-    };
-    let image = build_tiny_model(&TinySpec::default());
-    if let Err(e) = std::fs::write(path, &image) {
-        eprintln!("[ERROR] Write {path}: {e}");
-        return ExitCode::from(1);
+    let raw: Vec<String> = std::env::args().skip(1).collect();
+    if runtime::cli::handled_help(&SPEC, &raw) {
+        return ExitCode::SUCCESS;
     }
-    eprintln!("[OK] Wrote {} bytes to {path}", image.len());
+    // The stem goes through `extract` rather than straight into the slice match
+    // below, so a dash-leading word is refused instead of becoming an output
+    // path. Until U3b `tiny-model -h` wrote `-h.tokenizer.json` and a directory
+    // named `-h` holding config.json and model.safetensors: asking this program
+    // for help produced a fixture set named after the question.
+    let args = match runtime::cli::extract(&SPEC, raw, &mut []) {
+        Ok(p) => p.rest,
+        Err(e) => return runtime::cli::usage_error(&SPEC, &e),
+    };
+    let (path, spec) = match args.as_slice() {
+        [path] => (path, TinySpec::default()),
+        [path, variant] if variant == "e4b" => (path, TinySpec::e4b_shaped()),
+        // Tokenizer-only: a vocabulary with a merge list, which no model
+        // fixture can carry. No weights, so no GGUF is written.
+        [path, variant] if variant == "bpe" => {
+            return match merge_fixture_tokenizer_json()
+                .and_then(|bytes| Ok((std::fs::write(path, &bytes)?, bytes.len())))
+            {
+                Ok((_, n)) => {
+                    runtime::status::ok(&format!("Wrote {n} bytes to {path}"));
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    runtime::status::error(&format!("Write {path}: {e:#}"));
+                    ExitCode::from(1)
+                }
+            };
+        }
+        [] => return runtime::cli::usage_error(&SPEC, "no output stem given"),
+        [_, variant] => {
+            return runtime::cli::usage_error(
+                &SPEC,
+                &format!("{variant}: expected the variant e4b or bpe"),
+            )
+        }
+        many => {
+            return runtime::cli::usage_error(
+                &SPEC,
+                &format!("a stem and at most one variant, {} given", many.len()),
+            )
+        }
+    };
+    let stem = stem_of(path);
+    let checkpoint = PathBuf::from(stem);
+
+    let artifacts: Vec<(PathBuf, Vec<u8>)> = match (|| -> anyhow::Result<_> {
+        Ok(vec![
+            (
+                PathBuf::from(format!("{stem}.tokenizer.json")),
+                build_tiny_tokenizer_json(&spec)?,
+            ),
+            (
+                checkpoint.join(runtime::checkpoint::CONFIG_FILE),
+                build_tiny_config_json(&spec)?,
+            ),
+            (
+                checkpoint.join(runtime::checkpoint::WEIGHTS_FILE),
+                build_tiny_safetensors(&spec)?,
+            ),
+        ])
+    })() {
+        Ok(a) => a,
+        Err(e) => {
+            runtime::status::error(&format!("Build fixtures for {stem}: {e:#}"));
+            return ExitCode::from(1);
+        }
+    };
+    // Built before any is written, so a failure leaves no partial set behind.
+    for (path, bytes) in &artifacts {
+        if !write(path, bytes) {
+            return ExitCode::from(1);
+        }
+    }
     ExitCode::SUCCESS
 }

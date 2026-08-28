@@ -1,29 +1,46 @@
-"""Probe GGUF export for the rust harness in-band monitor.
+"""Probe export for the rust harness in-band monitor.
 
-Converts a registered probe artifact (probe.npz + manifest.json) into a
-single GGUF file the rust runtime loads directly, mirroring the
-control-vector exporter (interp/steering/export.py): architecture "probe",
-scalar metadata as KV entries, and one float32 tensor each for the weights
-and the standardization statistics. The rust side (rust-harness
-runtime/src/model/probe.rs) reads exactly this layout; scoring parity with
-interp/probes/score.py is golden-tested there.
+Converts a registered probe artifact (probe.npz + manifest.json) into the
+pair the rust runtime loads: a safetensors image of the three f32 parameter
+vectors, and a JSON sidecar beside it holding the scalars. The rust side
+(rust-harness runtime/src/model/probe.rs, Probe::load) reads exactly this
+layout; scoring parity with interp/probes/score.py is golden-tested there.
+
+Two files rather than one container: the tensors go where every other tensor
+in this repository goes, and the scalars stay readable without a parser. The
+sidecar is not optional -- it carries the layer, the site and the decision
+threshold, so an image without it is unusable rather than merely unchecked --
+and the reader looks for it at the image's path with a .json extension.
+
+Contract: schemas/probe_artifact.json.
 """
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
+from common.reports import report_header
 from interp.probes.registry import Probe, load_probe
 
-ARCH = "probe"
+ARTIFACT = "probe"
+SCHEMA_VERSION = 1
+
+# The tap site a probe with no recorded site was trained at. Written only when
+# the manifest names one: the reader defaults an absent site to this same
+# value, and an exporter inventing it would turn a fact nobody recorded into
+# one the artifact asserts.
+SITE_KEY = "site"
 
 
 class ProbeExportError(Exception):
-    """The probe artifact cannot be written as a probe GGUF."""
+    """The probe artifact cannot be written as a probe image."""
 
 
-def write_probe_gguf_from_probe(probe: Probe, path: str) -> None:
-    """Write a loaded probe in the rust-harness probe GGUF layout."""
-    import gguf
+def write_probe_from_probe(probe: Probe, path: str) -> None:
+    """Write a loaded probe as a safetensors image plus its JSON sidecar."""
     import numpy as np
+    from safetensors.numpy import save_file
 
     weights = np.asarray(probe.weights, dtype=np.float32)
     mu = np.asarray(probe.mu, dtype=np.float32)
@@ -35,24 +52,36 @@ def write_probe_gguf_from_probe(probe: Probe, path: str) -> None:
         )
     if probe.layer < 0:
         raise ProbeExportError(f"layer must be non-negative, got {probe.layer}")
+    # JSON has no spelling for NaN or Infinity: json.dumps would emit a bare
+    # `NaN`, which the rust reader's parser rejects. Refuse here so the
+    # failure names the scalar rather than arriving later as a parse error on
+    # a file that should never have been written.
+    for field, value in (("bias", probe.bias), ("threshold", probe.threshold)):
+        if not np.isfinite(value):
+            raise ProbeExportError(f"{field} must be finite, got {value}")
 
-    writer = gguf.GGUFWriter(path, ARCH)
-    writer.add_string(f"{ARCH}.name", probe.name)
-    writer.add_string(
-        f"{ARCH}.model_hash", str(probe.manifest.get("model_hash", "unknown"))
+    image = Path(path)
+    save_file({"weights": weights, "mu": mu, "sigma": sigma}, str(image))
+
+    sidecar = report_header(ARTIFACT, SCHEMA_VERSION)
+    # report_header spells the discriminator "report"; this artifact uses the
+    # "artifact" spelling the envelope also allows, which is what the reader
+    # and interp/manifest.py both expect. Exactly one may be present.
+    sidecar["artifact"] = sidecar.pop("report")
+    sidecar.update(
+        name=probe.name,
+        model_hash=str(probe.manifest.get("model_hash", "unknown")),
+        layer=int(probe.layer),
+        bias=float(probe.bias),
+        threshold=float(probe.threshold),
+        width=int(weights.shape[0]),
     )
-    writer.add_uint32(f"{ARCH}.layer", probe.layer)
-    writer.add_float32(f"{ARCH}.bias", float(probe.bias))
-    writer.add_float32(f"{ARCH}.threshold", float(probe.threshold))
-    writer.add_tensor(f"{ARCH}.weights", weights)
-    writer.add_tensor(f"{ARCH}.mu", mu)
-    writer.add_tensor(f"{ARCH}.sigma", sigma)
-    writer.write_header_to_file()
-    writer.write_kv_data_to_file()
-    writer.write_tensors_to_file()
-    writer.close()
+    site = probe.manifest.get(SITE_KEY)
+    if site:
+        sidecar[SITE_KEY] = str(site)
+    image.with_suffix(".json").write_text(json.dumps(sidecar, indent=2) + "\n")
 
 
-def write_probe_gguf(probe_dir: str, path: str) -> None:
-    """Load a registered probe (hash-validated) and export it as GGUF."""
-    write_probe_gguf_from_probe(load_probe(probe_dir), path)
+def write_probe(probe_dir: str, path: str) -> None:
+    """Load a registered probe (hash-validated) and export it."""
+    write_probe_from_probe(load_probe(probe_dir), path)
