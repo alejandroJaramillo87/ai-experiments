@@ -53,10 +53,10 @@ Excluded, and the reason for each:
   the containers run.
 
 No prior campaign has run against this scope, so this campaign's own ledger is the whole
-exclusion list. Every defect already filed below as BQ-F01 through BQ-F23 is out of scope for
+exclusion list. Every defect already filed in the ledger below is out of scope for
 any further finder: it is recorded, and re-filing it wastes a verification slot on a claim
-that already has one. A finder that cannot read this section reports its absence rather than
-assuming the set is empty.
+that already has one. Read the table rather than any range quoted in prose: this sentence first named BQ-F01 through BQ-F23 and was stale before the campaign that wrote it ended.
+A finder that cannot read this section reports its absence rather than assuming the set is empty.
 
 ---
 
@@ -621,6 +621,7 @@ low until the verification phase records a verdict.
 | BQ-F50 | `bench/commands/run.py`, `bench/delta.py` | medium | The identifier binding two arms of a pair has writers and no reader. It is absent from the fields a comparison refuses to cross, so when the second arm fails the first arm's file remains on disk carrying a pair identifier whose sibling does not exist, indistinguishable from a completed pair. Reproduced: that orphan compared against a different pair's arm of the same name graded fifteen metrics with no warning and exited 0. |
 | BQ-F51 | `bench/commands/run.py::apply_arm` | medium | The recreate is skipped when an arm carries no overrides, so a bare-named arm measures a service that has been up for an unknown time -- warm page cache, settled clocks, and whatever configuration a previous run left behind -- while its partner measures a container recreated seconds earlier. The benchmarking skill documents the overrides as optional, so the invocation is advertised. Nothing in either artifact records that one arm was recreated and one was not. |
 | BQ-F52 | `docker-compose.inference.yaml`, `docs/verification/bench/bench.md` | critical | Two of the host runbook's A/B entries measure nothing. An arm applies its overrides as the environment of the compose subprocess, which reaches a container only through interpolation. `THREADS` is written as the literal `16` in the compose file, so the thread-count entry's twelve-thread arm never reaches the service and both arms run at sixteen; `NO_REPACK` appears in no compose file at all, so both arms of the repack entry run the entrypoint default. Only the huge-page knob is interpolated and therefore only that one arm is real. The entry that would catch this is the same entry that cannot: it instructs the operator to confirm the override applied by reading the recorded cpuset, which says nothing about a thread count. The runbook would produce two clean-looking comparisons of a service against itself, and the twenty-six percent figure the thread entry exists to re-anchor would be re-anchored to a null result. Surfaced by a verifier working BQ-F43, whose own claim it refuted. The disproof is already in the artifact and unread: `bench/conditions.py` records the thread count from the container's own inspected environment, so both arms would carry the same value and the comparison would see two matching counts and raise nothing. The entry reads the cpuset instead, which comes from a compose literal identical in every arm. |
+| BQ-F53 | `bench/commands/run.py::apply_arm` | low | The residual of BQ-F43, which was refuted because the knobs it named never reach the container. One knob does: the huge-page wrapper is interpolated, so an arm setting it off leaves the service that way with no restore and no printed hint. A later ordinary bring-up re-resolves the default and recreates the container, so the leak is not sticky, which is why this is low rather than the high it was filed as. Filed fresh rather than folded into the refuted row, and carrying no verdict. |
 
 ### Verdicts
 
@@ -735,7 +736,7 @@ before it was filed.
 | BQ-F27 | 1 confirmed | confirmed; the fix belongs to the registry, not the shared parser | medium |
 | BQ-F28 | 2 confirmed | confirmed, and reachable without any fault | high |
 | BQ-F30 | 1 confirmed | confirmed; five of seven examples are already caught by the suite | medium |
-| BQ-F33 | 1 confirmed | confirmed; scoped to vLLM, and the floor is too wide rather than too narrow | high |
+| BQ-F33 | 2 confirmed | confirmed; scoped to vLLM, and the floor is too wide rather than too narrow | high |
 | BQ-F34 | 2 confirmed | confirmed, with a fabricated verdict reproduced twice | high |
 | BQ-F35, BQ-F36, BQ-F37 | 1 confirmed each | confirmed | medium |
 | BQ-F43 | 2 refuted | the stated consequence is impossible; a worse one is not | refuted |
@@ -749,7 +750,7 @@ before it was filed.
 | BQ-F51 | 1 confirmed | confirmed; the bias runs warm-arm-faster | medium |
 | BQ-F38 | 1 confirmed | confirmed; corrupts absolute claims only, and cancels exactly in a delta | medium |
 | BQ-F39, BQ-F40 | 1 confirmed each | confirmed; a hand-edited profile is the designed input, not an exotic one | medium |
-| BQ-F52 | 1 confirmed, 1 pending | confirmed; survived the bare-key passthrough counter-argument | critical |
+| BQ-F52 | 2 confirmed | confirmed; every delivery route checked and none exists | critical |
 
 The prefill slope is reported in the wrong unit. The four-character-per-token estimate reaches
 the report as each point's length and as the slope's x-axis, while the server's own count is
