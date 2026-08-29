@@ -5,7 +5,7 @@ needs no GPU, no Docker daemon, and no model data. Keep the commands runnable, a
 paths accurate — the documentation gates check this directory, so a stale reference here
 fails the gate.**
 
-**Entries: 9 verified, 0 blocked, 0 pending, of 9.**
+**Entries: 10 verified, 0 blocked, 0 pending, of 10.**
 
 The sandbox counterpart to [bench.md](bench.md). That runbook proves numbers against real
 services and cannot run until the workstation is free; this one proves the reduction logic,
@@ -24,6 +24,7 @@ None of these entries is a GPU consumer, so the one-at-a-time rule does not appl
 
 - [Scope and exclusions](#scope-and-exclusions)
 - [Phase A: oracles](#phase-a-oracles)
+- [Phase B: verification](#phase-b-verification)
 - [Findings ledger](#findings-ledger)
 - [What this campaign does not cover](#what-this-campaign-does-not-cover)
 
@@ -365,8 +366,14 @@ Observed:
 
 ```
 $ uv run --no-sync pytest tests/bench/test_properties.py -q
-29 passed, 1 xfailed in 0.30s
+31 passed, 1 xfailed in 0.26s
 ```
+
+This block first recorded `29 passed`. Re-running the same command against the same
+unchanged tree during the verification phase produced 31, so the number was written from a
+run taken before the last two properties were added and never refreshed. Corrected here and
+filed as BQ-F26; the audit that caught it re-ran every command in this document, and this was
+the only observation that did not reproduce.
 
 One property failed on first run, and it was the property that was wrong. The claim
 that the decode rate always exceeds the end-to-end rate is not a law: algebra makes it
@@ -502,6 +509,54 @@ Status: VERIFIED 2026-08-29
 
 ---
 
+## Phase B: verification
+
+## BQ.10 Every finding faces an independent verifier
+
+[../../../.claude/skills/bug-bash/SKILL.md](../../../.claude/skills/bug-bash/SKILL.md) sets the
+budget by severity: two recorded verdicts for a critical or high finding and a third on
+disagreement, one for a medium, none for a low. Zero verdicts is `unverified`, never
+confirmed, so every row in the ledger above entered this phase carrying no standing at all.
+
+Verifiers were given the claim and told to refute it, one finding each, with no sight of any
+other verifier's reasoning. The verdict lines below are recorded verbatim, refutations
+included: a campaign that deletes what it disproved teaches the next campaign nothing, and the
+same claim comes back.
+
+```
+uv run --no-sync pytest tests/bench -q -rxX
+python3 -m bench compare <baseline> <candidate> --noise <floor>
+```
+
+Observed: 24 verdicts across 17 findings. The full text of each is in the ledger's Verdict
+column. What the phase established, in order of how much it changed:
+
+- **Nine of seventeen findings were refuted as filed.** In seven of those the mechanism held
+  and the description did not: wrong arithmetic, an invented consequence, a severity resting
+  on a false universal, or a cited file that does not contain the sentence attributed to it.
+  A refuted finding whose mechanism survives is re-stated and re-verified, not quietly kept.
+- **One refutation is worse news than the finding it refuted.** BQ-F03 was filed as "every
+  floor lookup misses, so every metric reports inconclusive". Both verifiers refuted it and
+  both found the same stronger chain: `quick` and `publish` share the point key
+  `prefill/p128/g1/c1`, and `prefill/slope` is shared by construction, so a mismatched floor
+  is partly *applied* rather than wholly ignored. A verifier reproduced a real +40% time to
+  first token regression printing as `within_noise` against a foreign floor, with exit 0 and
+  an empty warnings list.
+- **One upstream premise was settled directly rather than deferred to the host.** A verifier
+  fetched llama.cpp's server context translation unit at the pinned commit through the proxy
+  and read `process_token` itself. The result corrected the finding: the pending stop-string
+  branch does *not* skip the send, and is unreachable from this suite anyway because
+  `bench/adapters.py::build_request` sends no `stop` field. The reachable branch is the
+  incomplete UTF-8 one, where no frame arrives at all.
+- **One finding cited the wrong file.** BQ-F19 attributed to `../../../bench/README.md` a claim
+  that vLLM reports no server timings. That file says no such thing; the sentence is in
+  `../../../bench/adapters.py`. The same finding asserted the suite documents queue time as
+  impossible to derive client-side, and no such sentence exists anywhere in the tree.
+
+Status: VERIFIED 2026-08-29
+
+---
+
 ## Findings ledger
 
 Campaign-local identifiers, following the rust-harness precedent: an identifier in
@@ -537,6 +592,80 @@ low until the verification phase records a verdict.
 | BQ-F21 | `bench/commands/compare.py::cmd` | medium | The three report reads that open a comparison sit outside any handler. A missing file, a truncated document, or one that fails envelope validation leaves the command with a traceback rather than a diagnosed error and an exit code. The reader is proven to raise; nothing proves its only caller survives it. |
 | BQ-F22 | `bench/commands/compare.py`, `bench/commands/noise.py`, `bench/__main__.py` | medium | No test imports any of the three. The noise floor is the mechanism every `within_noise` verdict rests on, and the command that measures it has never been executed by the suite; it is also the second call site of the assembly function, so a defect reachable only from there is invisible. |
 | BQ-F23 | `tests/bench/fixtures/` | low | Two of the seven wire fixtures written in the previous batch, the llama.cpp partial frame and the vLLM final frame carrying per-request metrics, are loaded by no test. A fixture nothing reads asserts nothing, and the second is the shape BQ-F19 turns on. |
+| BQ-F24 | `bench/commands/run.py::cmd`, `bench/delta.py::check_comparable` | critical | The A/B arms are not interleaved. `cmd` runs one arm's entire profile to completion, writes it, then recreates the service and runs the next, so drift over the run aliases wholly onto the second arm -- the exact failure the design exists to prevent, and which the subcommand's own description promises it prevents: "With two --arm flags the arms are interleaved at the repeat level, so drift over the run cannot alias onto one of them." Interleaving is implemented at the repeat level within one arm, never between arms. The guard that would catch it is defeated by the same gap: the comparison warns when the baseline's `run.order` is not `interleaved`, and that field is copied from the profile, which says `interleaved` in both profiles on disk regardless of how the arms were sequenced. So the one warning that exists can never fire. Surfaced by a verifier working BQ-F08 and confirmed by reading; filed here rather than folded into that finding because it is a different defect in a different file. |
+| BQ-F25 | `bench/delta.py::floor_from_pair` | medium | The floor builder differences every metric in the mapping and takes the largest absolute change as `worst_pct`, with none of the filtering the comparison command applies to its own table. An observed token count, which is not a performance metric, can therefore set the published worst spread. `bench.md` B2 reads `worst_pct` as an acceptance signal and `bench/commands/noise.py` warns on it against the five percent threshold, so a tokenization artifact can declare the rig unable to resolve a real change. Surfaced by a verifier working BQ-F04, whose own claim it refuted. |
+| BQ-F26 | `docs/verification/bench/bench-qa.md` | low | The observed block for BQ.7 recorded `29 passed, 1 xfailed` for a command that produces `31 passed, 1 xfailed` against the same unchanged tree: a figure captured before the last two properties were written and never refreshed. Recorded evidence that does not reproduce is worse than none, because the entry is marked verified on the strength of it. Every command in this document was re-run during verification; this was the only one that did not reproduce. Corrected in this batch. |
+
+### Verdicts
+
+Severity below is the settled grade, not the proposed one. Where they differ, the verification
+phase moved it and the reason is in the restatements underneath.
+
+| ID | Verdicts | Outcome | Settled |
+|----|----------|---------|---------|
+| BQ-F01 | 1 refuted, 1 confirmed, tie-breaker | mechanism confirmed against upstream source; filed arithmetic wrong | pending tie-breaker |
+| BQ-F02 | 2 refuted | flag fires correctly on every reachable input; naming defect only | low |
+| BQ-F03 | 2 refuted | gap real, stated consequence false, true chain is worse | re-file, see below |
+| BQ-F04 | 2 refuted | one field pinned by construction, the other invisible without a flag | low |
+| BQ-F05 | 2 confirmed | confirmed | high |
+| BQ-F06 | 1 confirmed, 2 refuted | discard is the deliberate and correct choice | refuted |
+| BQ-F07 | 2 confirmed | confirmed with a reproduction; the subprocess half of the mechanism is wrong | medium |
+| BQ-F08 | 1 refuted | line order and the stamps both recover the interleaving | low |
+| BQ-F09 | 1 refuted | intervals merge, they do not inflate; no reachable path | low |
+| BQ-F10 | 1 refuted | no pinned engine can emit a non-numeric token count | low |
+| BQ-F11 | 1 refuted | every route from a real `docker inspect` is already intercepted | low |
+| BQ-F12 | 1 refuted | costs no reported number; the second query is forced by the tool | low |
+| BQ-F13, BQ-F14, BQ-F15, BQ-F23 | 0, by policy | recorded without verification | low |
+| BQ-F19 | 2 refuted on the documentary half, 1 confirmed on the upstream half | see below | high |
+| BQ-F20 | 1 confirmed | confirmed | medium |
+| BQ-F21 | 1 confirmed | confirmed, weaker than filed: an exit code is set | medium |
+| BQ-F22 | 1 refuted | the premise is false; the modules are imported | low |
+| BQ-F24 | 1 confirmed, 1 pending | confirmed | critical |
+| BQ-F25, BQ-F26 | 0 | filed during verification, unverified | pending |
+
+Nine findings were refuted as filed. In seven the mechanism survived and the description did
+not, which is a different outcome from a finding that was simply wrong, and the restatements
+below are what a remediator works from — not the original rows.
+
+**BQ-F03 must be re-filed before it is fixed.** It was filed as "every lookup misses, so every
+metric reports inconclusive". Both verifiers refuted that and both found the same worse chain
+independently: `quick` and `publish` share the point key `prefill/p128/g1/c1`, and
+`prefill/slope` is shared by construction, so a mismatched floor is partly *applied*. One
+verifier reproduced a genuine +40% regression in time to first token printing as `within_noise`
+against a foreign floor, exit 0, warnings empty. The filed severity was right and its stated
+reason was wrong, which is the most dangerous shape a finding can have: a fix scoped to the
+filed text would harden a path that does not fail.
+
+**BQ-F19 splits cleanly and the halves disagree.** The documentary half is wrong as filed — it
+attributes to `../../../bench/README.md` a claim that file does not make (the sentence is in
+`../../../bench/adapters.py`), and asserts the suite documents queue time as underivable
+client-side, which no file in the tree says. The upstream half was expected to need the
+workstation and did not: a verifier fetched vLLM at the pinned tag and read
+`PerRequestTimingMetrics` with its `queue_time_ms` field, attached to the streamed completion
+response under `--enable-per-request-metrics`. The same reading found what the finding missed —
+that flag is rejected when combined with `--disable-log-stats`, which
+`../../../docker/vllm-gpu/entrypoint.sh` passes by default. Reaching the timings is two changes,
+and the second re-enables statistics logging on a benchmark target, which is a
+measurement-conditions decision rather than a flag flip.
+
+**BQ-F01's engine premise was settled from source, not from this campaign's own fixtures.** Two
+verifiers independently fetched llama.cpp at the pinned commit and read `process_token`. Both
+found the filing's paraphrase wrong on one branch: a pending stop-string match does not skip the
+send, it sends an empty string, and that branch is unreachable here because
+`../../../bench/adapters.py` sends no stop field. The reachable branch is incomplete UTF-8,
+where no frame is sent at all — so no change to the client can recover the arrival, and the
+defect has to be met in the reduction. The filed figures were also wrong: they are the
+arithmetic for a forty millisecond inter-token gap, and the reproduction they cite uses twenty.
+
+**Two findings were refuted by verifiers who then found a real defect next to them.** BQ-F08's
+verifier found that the A/B arms are not interleaved at all, which is BQ-F24 and is graver than
+anything else in this ledger. BQ-F04's verifier found that the floor builder grades observed
+token counts into `worst_pct`, which is BQ-F25.
+
+**One refutation was of a premise this campaign took on trust.** BQ-F22 asserted that the
+compare and noise command modules are imported by no test. They are: the parser test imports
+`../../../bench/cli.py`, which imports both. The claim came from a survey that was not checked
+before it was filed.
 
 ## What this campaign does not cover
 
