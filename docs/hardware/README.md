@@ -149,7 +149,7 @@ EXPO Profile Optimization:
 - **Stability**: Validated memory configuration for sustained AI development workloads
 - **Bandwidth**: Maximized memory throughput for large model parameter access
 
-**Configuration Note**: Install memory modules exclusively in slots A1 and B1 to maintain DDR5-6000 EXPO speeds. Adding additional modules reduces memory frequency on current AM5 platforms, impacting AI workload performance.
+**Configuration Note**: Install memory modules exclusively in slots A2 and B2 to maintain DDR5-6000 EXPO speeds. Adding additional modules reduces memory frequency on current AM5 platforms, impacting AI workload performance.
 
 ### Storage Layout
 
