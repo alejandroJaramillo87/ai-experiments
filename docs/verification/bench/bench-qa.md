@@ -739,7 +739,7 @@ before it was filed.
 | BQ-F34 | 2 confirmed | confirmed, with a fabricated verdict reproduced twice | high |
 | BQ-F35, BQ-F36, BQ-F37 | 1 confirmed each | confirmed | medium |
 | BQ-F43 | 2 refuted | the stated consequence is impossible; a worse one is not | refuted |
-| BQ-F44, BQ-F45, BQ-F46 | 1 confirmed each | confirmed with reproductions | high |
+| BQ-F44, BQ-F45, BQ-F46 | 2 confirmed each | confirmed twice, both from documents the normal build path produces | high |
 | BQ-F25 | 1 confirmed | confirmed; needs asymmetric cell loss to fire, and clearing five percent is unproven | medium |
 | BQ-F29 | 1 confirmed | confirmed; the sharper claim that B3 cannot pass is refuted | medium |
 | BQ-F47 | 1 confirmed | confirmed; naming the wrong file prints strictly less than naming none | medium |
