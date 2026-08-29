@@ -227,7 +227,7 @@ Case Specifications:
 
 **Cooling Configuration:**
 - **Total Fan Count**: 10 case fans providing positive pressure airflow optimization
-- **Intake Configuration**: 6x intake fans (3x front, 3x bottom) for cool air delivery to components
+- **Intake Configuration**: 6x intake fans (3x front, 3x side panel) for cool air delivery to components
 - **Exhaust Configuration**: 3x top exhaust + 1x rear exhaust for efficient heat removal
 
 Thermal Management Strategy:
