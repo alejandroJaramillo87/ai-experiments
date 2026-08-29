@@ -40,6 +40,18 @@ from common.output import Printer  # noqa: E402
 # Retired name -> (replacement, why it was retired). Both halves are shown in the
 # failure, so the reason should read as an explanation to whoever hits it.
 RETIRED: dict[str, tuple[str, str]] = {
+    "scripts/benchmark/server-bench.py": (
+        "python -m bench",
+        "a near-verbatim vendored copy of upstream llama.cpp's load generator, never adapted to this repository's protocol. It captured each request's per-token arrival array and then pooled every request's arrivals into one flat list, so the inter-token deltas were never differenced and prefill could not be told from decode. It reported arithmetic means from a single un-warmed run, counted generated tokens by counting SSE frames rather than reading the server's usage object, and emitted no JSON -- only stdout, two PNGs written to the working directory, and an optional SQLite row holding nothing but a total runtime",
+    ),
+    "scripts/benchmark/benchmark_cpu.sh": (
+        "python -m bench run --service llama-cpu",
+        "a wrapper around server-bench.py with a single hardcoded workload (rng-512-1024, 256 tokens, one request at a time) and no way to sweep either phase. It health-checked /health and grepped the body for 'ok', which is wrong for llama.cpp (/v1/health) and for vLLM (an empty 200 body), so the vllm-gpu target its own help text advertised could never pass the gate. It wrote results to a relative cpu_benchmark_results/ in the working directory, ignoring BENCH_RESULTS_DIR unlike its two siblings, and its documented N_PROMPTS environment override did nothing",
+    ),
+    "scripts/benchmark/benchmark_gpu.sh": (
+        "python -m bench run --service llama-gpu",
+        "the same wrapper for the GPU services, with the same health-check defect and the same single-point workload. Its deep profiling level needed no script at all: nsys already runs inside the container via NSYS_PROFILE=true, wired in docker-compose.inference.yaml. Its real-time display function was defined and never called",
+    ),
     "docs/verification/training-phase0.md": (
         "docs/verification/training/training-phase0.md",
         "the verification directory grew a folder per tier (training, interp, rust-harness, observability, hardware, bugs), so that a human scanning it sees six categories rather than a dozen loose files. Every tier got a folder, including those holding one document today: a mixed root of folders and stray files is what makes a directory hard to read, and the single-file tiers are the ones most likely to gain a sibling. README.md and step-zero-environment.md stay at the root because step zero blocks every phase and is not a peer of the tiers",

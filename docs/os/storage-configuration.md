@@ -186,7 +186,7 @@ the code that writes them and are absent on a fresh machine.
 │   └── neuronpedia/  # Created by `make interp-dirs` (on demand)
 │       └── postgres/ # Created by `make interp-dirs` (on demand)
 ├── benchmarks/       # Benchmark output; no service reads it back
-│   ├── gpu/          # scripts/benchmark/benchmark_gpu.sh (BENCH_RESULTS_DIR)
+│   ├── bench/        # `python -m bench` results and samples (BENCH_RESULTS_DIR)
 │   ├── perplexity/   # scripts/benchmark/test_perplexity.sh (BENCH_RESULTS_DIR)
 │   └── nsys/         # Nsight reports, written in-container when NSYS_PROFILE=true
 ├── comfyui/

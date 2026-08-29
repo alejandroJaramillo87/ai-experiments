@@ -22,6 +22,7 @@ orientation, not explanation: they point here for the detail.
 | [../common/README.md](../common/README.md) | Shared substrate: output, hashing, provenance, observability. A contract package checked across the Python/Rust boundary |
 | [../training/README.md](../training/README.md) | The training tier, and the recipe home for both tiers |
 | [../interp/README.md](../interp/README.md) | The interpretability tier: harvesting, SAEs, probes, steering, organisms |
+| [../bench/README.md](../bench/README.md) | The inference benchmark suite: prefill and decode measured separately, against a measured noise floor |
 | [../tests/README.md](../tests/README.md) | The pytest suite, its tiers, and the skip-count discipline |
 | [../scripts/README.md](../scripts/README.md) | Host-side tooling, and which scripts run in a sandbox |
 | [../docker/README.md](../docker/README.md) | Build contexts; the compose files above them are the source of truth |

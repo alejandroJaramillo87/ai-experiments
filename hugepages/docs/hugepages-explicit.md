@@ -231,7 +231,7 @@ void* mmap(void* addr, size_t length, int prot, int flags, int fd, off_t offset)
 - **Wrapper Implementation**: `hugepages/src/memory/hugepage_wrapper.cpp`
 - **Container Integration**: `docker/llama-cpu/entrypoint.cpu.sh`
 - **Container Build**: `docker/llama-cpu/Dockerfile.llama-cpu`
-- **Benchmark Tool**: `scripts/benchmark/benchmark_cpu.sh`
+- **Benchmark Tool**: `python -m bench run --service llama-cpu` (the `HUGEPAGES` arm)
 - **Configuration**: `.env` and `docker-compose.inference.yaml`
 
 ---

@@ -1,0 +1,44 @@
+{
+  "contract": "bench_models",
+  "schema_version": 1,
+  "description": "Architecture facts for the models the benchmark suite serves. Not a file format: a set of per-model values that a benchmark report must carry and that no other file in the tree states. Read by bench/registry.py and stamped into every bench_result report's conditions.model block.",
+  "file": "schemas/bench_models.json",
+  "writers": ["hand-maintained"],
+  "readers": ["bench/registry.py", "bench/commands/models.py"],
+  "guarded_by": ["tests/bench/test_registry.py"],
+  "entry": {
+    "description": "One object per model, keyed by a slug the CLI accepts for --model.",
+    "required": [
+      "path",
+      "engines",
+      "architecture",
+      "params_total_b",
+      "quantization",
+      "context_length"
+    ],
+    "moe_required": ["params_active_b", "n_experts", "n_experts_active"],
+    "architecture_values": ["dense", "moe"]
+  },
+  "notes": {
+    "why_this_file_exists": "The repository had no record of which served model is dense and which is a mixture of experts. docs/optimizations/README.md's headline CPU figure -- 28.09 to 35.44 tokens/second, a 26.2 percent gain -- was measured against Qwen3-Coder-30B-A3B-Instruct, an MoE model, and says so nowhere; the only machine-readable dense/MoE distinction in the tree is a refusal in training/calculator/components.py:256. training/models/families.py's FamilySpec is about LoRA target modules and chat templates and is deliberately not widened to carry this: two registries with different jobs is the correct shape.",
+    "why_architecture_changes_a_benchmark": "An MoE routes each token to n_experts_active of n_experts, and which experts -- and how evenly load spreads across them -- is a function of token content. Uniform random token ids, which the retired upstream load generator produced, map to a near-uniform expert distribution: the best case for load balance and the worst for expert-weight locality, with no predictable sign of error. Real text is therefore not a nicety for an MoE, and the suite runs the decode arm over three disjoint natural prompts so the spread between them is reported as the routing sensitivity.",
+    "params_active_is_the_comparable_number": "A 30B-A3B model activates roughly 3B parameters per token. Its decode rate is comparable to a dense 3B on arithmetic while carrying a dense 30B's residency and memory traffic. A report that states only the total invites a comparison that is wrong in both directions, so both are required for an MoE entry.",
+    "quantization_is_cross_checked": "registry.load() compares quantization against common.serving.quant_from_name(path) and raises on a mismatch. A quantization confound is the easiest way to publish an unfounded comparison, and the parser already exists.",
+    "paths_are_container_paths": "path is the in-container path the service sees (/app/models/...), matching the MODEL_PATH env var docker-compose.inference.yaml passes, not a host path under /mnt/ai-data/models/.",
+    "this_is_not_the_report_envelope": "Per schemas/README.md, the JSON report envelope in common/reports.py is a separate mechanism. A bench run's output carries that envelope and is not covered by a file in this directory; this contract covers only the registry the run reads."
+  },
+  "models": {
+    "qwen3-coder-30b-a3b-IQ4_XS": {
+      "path": "/app/models/gguf/Qwen3-Coder-30B-A3B-Instruct-GGUF/Qwen3-Coder-30B-A3B-Instruct-IQ4_XS.gguf",
+      "engines": ["llama-cpu", "llama-gpu"],
+      "architecture": "moe",
+      "params_total_b": 30.5,
+      "params_active_b": 3.3,
+      "n_experts": 128,
+      "n_experts_active": 8,
+      "quantization": "IQ4_XS",
+      "context_length": 262144,
+      "note": "The model behind docs/optimizations/README.md's 26.2 percent claim, recorded in docs/optimizations/bios/cpu_benchmark_results_final_bios.json. Listed here so that re-measurement is like-for-like."
+    }
+  }
+}

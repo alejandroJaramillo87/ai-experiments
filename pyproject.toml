@@ -281,8 +281,8 @@ markers = [
 ]
 
 [tool.mypy]
-# Bare `uv run mypy` checks the three first-party packages; used by `make quality`.
-files = ["training", "interp", "common"]
+# Bare `uv run mypy` checks the four first-party packages; used by `make quality`.
+files = ["training", "interp", "common", "bench"]
 python_version = "3.12"
 warn_redundant_casts = true
 warn_unused_configs = true
@@ -352,8 +352,6 @@ fail_under = 83.70
 [tool.ruff]
 line-length = 88
 target-version = "py312"
-# Vendored from llama.cpp; keep upstream style to ease future diffs
-exclude = ["scripts/benchmark/server-bench.py"]
 
 [tool.ruff.lint]
 select = [

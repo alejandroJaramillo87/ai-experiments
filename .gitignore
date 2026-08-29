@@ -23,6 +23,11 @@ venv/
 
 # Benchmark results
 benchmark_results_*.json
+# The retired benchmark_cpu.sh wrote here: a relative path in the working directory,
+# usually the worktree, ignoring BENCH_RESULTS_DIR unlike its siblings. Kept ignored so
+# an old checkout's leftovers cannot be committed by accident. `python -m bench` writes
+# to /mnt/ai-data/benchmarks/bench/ instead; results are run data, not source.
+cpu_benchmark_results/
 test_with_responses.json
 *.benchmark.json
 

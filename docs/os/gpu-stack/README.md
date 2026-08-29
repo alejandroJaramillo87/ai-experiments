@@ -162,8 +162,8 @@ scripts/setup/setup_cudnn.sh
 After installation, verify performance:
 
 ```bash
-# Run GPU benchmark
-scripts/benchmark/benchmark_gpu.sh
+# Run GPU benchmark (see .claude/skills/benchmarking/SKILL.md for the protocol)
+python3 -m bench run --service llama-gpu --model <slug> --profile quick
 ```
 
 ## Architecture-Specific Features

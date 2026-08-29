@@ -1,0 +1,26 @@
+# Routine regression profile: about 8 minutes. Three repeats is the minimum the
+# benchmarking skill accepts, and two prefill points is the minimum a slope can be
+# fitted through -- below either, a result is not comparable against a baseline.
+
+name    = "quick"
+repeats = 3
+warmup  = 1
+order   = "interleaved"
+seed    = 42
+
+[prefill]
+prompt_tokens = [128, 1024]
+max_tokens = 1
+
+[decode]
+prompt_tokens = 128
+max_tokens = [64]
+
+[concurrency]
+llama-cpu = [1]
+llama-gpu = [1]
+harness   = [1]
+vllm-gpu  = [1, 16]
+
+[overrides.harness]
+decode_max_tokens = [32]

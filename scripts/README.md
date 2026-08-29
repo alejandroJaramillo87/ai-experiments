@@ -32,7 +32,7 @@ than `echo -e`, and `NO_COLOR` support.
 ## Entry points
 
 ```bash
-$ ./scripts/benchmark/benchmark_gpu.sh   # no make wrapper, by design
+$ python3 -m bench run --service llama-gpu --model <slug>  # no make wrapper, by design
 $ make update                            # scripts/update/update_python.sh
 $ make agent-preflight                   # scripts/agents/preflight-scan.sh
 ```

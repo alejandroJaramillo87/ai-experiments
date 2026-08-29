@@ -1,0 +1,238 @@
+"""Executing a workload against one service, and assembling its report.
+
+The protocol this implements is .claude/skills/benchmarking/SKILL.md's, with the
+additions docs/optimizations/ideation/rust-harness-optimization-candidates.md prescribes
+after measuring a 44% spread across four consecutive runs of one unmodified binary:
+warm-up discarded, repeats round-robin over points rather than blocked, and the spread
+reported alongside the median. Until now every one of those rules was enforced by the
+operator remembering to follow it.
+
+The health gate is not a formality. `.claude/commands/bench.md`: "a benchmark against an
+unhealthy service is not a slow result, it is no result."
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import json
+import os
+
+from bench import adapters, conditions, metrics, prompting, report
+from bench.registry import ModelSpec
+from bench.workloads import DECODE, PREFILL, Cell, Profile
+from common.output import Printer
+from common.serving import SERVICES, ServingError, ServingTransientError, wait_healthy
+
+# A decode arm at the harness's 5.5 tok/s needs minutes; a prefill probe needs seconds.
+# One generous ceiling beats a per-service table that will drift out of date.
+REQUEST_TIMEOUT_S = 600
+
+
+@dataclasses.dataclass
+class Observation:
+    cell: Cell
+    sample: metrics.Sample
+
+
+def _sample_from_stream(result, cell: Cell, adapter) -> metrics.Sample:
+    usage = result.usage
+    if usage is None:
+        raise ServingError(
+            f"{adapter.service.name} returned no usage object, so the token count "
+            "would have to be inferred from the number of SSE frames. That undercounts "
+            "any server packing more than one token per chunk, so the sample is "
+            "refused rather than estimated"
+        )
+    exact = adapter.forces_exact_length
+    if not exact and usage.completion_tokens != cell.point.max_tokens:
+        # The harness cannot be told to ignore end-of-sequence, so a short generation is
+        # possible. Averaging a truncated one into a decode rate would understate the
+        # work per request without showing why.
+        raise ServingTransientError(
+            f"{adapter.service.name} generated {usage.completion_tokens} tokens, not "
+            f"{cell.point.max_tokens}; this engine cannot force an exact length, so the "
+            "sample is discarded"
+        )
+    return metrics.Sample(
+        t_submit=result.t_submit,
+        arrivals=tuple(result.arrivals),
+        prompt_tokens=usage.prompt_tokens,
+        completion_tokens=usage.completion_tokens,
+        server_prompt_ms=result.timings.prompt_ms if result.timings else None,
+        server_predicted_ms=result.timings.predicted_ms if result.timings else None,
+    )
+
+
+def execute(
+    service: str,
+    profile: Profile,
+    model: ModelSpec,
+    printer: Printer,
+    stream_fn=None,
+) -> tuple[list[Observation], list[dict]]:
+    """Run every cell in order, returning the kept observations and any errors.
+
+    `stream_fn` is injected so the loop can be exercised without a service; production
+    callers leave it None and get bench.client.stream.
+    """
+    from bench.client import stream as default_stream
+
+    stream_fn = stream_fn or default_stream
+    adapter = adapters.for_service(service)
+    regions = prompting.slices(model.decode_prompts)
+
+    observations: list[Observation] = []
+    errors: list[dict] = []
+    cells = profile.cells()
+    printer.info(f"Workload: {len(cells)} cells, {profile.warmup} warm-up per point")
+
+    for index, cell in enumerate(cells):
+        point = cell.point
+        # Rotate regions across repeats so an MoE's decode arm sees disjoint prompts and
+        # the spread between them becomes the reported routing sensitivity.
+        region = regions[max(cell.repeat, 0) % len(regions)]
+        nonce = f"{profile.seed}-{index}"
+        prompt = prompting.build(point.prompt_tokens, region, nonce)
+        body = adapter.build_request(
+            prompt, point.max_tokens, seed=profile.seed + index
+        )
+        label = (
+            f"{point.key} {'warmup' if cell.warmup else f'repeat {cell.repeat + 1}'}"
+        )
+        try:
+            result = stream_fn(adapter, body, REQUEST_TIMEOUT_S)
+            sample = _sample_from_stream(result, cell, adapter)
+        except ServingError as exc:
+            printer.warn(f"Cell {label}: {exc}")
+            errors.append({"cell": point.key, "repeat": cell.repeat, "error": str(exc)})
+            continue
+        if cell.warmup:
+            # Discarded on purpose: caches, clocks and any JIT are not settled yet.
+            printer.info(f"Warm-up: {point.key} discarded")
+            continue
+        observations.append(Observation(cell, sample))
+    return observations, errors
+
+
+def reduce(observations: list[Observation], profile: Profile) -> dict:
+    """Group observations by point and reduce each into its reported block."""
+    by_point: dict[str, list[metrics.Sample]] = {}
+    identity: dict[str, Cell] = {}
+    for obs in observations:
+        by_point.setdefault(obs.cell.point.key, []).append(obs.sample)
+        identity.setdefault(obs.cell.point.key, obs.cell)
+
+    phases: dict[str, dict] = {}
+    for phase in (PREFILL, DECODE):
+        points = []
+        for key, samples in by_point.items():
+            cell = identity[key]
+            if cell.point.phase != phase:
+                continue
+            points.append(
+                {
+                    "point": key,
+                    "prompt_tokens": cell.point.prompt_tokens,
+                    "max_tokens": cell.point.max_tokens,
+                    "concurrency": cell.point.concurrency,
+                    "metrics": metrics.reduce_samples(samples, cell.point.concurrency),
+                }
+            )
+        if not points:
+            continue
+        points.sort(key=lambda p: (p["prompt_tokens"], p["concurrency"]))
+        # Server timings are the authoritative prefill figure where an engine reports
+        # them. Where it does not, the slope below is the only honest one, and the
+        # source is named so the two are never confused in a comparison.
+        has_server = any(
+            p["metrics"].get("prefill_tok_s_server") is not None for p in points
+        )
+        body: dict = {
+            "timings_source": "server" if has_server else "client",
+            "points": points,
+        }
+        if phase == PREFILL:
+            fit = metrics.prefill_slope(
+                [
+                    (p["prompt_tokens"], p["metrics"]["ttft_ms"]["median"])
+                    for p in points
+                    if p["metrics"].get("ttft_ms")
+                ]
+            )
+            if fit:
+                body["slope"] = fit
+        phases[phase] = body
+    return phases
+
+
+def write_samples(observations: list[Observation], directory: str) -> str:
+    """Every raw sample, one JSON object per line, beside the reduced report."""
+    os.makedirs(directory, exist_ok=True)
+    path = os.path.join(directory, "samples.jsonl")
+    with open(path, "w", encoding="utf-8") as handle:
+        for obs in observations:
+            handle.write(
+                json.dumps(
+                    {
+                        "point": obs.cell.point.key,
+                        "repeat": obs.cell.repeat,
+                        "t_submit": obs.sample.t_submit,
+                        "arrivals": list(obs.sample.arrivals),
+                        "prompt_tokens": obs.sample.prompt_tokens,
+                        "completion_tokens": obs.sample.completion_tokens,
+                        "server_prompt_ms": obs.sample.server_prompt_ms,
+                        "server_predicted_ms": obs.sample.server_predicted_ms,
+                    }
+                )
+                + "\n"
+            )
+    return path
+
+
+def gate(service: str, printer: Printer) -> float:
+    """Refuse to benchmark a service that is not healthy."""
+    spec = SERVICES[service]
+    printer.run(f"Health: polling {service} at {spec.health_url}")
+    elapsed = wait_healthy(spec)
+    printer.ok(f"Health: {service} healthy after {elapsed:.1f}s")
+    return elapsed
+
+
+def assemble(
+    *,
+    service: str,
+    profile: Profile,
+    model: ModelSpec,
+    arm: str,
+    run_id: str,
+    phases: dict,
+    errors: list[dict],
+    samples_path: str | None,
+    pair_id: str | None = None,
+) -> dict:
+    """Build the bench_result document for one arm."""
+    host = conditions.collect(service)
+    return report.build(
+        run={
+            "run_id": run_id,
+            "profile": profile.name,
+            "profile_sha256": profile.sha256,
+            "arm": arm,
+            "pair_id": pair_id,
+            "order": profile.order,
+            "repeats": profile.repeats,
+            "warmup_discarded": profile.warmup,
+            "seed": profile.seed,
+        },
+        conditions={
+            "service": service,
+            "engine": adapters.ENGINE_FOR_SERVICE[service],
+            "port": SERVICES[service].port,
+            "model": model.conditions(),
+            "prompt_source": "natural",
+            **host,
+        },
+        phases=phases,
+        errors=errors,
+        samples_path=samples_path,
+    )

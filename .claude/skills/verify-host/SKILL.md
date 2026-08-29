@@ -99,7 +99,7 @@ When a result contradicts the expectation, report the contradiction before expla
 $ make quality                    # full gate; mandatory before every push
 $ make status                     # service health
 $ make up / make down             # service lifecycle
-$ ./scripts/benchmark/benchmark_gpu.sh    # no make wrapper; see the benchmarking skill
+$ python3 -m bench run --service llama-gpu --model <slug>    # no make wrapper; see the benchmarking skill
 $ nvidia-smi                      # GPU state
 $ docker compose -f docker-compose.agents.yaml -p ai-agents build agent-proxy
 ```

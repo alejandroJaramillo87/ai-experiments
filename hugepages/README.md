@@ -17,8 +17,22 @@ docker/llama-cpu/entrypoint.cpu.sh  # Loads via LD_PRELOAD
 
 **Build process:**
 1. `docker compose -f docker-compose.inference.yaml build llama-cpu` compiles the library
-2. Container entrypoint sets `LD_PRELOAD=/app/libzen5_optimizer.so`
+2. Container entrypoint sets `LD_PRELOAD=/app/libzen5_optimizer.so`, but only when
+   `HUGEPAGES=on` (its default). The preload is conditional because the wrapper is a
+   measured arm rather than a constant: `HUGEPAGES=off` runs the same image without it,
+   which is the control arm `python -m bench` compares against.
 3. Library intercepts `mmap()` calls for allocations >= 1GB
+
+**Measure it, do not assume it:**
+
+```bash
+python3 -m bench noise --service llama-cpu --model <slug>
+python3 -m bench run   --service llama-cpu --model <slug> --profile publish \
+    --arm on:HUGEPAGES=on --arm off:HUGEPAGES=off
+```
+
+The report records `HugePages_Free` on both arms, which is the evidence the wrapper took
+pages at all rather than falling back.
 
 See `docker/llama-cpu/Dockerfile.cpu` for build configuration.
 

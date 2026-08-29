@@ -243,7 +243,7 @@ sudo dmesg | grep nvidia
 3. **Monitor Performance**
    ```bash
    # Benchmark to ensure consistent performance
-   scripts/benchmark/benchmark_gpu.sh
+   python3 -m bench run --service llama-gpu --model <slug> --profile quick
    ```
 
 ## Server vs Desktop Drivers

@@ -1,0 +1,44 @@
+# Blog-grade profile: enough repeats to state a spread, enough prefill points to fit a
+# slope. Roughly 45-60 minutes for all four services including cold starts.
+#
+# The repeat count and the interleaving are not style choices. Unpinned runs on this
+# workstation have been measured varying by up to 44% across four consecutive runs of
+# one unmodified binary (docs/optimizations/ideation/rust-harness-optimization-candidates.md),
+# which is why five runs, round-robin over points, is the floor for a published number.
+
+name    = "publish"
+repeats = 5
+warmup  = 1              # discarded: caches, clocks and JIT are not settled on run one
+order   = "interleaved"  # round-robin over points, never blocked
+seed    = 42
+
+# Prefill arm: one token generated, prompt length swept. The sweep is the point --
+# the slope across lengths cancels the fixed per-request overhead that a single-point
+# prefill estimate silently charges to the model.
+[prefill]
+prompt_tokens = [128, 512, 2048, 8192]
+max_tokens = 1
+
+# Decode arm: short prompt, long generation, so prefill is a rounding error and the
+# inter-token series is the whole measurement.
+[decode]
+prompt_tokens = 128
+max_tokens = [256]
+
+# llama.cpp serves one request at a time and the harness serializes generation behind a
+# mutex (common/serving.py). Only vLLM has continuous batching, which is the reason it
+# is in the stack, so it is the only service that gets a sweep.
+[concurrency]
+llama-cpu = [1]
+llama-gpu = [1]
+harness   = [1]
+vllm-gpu  = [1, 4, 16]
+
+[overrides.llama-cpu]
+# An 8192-token prefill on CPU is minutes, not seconds.
+prefill_prompt_tokens = [128, 512, 2048]
+
+[overrides.harness]
+# The harness decodes at 5.5-5.8 tok/s (common/serving.py), so 256 tokens is ~45s a run.
+decode_max_tokens = [64]
+prefill_prompt_tokens = [128, 512, 2048]

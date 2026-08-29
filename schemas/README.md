@@ -1,6 +1,6 @@
 # Cross-language artifact contracts
 
-Nine contracts. Seven cross the boundary between the Rust harness
+Ten contracts. Seven cross the boundary between the Rust harness
 (`/rust-harness/`) and the Python training and interpretability pipelines
 (`/interp/`, `/common/`, `/training/`). Five of those are artifact formats:
 each has a writer and a reader in different languages, so no compiler and no
@@ -12,6 +12,15 @@ response shape the harness serves under `--serve` and `common/serving.py`
 calls, which is the same problem again with the bytes in flight rather than at
 rest. This directory holds the contract each pair agrees on, and every contract
 names the tests that enforce it.
+
+`bench_models.json` is the tenth, and it is here for `gemma4_facts.json`'s reason
+rather than a cross-language one: it is not a format but a set of architecture values
+that a benchmark report must carry and that nothing else in the tree states.
+`training/models/families.py` covers LoRA targets and chat templates, and the only
+machine-readable dense/MoE distinction before it was a refusal in
+`training/calculator/components.py`. The cost of leaving it unstated is on record:
+`docs/optimizations/README.md`'s headline CPU figure was measured against a
+mixture-of-experts model and says so nowhere.
 
 The remaining two, `alignment.json` and `attention_capture.manifest.json`,
 have a Rust writer and no reader in either language yet. They are here rather
@@ -87,6 +96,7 @@ re-specified in prose.
 | `harness_chat_endpoint.json` | The harness `--serve` HTTP surface: `/v1/chat/completions` and `/v1/health` | Rust serves, Python calls |
 | `alignment.json` | Per-position byte spans and probe scores for one run | Rust writes, no reader yet |
 | `attention_capture.manifest.json` | Attention-capture directory: `manifest.json` and `attention.npz` | Rust writes, no reader yet |
+| `bench_models.json` | Architecture facts for the benchmarked models: dense or MoE, total and active parameters, expert counts, quantization | Hand-maintained, Python reads |
 
 Each file carries a `guarded_by` list naming the tests that assert it, and a
 `notes` object recording the divergences that are intentional. A field listed

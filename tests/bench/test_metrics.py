@@ -1,0 +1,183 @@
+"""Metric reduction against fixtures whose answers are known by construction."""
+
+from __future__ import annotations
+
+import math
+
+import pytest
+
+from bench.metrics import Sample, percentile, prefill_slope, reduce_samples, stats
+
+
+def make_sample(
+    ttft_s: float,
+    itl_s: float,
+    n_tokens: int,
+    prompt_tokens: int = 128,
+    chunks: int | None = None,
+    server_prompt_ms: float | None = None,
+) -> Sample:
+    """A request whose first token lands at ttft_s and whose rest arrive itl_s apart."""
+    count = n_tokens if chunks is None else chunks
+    arrivals = tuple(ttft_s + i * itl_s for i in range(count))
+    return Sample(
+        t_submit=0.0,
+        arrivals=arrivals,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=n_tokens,
+        server_prompt_ms=server_prompt_ms,
+    )
+
+
+class TestSample:
+    def test_ttft_is_first_arrival_minus_submit(self):
+        assert make_sample(0.25, 0.01, 5).ttft_ms() == pytest.approx(250.0)
+
+    def test_itl_series_is_successive_differences(self):
+        itl = make_sample(0.25, 0.01, 4).itl_ms()
+        assert itl == pytest.approx([10.0, 10.0, 10.0])
+
+    def test_itl_series_is_one_shorter_than_the_arrivals(self):
+        assert len(make_sample(0.1, 0.01, 8).itl_ms()) == 7
+
+    def test_tpot_excludes_prefill(self):
+        # Three intervals of 10ms across four tokens: 30ms / 3 = 10ms per token, and
+        # the 250ms spent before the first token must not appear in it.
+        assert make_sample(0.25, 0.01, 4).tpot_ms() == pytest.approx(10.0)
+
+    def test_decode_rate_excludes_prefill(self):
+        # 3 tokens after the first, over 0.03s -> 100 tok/s, regardless of the TTFT.
+        assert make_sample(0.25, 0.01, 4).decode_tok_s() == pytest.approx(100.0)
+        assert make_sample(9.99, 0.01, 4).decode_tok_s() == pytest.approx(100.0)
+
+    def test_e2e_rate_includes_prefill_and_so_differs_from_decode(self):
+        sample = make_sample(0.25, 0.01, 4)
+        # 4 tokens over 0.28s: the number the earlier tooling reported as tokens/second.
+        assert sample.e2e_tok_s() == pytest.approx(4 / 0.28)
+        assert sample.e2e_tok_s() < sample.decode_tok_s()
+
+    def test_single_token_response_has_no_decode_metrics(self):
+        # The prefill arm generates exactly one token; a duration-based fallback here
+        # would silently reintroduce prefill into a decode metric.
+        single = make_sample(0.25, 0.0, 1)
+        assert single.tpot_ms() is None
+        assert single.decode_tok_s() is None
+        assert single.ttft_ms() == pytest.approx(250.0)
+
+
+class TestStats:
+    def test_reports_the_full_shape(self):
+        block = stats([1.0, 2.0, 3.0, 4.0])
+        assert block["median"] == 2.5
+        assert block["min"] == 1.0
+        assert block["max"] == 4.0
+        assert block["mean"] == 2.5
+        assert block["n"] == 4
+        assert block["stdev"] == pytest.approx(1.2909944, rel=1e-6)
+
+    def test_single_sample_has_no_spread(self):
+        block = stats([7.0])
+        assert block["stdev"] is None
+        assert block["median"] == 7.0
+        assert block["n"] == 1
+
+    def test_two_samples_have_a_spread(self):
+        assert stats([1.0, 3.0])["stdev"] == pytest.approx(math.sqrt(2))
+
+    def test_empty_sample_is_absent_not_zero(self):
+        assert stats([]) is None
+
+    def test_p99_is_flagged_below_a_hundred_samples(self):
+        assert stats([1.0, 2.0, 3.0])["p99_meaningful"] is False
+        assert "p99_meaningful" not in stats([float(i) for i in range(100)])
+
+    def test_percentile_is_nearest_rank(self):
+        values = [float(i) for i in range(1, 101)]
+        assert percentile(values, 0.95) == 95.0
+        assert percentile(values, 0.99) == 99.0
+        assert percentile(values, 1.0) == 100.0
+
+    def test_percentile_of_empty_sample_raises(self):
+        with pytest.raises(ValueError):
+            percentile([], 0.5)
+
+
+class TestReduceSamples:
+    def test_reduces_a_point(self):
+        samples = [make_sample(0.25, 0.01, 4) for _ in range(5)]
+        block = reduce_samples(samples, concurrency=1)
+        assert block["n"] == 5
+        assert block["ttft_ms"]["median"] == pytest.approx(250.0)
+        assert block["tpot_ms"]["median"] == pytest.approx(10.0)
+        assert block["decode_tok_s"]["median"] == pytest.approx(100.0)
+        assert block["includes_queue"] is False
+
+    def test_ttft_is_marked_queue_inclusive_above_concurrency_one(self):
+        samples = [make_sample(0.25, 0.01, 4)]
+        assert reduce_samples(samples, concurrency=16)["includes_queue"] is True
+
+    def test_one_token_per_chunk_is_not_approximate(self):
+        samples = [make_sample(0.1, 0.01, 8)]
+        block = reduce_samples(samples, concurrency=1)
+        assert block["itl_approximate"] is False
+        assert block["tokens_per_chunk_max"] == pytest.approx(1.0)
+
+    def test_multi_token_chunks_flag_the_itl_series_as_approximate(self):
+        # 8 tokens delivered in 4 chunks: the gaps are chunk gaps, not token gaps.
+        samples = [make_sample(0.1, 0.01, 8, chunks=4)]
+        block = reduce_samples(samples, concurrency=1)
+        assert block["itl_approximate"] is True
+        assert block["tokens_per_chunk_max"] == pytest.approx(2.0)
+
+    def test_prefill_arm_omits_decode_metrics_rather_than_zeroing_them(self):
+        samples = [make_sample(0.25, 0.0, 1) for _ in range(3)]
+        block = reduce_samples(samples, concurrency=1)
+        assert block["tpot_ms"] is None
+        assert block["decode_tok_s"] is None
+        assert block["ttft_ms"]["n"] == 3
+
+    def test_server_prefill_rate_present_only_when_the_server_reports_timings(self):
+        with_timings = [make_sample(0.25, 0.01, 4, server_prompt_ms=50.0)]
+        # 128 prompt tokens in 50ms -> 2560 tok/s
+        rate = reduce_samples(with_timings, concurrency=1)["prefill_tok_s_server"]
+        assert rate["median"] == pytest.approx(2560.0)
+
+        without = [make_sample(0.25, 0.01, 4)]
+        assert reduce_samples(without, concurrency=1)["prefill_tok_s_server"] is None
+
+    def test_no_samples_raises(self):
+        with pytest.raises(ValueError):
+            reduce_samples([], concurrency=1)
+
+
+class TestPrefillSlope:
+    def test_recovers_rate_and_overhead_from_a_perfect_line(self):
+        # 20ms fixed overhead plus 1ms per 10 prompt tokens => 10000 tok/s prefill.
+        points = [(n, 20.0 + n * 0.1) for n in (128, 512, 2048, 8192)]
+        fit = prefill_slope(points)
+        assert fit["intercept_ms"] == pytest.approx(20.0)
+        assert fit["slope_ms_per_token"] == pytest.approx(0.1)
+        assert fit["prefill_tok_s_slope"] == pytest.approx(10_000.0)
+        assert fit["r2"] == pytest.approx(1.0)
+
+    def test_the_slope_beats_a_single_point_when_overhead_is_large(self):
+        # A 200ms fixed cost dwarfs a 128-token prefill. The naive point estimate
+        # charges that cost to prefill; the slope does not.
+        points = [(n, 200.0 + n * 0.1) for n in (128, 512, 2048, 8192)]
+        naive = 128 / ((200.0 + 12.8) / 1000.0)
+        fit = prefill_slope(points)
+        assert naive < 700  # badly understated
+        assert fit["prefill_tok_s_slope"] == pytest.approx(10_000.0)
+
+    def test_an_outlier_shows_up_as_a_degraded_fit(self):
+        clean = prefill_slope([(n, 20.0 + n * 0.1) for n in (128, 512, 2048, 8192)])
+        noisy = prefill_slope([(128, 32.8), (512, 71.2), (2048, 900.0), (8192, 839.2)])
+        assert clean["r2"] == pytest.approx(1.0)
+        assert noisy["r2"] < 0.9
+
+    def test_a_single_point_cannot_be_fitted(self):
+        assert prefill_slope([(128, 32.8)]) is None
+        assert prefill_slope([]) is None
+
+    def test_identical_prompt_lengths_cannot_be_fitted(self):
+        assert prefill_slope([(512, 70.0), (512, 71.0)]) is None
