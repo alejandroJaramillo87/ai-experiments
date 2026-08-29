@@ -29,13 +29,13 @@ Use environment variables to specify versions:
 
 ```bash
 # Install specific NVIDIA driver version
-NVIDIA_DRIVER_VERSION=nvidia-driver-560 ./update_nvidia.sh
+NVIDIA_DRIVER_VERSION=nvidia-driver-580-server-open ./update_nvidia.sh
 
 # Install specific CUDA toolkit version
-CUDA_VERSION=cuda-toolkit-12-7 ./update_cuda.sh
+CUDA_VERSION=cuda-toolkit-13-0 ./update_cuda.sh
 
 # Install specific cuDNN version
-CUDNN_VERSION=cudnn9-cuda-11 ./update_cudnn.sh
+CUDNN_VERSION=cudnn9-cuda-13 ./update_cudnn.sh
 ```
 
 ### Force Update with GUI Running
@@ -115,30 +115,33 @@ If you get repository errors:
 - Checks for GUI sessions (safety)
 - Provides rollback instructions
 - Automatically reboots system
-- Default: nvidia-driver-570-server-open
+- Target: the installed `nvidia-driver-*-open` package, read from dpkg; the
+  script refuses to guess if none is installed
 
 ### update_cuda.sh
 - Updates CUDA toolkit
 - Configures NVIDIA repository
 - Verifies nvcc after installation
 - No reboot required
-- Default: cuda-toolkit-12-8
+- Target: derived from `nvcc` (`cuda-toolkit-<major>-<minor>`), falling back to
+  `cuda-toolkit-13-0`
 
 ### update_cudnn.sh
 - Updates cuDNN library
 - Manages CUDA keyring
 - Verifies installation
 - No reboot required
-- Default: cudnn9-cuda-12
+- Target: derived from the CUDA major version `nvcc` reports
+  (`cudnn9-cuda-<major>`), falling back to `cudnn9-cuda-13`
 
 ## Environment Variables
 
 | Variable | Script | Purpose | Example |
 |----------|--------|---------|---------|
-| NVIDIA_DRIVER_VERSION | update_nvidia.sh | Specify driver package | nvidia-driver-560 |
+| NVIDIA_DRIVER_VERSION | update_nvidia.sh | Specify driver package | nvidia-driver-580-server-open |
 | FORCE_UPDATE | update_nvidia.sh | Override GUI check | yes |
-| CUDA_VERSION | update_cuda.sh | Specify CUDA package | cuda-toolkit-12-7 |
-| CUDNN_VERSION | update_cudnn.sh | Specify cuDNN package | cudnn9-cuda-11 |
+| CUDA_VERSION | update_cuda.sh | Specify CUDA package | cuda-toolkit-13-0 |
+| CUDNN_VERSION | update_cudnn.sh | Specify cuDNN package | cudnn9-cuda-13 |
 
 ## Safety Features
 

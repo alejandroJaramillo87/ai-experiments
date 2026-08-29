@@ -1,26 +1,14 @@
 #!/bin/bash
 
 # update_docker.sh
-# This script updates Docker CE, Docker Compose, and NVIDIA Container Toolkit
-# It also updates Dockerfiles to match the host CUDA version
+# This script updates Docker CE, Docker Compose, and NVIDIA Container Toolkit.
+#
+# It does not touch the Dockerfiles. Base image tags are pinned deliberately and
+# bumped one at a time with an acceptance check after each, per the operating
+# rules in AGENTS.md; a rewrite driven by whatever nvcc reports on the host is
+# the opposite of that.
 
 echo "=== Docker Infrastructure Updater ==="
-echo
-
-# Auto-detect current CUDA version from nvcc if available
-if command -v nvcc &> /dev/null; then
-    CUDA_VERSION_FULL=$(nvcc --version | grep "release" | sed -n 's/.*release \([0-9]*\.[0-9]*\).*/\1/p')
-    if [ -n "$CUDA_VERSION_FULL" ]; then
-        CUDA_MAJOR=$(echo "$CUDA_VERSION_FULL" | cut -d. -f1)
-        CUDA_MINOR=$(echo "$CUDA_VERSION_FULL" | cut -d. -f2)
-        DETECTED_CUDA="${CUDA_MAJOR}.${CUDA_MINOR}"
-        echo "Detected host CUDA version: ${DETECTED_CUDA}"
-    fi
-fi
-
-# Allow override via environment variable or use detected version
-CUDA_VERSION="${CUDA_VERSION:-${DETECTED_CUDA:-13.0}}"
-echo "Using CUDA version: ${CUDA_VERSION}"
 echo
 
 echo "Step 1 - Updating Docker CE:"
@@ -73,35 +61,11 @@ sudo systemctl restart docker
 echo "Docker service restarted"
 echo
 
-echo "Step 4 - Updating Dockerfiles to CUDA ${CUDA_VERSION}:"
-# Find the latest CUDA image tag for the detected version
-# Using the .1 patch version as that's the pattern (e.g., 12.9.1, 13.0.1)
-CUDA_IMAGE_TAG="${CUDA_VERSION}.1"
-
-# Update Dockerfile.llama-gpu
-DOCKERFILE_LLAMA="/home/alejandro/workspace/ai-expirements/docker/Dockerfile.llama-gpu"
-if [ -f "$DOCKERFILE_LLAMA" ]; then
-    echo "Updating $DOCKERFILE_LLAMA to use CUDA ${CUDA_IMAGE_TAG}"
-    sed -i "s/FROM nvidia\/cuda:[0-9]\+\.[0-9]\+\.[0-9]\+-devel-ubuntu[0-9]\+\.[0-9]\+/FROM nvidia\/cuda:${CUDA_IMAGE_TAG}-devel-ubuntu24.04/g" "$DOCKERFILE_LLAMA"
-    sed -i "s/FROM nvidia\/cuda:[0-9]\+\.[0-9]\+\.[0-9]\+-runtime-ubuntu[0-9]\+\.[0-9]\+/FROM nvidia\/cuda:${CUDA_IMAGE_TAG}-runtime-ubuntu24.04/g" "$DOCKERFILE_LLAMA"
-    echo "Updated Dockerfile.llama-gpu"
-fi
-
-# Update Dockerfile.vllm-gpu
-DOCKERFILE_VLLM="/home/alejandro/workspace/ai-expirements/docker/Dockerfile.vllm-gpu"
-if [ -f "$DOCKERFILE_VLLM" ]; then
-    echo "Updating $DOCKERFILE_VLLM to use CUDA ${CUDA_IMAGE_TAG}"
-    sed -i "s/FROM nvidia\/cuda:[0-9]\+\.[0-9]\+\.[0-9]\+-devel-ubuntu[0-9]\+\.[0-9]\+/FROM nvidia\/cuda:${CUDA_IMAGE_TAG}-devel-ubuntu24.04/g" "$DOCKERFILE_VLLM"
-    echo "Updated Dockerfile.vllm-gpu"
-fi
-
-echo
 echo "=== Docker Infrastructure Update Complete ==="
 echo
 echo "Docker CE: ${NEW_DOCKER_VERSION}"
 echo "Docker Compose: ${NEW_COMPOSE_VERSION}"
 echo "NVIDIA Container Toolkit: ${NEW_NCT_VERSION}"
-echo "Dockerfiles updated to CUDA: ${CUDA_IMAGE_TAG}"
 echo
-echo "You may need to rebuild your Docker images to use the new CUDA version:"
+echo "Rebuild the GPU images to pick up the new runtime:"
 echo "  make build-gpu"

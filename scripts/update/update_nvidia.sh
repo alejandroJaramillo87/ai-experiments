@@ -1,8 +1,10 @@
 #!/bin/bash
 
 # nvidia_driver_updater_simple.sh
-# This script automatically checks for and applies updates for the
-# nvidia-driver-570-server-open package.
+# This script automatically checks for and applies updates for the installed
+# nvidia-driver-*-open package, whichever branch that is. The file name is not
+# hardcoded here: the branch is read from dpkg, or set with
+# NVIDIA_DRIVER_VERSION.
 #
 # IMPORTANT:
 # - It is highly recommended to run this script from a TTY (text-only terminal, Ctrl+Alt+F2)
