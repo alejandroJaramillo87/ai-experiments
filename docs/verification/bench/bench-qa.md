@@ -507,6 +507,40 @@ that lands without removing them fails the gate rather than passing silently.
 
 Status: VERIFIED 2026-08-29
 
+### The oracle figures are pre-remediation
+
+Every observed block under Phase A records what the command produced **before** any fix
+landed, which is what made those entries a baseline. Remediation has since changed the tree,
+so several no longer reproduce, and an entry marked verified on a figure that no longer
+reproduces is the defect this campaign filed against itself as BQ-F26. Rather than rewrite
+observed evidence, both readings are kept:
+
+| Entry | Recorded, pre-remediation | Reproduces today |
+|-------|---------------------------|------------------|
+| BQ.2 | `222 passed, 4 xfailed`; coverage 84.45% | `269 passed, 1 xfailed`; coverage 89% |
+| BQ.3 | `21 passed` | unchanged |
+| BQ.4 | `15 passed, 2 xfailed` | `20 passed`; the two expected failures were fixed and their tests rewritten |
+| BQ.6 | `16 passed, 1 xfailed` | unchanged; the remaining expected failure is BQ-F11, whose package has not run |
+| BQ.7 | `29 passed, 1 xfailed`, corrected to 31 | `35 passed` |
+| BQ.8 | 91 of 98 mutants killed | unmeasured: both mutated modules changed, and the harness cannot run while a remediator holds them |
+| BQ.9 | two expected failures quoted verbatim | those tests no longer exist; the defect they recorded is fixed |
+
+Three of the four strict expected failures have flipped and lost their decorators, which is
+what they were written strict for. The fourth belongs to a package that has not been worked.
+
+### One commit in this batch was red
+
+`beb9c12` claims in its own message to have been committed green. It was not. The gate and
+the suite were both run and both passed immediately before it, but a remediator was still
+writing, and the test rewrite for BQ-F01 landed between the gate and the commit. That commit
+therefore asserts a property its own reduction module does not yet have -- the property
+arrives one commit later -- and six tests fail at it. The tree is not bisectable across this
+batch, and the red-before evidence for that finding is not what the commit sequence shows,
+though it was genuinely observed and is recorded above.
+
+The lesson is narrow and worth keeping: running the gate before committing does not protect
+against a writer that is still running. Wait for the agent, then gate, then commit.
+
 ---
 
 ## Phase B: verification
@@ -622,6 +656,7 @@ low until the verification phase records a verdict.
 | BQ-F51 | `bench/commands/run.py::apply_arm` | medium | The recreate is skipped when an arm carries no overrides, so a bare-named arm measures a service that has been up for an unknown time -- warm page cache, settled clocks, and whatever configuration a previous run left behind -- while its partner measures a container recreated seconds earlier. The benchmarking skill documents the overrides as optional, so the invocation is advertised. Nothing in either artifact records that one arm was recreated and one was not. |
 | BQ-F52 | `docker-compose.inference.yaml`, `docs/verification/bench/bench.md` | critical | Two of the host runbook's A/B entries measure nothing. An arm applies its overrides as the environment of the compose subprocess, which reaches a container only through interpolation. `THREADS` is written as the literal `16` in the compose file, so the thread-count entry's twelve-thread arm never reaches the service and both arms run at sixteen; `NO_REPACK` appears in no compose file at all, so both arms of the repack entry run the entrypoint default. Only the huge-page knob is interpolated and therefore only that one arm is real. The entry that would catch this is the same entry that cannot: it instructs the operator to confirm the override applied by reading the recorded cpuset, which says nothing about a thread count. The runbook would produce two clean-looking comparisons of a service against itself, and the twenty-six percent figure the thread entry exists to re-anchor would be re-anchored to a null result. Surfaced by a verifier working BQ-F43, whose own claim it refuted. The disproof is already in the artifact and unread: `bench/conditions.py` records the thread count from the container's own inspected environment, so both arms would carry the same value and the comparison would see two matching counts and raise nothing. The entry reads the cpuset instead, which comes from a compose literal identical in every arm. |
 | BQ-F53 | `bench/commands/run.py::apply_arm` | low | The residual of BQ-F43, which was refuted because the knobs it named never reach the container. One knob does: the huge-page wrapper is interpolated, so an arm setting it off leaves the service that way with no restore and no printed hint. A later ordinary bring-up re-resolves the default and recreates the container, so the leak is not sticky, which is why this is low rather than the high it was filed as. Filed fresh rather than folded into the refuted row, and carrying no verdict. |
+| BQ-F54 | `docs/verification/bench/bench.md` | medium | Entry B5 accepts on the decode rate across the concurrency sweep, and that rate is now refused wherever a sample carried more than one token per chunk -- which is what the one service with a sweep does under load, and the reason it is in the stack. The refusal is correct: the decode rate reads high when the first chunk is packed and the client cannot tell that from a frame that never arrived. But the entry must then accept on the end-to-end rate, which is invariant under packing at both ends and is reported for exactly that reason. Throughput rising with concurrency is still demonstrable; it is a different field. Surfaced by narrowing the fix for BQ-F01, and unverified. |
 
 ### Verdicts
 
