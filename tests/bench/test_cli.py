@@ -53,6 +53,12 @@ class TestParser:
                     [command, "--service", "harness", "--model", "m"]
                 )
 
+    def test_the_description_names_only_services_the_parser_accepts(self):
+        # The top-level description is the first promise the help output makes, and
+        # the test above records that --service refuses the harness deliberately. A
+        # description naming it advertises a target every invocation would fail on.
+        assert "harness" not in (build_parser().description or "").lower()
+
     def test_an_unknown_service_is_rejected_by_the_parser(self):
         # The choices come from common/serving.py's registry, so a retired container
         # name fails at parse time rather than against a port that no longer exists.

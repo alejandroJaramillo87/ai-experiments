@@ -31,6 +31,16 @@ NOISE_REPORT_TYPE = "bench_noise"
 SCHEMA_VERSION = 1
 
 
+class ReportTypeError(ValueError):
+    """A valid report, but not the kind the caller asked for.
+
+    The shared envelope requires a discriminator and never inspects its value, so a
+    result file and a noise floor validate identically. A caller that needs one of
+    them specifically says so, because the alternative is a floor lookup that misses
+    on every metric and reports as unmeasured.
+    """
+
+
 def build(
     *,
     run: dict,
@@ -65,15 +75,19 @@ def write(report: dict, directory: str, filename: str = "result.json") -> str:
     return path
 
 
-def read(path: str) -> dict:
+def read(path: str, expect: str | None = None) -> dict:
     """Read a result file, validating the envelope on the way in.
 
     Reading through the validator rather than around it means a hand-edited or
     truncated result fails at the point it is loaded, not later inside a comparison
     that would otherwise report a confident delta between one real arm and one broken
-    one.
+    one. `expect` extends that to the report type, which the envelope does not check.
     """
     with open(path, encoding="utf-8") as handle:
         report = json.load(handle)
     validate_report(report)
+    if expect is not None and report.get("report") != expect:
+        raise ReportTypeError(
+            f"expected a {expect} document, got {report.get('report')!r}"
+        )
     return report

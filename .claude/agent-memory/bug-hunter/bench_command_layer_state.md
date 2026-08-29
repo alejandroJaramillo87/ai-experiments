@@ -4,7 +4,7 @@ description: How bench/commands/{run,noise,compare}.py handle partial failure an
 metadata:
   type: project
 verified: 2026-08-29
-stale_when: bench/commands/run.py grows a finally block or an epilog naming a manual restore, or bench/commands/noise.py's written document gains an `errors` or `conditions` key, or bench/commands/compare.py stops computing `regressions` from the `--all`-filtered list
+stale_when: bench/commands/run.py grows a finally block or an epilog naming a manual restore, or bench/commands/noise.py's written document gains an `errors` or `conditions` key (the compare-command clause fired 2026-08-29 and its entries are struck through in the body)
 ---
 
 The three `bench` command modules are the seam between measurement and artifact. Nothing
@@ -49,9 +49,11 @@ model slug is `qwen3-coder-30b-a3b-IQ4_XS`; `bench/registry.py` has exactly one 
   `report == "bench_result"`. Two `bench_noise` files therefore compare cleanly, and a
   `bench_result` passed to `--noise` yields `floors = {}` *and* suppresses the
   "no noise floor supplied" warning (which fires only on `noise is None`).
-- **`bench compare` counts regressions over the `--all`-filtered list.** `itl_ms` is not
-  in `HEADLINE`, so a 40% ITL regression exits 0 without `--all` and 1 with it. Survives a
-  BQ-F04 fix, since BQ-F04 removes different metrics.
+- ~~**`bench compare` counts regressions over the `--all`-filtered list.**~~ **Fixed
+  2026-08-29** (BQ-F46). The exit code and the JSON regression count now come from a `GATED`
+  set (`HEADLINE` plus `itl_ms`); `--all` decides the table only. Do not re-file this.
+  The reader-side half above (`report.read` ignoring the discriminator) is also fixed:
+  `read` takes an `expect` argument and refuses a document of the wrong kind (BQ-F47).
 - **`noise.py` builds its document by hand** from `report_header` + `update`, taking only
   `git_sha`, `run{pair_id,profile,service}`, `floor`, `worst_pct`. The per-arm `errors`,
   `conditions` and `phases` that `runner.assemble` produced are discarded. It also gates

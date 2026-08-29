@@ -7,6 +7,7 @@ import sys
 
 from bench import delta, report
 from common.output import Printer
+from common.reports import ReportSchemaError
 
 
 # Which status line a verdict prints as. The middle three are the ones the retired
@@ -34,6 +35,47 @@ HEADLINE = (
     "prefill_tok_s_slope",
 )
 
+# Metrics whose verdicts decide the exit code. Deliberately not the displayed set:
+# what a table shows is a reading convenience, and an exit code that follows it makes
+# --all change the answer rather than the view. Wider than HEADLINE because
+# inter-token latency is half of what this CLI promises to report; narrower than every
+# delta because the observed token counts are diagnostics -- a prompt that tokenized
+# differently is a workload to investigate, not a slower engine.
+GATED = HEADLINE + ("itl_ms",)
+
+
+class _InputError(Exception):
+    """An input document cannot be used as the kind of file it was passed as."""
+
+
+def _read(path: str, expect: str) -> dict:
+    """Read one input document, or raise the single message the operator needs.
+
+    `report.read` raises an OSError, a JSONDecodeError or a ReportSchemaError depending
+    on how the file is wrong, and bench/cli.py grades all of them the same way: naming
+    an unusable file is invalid usage. Translating here keeps a cleaned-up run
+    directory from reaching the operator as a traceback.
+    """
+    try:
+        return report.read(path, expect=expect)
+    except OSError as exc:
+        raise _InputError(f"cannot read {path}: {exc.strerror or exc}") from None
+    except json.JSONDecodeError as exc:
+        raise _InputError(f"{path} is not valid JSON: {exc}") from None
+    except (ReportSchemaError, report.ReportTypeError) as exc:
+        raise _InputError(f"{path}: {exc}") from None
+
+
+def _inventory(document: dict) -> set[tuple[str, str]]:
+    """Every gated (point, metric) pair this document could be graded on.
+
+    Differencing a document against itself enumerates exactly the pairs `delta.compare`
+    would grade, so the coverage check needs no second copy of the point-key convention
+    that module owns.
+    """
+    self_deltas, _ = delta.compare(document, document)
+    return {(d.point, d.metric) for d in self_deltas if d.metric in GATED}
+
 
 def configure(sub) -> None:
     parser = sub.add_parser(
@@ -51,7 +93,9 @@ def configure(sub) -> None:
         "--noise", help="a bench noise floor file for this service and profile"
     )
     parser.add_argument(
-        "--all", action="store_true", help="every metric, not just the headline set"
+        "--all",
+        action="store_true",
+        help="tabulate every metric, not just the headline set (display only)",
     )
     parser.add_argument("--json", action="store_true")
     parser.set_defaults(func=cmd, obs_retention=False)
@@ -59,9 +103,17 @@ def configure(sub) -> None:
 
 def cmd(args) -> int:
     printer = Printer(quiet=args.json)
-    baseline = report.read(args.baseline)
-    candidate = report.read(args.candidate)
-    noise = report.read(args.noise) if args.noise else None
+    try:
+        baseline = _read(args.baseline, report.REPORT_TYPE)
+        candidate = _read(args.candidate, report.REPORT_TYPE)
+        noise = _read(args.noise, report.NOISE_REPORT_TYPE) if args.noise else None
+    except _InputError as exc:
+        printer.error(f"Compare: {exc}")
+        printer.line(
+            "  Solution: pass two result.json files from `bench run`, and a noise.json "
+            "from `bench noise` to --noise"
+        )
+        return 2
 
     try:
         deltas, warnings = delta.compare(baseline, candidate, noise)
@@ -71,16 +123,33 @@ def cmd(args) -> int:
 
     for warning in warnings:
         printer.warn(warning)
+    # A failed cell is dropped from the reduction, taking its point -- or its whole
+    # phase -- out of the report, so the errors list is the explanation for a
+    # comparison that came out shorter than the profile.
+    for label, document in (("baseline", baseline), ("candidate", candidate)):
+        failed = len(document.get("errors") or [])
+        if failed:
+            printer.warn(
+                f"the {label} records {failed} failed cell(s), so a metric it should "
+                "carry may be missing from this comparison"
+            )
 
+    graded = [d for d in deltas if d.metric in GATED]
+    ungraded = (_inventory(baseline) | _inventory(candidate)) - {
+        (d.point, d.metric) for d in graded
+    }
     shown = [d for d in deltas if args.all or d.metric in HEADLINE]
+
     if args.json:
         json.dump(
             {
                 "baseline": args.baseline,
                 "candidate": args.candidate,
                 "warnings": warnings,
-                "deltas": [d.__dict__ for d in shown],
-                "regressions": sum(1 for d in shown if d.verdict == delta.REGRESSION),
+                "deltas": [d.__dict__ for d in deltas],
+                "gated": list(GATED),
+                "ungraded": sorted(f"{point}:{metric}" for point, metric in ungraded),
+                "regressions": sum(1 for d in graded if d.verdict == delta.REGRESSION),
             },
             sys.stdout,
             indent=2,
@@ -101,9 +170,28 @@ def cmd(args) -> int:
                 f"{item.verdict}",
             )
 
-    regressions = sum(1 for d in shown if d.verdict == delta.REGRESSION)
-    if regressions:
-        printer.error(f"Compare: {regressions} regression(s) beyond the noise floor")
+    if not graded:
+        printer.error("Compare: no metric was graded, so nothing was compared")
+        printer.line(
+            "  Solution: check that both files carry the phases the profile ran; a "
+            "phase whose cells all failed is absent from the report entirely"
+        )
         return 1
-    printer.ok("Compare: no regression outside the noise floor")
+    if ungraded:
+        printer.error(
+            f"Compare: {len(ungraded)} metric(s) present in one arm only, so this "
+            "comparison is incomplete: "
+            + ", ".join(f"{point} {metric}" for point, metric in sorted(ungraded))
+        )
+        printer.line("  Solution: rerun the arm whose cells failed, then compare again")
+        return 1
+
+    regressions = [d for d in graded if d.verdict == delta.REGRESSION]
+    if regressions:
+        printer.error(
+            f"Compare: {len(regressions)} regression(s) beyond the noise floor: "
+            + ", ".join(f"{d.point} {d.metric}" for d in regressions)
+        )
+        return 1
+    printer.ok(f"Compare: no regression across {len(graded)} graded metric(s)")
     return 0

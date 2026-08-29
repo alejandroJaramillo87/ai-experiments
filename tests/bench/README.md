@@ -19,6 +19,7 @@ No test here carries a hardware marker, so all of it is in the default selection
 | `test_cli.py` | the parser surface, arm parsing, and that `--json` puts nothing but JSON on stdout |
 | `test_client_timing.py` | that a gap between frames becomes a gap of the same size in the latency series, over both a scripted response and a real socket; the HTTP and connection error branches; and the withheld-frame reproductions recorded as BQ-F01 |
 | `test_conditions.py` | every path where a host fact is unavailable, which must yield an absent field rather than an exception: `collect` runs after all measurement and outside the caller's handler |
+| `test_compare.py` | the compare command end to end: that an empty or one-sided comparison is not a clean bill, that the exit code follows the graded set rather than what the table displays, that a noise floor has to be one, and that an unreadable input is a diagnosed error rather than a traceback |
 | `test_report.py` | the write-and-read round trip, and the two failure modes of `read` that no caller handles |
 | `test_properties.py` | properties over seeded generated input: the ordering the statistics field names imply, that `classify` is total, that a result compared with itself is never a regression, and that a fit recovers the line it was given |
 | `fakes.py` | a scripted response carrying its own delays, and a real server on an ephemeral port for what a substituted response object cannot reach |

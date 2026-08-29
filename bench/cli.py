@@ -26,11 +26,13 @@ COMMANDS = (run, noise, compare, models)
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m bench",
+        # The benchmarked services are the ones bench/adapters.py has an adapter for.
+        # The rust harness is not among them: `make ladder` drives its runtime directly
+        # rather than over HTTP, and --service refuses it here.
         description=(
-            "Phase-separated inference benchmarks for the llama.cpp, vLLM and rust "
-            "harness services. Reports time to first token and inter-token latency "
-            "separately, as median and spread over repeated interleaved runs, against "
-            "a measured noise floor."
+            "Phase-separated inference benchmarks for the llama.cpp and vLLM services. "
+            "Reports time to first token and inter-token latency separately, as median "
+            "and spread over repeated interleaved runs, against a measured noise floor."
         ),
         epilog=(
             "Protocol: .claude/skills/benchmarking/SKILL.md. "

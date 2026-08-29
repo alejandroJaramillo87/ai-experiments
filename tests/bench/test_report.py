@@ -1,10 +1,12 @@
 """Reading a result back, including the ways reading fails.
 
-`bench/report.py::read` validates what it loads, which is the right shape for the
-happy path. Neither of its two failure modes is handled anywhere: a path that does not
-exist raises FileNotFoundError, and a truncated file raises JSONDecodeError, and
-`bench/commands/compare.py` calls it outside any handler. A benchmark comparison that
-dies on a traceback because a run directory was cleaned is a poor way to learn that.
+`bench/report.py::read` validates what it loads. Its three failure modes -- a path that
+does not exist, a truncated file, and a document that fails the envelope -- are raised
+as they come, and `bench/commands/compare.py` translates each into a diagnosed error
+rather than a traceback (tests/bench/test_compare.py). The envelope says nothing about
+which report it is looking at, so the type the caller needs is stated as `expect` and
+checked here: a `bench_result` handed to `--noise` is a valid document of the wrong
+kind, and validation alone cannot see that.
 """
 
 from __future__ import annotations
@@ -46,10 +48,27 @@ class TestRoundTrip:
         assert path.endswith("noise.json")
 
 
+class TestExpectedType:
+    def test_a_document_of_the_expected_type_reads_normally(self, tmp_path):
+        path = report.write(support.result(), str(tmp_path))
+        assert report.read(path, expect=report.REPORT_TYPE)["report"] == (
+            report.REPORT_TYPE
+        )
+
+    def test_a_result_is_refused_where_a_noise_floor_is_expected(self, tmp_path):
+        path = report.write(support.result(), str(tmp_path))
+        with pytest.raises(report.ReportTypeError, match=report.NOISE_REPORT_TYPE):
+            report.read(path, expect=report.NOISE_REPORT_TYPE)
+
+    def test_no_expectation_accepts_either_type(self, tmp_path):
+        path = report.write(support.result(), str(tmp_path))
+        assert report.read(path)["report"] == report.REPORT_TYPE
+
+
 class TestReadFailures:
     def test_a_missing_file_raises_the_bare_os_error(self, tmp_path):
-        # Recorded rather than asserted as correct. compare.cmd calls read() with no
-        # handler, so this reaches the operator as a traceback.
+        # The reader raises what the filesystem raises; naming the file the operator
+        # should have passed is the caller's job, and compare.cmd does it.
         with pytest.raises(FileNotFoundError):
             report.read(str(tmp_path / "absent.json"))
 
