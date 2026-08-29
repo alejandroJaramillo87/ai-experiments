@@ -29,6 +29,7 @@ class TestParser:
                 "off:HUGEPAGES=off",
             ],
             ["noise", "--service", "llama-cpu", "--model", "m"],
+            ["noise", "--service", "vllm-gpu", "--model", "m"],
             ["compare", "a.json", "b.json"],
             ["compare", "a.json", "b.json", "--noise", "n.json", "--all"],
             ["models"],
@@ -42,6 +43,15 @@ class TestParser:
         with pytest.raises(SystemExit) as exc:
             build_parser().parse_args([])
         assert exc.value.code == 2
+
+    def test_the_harness_is_not_offered_as_a_target(self):
+        # It is a real service in common/serving.py, measured by `make ladder` instead.
+        # Offering it here would fail deeper in, on a profile lookup, and less clearly.
+        for command in ("run", "noise"):
+            with pytest.raises(SystemExit):
+                build_parser().parse_args(
+                    [command, "--service", "harness", "--model", "m"]
+                )
 
     def test_an_unknown_service_is_rejected_by_the_parser(self):
         # The choices come from common/serving.py's registry, so a retired container

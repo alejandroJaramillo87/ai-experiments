@@ -20,12 +20,13 @@ import sys
 import uuid
 
 from bench import delta, report, runner
+from bench.adapters import ENGINE_FOR_SERVICE
 from bench.commands.run import RESULTS_ROOT
 from bench.registry import RegistryError, resolve
 from bench.workloads import ProfileError, load
 from common.output import Printer
 from common.reports import report_header
-from common.serving import SERVICES, ServingError
+from common.serving import ServingError
 
 
 def configure(sub) -> None:
@@ -37,7 +38,10 @@ def configure(sub) -> None:
             "per-metric spread. Pass the result to `bench compare --noise`."
         ),
     )
-    parser.add_argument("--service", required=True, choices=sorted(SERVICES))
+    # Only the benchmarked services, not the whole serving registry: the harness is
+    # served by common/serving.py and measured by `make ladder` instead, so offering
+    # it here would fail later and less clearly.
+    parser.add_argument("--service", required=True, choices=sorted(ENGINE_FOR_SERVICE))
     parser.add_argument("--profile", default="quick")
     parser.add_argument("--model", required=True)
     parser.add_argument("--out", default=RESULTS_ROOT)

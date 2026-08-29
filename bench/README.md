@@ -1,6 +1,6 @@
 # bench
 
-Phase-separated inference benchmarks for the four serving services. Entry point is
+Phase-separated inference benchmarks for the three serving services that stream. Entry point is
 `python3 -m bench`; the protocol it implements is
 [.claude/skills/benchmarking/SKILL.md](../.claude/skills/benchmarking/SKILL.md).
 
@@ -92,3 +92,12 @@ python3 -m bench models  [--json]
   recorded by the earlier tooling remain comparable.
 - **A model absent from the registry cannot be benchmarked.** That is the point: a
   result whose architecture is unrecorded is how the current confusion arose.
+- **The rust harness is not a target, deliberately.** Its optimization arms are
+  properties of the runtime's internals, and `make ladder SIZE=quick MODEL=<dir>` already
+  exposes them as first-class flags (`--dot`, `--batch`, `--threads`, `--single-thread`)
+  measured in-process against the real checkpoint, writing `rung_duration_s` into the
+  same `metrics.jsonl` this repository's dashboard already charts. Going over HTTP would
+  add a serialization layer and a mutex on top of the thing being measured, and
+  `schemas/harness_chat_endpoint.json` records that the endpoint refuses `stream: true`,
+  so it could not report a prefill/decode split either. Asking for it by name returns an
+  error that says so rather than a bare KeyError.

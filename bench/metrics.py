@@ -46,12 +46,6 @@ class Sample:
     completion_tokens: int
     server_prompt_ms: float | None = None
     server_predicted_ms: float | None = None
-    # False when the engine answered with a whole body rather than a stream. The rust
-    # harness refuses `stream: true` with a 400 (schemas/harness_chat_endpoint.json), so
-    # only one timestamp exists for the entire response: the moment it arrived. Every
-    # phase-separated metric is unobservable in that case and is reported absent, not
-    # approximated from the one stamp available.
-    streamed: bool = True
 
     @property
     def chunks(self) -> int:
@@ -63,19 +57,11 @@ class Sample:
         At concurrency 1 this is prefill plus one decode step plus the round trip. Above
         concurrency 1 it also contains queue wait, which is why the caller labels the
         block `includes_queue` rather than this function pretending otherwise.
-
-        None for a non-streamed response. The first token's arrival was never observed,
-        and reporting the whole-response latency under this name would be a decode-length
-        figure wearing a prefill label.
         """
-        if not self.streamed:
-            return None
         return (self.arrivals[0] - self.t_submit) * 1000.0
 
     def itl_ms(self) -> list[float]:
         """Inter-token latencies: the successive differences of the arrival stamps."""
-        if not self.streamed:
-            return []
         return [
             (b - a) * 1000.0
             for a, b in zip(self.arrivals, self.arrivals[1:], strict=False)
@@ -89,14 +75,14 @@ class Sample:
         prefill. The prefill arm generates exactly one token, so this is the common case
         rather than an edge one.
         """
-        if not self.streamed or self.completion_tokens < 2 or self.chunks < 2:
+        if self.completion_tokens < 2 or self.chunks < 2:
             return None
         span = self.arrivals[-1] - self.arrivals[0]
         return span / (self.completion_tokens - 1) * 1000.0
 
     def decode_tok_s(self) -> float | None:
         """Decode throughput, prefill excluded."""
-        if not self.streamed or self.completion_tokens < 2 or self.chunks < 2:
+        if self.completion_tokens < 2 or self.chunks < 2:
             return None
         span = self.arrivals[-1] - self.arrivals[0]
         if span <= 0:
@@ -179,17 +165,12 @@ def reduce_samples(samples: list[Sample], concurrency: int) -> dict:
         (s.completion_tokens / s.chunks for s in samples if s.chunks), default=1.0
     )
 
-    streamed = all(s.streamed for s in samples)
     block = {
         "n": len(samples),
         "concurrency": concurrency,
-        # TTFT is queue-inclusive above concurrency 1. llama.cpp and the harness both
-        # serve one request at a time (common/serving.py), so this is only ever true
-        # for vLLM's batching sweep.
+        # TTFT is queue-inclusive above concurrency 1. llama.cpp serves one request at a
+        # time (common/serving.py), so this is only ever true for vLLM's batching sweep.
         "includes_queue": concurrency > 1,
-        # Named so a reader can tell an absent metric that was measured and did not
-        # apply from one the transport could never have produced.
-        "streamed": streamed,
         "ttft_ms": stats(_collect(samples, Sample.ttft_ms)),
         "itl_ms": stats(itl),
         "tpot_ms": stats(_collect(samples, Sample.tpot_ms)),

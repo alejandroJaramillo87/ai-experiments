@@ -49,65 +49,12 @@ def _chunk_text(payload: dict) -> str:
         return ""
     first = choices[0]
     # /v1/completions puts it in "text"; a chat-shaped delta would use "delta.content".
-    # Both are handled so a harness that only serves the chat surface still works.
+    # Both are read so that an engine served through the chat surface decodes here too,
+    # which costs one lookup and removes a whole class of silent zero-arrival result.
     text = first.get("text")
     if text is None:
         text = (first.get("delta") or {}).get("content")
     return text or ""
-
-
-def send(adapter: Adapter, body: dict, timeout: float) -> StreamResult:
-    """Send one request by whichever transport the engine supports.
-
-    The entry point every caller uses, so an engine that cannot stream is served by a
-    different code path rather than by the streaming path quietly degrading.
-    """
-    if adapter.streams:
-        return stream(adapter, body, timeout)
-    return whole(adapter, body, timeout)
-
-
-def whole(adapter: Adapter, body: dict, timeout: float) -> StreamResult:
-    """POST a non-streaming completion; one response, one timestamp.
-
-    The rust harness refuses `stream: true` with a 400, so this is the only transport it
-    offers. The single stamp becomes the sole arrival and the sample is marked
-    `streamed=False`, which is what makes the metric layer report time to first token
-    and the inter-token series as absent rather than deriving them from a number that
-    cannot contain them.
-    """
-    request = urllib.request.Request(
-        adapter.url,
-        data=json.dumps(body).encode("utf-8"),
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
-        method="POST",
-    )
-    t_submit = time.perf_counter()
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", "replace")[:400]
-        error = ServingTransientError if exc.code >= 500 else ServingError
-        raise error(
-            f"{adapter.service.name}: HTTP {exc.code} from {adapter.url}: {detail}"
-        ) from exc
-    except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
-        raise ServingTransientError(
-            f"{adapter.service.name}: {adapter.url} unreachable: {exc}"
-        ) from exc
-    except json.JSONDecodeError as exc:
-        raise ServingError(
-            f"{adapter.service.name}: response from {adapter.url} is not JSON"
-        ) from exc
-
-    return StreamResult(
-        t_submit=t_submit,
-        arrivals=[time.perf_counter()],
-        usage=adapter.parse_usage(payload),
-        timings=adapter.parse_timings(payload),
-        chunks_seen=1,
-    )
 
 
 def stream(adapter: Adapter, body: dict, timeout: float) -> StreamResult:

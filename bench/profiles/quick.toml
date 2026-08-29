@@ -19,8 +19,4 @@ max_tokens = [64]
 [concurrency]
 llama-cpu = [1]
 llama-gpu = [1]
-harness   = [1]
 vllm-gpu  = [1, 16]
-
-[overrides.harness]
-decode_max_tokens = [32]

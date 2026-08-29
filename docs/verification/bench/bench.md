@@ -1,11 +1,14 @@
 # Benchmark suite verification runbook
 
-**Entries: 0 verified, 0 blocked, 9 pending, of 9.**
+**Entries: 0 verified, 0 blocked, 8 pending, of 8.**
 
 Manual verification campaign for `python -m bench` on the workstation (RTX 5090, AMD
-Ryzen 9950X). The suite passed 158 unit tests in the sandbox against synthetic fixtures
+Ryzen 9950X). The suite passed 148 unit tests in the sandbox against synthetic fixtures
 and a stub engine; none of them proves a number, because none of them touched a service.
 This runbook is the campaign that closes that gap.
+
+Three services are in scope: `llama-cpu`, `llama-gpu` and `vllm-gpu`. The rust harness
+is not, and that is a decision rather than an omission -- see the closing section.
 
 Every entry follows [../../../.claude/skills/verify-host/SKILL.md](../../../.claude/skills/verify-host/SKILL.md):
 the acceptance criterion is stated before the command is run, and the pasted output is
@@ -18,13 +21,13 @@ Run these in order. Three of them are preconditions for the rest rather than
 measurements in their own right:
 
 - **B1** proves the CLI reaches a service at all. Everything after it assumes so.
-- **B2** is the noise floor. Until it exists, every delta in B6 through B9 is
+- **B2** is the noise floor. Until it exists, every delta in B6 through B8 is
   uninterpretable — the 5% regression threshold has no meaning underneath an unmeasured
   spread, and this workstation has been recorded spreading 44% across four consecutive
   runs of one unmodified binary
   ([../../optimizations/ideation/rust-harness-optimization-candidates.md](../../optimizations/ideation/rust-harness-optimization-candidates.md)).
-- **B3** is the registry. `vllm-gpu` and `harness` have no registered model yet, so B5
-  and B8 cannot run until someone adds the entries.
+- **B3** is the registry. `vllm-gpu` has no registered model yet, so B5 cannot run
+  until someone adds the entry.
 
 **One GPU consumer at a time** (AGENTS.md). These entries serialize against each other,
 against training, and against `make quality-full`.
@@ -124,11 +127,10 @@ Status: PENDING
 Implementation: `bench/registry.py`, `schemas/bench_models.json`.
 
 `schemas/bench_models.json` ships one entry, registered for `llama-cpu` and `llama-gpu`
-only. `vllm-gpu` serves a Hugging Face checkpoint rather than a GGUF, and the harness
-serves its own; neither has an entry, so `bench run --service vllm-gpu` fails at
-`resolve()` with "registered for [...], not 'vllm-gpu'". That refusal is correct
-behaviour — a result whose architecture is unrecorded is what this suite exists to stop —
-but it blocks B5 and B8 until the entries exist.
+only. `vllm-gpu` serves a Hugging Face checkpoint rather than a GGUF and has no entry, so
+`bench run --service vllm-gpu` fails at `resolve()` with "registered for [...], not
+'vllm-gpu'". That refusal is correct behaviour — a result whose architecture is
+unrecorded is what this suite exists to stop — but it blocks B5 until the entry exists.
 
 Add one entry per served model, then:
 
@@ -137,8 +139,8 @@ python3 -m bench models
 python3 -m bench models --json | python3 -c "import json,sys; json.load(sys.stdin)"
 ```
 
-Expected signal: exit 0, and every service in `common/serving.py`'s `SERVICES` that you
-intend to benchmark appears in at least one entry's `engines`. The loader validates on
+Expected signal: exit 0, and each of `llama-cpu`, `llama-gpu` and `vllm-gpu` appears in
+at least one entry's `engines`. The loader validates on
 read, so a `quantization` that disagrees with the model filename, an unknown
 `architecture`, or an MoE entry missing `params_active_b` fails here rather than in a
 published number.
@@ -286,43 +288,8 @@ Status: PENDING
 
 ---
 
-## B8 The harness, and what a non-streaming engine can honestly report
 
-Implementation: `bench/adapters.py::HarnessAdapter`, `bench/client.py::whole`.
-
-Blocked on B3 (no registered harness model).
-
-`schemas/harness_chat_endpoint.json` records that the harness serves only
-`POST /v1/chat/completions` and refuses `stream: true` with a 400. One response means one
-timestamp, so time to first token and the inter-token series do not exist for this
-service and are reported absent rather than approximated.
-
-```bash
-python3 -m bench run --service harness --model <slug> --profile quick --json \
-    > /tmp/b8.json
-```
-
-Expected signal: exit 0. `phases.decode.points[].metrics.streamed == false`,
-`ttft_ms == null`, `tpot_ms == null`, `decode_tok_s == null`, and `e2e_tok_s` present with
-a median near the 5.5–5.8 tok/s `common/serving.py` records. The absent fields are the
-entry's point: a `null` here is the suite refusing to invent a phase split it could not
-observe.
-
-If this entry motivates phase separation for the harness, the work is exposing the chunk
-streamer `schemas/harness_chat_endpoint.json` notes already exists in
-`harness/src/stream.rs` — Rust work in another crate, not something the adapter can
-supply.
-
-Observed:
-
-```
-```
-
-Status: PENDING
-
----
-
-## B9 A comparison refuses what it should refuse
+## B8 A comparison refuses what it should refuse
 
 Implementation: `bench/delta.py::check_comparable`.
 
@@ -349,6 +316,16 @@ Status: PENDING
 
 ## What this campaign does not cover
 
+- **The rust harness.** Deliberately not a target. Its optimization arms -- the SIMD
+  panel kernels, matvec threading, prefill batching, the widen hoist -- are properties of
+  the runtime's internals, and `make ladder SIZE=quick MODEL=<dir>` already exposes them
+  as first-class flags (`--dot`, `--batch`, `--threads`, `--single-thread`) measured
+  in-process against the real checkpoint, writing `rung_duration_s` into the same
+  `metrics.jsonl` the dashboard charts. An HTTP benchmark would add a serialization layer
+  and a mutex on top of the thing being measured, and
+  [../../../schemas/harness_chat_endpoint.json](../../../schemas/harness_chat_endpoint.json)
+  records that its endpoint refuses `stream: true` outright, so it could not report a
+  prefill/decode split either. `make ladder` is the harness's benchmark.
 - **The huge-page arm.** Being verified separately by hand; the `HUGEPAGES=on|off`
   toggle exists in the entrypoint and compose and is an ordinary `--arm` once that
   settles.

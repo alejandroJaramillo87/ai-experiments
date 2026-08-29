@@ -59,34 +59,13 @@ class FakeResponse(io.BytesIO):
 
 
 class TestRequestConstruction:
-    def test_every_streaming_engine_asks_for_usage_in_the_stream(self):
+    def test_every_engine_asks_for_usage_in_the_stream(self):
         # Without this vLLM streams no usage at all and token counts fall back to
         # counting frames, which undercounts multi-token chunks.
-        for name in ("llama-cpu", "llama-gpu", "vllm-gpu"):
+        for name in sorted(adapters.ENGINE_FOR_SERVICE):
             body = adapters.for_service(name).build_request("hi", 8, seed=1)
             assert body["stream"] is True
             assert body["stream_options"] == {"include_usage": True}
-
-    def test_the_harness_is_declared_non_streaming_and_asks_for_no_stream(self):
-        # schemas/harness_chat_endpoint.json: stream: true is refused with a 400 rather
-        # than answered with a whole body, deliberately, so that a streaming client
-        # cannot receive a non-streamed response and believe it timed one.
-        harness = adapters.for_service("harness")
-        assert harness.streams is False
-        body = harness.build_request("hi", 8, seed=1)
-        assert body["stream"] is False
-        assert "stream_options" not in body
-
-    def test_the_harness_uses_the_chat_path_and_a_messages_body(self):
-        harness = adapters.for_service("harness")
-        assert harness.url.endswith("/v1/chat/completions")
-        body = harness.build_request("hi", 8, seed=1)
-        assert body["messages"] == [{"role": "user", "content": "hi"}]
-        assert "prompt" not in body
-
-    def test_the_streaming_engines_are_declared_streaming(self):
-        for name in ("llama-cpu", "llama-gpu", "vllm-gpu"):
-            assert adapters.for_service(name).streams is True
 
     def test_llama_cpp_forces_length_and_disables_the_prompt_cache(self):
         body = adapters.for_service("llama-cpu").build_request("hi", 8, seed=1)
@@ -104,11 +83,6 @@ class TestRequestConstruction:
             "hi", 8, seed=1
         )
 
-    def test_the_harness_cannot_force_an_exact_length_and_says_so(self):
-        harness = adapters.for_service("harness")
-        assert harness.forces_exact_length is False
-        assert "ignore_eos" not in harness.build_request("hi", 8, seed=1)
-
     def test_generation_is_deterministic(self):
         body = adapters.for_service("llama-gpu").build_request("hi", 8, seed=99)
         assert body["temperature"] == 0.0
@@ -121,12 +95,20 @@ class TestRequestConstruction:
 
     def test_ports_come_from_the_service_registry(self):
         assert "8001" in adapters.for_service("llama-cpu").url
+        assert "8002" in adapters.for_service("llama-gpu").url
         assert "8003" in adapters.for_service("vllm-gpu").url
-        assert "8005" in adapters.for_service("harness").url
 
     def test_unknown_service_is_refused(self):
         with pytest.raises(KeyError):
             adapters.for_service("llama-hugepages")
+
+    def test_a_real_service_that_is_not_a_target_says_why(self):
+        # The harness is in common/serving.py's registry and is not benchmarked here:
+        # `make ladder` drives its runtime directly rather than over HTTP, and its
+        # endpoint refuses streaming outright. Membership in SERVICES is necessary and
+        # not sufficient, and the refusal names the alternative.
+        with pytest.raises(KeyError, match="make ladder"):
+            adapters.for_service("harness")
 
 
 class TestUsageAndTimings:
@@ -207,47 +189,3 @@ class TestStreamDecoding:
     def test_non_sse_lines_are_ignored(self):
         payload = b": keep-alive\n\n" + sse(LLAMA_CHUNK, LLAMA_FINAL)
         assert len(run_stream("llama-cpu", payload).arrivals) == 1
-
-
-class TestWholeResponseTransport:
-    """The non-streaming path, which the harness is the only user of."""
-
-    HARNESS_BODY = {
-        "id": "x",
-        "object": "chat.completion",
-        "choices": [
-            {
-                "index": 0,
-                "message": {"role": "assistant", "content": "hi"},
-                "finish_reason": "length",
-            }
-        ],
-        "usage": {"prompt_tokens": 128, "completion_tokens": 8, "total_tokens": 136},
-    }
-
-    def send(self, payload: bytes):
-        adapter = adapters.for_service("harness")
-        with mock.patch.object(
-            client.urllib.request, "urlopen", return_value=FakeResponse(payload)
-        ):
-            return client.send(adapter, {"messages": []}, timeout=5.0)
-
-    def test_send_routes_a_non_streaming_engine_to_the_whole_transport(self):
-        result = self.send(json.dumps(self.HARNESS_BODY).encode())
-        # One response, one timestamp: there is nothing else to observe.
-        assert len(result.arrivals) == 1
-        assert result.chunks_seen == 1
-        assert result.usage.completion_tokens == 8
-
-    def test_send_routes_a_streaming_engine_to_the_stream_transport(self):
-        adapter = adapters.for_service("llama-cpu")
-        payload = sse(*[LLAMA_CHUNK] * 3, LLAMA_FINAL)
-        with mock.patch.object(
-            client.urllib.request, "urlopen", return_value=FakeResponse(payload)
-        ):
-            result = client.send(adapter, {"prompt": "hi"}, timeout=5.0)
-        assert len(result.arrivals) == 3
-
-    def test_a_non_json_response_is_an_error_not_a_zero(self):
-        with pytest.raises(ServingError, match="not JSON"):
-            self.send(b"<html>502 Bad Gateway</html>")

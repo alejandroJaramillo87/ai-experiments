@@ -11,9 +11,8 @@ import json
 
 import pytest
 
-from bench import adapters, metrics, runner
+from bench import adapters, runner
 from bench.client import StreamResult
-from bench.metrics import Sample
 from bench.registry import ModelSpec
 from bench.report import read
 from bench.workloads import load
@@ -336,35 +335,3 @@ class TestConcurrency:
             "llama-cpu", profile, DENSE, Printer(quiet=True), stream_fn=engine
         )
         assert len(observations) == len(profile.points()) * profile.repeats
-
-
-class TestNonStreamingEngine:
-    """The harness answers whole, so phase metrics are absent rather than invented."""
-
-    def test_a_non_streamed_sample_reports_no_phase_metrics(self):
-        sample = Sample(
-            t_submit=0.0,
-            arrivals=(2.0,),
-            prompt_tokens=128,
-            completion_tokens=64,
-            streamed=False,
-        )
-        assert sample.ttft_ms() is None
-        assert sample.itl_ms() == []
-        assert sample.tpot_ms() is None
-        assert sample.decode_tok_s() is None
-        # What a whole response can honestly support: 64 tokens over 2s.
-        assert sample.e2e_tok_s() == pytest.approx(32.0)
-
-    def test_the_reduced_block_says_the_transport_could_not_produce_them(self):
-        samples = [Sample(0.0, (2.0,), 128, 64, streamed=False) for _ in range(3)]
-        block = metrics.reduce_samples(samples, concurrency=1)
-        assert block["streamed"] is False
-        assert block["ttft_ms"] is None
-        assert block["decode_tok_s"] is None
-        assert block["e2e_tok_s"]["median"] == pytest.approx(32.0)
-
-    def test_a_streamed_block_is_marked_streamed(self):
-        _, observations, _, _ = run()
-        block = metrics.reduce_samples([o.sample for o in observations], concurrency=1)
-        assert block["streamed"] is True

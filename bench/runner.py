@@ -61,7 +61,6 @@ def _sample_from_stream(result, cell: Cell, adapter) -> metrics.Sample:
         completion_tokens=usage.completion_tokens,
         server_prompt_ms=result.timings.prompt_ms if result.timings else None,
         server_predicted_ms=result.timings.predicted_ms if result.timings else None,
-        streamed=adapter.streams,
     )
 
 
@@ -75,12 +74,11 @@ def execute(
     """Run every cell in order, returning the kept observations and any errors.
 
     `stream_fn` is injected so the loop can be exercised without a service; production
-    callers leave it None and get bench.client.send, which picks the streaming or
-    whole-response transport from the adapter.
+    callers leave it None and get bench.client.stream.
     """
-    from bench.client import send as default_send
+    from bench.client import stream as default_stream
 
-    stream_fn = stream_fn or default_send
+    stream_fn = stream_fn or default_stream
     adapter = adapters.for_service(service)
     regions = prompting.slices(model.decode_prompts)
 

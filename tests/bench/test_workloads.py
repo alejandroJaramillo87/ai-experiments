@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import pytest
 
+from bench.adapters import ENGINE_FOR_SERVICE
 from bench.workloads import DECODE, PREFILL, ProfileError, load
-from common.serving import SERVICES
 
 SHIPPED = ("quick", "publish")
+# The benchmarked services, not every service in common/serving.py's registry: the
+# harness is served there and measured by `make ladder` instead.
+BENCHABLE = sorted(ENGINE_FOR_SERVICE)
 
 
 class TestShippedProfiles:
     @pytest.mark.parametrize("name", SHIPPED)
-    @pytest.mark.parametrize("service", sorted(SERVICES))
+    @pytest.mark.parametrize("service", BENCHABLE)
     def test_every_service_resolves(self, name, service):
         # A benchable service with no concurrency entry would fail at run time on the
         # workstation, which is the worst place to discover a typo in a profile.
@@ -23,9 +26,9 @@ class TestShippedProfiles:
 
     @pytest.mark.parametrize("name", SHIPPED)
     def test_only_vllm_gets_a_concurrency_sweep(self, name):
-        # llama.cpp serves one request at a time and the harness serializes generation
-        # behind a mutex (common/serving.py). A sweep against them would measure a queue.
-        for service in ("llama-cpu", "llama-gpu", "harness"):
+        # llama.cpp serves one request at a time (common/serving.py), so a sweep
+        # against it would measure a queue rather than a batching engine.
+        for service in ("llama-cpu", "llama-gpu"):
             assert load(name, service).concurrency == (1,)
         assert len(load(name, "vllm-gpu").concurrency) > 1
 
@@ -39,7 +42,6 @@ class TestShippedProfiles:
         # An 8192-token prefill on CPU is minutes, not seconds.
         assert 8192 in load("publish", "llama-gpu").prefill_prompt_tokens
         assert 8192 not in load("publish", "llama-cpu").prefill_prompt_tokens
-        assert load("publish", "harness").decode_max_tokens == (64,)
 
 
 class TestExpansion:
@@ -87,6 +89,13 @@ class TestRefusals:
     def test_a_missing_profile_names_the_available_ones(self):
         with pytest.raises(ProfileError, match="available"):
             load("nonexistent", "llama-cpu")
+
+    def test_every_benchable_service_has_a_profile_entry(self):
+        # A benchable service missing from a profile fails at run time on the
+        # workstation, which is the worst place to find a typo.
+        for name in SHIPPED:
+            for service in BENCHABLE:
+                assert load(name, service).concurrency
 
     def test_a_service_with_no_concurrency_entry_is_refused(self, tmp_path):
         path = tmp_path / "p.toml"

@@ -25,20 +25,14 @@ max_tokens = 1
 prompt_tokens = 128
 max_tokens = [256]
 
-# llama.cpp serves one request at a time and the harness serializes generation behind a
-# mutex (common/serving.py). Only vLLM has continuous batching, which is the reason it
-# is in the stack, so it is the only service that gets a sweep.
+# llama.cpp serves one request at a time (common/serving.py). Only vLLM has continuous
+# batching, which is the reason it is in the stack, so it is the only service that gets
+# a sweep.
 [concurrency]
 llama-cpu = [1]
 llama-gpu = [1]
-harness   = [1]
 vllm-gpu  = [1, 4, 16]
 
 [overrides.llama-cpu]
 # An 8192-token prefill on CPU is minutes, not seconds.
-prefill_prompt_tokens = [128, 512, 2048]
-
-[overrides.harness]
-# The harness decodes at 5.5-5.8 tok/s (common/serving.py), so 256 tokens is ~45s a run.
-decode_max_tokens = [64]
 prefill_prompt_tokens = [128, 512, 2048]

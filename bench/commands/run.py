@@ -8,6 +8,7 @@ import sys
 import uuid
 
 from bench import report, runner
+from bench.adapters import ENGINE_FOR_SERVICE
 from bench.registry import RegistryError, resolve
 from bench.workloads import ProfileError, load
 from common.output import Printer
@@ -29,7 +30,10 @@ def configure(sub) -> None:
             "one of them."
         ),
     )
-    parser.add_argument("--service", required=True, choices=sorted(SERVICES))
+    # Only the benchmarked services, not the whole serving registry: the harness is
+    # served by common/serving.py and measured by `make ladder` instead, so offering
+    # it here would fail later and less clearly.
+    parser.add_argument("--service", required=True, choices=sorted(ENGINE_FOR_SERVICE))
     parser.add_argument("--profile", default="quick")
     parser.add_argument(
         "--model", required=True, help="slug from schemas/bench_models.json"
