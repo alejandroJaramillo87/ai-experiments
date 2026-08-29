@@ -1,0 +1,9 @@
+{
+  "id": "cmpl-scripted",
+  "object": "text_completion",
+  "created": 1755000000,
+  "model": "qwen3-coder-30b-a3b",
+  "choices": [
+    {"index": 0, "text": " the", "finish_reason": null}
+  ]
+}

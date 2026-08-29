@@ -1,0 +1,13 @@
+{
+  "id": "cmpl-scripted",
+  "object": "text_completion",
+  "created": 1755000000,
+  "model": "qwen3-coder-30b-a3b",
+  "choices": [],
+  "usage": {
+    "prompt_tokens": 128,
+    "completion_tokens": 8,
+    "total_tokens": 136
+  },
+  "system_fingerprint": null
+}

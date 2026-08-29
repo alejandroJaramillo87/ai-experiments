@@ -10,7 +10,7 @@ disagrees with it, the recipe is right.
 
 ## What it runs
 
-Ten steps, cheapest first, failing on the first error:
+Twelve steps, cheapest first, failing on the first error:
 
 1. `ruff format --check .` — formatting.
 2. `ruff check .` — lint.
@@ -91,7 +91,7 @@ regardless: the sandbox proves the code, not the hardware.**
 
 ## The full gate
 
-`make quality` is the pre-push gate and stops at the ten steps above. It never runs pytest, and
+`make quality` is the pre-push gate and stops at the twelve steps above. It never runs pytest, and
 `make test` deselects both hardware markers by default (`addopts` in `pyproject.toml`). So the
 three commands cover three different amounts of ground, and the cheapest is the one everyone
 reaches for. `make quality-full` is the one that runs all of it, on the workstation:

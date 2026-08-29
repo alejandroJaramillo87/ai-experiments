@@ -1,0 +1,27 @@
+{
+  "choices": [
+    {"text": "", "index": 0, "logprobs": null, "finish_reason": "length"}
+  ],
+  "created": 1755000000,
+  "model": "qwen3-coder-30b-a3b",
+  "system_fingerprint": "b9976-e3546c79",
+  "object": "text_completion",
+  "usage": {
+    "completion_tokens": 8,
+    "prompt_tokens": 128,
+    "total_tokens": 136,
+    "prompt_tokens_details": {"cached_tokens": 0}
+  },
+  "id": "cmpl-scripted",
+  "timings": {
+    "cache_n": 0,
+    "prompt_n": 128,
+    "prompt_ms": 512.0,
+    "prompt_per_token_ms": 4.0,
+    "prompt_per_second": 250.0,
+    "predicted_n": 8,
+    "predicted_ms": 240.0,
+    "predicted_per_token_ms": 30.0,
+    "predicted_per_second": 33.333333333333336
+  }
+}

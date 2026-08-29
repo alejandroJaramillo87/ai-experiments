@@ -381,4 +381,4 @@ ignore = [
 # differently than in a full install, which reorders function-local import
 # blocks and fails `make quality` in one environment but passes in another.
 [tool.ruff.lint.isort]
-known-first-party = ["training", "interp", "common"]
+known-first-party = ["training", "interp", "common", "bench"]

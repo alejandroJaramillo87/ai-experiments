@@ -200,8 +200,10 @@ rest.
 
 Two of the classes are enforced by path, because both documentation gates read them that way:
 `scripts/docs/check_doc_refs.py` and `scripts/docs/check_retired_names.py` exempt anything
-under an `investigations/` directory, anything whose name ends `_investigation.md`, and
-everything under `docs/verification/`.
+under an `investigations/` or `archive/` directory, and anything whose name ends
+`_investigation.md`. `docs/verification/` was exempt by prefix until 2026-08-08 and is not:
+the exemption covered the most path-dense documentation in the tree and bought nothing, so
+an operational runbook's paths are now checked like any other document's.
 
 ### Frozen records
 
@@ -260,15 +262,20 @@ is whoever is running the checks, and the human's pasted output is the evidence.
 
 ### Benchmarking
 
-Run the benchmark scripts in `scripts/benchmark/` (`benchmark_cpu.sh`,
-`benchmark_gpu.sh`) to measure inference performance on this workstation.
+`python3 -m bench` measures inference performance on this workstation, reporting prefill
+and decode separately against a measured noise floor. See [../bench/README.md](../bench/README.md)
+for the entry points and [optimizations/roadmap.md](optimizations/roadmap.md) for the order
+in which the measurements are taken.
 
-### Key Optimizations Applied
+### Key optimizations applied
 
-- **GPU**: Batch 2048, Ubatch 512, Flash Attention v3
-- **CPU**: Batch 2048, 16 threads, huge pages enabled
-- **BIOS**: FCLK 2100MHz, C-states disabled, PBO enabled
-- **OS**: Performance governor, swap disabled, CPU pinning
+Each setting is owned by the file that configures it, and restating them here is how the
+two copies come to disagree. Service arguments and cpusets live in
+`docker-compose.inference.yaml`; firmware settings in
+[optimizations/bios/bios-optimizations.md](optimizations/bios/bios-optimizations.md); host
+settings in [optimizations/os/os-optimizations.md](optimizations/os/os-optimizations.md).
+What each one is worth is unmeasured on the current configuration, which is what
+[optimizations/roadmap.md](optimizations/roadmap.md) exists to fix.
 
 ## Documentation Standards
 

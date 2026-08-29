@@ -1,0 +1,56 @@
+{
+  "_comment": [
+    "Source-derived, not captured. Each fixture below was written from the pinned",
+    "engine source rather than from a recorded response, because source shows every",
+    "branch and a capture shows only the path one request took. A capture at bench.md",
+    "entry B1 confirms these against a live service; until then they are an inference",
+    "about the pinned versions, and this file records exactly which inference.",
+    "Provenance lives here rather than inside each fixture so the fixtures stay pure",
+    "wire shapes that a test can compare byte for byte."
+  ],
+  "engines": {
+    "llama.cpp": {
+      "pin": "e3546c7948e3af463d0b401e6421d5a4c2faf565",
+      "tag": "b9976",
+      "pinned_by": "docker/llama-cpu/Dockerfile.cpu, docker/llama-gpu/Dockerfile.llama-gpu",
+      "upstream": "github.com/ggml-org/llama.cpp"
+    },
+    "vllm": {
+      "pin": "0.25.0",
+      "pinned_by": "docker/vllm-gpu/Dockerfile.vllm-gpu",
+      "upstream": "github.com/vllm-project/vllm"
+    }
+  },
+  "fixtures": {
+    "llama_cpp_partial.json": {
+      "engine": "llama.cpp",
+      "emitted_by": "server_task_result_cmpl_partial::to_json_oaicompat, tools/server/server-task.cpp lines 1097-1134",
+      "note": "One partial per token. The content is set from a single token's text, so this engine never packs two tokens into one frame on the completions path."
+    },
+    "llama_cpp_withheld.json": {
+      "engine": "llama.cpp",
+      "emitted_by": "same serializer as llama_cpp_partial.json, with the token text withheld by process_token, tools/server/server-context.cpp lines 1807-1855",
+      "note": "A token held back for a pending stop-string match sends an empty text field. A token leaving an incomplete UTF-8 sequence is worse: the branch containing the only send call is skipped, so no frame is sent at all and the next token's frame carries both. Either way the arrival count falls below the completion-token count. This fixture is what BQ.9 reproduces."
+    },
+    "llama_cpp_final.json": {
+      "engine": "llama.cpp",
+      "emitted_by": "server_task_result_cmpl_final::to_json_oaicompat, tools/server/server-task.cpp lines 398-437; timings object from result_timings::to_json, same file lines 240-262",
+      "note": "In stream mode the content is set to the empty string by send_final_response, tools/server/server-context.cpp line 2087, because the text already went out in the last partial. Usage rides on this frame unconditionally: the completions branch of the dispatch at line 349 has no stream variant, so stream_options.include_usage is inert for this engine and this endpoint."
+    },
+    "vllm_chunk.json": {
+      "engine": "vllm",
+      "emitted_by": "CompletionResponseStreamChoice inside CompletionStreamResponse, vllm/entrypoints/openai/completion/protocol.py lines 565-594",
+      "note": "Serialized with exclude_none, so null-valued optional fields are absent from the wire rather than present and null."
+    },
+    "vllm_final.json": {
+      "engine": "vllm",
+      "emitted_by": "the final usage chunk, vllm/entrypoints/openai/completion/serving.py lines 474-486",
+      "note": "The choices list is empty rather than carrying an empty-text choice, so nothing in this frame can be mistaken for a token arrival. Emitted only when stream_options.include_usage is set or the server was launched with force-include-usage; without it there is no usage frame at all and a sample cannot be counted."
+    },
+    "vllm_final_with_metrics.json": {
+      "engine": "vllm",
+      "emitted_by": "the same final usage chunk, with PerRequestTimingMetrics attached, vllm/entrypoints/openai/completion/serving.py lines 461-481; the model is defined in vllm/entrypoints/openai/engine/protocol.py lines 118-123",
+      "note": "Not currently reachable in this stack, and recorded as finding BQ-F19. The metrics object is populated only when the server was launched with per-request metrics enabled, and only for a single prompt with n equal to one. It carries queue_time_ms, which is the one quantity this suite documents as impossible to derive client-side: the adapter reports no server timings for vllm and the report therefore labels every vllm phase client-sourced, which is a statement about the launch flags rather than about the engine."
+    }
+  }
+}

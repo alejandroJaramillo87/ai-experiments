@@ -15,6 +15,7 @@ header transcripts, and a hardware tier that runs only on the workstation.
 | `utils/` | the `scripts/utils/` host-environment reporters — see [utils/README.md](utils/README.md) |
 | `agents/` | agent tooling, the guard hook, and Make targets — see [agents/README.md](agents/README.md) |
 | `models/` | GGUF and safetensors header transcripts — see [models/README.md](models/README.md) |
+| `bench/` | the `python -m bench` suite: reduction, wire decoding, and timing against scripted servers — see [bench/README.md](bench/README.md) |
 | `hardware/` | live GPU, CPU, RAM, and SSD checks; deselected by default |
 
 ## Traps

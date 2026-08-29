@@ -1,0 +1,19 @@
+{
+  "id": "cmpl-scripted",
+  "object": "text_completion",
+  "created": 1755000000,
+  "model": "qwen3-coder-30b-a3b",
+  "choices": [],
+  "usage": {
+    "prompt_tokens": 128,
+    "completion_tokens": 8,
+    "total_tokens": 136
+  },
+  "metrics": {
+    "time_to_first_token_ms": 512.0,
+    "generation_time_ms": 240.0,
+    "queue_time_ms": 18.0,
+    "mean_itl_ms": 30.0,
+    "tokens_per_second": 33.333333333333336
+  }
+}

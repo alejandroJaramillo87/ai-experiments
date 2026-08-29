@@ -1,0 +1,10 @@
+{
+  "choices": [
+    {"text": "", "index": 0, "logprobs": null, "finish_reason": null}
+  ],
+  "created": 1755000000,
+  "model": "qwen3-coder-30b-a3b",
+  "system_fingerprint": "b9976-e3546c79",
+  "object": "text_completion",
+  "id": "cmpl-scripted"
+}
