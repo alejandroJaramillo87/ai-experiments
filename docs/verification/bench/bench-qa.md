@@ -728,6 +728,68 @@ compare and noise command modules are imported by no test. They are: the parser 
 `../../../bench/cli.py`, which imports both. The claim came from a survey that was not checked
 before it was filed.
 
+### Verdicts, the discovery top-up
+
+| ID | Verdicts | Outcome | Settled |
+|----|----------|---------|---------|
+| BQ-F27 | 1 confirmed | confirmed; the fix belongs to the registry, not the shared parser | medium |
+| BQ-F28 | 2 confirmed | confirmed, and reachable without any fault | high |
+| BQ-F30 | 1 confirmed | confirmed; five of seven examples are already caught by the suite | medium |
+| BQ-F33 | 1 confirmed | confirmed; scoped to vLLM, and the floor is too wide rather than too narrow | high |
+| BQ-F34 | 2 confirmed | confirmed, with a fabricated verdict reproduced twice | high |
+| BQ-F35, BQ-F36, BQ-F37 | 1 confirmed each | confirmed | medium |
+| BQ-F43 | 2 refuted | the stated consequence is impossible; a worse one is not | refuted |
+| BQ-F44, BQ-F45, BQ-F46 | 1 confirmed each | confirmed with reproductions | high |
+| BQ-F25 | 1 confirmed | confirmed; needs asymmetric cell loss to fire, and clearing five percent is unproven | medium |
+| BQ-F29 | 1 confirmed | confirmed; the sharper claim that B3 cannot pass is refuted | medium |
+| BQ-F47 | 1 confirmed | confirmed; naming the wrong file prints strictly less than naming none | medium |
+| BQ-F48 | 1 confirmed | confirmed but latent: no caller in the tree combines two arms with the flag | low |
+| BQ-F49 | 1 confirmed | confirmed, and distinct from the handler finding rather than a duplicate | medium |
+| BQ-F50 | 1 confirmed | confirmed; blocking on the pair identifier would not break the runbook's control | medium |
+| BQ-F51 | 1 confirmed | confirmed; the bias runs warm-arm-faster | medium |
+| BQ-F52 | 0 | filed during this round by two verifiers refuting another claim | critical, unverified |
+
+The confirmation rate is the difference between the two rounds, and the reason is evidence
+rather than judgement. The first round's findings were filed from reading and nine of seventeen
+were refuted as filed. The top-up's were filed with reproductions that had been executed, and
+almost none were refuted -- the verifiers spent their effort correcting severity and scope
+instead. Where a top-up finding did lose ground it was on an escalation rather than a
+mechanism: the machine-readable model listing really does omit the field, but the runbook entry
+that reads it also runs the human form, so that entry can pass after all.
+
+What the round established beyond the individual rows:
+
+**The refutation of BQ-F43 produced BQ-F52, which is the gravest finding in this campaign.** The
+claim was that an arm's environment leaks and leaves the CPU service on twelve threads. It
+cannot: `../../../docker-compose.inference.yaml` writes `THREADS` as a literal, so the compose
+subprocess environment an arm sets never reaches the container, and the repack knob appears in
+no compose file at all. Only the huge-page knob is interpolated. So two of the host runbook's
+A/B entries would compare a service against itself and report it cleanly, and the entry meant
+to re-anchor a twenty-six percent figure would re-anchor it to nothing. Both verifiers reached
+this independently while refuting the finding they were given.
+
+**BQ-F28's precondition is a documented flag, not a crash.** Both verifiers found that the
+training commands restore in a `finally`, which was the counter-argument -- and both then found
+that `--keep-serving` skips that restore deliberately on a successful run, and that `bench`'s
+own arm mechanism accepts a model-path override that recreates the service on a different
+model. One ran `check_comparable` on two reports whose containers had loaded different model
+files and got no refusal and no warning. The fix is a string comparison over data already
+collected: the registry's own comment says its paths are the in-container paths that match what
+the compose file passes.
+
+**BQ-F45's reachability was the open question and it is closed.** The refusal list inspects
+conditions and the profile name and never the phases, while the reduction drops a phase whose
+cells all failed. So an ordinary report missing its decode arm passes as comparable with zero
+warnings, and a candidate fifty percent slower on decode prints no decode line and exits 0. No
+hand-built document is needed.
+
+**BQ-F33 is narrower and better characterised than filed.** It is vLLM-only: llama.cpp sends a
+cache-defeating flag per request, and its server cache is per-slot rather than a hash-keyed
+pool, so a replay from the start of the sequence cannot hit. The filed causal clause was also
+wrong -- the noise command does not call the arm helper at all, so there is no early return to
+blame. And the direction matters: caching can only make the second arm faster, so the floor
+comes out too wide, which suppresses real findings rather than fabricating them.
+
 ## What this campaign does not cover
 
 - **Numbers.** No entry here produces a latency, a throughput, or a noise floor. Those are
