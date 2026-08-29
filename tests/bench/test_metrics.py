@@ -120,14 +120,40 @@ class TestReduceSamples:
         samples = [make_sample(0.1, 0.01, 8)]
         block = reduce_samples(samples, concurrency=1)
         assert block["itl_approximate"] is False
-        assert block["tokens_per_chunk_max"] == pytest.approx(1.0)
+        assert block["tokens_per_chunk_mean_max"] == pytest.approx(1.0)
 
     def test_multi_token_chunks_flag_the_itl_series_as_approximate(self):
         # 8 tokens delivered in 4 chunks: the gaps are chunk gaps, not token gaps.
         samples = [make_sample(0.1, 0.01, 8, chunks=4)]
         block = reduce_samples(samples, concurrency=1)
         assert block["itl_approximate"] is True
-        assert block["tokens_per_chunk_max"] == pytest.approx(2.0)
+        assert block["tokens_per_chunk_mean_max"] == pytest.approx(2.0)
+
+    def test_the_packing_field_is_a_max_over_per_sample_means(self):
+        # BQ-F02. The worst single chunk is not observable from arrival stamps, so
+        # the field names what it is: each sample's mean packing, maxed over samples.
+        # Eight tokens in four chunks is a mean of 2.0 whether the chunks were
+        # 2/2/2/2 or 5/1/1/1, and the field reports 2.0 for both.
+        block = reduce_samples(
+            [make_sample(0.1, 0.01, 8, chunks=4), make_sample(0.1, 0.01, 8, chunks=8)],
+            concurrency=1,
+        )
+        assert block["tokens_per_chunk_mean_max"] == pytest.approx(2.0)
+        assert "tokens_per_chunk_max" not in block
+
+    def test_an_arrival_series_short_of_the_token_count_is_counted(self):
+        # BQ-F01. The reduction says how many samples did not resolve their own
+        # generation, so an absent rate is a recorded refusal rather than a silence.
+        block = reduce_samples(
+            [make_sample(0.1, 0.01, 8, chunks=7), make_sample(0.1, 0.01, 8)],
+            concurrency=1,
+        )
+        assert block["arrivals_incomplete"] == 1
+        assert block["decode_tok_s"]["n"] == 1
+
+    def test_a_clean_point_records_no_incomplete_arrivals(self):
+        block = reduce_samples([make_sample(0.1, 0.01, 8)], concurrency=1)
+        assert block["arrivals_incomplete"] == 0
 
     def test_prefill_arm_omits_decode_metrics_rather_than_zeroing_them(self):
         samples = [make_sample(0.25, 0.0, 1) for _ in range(3)]

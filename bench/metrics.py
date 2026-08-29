@@ -51,13 +51,33 @@ class Sample:
     def chunks(self) -> int:
         return len(self.arrivals)
 
+    @property
+    def arrivals_resolve_generation(self) -> bool:
+        """Whether the arrival series accounts for every token the server generated.
+
+        Fewer arrivals than tokens means the stamps do not span the generation the
+        token count describes, and every quantity below anchored on the first or last
+        arrival is then divided by a count it does not cover. llama.cpp sends no frame
+        at all for a token that leaves an incomplete UTF-8 sequence; a frame that fails
+        to parse is skipped here; a server packing two tokens into one chunk produces
+        the same observation. The three are indistinguishable from stamps alone, and
+        each moves a different metric in the direction that flatters the result, so the
+        reconciliation against the server's own count is the only detector available.
+        """
+        return self.chunks >= self.completion_tokens
+
     def ttft_ms(self) -> float | None:
         """Time to first token, client-side.
 
         At concurrency 1 this is prefill plus one decode step plus the round trip. Above
         concurrency 1 it also contains queue wait, which is why the caller labels the
         block `includes_queue` rather than this function pretending otherwise.
+
+        Absent when the arrivals do not resolve the generation: the first arrival is
+        then some later token, and the stamp reads one or more intervals late.
         """
+        if not self.arrivals_resolve_generation:
+            return None
         return (self.arrivals[0] - self.t_submit) * 1000.0
 
     def itl_ms(self) -> list[float]:
@@ -77,12 +97,23 @@ class Sample:
         """
         if self.completion_tokens < 2 or self.chunks < 2:
             return None
+        if not self.arrivals_resolve_generation:
+            # The span covers chunks-1 observed intervals and the denominator counts
+            # completion_tokens-1 generated ones. Unequal, and which intervals went
+            # missing is unknowable, so the quotient is refused rather than reported
+            # low.
+            return None
         span = self.arrivals[-1] - self.arrivals[0]
         return span / (self.completion_tokens - 1) * 1000.0
 
     def decode_tok_s(self) -> float | None:
-        """Decode throughput, prefill excluded."""
+        """Decode throughput, prefill excluded.
+
+        Absent on an unresolved generation, where it reads high by an interval's worth.
+        """
         if self.completion_tokens < 2 or self.chunks < 2:
+            return None
+        if not self.arrivals_resolve_generation:
             return None
         span = self.arrivals[-1] - self.arrivals[0]
         if span <= 0:
@@ -95,7 +126,12 @@ class Sample:
         This is the figure the earlier tooling reported as "tokens/second", prefill
         folded in. Kept, and named for what it is, so new measurements can be reconciled
         against the numbers already quoted in docs/optimizations/.
+
+        Absent on an unresolved generation: a token withheld at the end shortens the
+        span while the numerator stays at the server's count, inflating the rate.
         """
+        if not self.arrivals_resolve_generation:
+            return None
         span = self.arrivals[-1] - self.t_submit
         if span <= 0:
             return None
@@ -160,8 +196,11 @@ def reduce_samples(samples: list[Sample], concurrency: int) -> dict:
 
     # A chunk carrying more than one token makes the ITL series coarser than per-token.
     # Reporting it as a per-token latency anyway would be a quiet lie, so the block says
-    # so and names the worst packing observed.
-    tokens_per_chunk_max = max(
+    # so. What it can say is each sample's mean tokens per chunk, and the largest of
+    # those means across the samples -- not the worst single chunk, which arrival stamps
+    # cannot observe: eight tokens in four chunks is a mean of 2.0 whether they packed
+    # 2/2/2/2 or 5/1/1/1.
+    tokens_per_chunk_mean_max = max(
         (s.completion_tokens / s.chunks for s in samples if s.chunks), default=1.0
     )
 
@@ -176,8 +215,15 @@ def reduce_samples(samples: list[Sample], concurrency: int) -> dict:
         "tpot_ms": stats(_collect(samples, Sample.tpot_ms)),
         "decode_tok_s": stats(_collect(samples, Sample.decode_tok_s)),
         "e2e_tok_s": stats(_collect(samples, Sample.e2e_tok_s)),
-        "itl_approximate": tokens_per_chunk_max > 1.0,
-        "tokens_per_chunk_max": tokens_per_chunk_max,
+        "itl_approximate": tokens_per_chunk_mean_max > 1.0,
+        "tokens_per_chunk_mean_max": tokens_per_chunk_mean_max,
+        # How many samples produced fewer arrivals than the server reported tokens.
+        # Their arrival-derived metrics are absent above rather than wrong, and this
+        # count is what tells the two apart: a metric nobody could measure versus a
+        # metric this many samples were refused for.
+        "arrivals_incomplete": sum(
+            1 for s in samples if not s.arrivals_resolve_generation
+        ),
         "prompt_tokens_observed": stats([float(s.prompt_tokens) for s in samples]),
         "completion_tokens_observed": stats(
             [float(s.completion_tokens) for s in samples]

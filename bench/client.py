@@ -28,7 +28,12 @@ import urllib.request
 from bench.adapters import Adapter, ServerTimings, Usage
 from common.serving import ServingError, ServingTransientError
 
-SSE_PREFIX = b"data: "
+# The specification makes the space after the colon optional (WHATWG HTML, server-sent
+# events: a single leading space is stripped if present). Both pinned engines write it,
+# so requiring it matched every frame this suite has seen and would have silently
+# yielded zero arrivals against one that does not. The payload is stripped below, which
+# is what removes the space when it is there.
+SSE_PREFIX = b"data:"
 SSE_DONE = b"[DONE]"
 
 

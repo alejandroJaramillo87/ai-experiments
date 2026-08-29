@@ -270,3 +270,19 @@ def test_urllib_error_types_are_mapped(monkeypatch):
     monkeypatch.setattr(client.urllib.request, "urlopen", boom)
     with pytest.raises(ServingTransientError):
         client.stream(llama_adapter(), {"prompt": "x"}, timeout=1.0)
+
+
+def test_a_data_line_without_the_optional_space_is_decoded():
+    """BQ-F15. The SSE specification makes the space after `data:` optional.
+
+    Both pinned engines write it, so the constant matched every frame this suite has
+    seen; an engine or a proxy that omits it would yield zero arrivals and the client
+    would refuse the response as carrying no text.
+    """
+    body = json.dumps(fakes.text_chunk(" a")).encode("utf-8")
+    frames = [
+        fakes.Frame(delay_s=0.0, line=b"data:" + body + b"\n\n"),
+        fakes.Frame.of(fixture("llama_cpp_final")),
+    ]
+    result = stream_scripted(frames)
+    assert len(result.arrivals) == 1

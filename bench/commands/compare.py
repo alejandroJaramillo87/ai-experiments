@@ -38,9 +38,11 @@ HEADLINE = (
 # Metrics whose verdicts decide the exit code. Deliberately not the displayed set:
 # what a table shows is a reading convenience, and an exit code that follows it makes
 # --all change the answer rather than the view. Wider than HEADLINE because
-# inter-token latency is half of what this CLI promises to report; narrower than every
-# delta because the observed token counts are diagnostics -- a prompt that tokenized
-# differently is a workload to investigate, not a slower engine.
+# inter-token latency is half of what this CLI promises to report. It is no longer
+# narrower than every delta: the observed token counts it used to exclude are not
+# differenced at all now, having moved out of the graded set at the reduction. The
+# named set stays, because the next non-metric added to a point's mapping should have
+# to be admitted deliberately rather than inherited.
 GATED = HEADLINE + ("itl_ms",)
 
 
