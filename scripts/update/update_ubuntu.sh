@@ -151,7 +151,9 @@ if command -v docker &> /dev/null && systemctl is-active --quiet docker; then
 
     # Only try to pull CUDA image if NVIDIA runtime is available
     if docker info 2>/dev/null | grep -q nvidia; then
-        docker pull nvidia/cuda:13.0-cudnn9-runtime-ubuntu24.04 2>/dev/null || echo "  CUDA image update failed"
+        # The exact tag the GPU images build on; a floating 13.0 tag would warm
+        # the cache for an image nothing here builds. Bump with the Dockerfiles.
+        docker pull nvidia/cuda:13.0.2-cudnn-runtime-ubuntu24.04 2>/dev/null || echo "  CUDA image update failed"
     fi
 
     # Clean up dangling images
