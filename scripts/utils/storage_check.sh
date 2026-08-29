@@ -89,7 +89,7 @@ if [ -d "/mnt/ai-data" ]; then
 
     # Models directory
     echo "Models:"
-    for model_type in hf gguf trained checkpoints clip diffusion_models vae; do
+    for model_type in hf gguf trained checkpoints; do
         MODEL_PATH="/mnt/ai-data/models/$model_type"
         if [ -d "$MODEL_PATH" ]; then
             SIZE=$(du -sh "$MODEL_PATH" 2>/dev/null | awk '{print $1}')

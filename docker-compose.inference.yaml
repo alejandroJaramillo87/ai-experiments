@@ -171,63 +171,6 @@ services:
     #   llama-gpu:
     #     condition: service_healthy # Wait for the GPU service to be healthy before starting
 
-  # ComfyUI for image (FLUX.2) and video (Wan 2.2, LTX-2.3) generation
-  comfyui:
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    build:
-      context: .
-      dockerfile: docker/comfyui/Dockerfile.comfyui
-    container_name: comfyui
-    restart: unless-stopped
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=0
-      - CUDA_VISIBLE_DEVICES=0
-      - COMFYUI_PORT=8188
-      - MODEL_BASE_PATH=/app/models
-      - OUTPUT_PATH=/app/output
-      - VRAM_MODE=${COMFY_VRAM_MODE:-highvram}
-    deploy:
-      resources:
-        limits:
-          # Video models spill weights to system RAM when a clip exceeds
-          # 32GB VRAM (e.g. LTX-2.3 weight streaming); leave headroom
-          memory: 64G
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu, compute, utility]
-    ports:
-      # ComfyUI web interface
-      - "127.0.0.1:8188:8188"
-    # read_only disabled as ComfyUI needs write access for manager and settings
-    # Security maintained through: non-root user, resource limits, network isolation
-    tmpfs:
-      - /tmp:size=4G,mode=1777
-      # Video frame intermediates need more temp space than image runs
-      - /app/temp:size=8G,mode=1777
-      - /app/input:size=1G,mode=1777
-      - /app/.cache:size=1G,mode=1777
-      - /app/user:size=100M,mode=1777
-    volumes:
-      # Model storage mount
-      - /mnt/ai-data/models:/app/models:ro
-      # Output directory for generated images
-      - /mnt/ai-data/comfyui/output:/app/output
-      # ComfyUI workflows
-      - ./workflows:/app/user/default/workflows
-    networks:
-      - ai-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8188/system_stats"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 180s
-
 # Persistent storage
 volumes:
   open-webui-data:

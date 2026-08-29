@@ -4,7 +4,7 @@ description: Container debugging runbook for this inference stack — per-servic
 ---
 # Docker debugging runbook
 
-For the llama.cpp / vLLM / open-webui / comfyui stack defined in `docker-compose.inference.yaml`,
+For the llama.cpp / vLLM / open-webui stack defined in `docker-compose.inference.yaml`,
 including the opt-in `interp` profile services.
 
 > Sandboxed execution: agents cannot reach the host Docker daemon, the services, or the
@@ -23,7 +23,6 @@ published port equals the in-container port for every service.
 | llama-gpu | 8002 | `curl -f http://localhost:8002/v1/health` |
 | vllm-gpu | 8003 | `curl -f http://localhost:8003/health` |
 | open-webui | 3000 | container `:main`, no explicit healthcheck |
-| comfyui | 8188 | `curl -f http://localhost:8188/system_stats` |
 
 Every service above starts with a plain `make up`. The interp write-back path is served by
 `harness-serve` on 8005, which lives in `docker-compose.rust-harness.yaml` and is started

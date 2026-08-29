@@ -12,7 +12,6 @@ wrong.
 | `llama-cpu/` | low-latency CPU inference |
 | `llama-gpu/` | GPU llama.cpp inference |
 | `vllm-gpu/` | high-throughput batch serving |
-| `comfyui/` | image and video generation |
 | `training/` | the training tier, plus a separate export image |
 | `interp/` | the interpretability workbench, and the pinned Neuronpedia overrides |
 | `rust-harness/` | the Rust harness image |
@@ -25,9 +24,9 @@ compose files and are deliberately excluded — they are interactive tools, not 
 `make clean` is scoped and leaves the agent sandbox alone; `make prune` is host-wide and
 destructive.
 
-**Only one GPU consumer runs at a time.** `art-mode` and `llm-mode` exist to swap between
-ComfyUI and the GPU LLM services for that reason, and the training and interp stacks each
-carry their own compose file so they cannot be started alongside inference by accident.
+**Only one GPU consumer runs at a time.** `llama-gpu` and `vllm-gpu` contend for the same
+card, and the training and interp stacks each carry their own compose file so they cannot
+be started alongside inference by accident.
 
 **Neuronpedia is an external checkout, not built from this tree.** It is pinned by
 `docker/interp/neuronpedia-pin.txt` and adjusted through `neuronpedia.override.yaml` and

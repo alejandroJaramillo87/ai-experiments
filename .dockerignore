@@ -17,7 +17,7 @@ rust-harness/target/
 *.py[cod]
 
 # Version control history. 2.4 GB, and no build reads it — the git clones in
-# the llama.cpp, ComfyUI and export images are remote, not this repository.
+# the llama.cpp and export images are remote, not this repository.
 .git/
 .gitignore
 .github/

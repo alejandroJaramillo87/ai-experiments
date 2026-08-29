@@ -28,7 +28,6 @@ port is reachable beyond loopback.
 | llama-gpu | 8002 | inference |
 | vllm-gpu | 8003 | inference |
 | open-webui | 3000 | inference |
-| comfyui | 8188 | inference |
 | JupyterLab workbench | 8888 | interp workbench (`docker-compose.interp.yaml`) |
 | Neuronpedia webapp | 3001 | platform (upstream compose + override) |
 | Neuronpedia postgres | 5432 | platform |
@@ -77,12 +76,12 @@ Database backup: `make np-down`, then snapshot `/mnt/ai-data/interp/neuronpedia/
 ## Concurrency matrix
 
 One GPU consumer at a time (AGENTS.md). llama-cpu may stay up throughout. The preflight
-(`scripts/interp/preflight.sh`) blocks GPU platform targets while llama-gpu, vllm-gpu, or
-comfyui is running; the failure mode is a policy message, not a CUDA OOM.
+(`scripts/interp/preflight.sh`) blocks GPU platform targets while llama-gpu or vllm-gpu
+is running; the failure mode is a policy message, not a CUDA OOM.
 
 | Mode | Inference stack | Platform |
 |------|-----------------|----------|
-| Interactive platform work (PS3, PS5) | llama-gpu/vllm-gpu/comfyui down; llama-cpu allowed | webapp + postgres + one GPU service (np-inference-up or np-graph-up) |
+| Interactive platform work (PS3, PS5) | llama-gpu/vllm-gpu down; llama-cpu allowed | webapp + postgres + one GPU service (np-inference-up or np-graph-up) |
 | Serving-dependent autointerp (PS4) | vllm-gpu up | webapp + postgres + autointerp on CPU (`make np-autointerp-up`, no `NP_GPU`) |
 | Browsing only | anything | webapp + postgres (`make np-up` is CPU-only, never preflighted) |
 
@@ -126,7 +125,7 @@ Operational facts:
 PS5 mode: circuit-tracer attribution graphs generated locally on Gemma-2-2B with the
 8x/k64 transcoder configuration (verified inside the 32GB envelope; 32x configs need
 40GB+ and are out of scope), rendered in the webapp's graph viewer. Interactive
-concurrency mode: the graph server owns the GPU, so llama-gpu/vllm-gpu/comfyui and the
+concurrency mode: the graph server owns the GPU, so llama-gpu/vllm-gpu and the
 PS3 inference instance must be down (enforced by the preflight). Design and open
 verification items: `docs/interp/investigations/ps5_attribution_graphs_investigation.md`.
 

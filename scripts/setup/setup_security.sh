@@ -142,7 +142,7 @@ run sudo ufw default deny incoming
 run sudo ufw default allow outgoing
 run sudo ufw allow 22/tcp comment "SSH"
 # The Docker bridge, so containers can reach host services. No development
-# ports: llama.cpp, vLLM, Open WebUI, and ComfyUI all bind 127.0.0.1 in
+# ports: llama.cpp, vLLM, and Open WebUI all bind 127.0.0.1 in
 # docker-compose.inference.yaml and are unreachable from the network by design.
 run sudo ufw allow from 172.17.0.0/16 comment "Docker containers"
 run sudo ufw --force enable

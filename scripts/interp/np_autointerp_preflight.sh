@@ -6,7 +6,7 @@ set -euo pipefail
 # `make np-autointerp-up` in its default (CPU) mode routes explanations to the vllm-gpu
 # OpenAI-compatible endpoint, so the required GPU state is the inverse of
 # scripts/interp/preflight.sh: vllm-gpu must be UP and healthy, and every other GPU
-# consumer — llama-gpu, comfyui, and the Neuronpedia GPU services (inference, graph) —
+# consumer — llama-gpu and the Neuronpedia GPU services (inference, graph) —
 # must be down. One GPU consumer at a time, per AGENTS.md; llama-cpu is permitted.
 #
 # Exit codes: 0 clear to start, 1 vllm-gpu unhealthy or another GPU consumer is running.
@@ -42,7 +42,7 @@ if ! running=$(docker compose -f "$INFER_COMPOSE" ps --status running --format '
     echo "  Detail: $running"
     exit 1
 fi
-for svc in llama-gpu comfyui; do
+for svc in llama-gpu; do
     if grep -qx "$svc" <<< "$running"; then
         print_error "GPU service running: $svc (vllm-gpu is the only permitted GPU consumer here)"
         echo "  Solution: stop it first"

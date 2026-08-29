@@ -10,8 +10,8 @@ separate roles: doc-auditor reports the drift, doc-writer fixes it in a later pa
 
 Audit the documentation under `$ARGUMENTS` against the actual source of truth:
 
-- `docker-compose.inference.yaml` — the default stack (llama-cpu, llama-gpu, vllm-gpu, open-webui,
-  comfyui). It declares no compose profiles.
+- `docker-compose.inference.yaml` — the default stack (llama-cpu, llama-gpu, vllm-gpu,
+  open-webui). It declares no compose profiles.
 - `docker-compose.agents.yaml`, `docker-compose.interp.yaml`,
   `docker-compose.rust-harness.yaml`, `docker-compose.training.yaml` — the four additional
   stacks. Docs under `docs/training/`, `docs/interp/`, and `docs/sandbox/` are

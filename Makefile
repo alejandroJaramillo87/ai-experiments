@@ -29,7 +29,7 @@ MAX_JOBS ?= 4
 NVCC_THREADS ?= 2
 
 # The inference stack's compose file. Named here rather than in one domain file because
-# five of them consume it (services, ops, comfy, interp, cleanup), matching the per-tier
+# four of them consume it (services, ops, interp, cleanup), matching the per-tier
 # convention set by TRAIN_COMPOSE, INTERP_COMPOSE, HARNESS_COMPOSE, and AGENTS_COMPOSE.
 #
 # Every invocation must pass `-f $(INFER_COMPOSE)`. Compose auto-discovers only its four
@@ -60,7 +60,6 @@ MK_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
 # a wildcard would sort alphabetically and scramble the output. help.mk stays last for
 # the same reason.
 include $(MK_DIR)make/services.mk
-include $(MK_DIR)make/comfy.mk
 include $(MK_DIR)make/training.mk
 include $(MK_DIR)make/interp.mk
 include $(MK_DIR)make/neuronpedia.mk
