@@ -747,7 +747,19 @@ before it was filed.
 | BQ-F49 | 1 confirmed | confirmed, and distinct from the handler finding rather than a duplicate | medium |
 | BQ-F50 | 1 confirmed | confirmed; blocking on the pair identifier would not break the runbook's control | medium |
 | BQ-F51 | 1 confirmed | confirmed; the bias runs warm-arm-faster | medium |
+| BQ-F38 | 1 confirmed | confirmed; corrupts absolute claims only, and cancels exactly in a delta | medium |
+| BQ-F39, BQ-F40 | 1 confirmed each | confirmed; a hand-edited profile is the designed input, not an exotic one | medium |
 | BQ-F52 | 0 | filed during this round by two verifiers refuting another claim | critical, unverified |
+
+The prefill slope is reported in the wrong unit. The four-character-per-token estimate reaches
+the report as each point's length and as the slope's x-axis, while the server's own count is
+reduced beside it and used for nothing. The error is a pure rescale of the x-axis, so the
+intercept and the goodness of fit are untouched and an A/B delta cancels it exactly -- verified
+at three different scale factors, all giving the same delta to six decimal places. What it
+corrupts is the absolute figure, which is the one the optimizations index publishes and the one
+the benchmarking skill blesses for cross-engine comparison. Direction: too high whenever the
+corpus runs longer than four characters per token, which this one does. The size needs the
+served tokenizer and is a host question.
 
 The confirmation rate is the difference between the two rounds, and the reason is evidence
 rather than judgement. The first round's findings were filed from reading and nine of seventeen
