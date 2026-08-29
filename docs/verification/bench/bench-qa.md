@@ -51,8 +51,11 @@ Excluded, and the reason for each:
   every wire-format claim below is made against the pinned versions because those are what
   the containers run.
 
-No prior campaign has run against this scope, so the exclusion list carries no settled
-waivers to honour.
+No prior campaign has run against this scope, so this campaign's own ledger is the whole
+exclusion list. Every defect already filed below as BQ-F01 through BQ-F23 is out of scope for
+any further finder: it is recorded, and re-filing it wastes a verification slot on a claim
+that already has one. A finder that cannot read this section reports its absence rather than
+assuming the set is empty.
 
 ---
 
@@ -531,6 +534,9 @@ low until the verification phase records a verdict.
 | BQ-F16 | documentation | low | `pyproject.toml` omits `bench` from the isort first-party list while including it in the type-checker file list; `tests/README.md` omits `tests/bench/` from its layout table; `../README.md` records nine entries for `bench.md`, which has eight; `../../testing/quality-gate.md` says ten steps and lists twelve; `../../README.md` claims a gate exemption for this directory that was removed on 2026-08-08, and still directs readers to two retired scripts; `../README.md` described `bench.md` as covering four serving services where that runbook scopes itself to three. Every item in this row is corrected in this batch. |
 | BQ-F17 | `bench/runner.py`, `bench/delta.py` | high | The type checker reported five errors against `bench/`, so `make quality` did not exit 0 on the pushed branch. The repository carries no continuous integration, and the gate is invoked by hand, which is how a red gate reached the remote. Fixed in this batch by annotation alone, with no change to behavior. Closed. |
 | BQ-F18 | `scripts/docs/check_doc_refs.py` | low | `docs/agents/README.md` cites a git-ignored per-checkout settings file in the sentence that explains the file is git-ignored, so a fresh clone failed the reference gate. Fixed in this batch by recording it among the audited absences. Closed. |
+| BQ-F21 | `bench/commands/compare.py::cmd` | medium | The three report reads that open a comparison sit outside any handler. A missing file, a truncated document, or one that fails envelope validation leaves the command with a traceback rather than a diagnosed error and an exit code. The reader is proven to raise; nothing proves its only caller survives it. |
+| BQ-F22 | `bench/commands/compare.py`, `bench/commands/noise.py`, `bench/__main__.py` | medium | No test imports any of the three. The noise floor is the mechanism every `within_noise` verdict rests on, and the command that measures it has never been executed by the suite; it is also the second call site of the assembly function, so a defect reachable only from there is invisible. |
+| BQ-F23 | `tests/bench/fixtures/` | low | Two of the seven wire fixtures written in the previous batch, the llama.cpp partial frame and the vLLM final frame carrying per-request metrics, are loaded by no test. A fixture nothing reads asserts nothing, and the second is the shape BQ-F19 turns on. |
 
 ## What this campaign does not cover
 

@@ -3,7 +3,7 @@ name: gemma4-calculator-scalar-root
 description: Most Gemma 4 training-calculator findings share one root - ArchitectureSpec is a flat scalar dataclass that cannot express per-layer-type widths
 metadata:
   type: project
-verified: 2026-08-06
+verified: 2026-08-29
 stale_when: ArchitectureSpec in training/calculator/components.py gains per-layer-type fields (layer_types, use_double_wide_mlp, or a per-layer ffn)
 ---
 
@@ -40,3 +40,16 @@ check whether it is another face of this data-model gap before treating it as se
 them in one file-disjoint package. Verify the current dataclass shape first - it may already
 carry per-layer fields. Related: [[gemma4-2304-propagation]],
 [[project-gemma4-conformance-audit]].
+
+**Re-graded 2026-08-29 (bench campaign, phase 2).** The `stale_when` trigger has fired and
+this memory is now partly wrong. `ArchitectureSpec` carries `use_double_wide_mlp` and
+`num_kv_shared_layers` (`training/calculator/components.py:120-121`), consumed at `:131-134`
+and populated from config at `:277-278`, with coverage in
+`tests/training/test_calculator.py:346-347` and
+`tests/models/test_gemma4_facts_propagation.py:274-275`. The double-wide MLP bullet above is
+therefore closed, and the "no consumer in code" grep result is stale for those two names.
+Still consumerless outside `docs/` and test scaffolding: `layer_types`, `global_head_dim`,
+`attention_k_eq_v`, `num_global_key_value_heads`. The structural claim survives for the
+head-dim bullet only. Not rewritten further here: this campaign's scope is `bench/`, and the
+memory was re-checked rather than applied. A calculator campaign should rewrite it from the
+tree before using it.
