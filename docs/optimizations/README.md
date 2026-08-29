@@ -9,6 +9,7 @@ System optimizations for LLM inference on AMD Ryzen 9950X + RTX 5090: latency-fo
   - [Optimization Philosophy: Latency vs Throughput](#optimization-philosophy-latency-vs-throughput)
   - [Synopsis](#synopsis)
   - [Files](#files)
+    - [roadmap.md](#roadmapmd)
     - [bios/](#bios)
     - [os/](#os)
     - [Parked proposals](#parked-proposals)
@@ -58,6 +59,13 @@ System optimizations are organized by component:
   [Parked proposals](#parked-proposals) below.
 
 ## Files
+
+### roadmap.md
+
+[roadmap.md](roadmap.md) owns the ordering of the measurement campaign: which layer is
+measured when, why that order and not the stack order, and what each stage accepts on. It is
+the entry point for re-measuring anything in this directory, including the superseded figures
+below.
 
 ### bios/
 - **bios-optimizations.md** - BIOS/UEFI settings for Gigabyte X870E Aorus Elite WiFi
@@ -212,6 +220,7 @@ Validated improvements with optimizations enabled:
 
 ## See Also
 
+- roadmap.md - The measurement campaign order and its reasoning
 - bios/bios-optimizations.md - Detailed BIOS configuration guide
 - os/os-optimizations.md - Operating system tuning
 - docker-compose.inference.yaml - Container orchestration

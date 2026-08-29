@@ -103,7 +103,8 @@ audit.
 
 | Document | Description | Impact |
 |----------|-------------|--------|
-| [optimizations/README.md](optimizations/README.md) | Optimization overview and verification | +26% CPU performance |
+| [optimizations/README.md](optimizations/README.md) | Optimization overview and verification | +26% CPU performance (superseded) |
+| [optimizations/roadmap.md](optimizations/roadmap.md) | The order in which to measure every optimization, from a firmware reset onward | Campaign plan |
 | [optimizations/bios/bios-optimizations.md](optimizations/bios/bios-optimizations.md) | BIOS settings for AMD Ryzen 9950X | FCLK 2100MHz |
 | [optimizations/os/os-optimizations.md](optimizations/os/os-optimizations.md) | Operating system tuning | Performance governor |
 | [optimizations/bios/](optimizations/bios/) | `cpu_benchmark_results_{no,final}_bios.json` — the raw before and after measurements behind the figure above | Captured data |
