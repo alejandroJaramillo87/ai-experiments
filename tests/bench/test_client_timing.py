@@ -177,10 +177,19 @@ class TestDecoding:
 class TestWithheldFrames:
     """BQ-F01. A token whose text never reaches the client costs one arrival.
 
-    The effect depends on where in the generation it happens, and the two cases are
-    different defects rather than one. An interior withhold leaves every aggregate
-    correct and corrupts only the distribution. A withhold at either end shortens the
-    span the rates divide by while the token count stays the same.
+    The reachable llama.cpp branch -- a token leaving an incomplete UTF-8 sequence --
+    sends no frame at all, so nothing here can recover the arrival. What is available
+    is detection: the server states how many tokens it generated, and an arrival
+    series shorter than that count does not resolve the generation it is being
+    divided by.
+
+    Where the withhold falls decides which way the error runs, and the client cannot
+    tell which case it is in. At either end the decode rate reads high and the mean
+    time per output token reads low; a leading withhold puts time to first token one
+    interval late and a trailing one inflates the end-to-end rate. In the interior
+    every aggregate is correct and one fabricated interval enters the latency series.
+    Indistinguishable from arrival stamps alone, so all four arrival-derived
+    quantities are refused together rather than a wrong one being published.
     """
 
     def test_an_interior_withhold_fabricates_a_latency_outlier(self):
@@ -191,52 +200,61 @@ class TestWithheldFrames:
         # One interval spans two token generations. Nothing in the series says which.
         assert max(itls) > GAP_S * 1000 * 1.5
 
-    def test_an_interior_withhold_leaves_the_aggregate_rate_correct(self):
-        # Recorded so a later fix does not "correct" a number that was never wrong.
-        result = stream_scripted(generation(withhold=3))
-        rate = sample_from(result).decode_tok_s()
-        assert rate is not None
-        assert abs(rate - 1.0 / GAP_S) / (1.0 / GAP_S) < 0.15
+    def test_an_interior_withhold_is_refused_with_the_ends_it_cannot_be_told_from(self):
+        # The aggregate happens to be right here, and the client has no way to know
+        # that: seven arrivals against eight tokens is the same observation whether
+        # the missing frame was the first, the last, or the fourth.
+        sample = sample_from(stream_scripted(generation(withhold=3)))
+        assert sample.arrivals_resolve_generation is False
+        assert sample.decode_tok_s() is None
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="BQ-F01: a withheld leading frame shortens the decode span while the "
-        "token count stays at usage.completion_tokens, so the reported rate is "
-        "high by one interval's worth",
-    )
     def test_a_leading_withhold_does_not_overstate_the_decode_rate(self):
-        result = stream_scripted(generation(withhold=0))
-        rate = sample_from(result).decode_tok_s()
-        assert rate is not None
-        true_rate = 1.0 / GAP_S
-        assert abs(rate - true_rate) / true_rate < 0.05
+        # 29.2 tok/s against a true 25.0 before the fix: the span loses one interval
+        # from the numerator while the denominator stays at usage.completion_tokens.
+        sample = sample_from(stream_scripted(generation(withhold=0)))
+        assert sample.decode_tok_s() is None
+        assert sample.tpot_ms() is None
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="BQ-F01: with the first token's text withheld, the first arrival the "
-        "client sees is the second token, so time to first token is late by one "
-        "inter-token interval",
-    )
     def test_a_leading_withhold_does_not_overstate_time_to_first_token(self):
-        result = stream_scripted(generation(withhold=0))
-        ttft = sample_from(result).ttft_ms()
-        assert ttft is not None
-        assert abs(ttft - TTFT_S * 1000) / (TTFT_S * 1000) < 0.20
+        # The first arrival the client sees is the second token, so the stamp is one
+        # inter-token interval late and nothing in the series says so.
+        sample = sample_from(stream_scripted(generation(withhold=0)))
+        assert sample.ttft_ms() is None
+
+    def test_a_trailing_withhold_does_not_inflate_the_end_to_end_rate(self):
+        sample = sample_from(stream_scripted(generation(withhold=TOKENS - 1)))
+        assert sample.e2e_tok_s() is None
+
+    def test_a_complete_generation_still_reports_every_metric(self):
+        # The refusal must cost nothing on the clean path, which is every sample the
+        # pinned engines produce for ASCII prose.
+        sample = sample_from(stream_scripted(generation()))
+        assert sample.arrivals_resolve_generation is True
+        assert sample.ttft_ms() is not None
+        assert sample.tpot_ms() is not None
+        assert sample.decode_tok_s() is not None
+        assert sample.e2e_tok_s() is not None
 
 
-def test_a_malformed_frame_is_dropped_without_a_trace():
-    """BQ-F09. The frame is skipped, and nothing anywhere records that it happened."""
+def test_a_malformed_frame_costs_an_arrival_and_is_detected():
+    """BQ-F09, folded into BQ-F01: the same root, an unreconciled arrival count.
+
+    A frame that fails to parse is skipped silently, merging two intervals into one.
+    `chunks_seen` counts it and reaches no field of the report, so the only thing that
+    can catch it is the server's own token count.
+    """
     frames = [
         fakes.Frame.of(fakes.text_chunk(" a")),
         fakes.Frame.of(b"{not json", GAP_S),
         fakes.Frame.of(fakes.text_chunk(" b"), GAP_S),
-        fakes.Frame.of(fixture("llama_cpp_final")),
+        fakes.Frame.of(fakes.usage_frame(128, 3)),
     ]
     result = stream_scripted(frames)
     assert len(result.arrivals) == 2
-    # chunks_seen counts it, but the count reaches no field of the report, so a run
-    # cannot be told apart from one where the wire was clean.
     assert result.chunks_seen == 4
+    sample = sample_from(result)
+    assert sample.arrivals_resolve_generation is False
+    assert sample.decode_tok_s() is None
 
 
 def test_a_response_carrying_no_text_is_refused():

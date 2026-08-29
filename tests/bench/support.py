@@ -89,3 +89,16 @@ def result(
     )
     document["git_sha"] = git_sha
     return document
+
+
+def noise(floor: dict, *, profile: str = "quick", service: str = "llama-cpu") -> dict:
+    """A noise floor of the shape `bench noise` writes, minus the envelope.
+
+    The `run` block is what `bench/delta.py::compare` reads to decide the floor was
+    measured against the workload it is being applied to, so a builder that omits it
+    would exercise a path production never takes.
+    """
+    return {
+        "run": {"pair_id": "pair", "profile": profile, "service": service},
+        "floor": floor,
+    }

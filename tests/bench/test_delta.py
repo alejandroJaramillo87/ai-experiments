@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from bench import delta
+from tests.bench import support
 from tests.bench.support import result
 
 
@@ -73,7 +74,9 @@ class TestComparability:
 
     def test_a_differing_git_sha_warns_rather_than_refuses(self):
         _, warnings = delta.compare(
-            result(), result(git_sha="cafe"), noise={"floor": {"ttft_ms": 1.0}}
+            result(),
+            result(git_sha="cafe"),
+            noise=support.noise({"ttft_ms": 1.0}),
         )
         assert any("git_sha differs" in w for w in warnings)
 
@@ -81,7 +84,9 @@ class TestComparability:
         # Supplying a floor file does not make every metric in the comparison
         # resolvable; one the floor run never produced is as unknown as no file at all.
         deltas, _ = delta.compare(
-            result(ttft_ms=100.0), result(arm="b", ttft_ms=150.0), noise={"floor": {}}
+            result(ttft_ms=100.0),
+            result(arm="b", ttft_ms=150.0),
+            noise=support.noise({"decode/p128/g256/c1:decode_tok_s": 2.0}),
         )
         ttft = next(d for d in deltas if d.metric == "ttft_ms")
         assert ttft.noise_pct is None
@@ -102,7 +107,7 @@ class TestCompare:
         assert decode.higher_is_better is True
 
     def test_a_faster_service_regresses_on_latency_and_improves_on_rate(self):
-        floor = {"floor": {"ttft_ms": 1.0, "decode_tok_s": 1.0}}
+        floor = support.noise({"ttft_ms": 1.0, "decode_tok_s": 1.0})
         deltas, _ = delta.compare(
             result(ttft_ms=100.0, decode_tok_s=35.0),
             result(arm="b", ttft_ms=150.0, decode_tok_s=42.0),
@@ -138,7 +143,9 @@ class TestNoiseFloor:
         )
         # An 8% "win" under a 10% floor is not a win.
         deltas, _ = delta.compare(
-            result(decode_tok_s=35.0), result(arm="b", decode_tok_s=37.8), noise=floor
+            result(decode_tok_s=35.0),
+            result(arm="b", decode_tok_s=37.8),
+            noise=support.noise(floor["floor"]),
         )
         decode = next(d for d in deltas if d.metric == "decode_tok_s")
         assert decode.delta_pct == pytest.approx(8.0)
@@ -148,3 +155,108 @@ class TestNoiseFloor:
         assert (
             delta.floor_from_pair(result(), result(arm="a-prime"))["worst_pct"] == 0.0
         )
+
+
+def with_observed(document: dict, point: str, metric: str, median: float) -> dict:
+    """Attach an observed token count to a named point, in place."""
+    for body in document["phases"].values():
+        for entry in body.get("points", []):
+            if entry["point"] == point:
+                entry["metrics"][metric] = support.stat(median)
+    return document
+
+
+class TestTheFloorMustHaveMeasuredThisWorkload:
+    """BQ-F03. A floor from another workload is partly applied, not ignored.
+
+    `quick` and `publish` share the point key prefill/p128/g1/c1, and the slope block
+    is keyed on the phase alone, so a foreign floor lands on exactly the keys a real
+    regression would be graded against.
+    """
+
+    def test_a_floor_from_another_profile_is_refused(self):
+        with pytest.raises(delta.IncomparableError) as caught:
+            delta.compare(
+                result(),
+                result(arm="b"),
+                noise=support.noise({"ttft_ms": 1.0}, profile="publish"),
+            )
+        assert "profile" in str(caught.value)
+
+    def test_a_floor_from_another_service_is_refused(self):
+        with pytest.raises(delta.IncomparableError) as caught:
+            delta.compare(
+                result(),
+                result(arm="b"),
+                noise=support.noise({"ttft_ms": 1.0}, service="vllm-gpu"),
+            )
+        assert "service" in str(caught.value)
+
+    def test_a_floor_naming_no_workload_at_all_is_refused(self):
+        # floor_from_pair returns the bare mapping; only bench/commands/noise.py adds
+        # the run block. A floor whose provenance is unknown cannot be checked, and an
+        # unchecked floor is what this refusal exists to stop.
+        with pytest.raises(delta.IncomparableError):
+            delta.compare(result(), result(arm="b"), noise={"floor": {"ttft_ms": 1.0}})
+
+    def test_a_foreign_floor_no_longer_absorbs_a_real_regression(self):
+        # The reproduction from the ledger: a genuine +40% time to first token graded
+        # within_noise against a floor measured at a different repeat count, exit 0,
+        # warnings empty.
+        foreign = support.noise({"prefill/p128/g1/c1:ttft_ms": 60.0}, profile="publish")
+        with pytest.raises(delta.IncomparableError):
+            delta.compare(
+                result(ttft_ms=100.0), result(arm="b", ttft_ms=140.0), noise=foreign
+            )
+
+    def test_a_floor_from_this_workload_is_applied(self):
+        deltas, _ = delta.compare(
+            result(ttft_ms=100.0),
+            result(arm="b", ttft_ms=140.0),
+            noise=support.noise({"prefill/p128/g1/c1:ttft_ms": 60.0}),
+        )
+        ttft = next(d for d in deltas if d.metric == "ttft_ms")
+        assert ttft.verdict == delta.WITHIN_NOISE
+
+    def test_a_floor_that_measured_nothing_warns_as_loudly_as_no_floor(self):
+        # The warning was guarded on the argument being absent, so a useless floor
+        # printed strictly less than naming no floor at all.
+        _, warnings = delta.compare(result(), result(arm="b"), noise=support.noise({}))
+        assert any("no noise floor" in warning for warning in warnings)
+
+
+class TestObservedTokenCountsAreNotPerformanceMetrics:
+    """BQ-F25, with BQ-F04 folded in. One root: they flow through unfiltered.
+
+    An observed token count records what the server tokenized. It is differenced and
+    graded as a latency in `compare`, and it sets `worst_pct` in `floor_from_pair`,
+    which the runbook reads as an acceptance signal for the rig.
+    """
+
+    POINT = "decode/p128/g256/c1"
+
+    def test_an_observed_count_is_not_differenced_as_a_latency(self):
+        deltas, _ = delta.compare(
+            with_observed(result(), self.POINT, "prompt_tokens_observed", 128.0),
+            with_observed(result(arm="b"), self.POINT, "prompt_tokens_observed", 192.0),
+        )
+        assert not [d for d in deltas if d.metric == "prompt_tokens_observed"]
+
+    def test_a_pinned_completion_count_is_not_differenced_either(self):
+        deltas, _ = delta.compare(
+            with_observed(result(), self.POINT, "completion_tokens_observed", 256.0),
+            with_observed(
+                result(arm="b"), self.POINT, "completion_tokens_observed", 256.0
+            ),
+        )
+        assert not [d for d in deltas if d.metric == "completion_tokens_observed"]
+
+    def test_a_tokenization_difference_cannot_set_the_published_floor(self):
+        floor = delta.floor_from_pair(
+            with_observed(result(arm="a"), self.POINT, "prompt_tokens_observed", 128.0),
+            with_observed(
+                result(arm="a-prime"), self.POINT, "prompt_tokens_observed", 192.0
+            ),
+        )
+        assert floor["worst_pct"] == pytest.approx(0.0)
+        assert f"{self.POINT}:prompt_tokens_observed" not in floor["floor"]

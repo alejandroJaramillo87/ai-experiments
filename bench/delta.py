@@ -57,9 +57,33 @@ HIGHER_IS_BETTER = frozenset(
     {"decode_tok_s", "e2e_tok_s", "prefill_tok_s_server", "prefill_tok_s_slope"}
 )
 
+# Statistics blocks that record what the server tokenized rather than how fast it was.
+# They share the shape of a latency and none of its meaning, so differencing them
+# grades a workload difference as a slower engine and lets a tokenization artifact set
+# the published noise floor. Excluded here, once, rather than at each consumer.
+DIAGNOSTIC = frozenset({"prompt_tokens_observed", "completion_tokens_observed"})
+
+# Where a noise floor records the workload it was measured against, and the field each
+# one must equal in the arms. A floor is only the run-to-run spread of the workload it
+# was measured on.
+FLOOR_PROVENANCE = (
+    (("run", "profile"), ("run", "profile")),
+    (("run", "service"), ("conditions", "service")),
+)
+
 
 class IncomparableError(ValueError):
     """Two results describe different experiments and must not be differenced."""
+
+
+class MismatchedFloorError(IncomparableError):
+    """The noise floor was not measured against the workload it is being applied to.
+
+    A subclass because the caller's response is the same -- refuse, exit 2 -- and
+    because a floor is part of the verdict arithmetic rather than a display choice.
+    Warning instead would leave the exit code at 0 on a regression the floor absorbed,
+    which is the outcome this refusal exists to prevent.
+    """
 
 
 @dataclasses.dataclass(frozen=True)
@@ -149,19 +173,53 @@ def _iter_metrics(report: dict):
             yield f"{phase}/slope", slope
 
 
+def check_floor(baseline: dict, noise: dict) -> None:
+    """Refuse a floor that was not measured against this workload.
+
+    A mismatched floor is not ignored, which would be survivable -- it is partly
+    applied. The `quick` and `publish` profiles share the point key
+    `prefill/p128/g1/c1`, and a slope block is keyed on its phase alone, so a floor
+    from another profile lands on exactly the keys a regression would be graded
+    against and absorbs it as `within_noise`.
+
+    Only the baseline is inspected: check_comparable has already refused a pair whose
+    profile or service disagree, so the candidate carries the same two values.
+    """
+    mismatches = []
+    for floor_path, arm_path in FLOOR_PROVENANCE:
+        stated, measured = _dig(noise, floor_path), _dig(baseline, arm_path)
+        if stated != measured:
+            mismatches.append(
+                f"{'.'.join(floor_path)}: {stated!r} vs the arms' {measured!r}"
+            )
+    if mismatches:
+        raise MismatchedFloorError(
+            "this noise floor was not measured against this workload, so applying it "
+            "would absorb a real regression on the points the two workloads share:\n  "
+            + "\n  ".join(mismatches)
+            + "\n  Solution: `python -m bench noise --service <s> --profile <p>` for "
+            "the workload under comparison"
+        )
+
+
 def compare(
     baseline: dict, candidate: dict, noise: dict | None = None
 ) -> tuple[list[MetricDelta], list[str]]:
     """Difference two results, metric by metric, against a noise floor."""
     warnings = check_comparable(baseline, candidate)
-    if noise is None:
-        warnings.append(
-            "no noise floor supplied: verdicts fall back to the 5% threshold alone. "
-            "Run `python -m bench noise --service <s> --profile <p>` first -- an "
-            "unmeasured floor on this workstation has been as wide as 44%"
-        )
+    if noise is not None:
+        check_floor(baseline, noise)
 
     floors = noise.get("floor", {}) if noise else {}
+    # Guarded on the floor being useless rather than on the argument being absent: a
+    # document that measured nothing grades every metric as unmeasured, and did so
+    # more quietly than passing no floor at all.
+    if not floors:
+        warnings.append(
+            "no noise floor to compare against: verdicts fall back to the 5% "
+            "threshold alone. Run `python -m bench noise --service <s> --profile <p>` "
+            "first -- an unmeasured floor on this workstation has been as wide as 44%"
+        )
     base_points = dict(_iter_metrics(baseline))
     deltas: list[MetricDelta] = []
 
@@ -170,6 +228,8 @@ def compare(
         if base_entry is None:
             continue
         for metric, cand_block in cand_entry.items():
+            if metric in DIAGNOSTIC:
+                continue
             base_block = base_entry.get(metric)
             if not isinstance(cand_block, dict) or not isinstance(base_block, dict):
                 # A slope block holds bare floats rather than stat blocks.

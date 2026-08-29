@@ -359,14 +359,31 @@ class TestSlopeRecovery:
         # measurement that failed to resolve prompt length, not a clean line.
         assert fit["r2"] == 1.0
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="BQ-F05: a two-point least-squares fit has no residual, so r2 is "
-        "exactly 1.0 whatever the data. The quick profile sweeps two prefill "
-        "lengths and bench.md B1 accepts r2 at or above 0.95, so that check "
-        "cannot fail on the profile it is run with",
-    )
     def test_a_two_point_fit_does_not_claim_a_perfect_correlation(self):
+        # BQ-F05. A line through two points has no residual to leave, so r2 was
+        # exactly 1.0 whatever the data -- and the quick profile sweeps exactly two
+        # prefill lengths. An absent goodness of fit is the honest report: the fit
+        # exists, its quality was not measured.
         fit = metrics.prefill_slope([(128, 300.0), (1024, 2400.0)])
         assert fit is not None
-        assert fit["r2"] < 1.0
+        assert fit["points"] == 2
+        assert fit["r2"] is None
+        assert fit["slope_ms_per_token"] == pytest.approx(2100.0 / 896.0)
+
+    def test_r2_is_exactly_1_for_no_two_point_sweep_however_noisy(self):
+        # 200,000 realistic fits all returned exactly 1.0, which is what makes the
+        # field unable to distinguish a clean fit from one with no residual by
+        # construction. The property is over the population, not one example.
+        rng = random.Random(SEED + 16)
+        for _ in range(CASES):
+            first = (rng.randint(1, 4096), rng.uniform(1.0, 5000.0))
+            second = (first[0] + rng.randint(1, 4096), rng.uniform(1.0, 5000.0))
+            fit = metrics.prefill_slope([first, second])
+            assert fit is not None
+            assert fit["r2"] is None
+
+    def test_a_third_point_restores_a_measurable_fit(self):
+        fit = metrics.prefill_slope([(128, 300.0), (1024, 2400.0), (2048, 4500.0)])
+        assert fit is not None
+        assert fit["points"] == 3
+        assert fit["r2"] is not None and fit["r2"] < 1.0

@@ -210,9 +210,11 @@ def prefill_slope(points: list[tuple[int, float]]) -> dict | None:
     client-side prefill figure, and the only one available at all for an engine that
     reports no server-side timings.
 
-    r2 is reported so a caller can tell a clean fit from a sweep that was too noisy or
-    too short to fit at all, and the intercept is reported because a large one is itself
-    the finding: it means no single-point prefill claim about this service is safe.
+    r2 is reported so a caller can tell a clean fit from a noisy one, and is absent
+    below three points because a line through two of them leaves no residual to
+    measure. It says nothing about a sweep too short to fit at all: that case returns
+    no fit. The intercept is reported because a large one is itself the finding: it
+    means no single-point prefill claim about this service is safe.
     """
     if len(points) < 2:
         return None
@@ -228,12 +230,18 @@ def prefill_slope(points: list[tuple[int, float]]) -> dict | None:
     slope_ms_per_token = sxy / sxx
     intercept_ms = mean_y - slope_ms_per_token * mean_x
 
-    ss_tot = sum((y - mean_y) ** 2 for y in ys)
-    ss_res = sum(
-        (y - (intercept_ms + slope_ms_per_token * x)) ** 2
-        for x, y in zip(xs, ys, strict=True)
-    )
-    r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else 1.0
+    # A two-point fit has no residual degrees of freedom: the line passes through both
+    # points, ss_res is zero by construction, and r2 comes out exactly 1.0 whatever the
+    # data. Absent rather than 1.0, because the `quick` profile sweeps two prefill
+    # lengths and an acceptance check reading r2 >= 0.95 there would pass on any input.
+    r2: float | None = None
+    if n > 2:
+        ss_tot = sum((y - mean_y) ** 2 for y in ys)
+        ss_res = sum(
+            (y - (intercept_ms + slope_ms_per_token * x)) ** 2
+            for x, y in zip(xs, ys, strict=True)
+        )
+        r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else 1.0
 
     return {
         "prefill_tok_s_slope": (
