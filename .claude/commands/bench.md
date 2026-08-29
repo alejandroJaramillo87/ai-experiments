@@ -26,7 +26,7 @@ every request-and-wait step in this conversation.
 3. Prepare the run. Write the exact invocation:
    `python3 -m bench run --service $ARGUMENTS --model <slug> --profile quick|publish`,
    plus `--arm name:KEY=VALUE` for each arm of an A/B. Name the model slug from
-   `schemas/bench_models.json` — a model absent from the registry cannot be benchmarked, and
+   `MODELS` in `bench/registry.py` — a model absent from the registry cannot be benchmarked, and
    a result whose architecture is unrecorded is not publishable. For a CPU service, state the
    `taskset -c 8-15` prefix and why: `llama-cpu` holds `cpuset 0-15`, so a client pinned
    inside that range contends with the server it is measuring. State what output would

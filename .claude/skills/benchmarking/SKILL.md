@@ -26,7 +26,7 @@ directly against a running service:
 - Perplexity/quality: `./scripts/benchmark/test_perplexity.sh`
 
 Services are named as `common/serving.py` names them: `llama-cpu`, `llama-gpu`,
-`vllm-gpu`, `harness`. Models are slugs from `schemas/bench_models.json`.
+`vllm-gpu`. Models are slugs from `MODELS` in `bench/registry.py`.
 
 Preconditions: the target service must be healthy first — check `make status` (and
 `make health`) before starting. `bench run` gates on health itself and refuses to
@@ -81,7 +81,7 @@ An MoE routes each token to a subset of experts chosen on content, so:
   dense 3B on arithmetic while carrying a dense 30B's residency; a claim that states only
   the total is wrong in both directions.
 
-`schemas/bench_models.json` carries these facts and `bench run` stamps them into every
+`bench/registry.py` carries these facts and `bench run` stamps them into every
 report. A model absent from the registry cannot be benchmarked, which is deliberate: a
 result whose architecture is unrecorded is how the repository came to attribute an MoE
 measurement to its CPU track without noticing.

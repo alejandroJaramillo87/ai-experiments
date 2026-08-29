@@ -171,7 +171,7 @@ being quoted as current:
   `Qwen3-Coder-30B-A3B-Instruct-IQ4_XS` — roughly 3B active parameters of 30B total.
   An MoE's decode rate moves with which experts a prompt routes to, and this document
   presented the number as the CPU track's headline without recording the architecture.
-  It is now recorded in `schemas/bench_models.json`.
+  It is now recorded in `MODELS` in `bench/registry.py`.
 - **Prefill and decode are conflated.** `tokens_per_second` in the archived files is
   `completion_tokens / total_time`, so prefill is folded into a decode-shaped figure.
   A change to either phase moves it, and it identifies neither.

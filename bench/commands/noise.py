@@ -93,7 +93,6 @@ def cmd(args) -> int:
         run={
             "pair_id": pair_id,
             "profile": profile.name,
-            "profile_sha256": profile.sha256,
             "service": args.service,
         },
         floor=floor["floor"],

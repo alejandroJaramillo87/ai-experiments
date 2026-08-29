@@ -124,9 +124,9 @@ Status: PENDING
 
 ## B3 The registry covers every service to be benchmarked
 
-Implementation: `bench/registry.py`, `schemas/bench_models.json`.
+Implementation: `bench/registry.py`.
 
-`schemas/bench_models.json` ships one entry, registered for `llama-cpu` and `llama-gpu`
+`MODELS` in `bench/registry.py` ships one entry, registered for `llama-cpu` and `llama-gpu`
 only. `vllm-gpu` serves a Hugging Face checkpoint rather than a GGUF and has no entry, so
 `bench run --service vllm-gpu` fails at `resolve()` with "registered for [...], not
 'vllm-gpu'". That refusal is correct behaviour — a result whose architecture is

@@ -34,7 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
         ),
         epilog=(
             "Protocol: .claude/skills/benchmarking/SKILL.md. "
-            "Model registry: schemas/bench_models.json."
+            "Model registry: MODELS in bench/registry.py."
         ),
     )
     sub = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")

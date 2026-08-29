@@ -1,8 +1,8 @@
-"""Profile parsing and matrix expansion: what gets run, and in what order.
+"""Profiles, the workload matrix, and the prompts that fill it.
 
-A profile is a TOML file rather than Python config for two reasons: it is hand-edited
-and needs comments, and its bytes hash into the report as profile_sha256, so two runs
-can be shown to have executed the same workload rather than merely claiming to.
+A profile is a TOML file rather than Python config because it is hand-edited and needs
+comments. Its name goes into the report, and `bench compare` refuses two runs whose
+profiles differ by name.
 
 The expansion produces a flat list of cells -- (point, repeat index) -- already in
 execution order. Ordering is the part that matters. Running every repeat of one point
@@ -16,11 +16,35 @@ after four consecutive runs of one unmodified binary spread 44%.
 from __future__ import annotations
 
 import dataclasses
-import hashlib
+import functools
 import os
+import re
 import tomllib
 
-PROFILE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "profiles")
+BENCH_DIR = os.path.dirname(os.path.abspath(__file__))
+PROFILE_DIR = os.path.join(BENCH_DIR, "profiles")
+
+# The corpus is the committed wikitext-2 validation split, read from the one copy the
+# repository already has -- the same directory docker-compose.inference.yaml bind-mounts
+# into llama-cpu at /app/datasets:ro for test_perplexity.sh. Real text rather than random
+# token ids: a router trained on prose maps uniform vocabulary noise to a near-uniform
+# expert distribution, the best case for load balance and the worst for expert-weight
+# locality, and wrong with no predictable sign.
+CORPUS = os.path.join(
+    os.path.dirname(BENCH_DIR),
+    "scripts",
+    "benchmark",
+    "datasets",
+    "wikitext-2-raw",
+    "wiki.valid.raw",
+)
+
+# English prose runs about four characters to the token across common BPE vocabularies.
+# Only used to slice a candidate: the length that lands in the report is always the
+# server's own usage.prompt_tokens, never this estimate.
+CHARS_PER_TOKEN = 4
+
+_SECTION_HEADER = re.compile(r"^=+ .* =+$")
 
 PREFILL = "prefill"
 DECODE = "decode"
@@ -62,7 +86,6 @@ class Profile:
     warmup: int
     order: str
     seed: int
-    sha256: str
     prefill_prompt_tokens: tuple[int, ...]
     prefill_max_tokens: int
     decode_prompt_tokens: int
@@ -116,7 +139,7 @@ def load(name: str, service: str) -> Profile:
     path = profile_path(name)
     try:
         with open(path, "rb") as handle:
-            raw = handle.read()
+            document = tomllib.load(handle)
     except FileNotFoundError as exc:
         available = sorted(
             f[:-5] for f in os.listdir(PROFILE_DIR) if f.endswith(".toml")
@@ -124,7 +147,6 @@ def load(name: str, service: str) -> Profile:
         raise ProfileError(
             f"no profile {name!r} at {path}; available: {available}"
         ) from exc
-    document = tomllib.loads(raw.decode("utf-8"))
     overrides = document.get("overrides", {}).get(service, {})
 
     concurrency = document.get("concurrency", {}).get(service)
@@ -153,7 +175,6 @@ def load(name: str, service: str) -> Profile:
         warmup=document["warmup"],
         order=document.get("order", "interleaved"),
         seed=document.get("seed", 42),
-        sha256=hashlib.sha256(raw).hexdigest(),
         prefill_prompt_tokens=prompt_tokens,
         prefill_max_tokens=prefill["max_tokens"],
         decode_prompt_tokens=overrides.get(
@@ -164,3 +185,50 @@ def load(name: str, service: str) -> Profile:
         ),
         concurrency=tuple(concurrency),
     )
+
+
+@functools.lru_cache(maxsize=1)
+def corpus() -> str:
+    """The wikitext validation split as one line of prose.
+
+    Section headers and blank runs go, and wikitext's tokenizer artefacts (` @-@ `,
+    ` @,@ `, ` @.@ `) are folded back into ordinary punctuation so the text tokenizes
+    like the prose it was before the corpus was prepared.
+    """
+    with open(CORPUS, encoding="utf-8") as handle:
+        lines = [line.strip() for line in handle]
+    body = " ".join(line for line in lines if line and not _SECTION_HEADER.match(line))
+    body = re.sub(r"\s+", " ", body)
+    return body.replace(" @-@ ", "-").replace(" @,@ ", ",").replace(" @.@ ", ".")
+
+
+def slices(count: int) -> list[str]:
+    """`count` disjoint regions of the corpus.
+
+    An MoE's decode rate moves with which experts a prompt routes to, so the decode arm
+    draws three disjoint prompts and reports the spread between them as the routing
+    sensitivity -- a measured quantity rather than an unmeasured confound. A dense model
+    does identical work per token and takes one.
+    """
+    if count < 1:
+        raise ValueError("need at least one slice")
+    text = corpus()
+    width = len(text) // count
+    return [text[i * width : (i + 1) * width] for i in range(count)]
+
+
+def build_prompt(target_tokens: int, region: str, nonce: str) -> str:
+    """A prompt of roughly `target_tokens`, unique to `nonce`.
+
+    The nonce leads the prompt rather than trailing it, and that placement is the point:
+    a prefix cache keys on the leading tokens, so a unique prefix defeats it while a
+    unique suffix would not. vLLM's prefix caching is a launch flag with no per-request
+    override, so this is the only way to be sure a measured prefill actually happened.
+    """
+    budget = max(1, target_tokens * CHARS_PER_TOKEN)
+    head = f"[{nonce}] "
+    body = region[: max(0, budget - len(head))]
+    if len(body) < budget - len(head):
+        # Short region: repeat it rather than silently returning a shorter prompt.
+        body = (region * (budget // max(1, len(region)) + 1))[: budget - len(head)]
+    return head + body

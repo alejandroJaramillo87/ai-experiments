@@ -58,7 +58,7 @@ class TestComparability:
             ("architecture", "dense"),
             ("quantization", "Q4_K_M"),
             ("prompt_source", "rng"),
-            ("profile_sha256", "different"),
+            ("profile", "different"),
             ("cpuset", "0-7"),
         ],
     )

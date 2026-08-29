@@ -5,7 +5,15 @@ from __future__ import annotations
 import pytest
 
 from bench.adapters import ENGINE_FOR_SERVICE
-from bench.workloads import DECODE, PREFILL, ProfileError, load
+from bench.workloads import (
+    DECODE,
+    PREFILL,
+    ProfileError,
+    build_prompt,
+    corpus,
+    load,
+    slices,
+)
 
 SHIPPED = ("quick", "publish")
 # The benchmarked services, not every service in common/serving.py's registry: the
@@ -31,12 +39,6 @@ class TestShippedProfiles:
         for service in ("llama-cpu", "llama-gpu"):
             assert load(name, service).concurrency == (1,)
         assert len(load(name, "vllm-gpu").concurrency) > 1
-
-    @pytest.mark.parametrize("name", SHIPPED)
-    def test_the_hash_identifies_the_profile(self, name):
-        first = load(name, "llama-gpu")
-        assert len(first.sha256) == 64
-        assert first.sha256 == load(name, "llama-cpu").sha256
 
     def test_overrides_narrow_the_sweep_for_slow_services(self):
         # An 8192-token prefill on CPU is minutes, not seconds.
@@ -120,3 +122,47 @@ class TestRefusals:
         )
         with pytest.raises(ProfileError, match="fewer than two distinct"):
             load(str(path), "llama-cpu")
+
+
+class TestPrompts:
+    def test_the_corpus_is_the_committed_wikitext_split(self):
+        # Read from the one copy the repository already has -- the same directory
+        # docker-compose.inference.yaml mounts into llama-cpu for test_perplexity.sh --
+        # rather than a second copy carried inside this package.
+        from bench.workloads import CORPUS
+
+        assert CORPUS.endswith(
+            "scripts/benchmark/datasets/wikitext-2-raw/wiki.valid.raw"
+        )
+        assert len(corpus()) > 500_000
+
+    def test_the_corpus_is_prose_not_section_headers(self):
+        text = corpus()
+        assert " = = " not in text
+        # wikitext's tokenizer artefacts are folded back into ordinary punctuation.
+        assert " @-@ " not in text and " @.@ " not in text
+
+    def test_slices_are_disjoint(self):
+        regions = slices(3)
+        assert len(regions) == 3
+        assert len({r[:200] for r in regions}) == 3
+
+    def test_one_slice_is_the_whole_corpus(self):
+        assert len(slices(1)[0]) == len(corpus())
+
+    def test_zero_slices_is_refused(self):
+        with pytest.raises(ValueError):
+            slices(0)
+
+    def test_a_prompt_is_about_the_requested_length(self):
+        region = slices(1)[0]
+        for target in (128, 1024, 8192):
+            assert len(build_prompt(target, region, "n")) == target * 4
+
+    def test_the_nonce_leads_where_a_prefix_cache_keys(self):
+        # A unique suffix would not defeat a prefix cache; a unique prefix does.
+        region = slices(1)[0]
+        a = build_prompt(128, region, "r0")
+        b = build_prompt(128, region, "r1")
+        assert a != b
+        assert a.startswith("[r0] ") and b.startswith("[r1] ")

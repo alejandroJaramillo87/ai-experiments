@@ -36,7 +36,7 @@ def configure(sub) -> None:
     parser.add_argument("--service", required=True, choices=sorted(ENGINE_FOR_SERVICE))
     parser.add_argument("--profile", default="quick")
     parser.add_argument(
-        "--model", required=True, help="slug from schemas/bench_models.json"
+        "--model", required=True, help="slug from MODELS in bench/registry.py"
     )
     parser.add_argument(
         "--arm",

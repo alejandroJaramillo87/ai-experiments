@@ -48,7 +48,7 @@ BLOCKING = (
     ("conditions", "prompt_source"),
     ("conditions", "host", "client_cpuset"),
     ("conditions", "host", "service_cpuset"),
-    ("run", "profile_sha256"),
+    ("run", "profile"),
 )
 
 # Metrics where a larger number is the better one; everything else is a latency.

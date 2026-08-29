@@ -28,15 +28,14 @@ def result(
     architecture: str = "moe",
     quantization: str = "IQ4_XS",
     prompt_source: str = "natural",
-    profile_sha256: str = "abc123",
+    profile: str = "quick",
     cpuset: str = "8-15",
     git_sha: str = "deadbeef",
 ) -> dict:
     document = report.build(
         run={
             "run_id": f"run-{arm}",
-            "profile": "quick",
-            "profile_sha256": profile_sha256,
+            "profile": profile,
             "arm": arm,
             "order": "interleaved",
             "repeats": 5,

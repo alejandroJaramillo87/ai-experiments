@@ -243,7 +243,7 @@ class TestAssembleAndWrite:
         # an entrypoint execing a command it never built -- into a diffable field.
         assert "server_argv" in conditions
         assert "host" in conditions
-        assert document["run"]["profile_sha256"] == profile.sha256
+        assert document["run"]["profile"] == profile.name
         assert document["run"]["warmup_discarded"] == profile.warmup
 
     def test_a_round_trip_through_the_reader_validates(self, tmp_path):

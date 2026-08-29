@@ -1,22 +1,11 @@
-"""The model registry, and the contract in schemas/bench_models.json that guards it."""
+"""The model registry: what it requires of an entry, and what it refuses."""
 
 from __future__ import annotations
-
-import json
 
 import pytest
 
 from bench import registry
 from common.serving import SERVICES
-
-CONTRACT = json.load(open(registry.CONTRACT, encoding="utf-8"))
-
-
-def write_registry(tmp_path, models: dict):
-    path = tmp_path / "models.json"
-    path.write_text(json.dumps({"contract": "bench_models", "models": models}))
-    return str(path)
-
 
 DENSE = {
     "path": "/app/models/gguf/thing/thing-Q4_K_M.gguf",
@@ -28,20 +17,10 @@ DENSE = {
 }
 
 
-class TestShippedContract:
-    def test_the_contract_names_its_guard(self):
-        # schemas/README.md: every contract names the tests that assert it.
-        assert "tests/bench/test_registry.py" in CONTRACT["guarded_by"]
-        assert CONTRACT["readers"]
-
+class TestShippedRegistry:
     def test_every_shipped_entry_loads_and_validates(self):
         specs = registry.load()
         assert specs, "the registry must not be empty; a run needs a model to name"
-
-    def test_required_keys_match_the_contract(self):
-        assert set(CONTRACT["entry"]["required"]) == set(registry.REQUIRED)
-        assert set(CONTRACT["entry"]["moe_required"]) == set(registry.MOE_REQUIRED)
-        assert set(CONTRACT["entry"]["architecture_values"]) == registry.ARCHITECTURES
 
     def test_every_engine_named_is_a_real_service(self):
         for spec in registry.load().values():
@@ -58,44 +37,39 @@ class TestShippedContract:
 
 
 class TestValidation:
-    def test_a_dense_entry_needs_no_expert_fields(self, tmp_path):
-        specs = registry.load(write_registry(tmp_path, {"d": DENSE}))
+    def test_a_dense_entry_needs_no_expert_fields(self):
+        specs = registry.load({"d": DENSE})
         assert specs["d"].is_moe is False
         assert specs["d"].params_active_b is None
 
-    def test_a_missing_required_key_is_refused(self, tmp_path):
+    def test_a_missing_required_key_is_refused(self):
         entry = {k: v for k, v in DENSE.items() if k != "quantization"}
         with pytest.raises(registry.RegistryError, match="quantization"):
-            registry.load(write_registry(tmp_path, {"d": entry}))
+            registry.load({"d": entry})
 
-    def test_an_unknown_architecture_is_refused(self, tmp_path):
+    def test_an_unknown_architecture_is_refused(self):
         with pytest.raises(registry.RegistryError, match="architecture"):
-            registry.load(
-                write_registry(tmp_path, {"d": {**DENSE, "architecture": "ssm"}})
-            )
+            registry.load({"d": {**DENSE, "architecture": "ssm"}})
 
-    def test_an_moe_without_active_params_is_refused(self, tmp_path):
+    def test_an_moe_without_active_params_is_refused(self):
         entry = {**DENSE, "architecture": "moe"}
         with pytest.raises(registry.RegistryError, match="params_active_b"):
-            registry.load(write_registry(tmp_path, {"m": entry}))
+            registry.load({"m": entry})
 
-    def test_a_quantization_that_contradicts_the_filename_is_refused(self, tmp_path):
+    def test_a_quantization_that_contradicts_the_filename_is_refused(self):
         # A quantization confound is the easiest way to publish an unfounded comparison.
         entry = {**DENSE, "quantization": "Q8_0"}
         with pytest.raises(registry.RegistryError, match="disagrees"):
-            registry.load(write_registry(tmp_path, {"d": entry}))
+            registry.load({"d": entry})
 
-    def test_an_unparseable_filename_does_not_block_an_entry(self, tmp_path):
+    def test_an_unparseable_filename_does_not_block_an_entry(self):
         # A safetensors checkpoint has no quantization suffix to parse.
         entry = {
             **DENSE,
             "path": "/app/models/hf/gemma-4-E4B-it",
             "quantization": "BF16",
         }
-        assert (
-            registry.load(write_registry(tmp_path, {"d": entry}))["d"].quantization
-            == "BF16"
-        )
+        assert registry.load({"d": entry})["d"].quantization == "BF16"
 
 
 class TestArchitectureDrivesTheWorkload:

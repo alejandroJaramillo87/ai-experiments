@@ -59,6 +59,4 @@ The inference benchmark this section also anticipated now exists: `python -m ben
 emits `bench_result` and `bench_noise` through `bench/report.py`, and
 `tests/bench/test_runner.py` carries the conformance assertion. It deliberately has no
 contract under `schemas/`; per `schemas/README.md` that directory holds cross-language
-key inventories, and a bench result has one Python writer and one Python reader. Its
-model registry is a different matter and does live there, as
-`schemas/bench_models.json`.
+key inventories, and a bench result has one Python writer and one Python reader.

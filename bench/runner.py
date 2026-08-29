@@ -18,14 +18,14 @@ import dataclasses
 import json
 import os
 
-from bench import adapters, conditions, metrics, prompting, report
+from bench import adapters, conditions, metrics, report
 from bench.registry import ModelSpec
-from bench.workloads import DECODE, PREFILL, Cell, Profile
+from bench.workloads import DECODE, PREFILL, Cell, Profile, build_prompt, slices
 from common.output import Printer
 from common.serving import SERVICES, ServingError, ServingTransientError, wait_healthy
 
-# A decode arm at the harness's 5.5 tok/s needs minutes; a prefill probe needs seconds.
-# One generous ceiling beats a per-service table that will drift out of date.
+# A 256-token decode arm on CPU runs into minutes; a prefill probe takes seconds. One
+# generous ceiling beats a per-service table that will drift out of date.
 REQUEST_TIMEOUT_S = 600
 
 
@@ -44,14 +44,13 @@ def _sample_from_stream(result, cell: Cell, adapter) -> metrics.Sample:
             "any server packing more than one token per chunk, so the sample is "
             "refused rather than estimated"
         )
-    exact = adapter.forces_exact_length
-    if not exact and usage.completion_tokens != cell.point.max_tokens:
-        # The harness cannot be told to ignore end-of-sequence, so a short generation is
-        # possible. Averaging a truncated one into a decode rate would understate the
-        # work per request without showing why.
+    # Both engines take ignore_eos, so a short generation means the flag did not take
+    # effect. Averaging a truncated response into a decode rate would understate the work
+    # per request without showing why, so the sample is discarded rather than counted.
+    if usage.completion_tokens != cell.point.max_tokens:
         raise ServingTransientError(
             f"{adapter.service.name} generated {usage.completion_tokens} tokens, not "
-            f"{cell.point.max_tokens}; this engine cannot force an exact length, so the "
+            f"{cell.point.max_tokens}; the generation length was not honoured, so the "
             "sample is discarded"
         )
     return metrics.Sample(
@@ -80,7 +79,7 @@ def execute(
 
     stream_fn = stream_fn or default_stream
     adapter = adapters.for_service(service)
-    regions = prompting.slices(model.decode_prompts)
+    regions = slices(model.decode_prompts)
 
     observations: list[Observation] = []
     errors: list[dict] = []
@@ -107,7 +106,7 @@ def execute(
             # prefix cache serve all but the first, and the batch would measure the
             # cache rather than the model.
             nonce = f"{profile.seed}-{index}-{slot}"
-            prompt = prompting.build(point.prompt_tokens, region, nonce)
+            prompt = build_prompt(point.prompt_tokens, region, nonce)
             bodies.append(
                 adapter.build_request(
                     prompt,
@@ -266,7 +265,6 @@ def assemble(
         run={
             "run_id": run_id,
             "profile": profile.name,
-            "profile_sha256": profile.sha256,
             "arm": arm,
             "pair_id": pair_id,
             "order": profile.order,

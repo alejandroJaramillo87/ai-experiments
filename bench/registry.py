@@ -1,28 +1,37 @@
-"""Model architecture facts, loaded from schemas/bench_models.json.
+"""Model architecture facts: which served model is dense, and which is an MoE.
 
-The suite needs to know whether the model under test is dense or a mixture of experts,
-because that changes both what the workload must look like and what the resulting
-number means. Nothing else in the tree records it: training/models/families.py's
-FamilySpec covers LoRA targets and chat templates, and the only machine-readable
-dense/MoE distinction is a refusal in training/calculator/components.py.
+The suite needs to know, because it changes both what the workload must look like and
+what the resulting number means. Nothing else in the tree records it:
+training/models/families.py's FamilySpec covers LoRA targets and chat templates, and the
+only machine-readable dense/MoE distinction is a refusal in
+training/calculator/components.py. The cost of leaving it unstated is on record --
+docs/optimizations/README.md's headline CPU figure was measured against a
+mixture-of-experts model and says so nowhere.
 
-The contract, including why architecture changes a benchmark, is in
-schemas/bench_models.json; this module is its reader.
+Why architecture changes a benchmark:
+
+1. An MoE routes each token to k of n experts, and which experts -- and how evenly load
+   spreads across them -- is a function of content. Two prompts of identical length can
+   differ measurably in decode rate.
+2. Uniform random token ids, which the retired upstream load generator produced, route
+   near-uniformly across experts: the best case for load balance, the worst for
+   expert-weight locality, wrong with no predictable sign. Hence real text, and hence
+   three disjoint prompts on the decode arm so the spread between them is reported as
+   the routing sensitivity.
+3. A 30B-A3B model activates ~3B parameters per token. Its decode rate is comparable to
+   a dense 3B on arithmetic while carrying a dense 30B's residency, so a claim stating
+   only the total is wrong in both directions. Both counts are required for an MoE.
+
+MODELS is a plain dict rather than a file under schemas/: there is one writer and one
+reader, both here, and that directory holds cross-language contracts. Promote it to one
+if a second language ever needs these facts.
 """
 
 from __future__ import annotations
 
 import dataclasses
-import json
-import os
 
 from common.serving import quant_from_name
-
-CONTRACT = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "schemas",
-    "bench_models.json",
-)
 
 ARCHITECTURES = frozenset({"dense", "moe"})
 REQUIRED = (
@@ -34,6 +43,28 @@ REQUIRED = (
     "context_length",
 )
 MOE_REQUIRED = ("params_active_b", "n_experts", "n_experts_active")
+
+# Paths are the in-container paths the services see, matching the MODEL_PATH that
+# docker-compose.inference.yaml passes -- not host paths under /mnt/ai-data/models/.
+MODELS: dict[str, dict] = {
+    "qwen3-coder-30b-a3b-IQ4_XS": {
+        "path": (
+            "/app/models/gguf/Qwen3-Coder-30B-A3B-Instruct-GGUF/"
+            "Qwen3-Coder-30B-A3B-Instruct-IQ4_XS.gguf"
+        ),
+        "engines": ["llama-cpu", "llama-gpu"],
+        "architecture": "moe",
+        "params_total_b": 30.5,
+        "params_active_b": 3.3,
+        "n_experts": 128,
+        "n_experts_active": 8,
+        "quantization": "IQ4_XS",
+        "context_length": 262144,
+        # The model behind docs/optimizations/README.md's 26.2 percent claim, recorded
+        # in docs/optimizations/bios/cpu_benchmark_results_final_bios.json. Listed so
+        # that re-measurement is like-for-like.
+    },
+}
 
 
 class RegistryError(ValueError):
@@ -104,7 +135,7 @@ def _validate(slug: str, entry: dict) -> None:
             raise RegistryError(
                 f"{slug}: an MoE entry must state {missing} -- a report carrying only "
                 "the total parameter count invites a comparison that is wrong in both "
-                "directions (schemas/bench_models.json)"
+                "directions (see this module's docstring)"
             )
     # A quantization confound is the easiest way to publish an unfounded comparison,
     # and the filename parser already exists. Only checked when the name is parseable:
@@ -117,12 +148,10 @@ def _validate(slug: str, entry: dict) -> None:
         )
 
 
-def load(path: str = CONTRACT) -> dict[str, ModelSpec]:
+def load(models: dict[str, dict] | None = None) -> dict[str, ModelSpec]:
     """Every registry entry, validated. Raises on the first malformed one."""
-    with open(path, encoding="utf-8") as handle:
-        document = json.load(handle)
     specs: dict[str, ModelSpec] = {}
-    for slug, entry in document.get("models", {}).items():
+    for slug, entry in (MODELS if models is None else models).items():
         _validate(slug, entry)
         specs[slug] = ModelSpec(
             slug=slug,
@@ -139,13 +168,13 @@ def load(path: str = CONTRACT) -> dict[str, ModelSpec]:
     return specs
 
 
-def resolve(slug: str, service: str, path: str = CONTRACT) -> ModelSpec:
+def resolve(slug: str, service: str) -> ModelSpec:
     """One model by slug, checked against the service that will serve it."""
-    specs = load(path)
+    specs = load()
     if slug not in specs:
         raise RegistryError(
             f"unknown model {slug!r}; registered: {sorted(specs)} "
-            f"(add it to {os.path.relpath(path)})"
+            "(add it to MODELS in bench/registry.py)"
         )
     spec = specs[slug]
     if service not in spec.engines:

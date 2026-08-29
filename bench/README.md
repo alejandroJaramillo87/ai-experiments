@@ -36,9 +36,10 @@ Three consequences shaped this package:
   `docs/observability/report_schema.md` requires of every emitter.
 - `common/output.py`, `common/provenance.py`, `common/obs/` — status output, `git_sha`,
   traced dispatch and the run catalog.
-- `schemas/bench_models.json` — architecture facts, stamped into every report.
-- `scripts/benchmark/datasets/wikitext-2-raw/` — the corpus `prompts/natural.txt` is
-  sliced from.
+- `scripts/benchmark/datasets/wikitext-2-raw/` — the prompt corpus, read from the copy
+  the repository already has rather than a second one carried here. It is the same
+  directory `docker-compose.inference.yaml` mounts into `llama-cpu` for
+  `test_perplexity.sh`.
 
 Stdlib only, like `common/serving.py`: it runs on the host without resolving the uv
 environment.
@@ -65,9 +66,8 @@ python3 -m bench models  [--json]
 | `adapters.py` | per-engine request shape: exact length, cache defeat, server timings |
 | `client.py` | streaming SSE, and the one place a wall-clock stamp is taken |
 | `metrics.py` | arrival times to reported statistics; pure, no I/O |
-| `workloads.py` | profile TOML to an ordered cell list |
-| `prompting.py`, `prompts/` | length-controlled real-text prompts |
-| `registry.py` | `schemas/bench_models.json`, validated |
+| `workloads.py` | profile TOML to an ordered cell list, and the prompts that fill it |
+| `registry.py` | architecture facts (dense or MoE), validated on load |
 | `conditions.py` | host and container facts, read from the running system |
 | `runner.py` | health gate, warm-up discard, execution, reduction, assembly |
 | `report.py` | envelope assembly, write, read |

@@ -56,12 +56,6 @@ class Adapter:
     """One engine's request shape and response quirks."""
 
     engine = ""
-    # Whether the engine can be asked to ignore end-of-sequence, which is what makes a
-    # generation length exact rather than whatever the model chose to say. Without it a
-    # decode arm measures a variable amount of work and calls it a rate -- the flaw in
-    # the archived cpu_benchmark_results_*.json, whose completion_tokens moved run to
-    # run.
-    forces_exact_length = True
     reports_server_timings = False
 
     def __init__(self, service: ServiceSpec) -> None:
