@@ -19,6 +19,10 @@ services:
       - MODEL_PATH=${LLAMA_CPU_MODEL:-${LLAMA_ZEN5_MODEL}}
       - THREADS=16
       - THREADS_BATCH=16
+      # Hugepage wrapper (docker/llama-cpu/entrypoint.cpu.sh) as an A/B arm rather than a
+      # constant: HUGEPAGES=off runs the same image without the LD_PRELOAD, which is the
+      # control arm `python -m bench` compares against.
+      - HUGEPAGES=${HUGEPAGES:-on}
     ports:
       - "127.0.0.1:8001:8001"
     read_only: true
