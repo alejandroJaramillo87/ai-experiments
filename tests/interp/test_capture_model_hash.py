@@ -19,6 +19,8 @@ import pytest
 
 from interp import cli
 from interp.probes.capture import (
+    CONTAINER_MODELS,
+    HOST_MODELS,
     UNKNOWN_MODEL_HASH,
     CaptureError,
     check_model_id,
@@ -70,12 +72,24 @@ class TestDeriveModelHash:
 class TestModelIdGuard:
     """The host spelling of the models tree is the mistake that gets made:
     the interp container mounts it at /app/models, so a /mnt/ai-data/models
-    path resolves to nothing and transformers looks it up on the Hub."""
+    path resolves to nothing and transformers looks it up on the Hub.
+
+    The absent path comes from tmp_path rather than a /mnt/ai-data literal.
+    The guard's question is whether the directory is there, so a literal
+    asserted the workstation's disk contents: these tests passed everywhere
+    until the E4B checkpoint was downloaded, then failed on the one machine
+    that has it. tmp_path is absolute, unique per test, and never created.
+    What the guard is really being held to is the message naming the mount,
+    and that is the same whatever path it is handed.
+    """
 
     def test_a_missing_absolute_path_is_refused_naming_the_mount(self, tmp_path):
         with pytest.raises(CaptureError) as exc:
-            check_model_id("/mnt/ai-data/models/hf/gemma-4-E4B")
-        assert "/app/models" in str(exc.value)
+            check_model_id(str(tmp_path / "gemma-4-E4B"))
+        # Against the constants, not the literals: renaming a mount must not
+        # leave this passing on a string the code no longer uses.
+        assert CONTAINER_MODELS in str(exc.value)
+        assert HOST_MODELS in str(exc.value)
 
     def test_a_repo_id_is_left_alone(self):
         # No leading slash, so it is a repo id and not a typo'd path.
@@ -91,7 +105,7 @@ class TestModelIdGuard:
         # after the model load it was supposed to prevent.
         with pytest.raises(CaptureError, match="not a directory"):
             run_capture(
-                "/mnt/ai-data/models/hf/gemma-4-E4B",
+                str(tmp_path / "gemma-4-E4B"),
                 labeled_dataset,
                 [3],
                 str(tmp_path / "cap"),

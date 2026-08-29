@@ -54,6 +54,25 @@ else
     print_warn "Python $EXPECTED_PIN: no interpreter found"
     echo "  Install with: uv python install $EXPECTED_PIN"
 fi
+
+# Reported rather than assumed: uv derives this from XDG_DATA_HOME unless
+# UV_PYTHON_INSTALL_DIR overrides it, and a VS Code snap terminal sets that
+# variable to a revision directory snapd later removes.
+UV_PY_DIR=$(uv python dir 2>/dev/null)
+if [ -n "$UV_PY_DIR" ]; then
+    print_ok "Managed interpreter directory: $UV_PY_DIR"
+else
+    print_warn "Managed interpreter directory: uv python dir reported nothing"
+fi
+
+# pyenv reads .python-version too, so inside this repository it resolves the same
+# pin to its own interpreter and puts it on PATH as python3.
+if command -v pyenv &> /dev/null; then
+    print_warn "pyenv is installed and reads .python-version, the file uv writes"
+    echo "  Found: inside this repository pyenv resolves the $EXPECTED_PIN pin to its own"
+    echo "         interpreter and shadows the project environment on PATH"
+    echo "  Solution: remove pyenv per docs/os/python/setup_python.md"
+fi
 echo
 
 # Project configuration check
@@ -90,6 +109,31 @@ if [ -d "$PROJECT_DIR" ]; then
 
     if [ -d "$PROJECT_DIR/.venv" ]; then
         print_ok "Project environment: .venv"
+
+        # A venv records its base interpreter as an absolute path in pyvenv.cfg.
+        # Remove whatever provided that path -- a retired pyenv, or the snap
+        # revision directory XDG_DATA_HOME pointed at -- and the environment is
+        # unusable, while every check that follows reports a symptom rather than
+        # this cause. Checking the path is what separates the two.
+        VENV_HOME=$(sed -n 's/^home[[:space:]]*=[[:space:]]*//p' \
+            "$PROJECT_DIR/.venv/pyvenv.cfg" 2>/dev/null)
+        REBUILD="uv python install $EXPECTED_PIN && rm -rf .venv && uv sync --all-groups --all-extras"
+        if [ -z "$VENV_HOME" ]; then
+            print_warn "Base interpreter: no home entry in .venv/pyvenv.cfg"
+        elif [ ! -d "$VENV_HOME" ]; then
+            print_error "Base interpreter: $VENV_HOME does not exist"
+            echo "  Found: .venv is built from an interpreter that has been removed"
+            echo "  Solution: reinstall the interpreter and rebuild the environment"
+            echo "  Command: $REBUILD"
+        elif [ -n "$UV_PY_DIR" ] && [[ "$VENV_HOME" != "$UV_PY_DIR"* ]]; then
+            print_warn "Base interpreter: $VENV_HOME is outside $UV_PY_DIR"
+            echo "  Found: .venv is not built from a uv-managed interpreter, so it breaks"
+            echo "         whenever whatever provides that path moves or is removed"
+            echo "  Solution: rebuild from the managed interpreter"
+            echo "  Command: $REBUILD"
+        else
+            print_ok "Base interpreter: $VENV_HOME"
+        fi
     else
         print_warn "Project environment: .venv not found"
         echo "  Create with: uv sync --all-groups --all-extras"

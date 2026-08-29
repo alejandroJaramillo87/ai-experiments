@@ -57,6 +57,26 @@ $ uv python install 3.12
 uv manages this interpreter under its own data directory. It does not touch the system
 Python or require pyenv.
 
+Pin where that data directory is, in `~/.zshrc` (or `~/.bashrc`), before running the
+install:
+
+```bash
+export UV_PYTHON_INSTALL_DIR="$HOME/.local/share/uv/python"
+export UV_PYTHON_BIN_DIR="$HOME/.local/share/uv/bin"
+```
+
+Without these, uv derives both paths from `XDG_DATA_HOME`. A VS Code snap terminal sets
+that variable to `~/snap/code/<revision>/.local/share`, so the interpreter lands inside a
+snap revision directory that snapd removes on the next VS Code update. `.venv` records
+its base interpreter as an absolute path in `pyvenv.cfg` and breaks with it, silently,
+until the next import.
+
+`UV_PYTHON_BIN_DIR` deliberately points outside `PATH`. A bare `python3.12` shim on
+`PATH` carries none of the project's dependencies, which is the same trap pyenv creates
+(see [Retire the old pyenv and Poetry
+toolchain](#retire-the-old-pyenv-and-poetry-toolchain)).
+`docker/agents/Dockerfile.agents` pins both variables for the same reason.
+
 ## Sync the environment
 
 From the repository root, create the virtual environment and install every dependency,
@@ -77,6 +97,13 @@ $ make install
 The `torch` trio resolves from the `pytorch-cu130` index declared in
 `[[tool.uv.index]]` and bound through `[tool.uv.sources]`. No separate pip install step
 exists; uv installs the CUDA wheels directly.
+
+The environment is deliberately complete rather than minimal. `--all-groups --all-extras`
+keeps torch, flash-attn, transformer-lens and the rest on the workstation so a REPL can
+`import torch` and reach the GPU without starting a container. That is why
+`scripts/utils/check_py_deps_install.py` marks only `vllm` optional: every other package
+it checks is expected on the host. A lean environment belongs in a throwaway worktree —
+`make worktree-<name>` defaults to the torch-free `sandbox` tier — not here.
 
 ## Activate the environment
 
@@ -131,9 +158,9 @@ Run the environment check without modifying the lock or environment:
 $ ./scripts/update/update_python.sh --check
 ```
 
-`--check` reports the uv version, the Python pin, the presence of `.venv`, the system
-CUDA version, and the installed PyTorch build, then exits without running `uv lock` or
-`uv sync`.
+`--check` reports the uv version, the Python pin, the presence of `.venv` and the
+interpreter it is built from, the system CUDA version, and the installed PyTorch build,
+then exits without running `uv lock` or `uv sync`.
 
 ## Common commands
 
@@ -194,10 +221,14 @@ $ rm -rf ~/.cache/pypoetry
 The old `poetry.lock` is deleted from the repository; `uv.lock` replaces it. No action is
 required beyond pulling the current repository state.
 
-Removing pyenv itself is optional. Keep pyenv if other projects on the host depend on it.
-Removing the ai-tools environment and Poetry is mandatory; removing pyenv is not. If pyenv
-is no longer used by any project, remove its shell initialization lines from `~/.bashrc`
-or `~/.zshrc`:
+Removing pyenv is mandatory, not optional. pyenv reads `.python-version` — the same file
+`uv python pin` writes — so inside this repository it resolves the `3.12` pin to its own
+interpreter and puts that on `PATH` as `python3`. Every command that does not go through
+`uv run` then runs against an interpreter carrying none of the project's dependencies,
+and reports a working environment as broken. Keeping pyenv for other projects is not a
+way around this: the collision is on the file, not on the shell.
+
+Remove its shell initialization lines from `~/.bashrc` or `~/.zshrc`:
 
 ```bash
 export PYENV_ROOT="$HOME/.pyenv"
@@ -206,10 +237,29 @@ eval "$(pyenv init -)"
 eval "$(pyenv virtualenv-init -)"
 ```
 
+A prompt that calls `pyenv_prompt_info` needs the same treatment, or every prompt reports
+a missing command afterwards.
+
 Then remove the pyenv data directory:
 
 ```bash
 $ rm -rf ~/.pyenv
+```
+
+Check what `.venv` is built from **before** deleting that directory. An environment
+created while pyenv supplied the interpreter is stamped with a path under `~/.pyenv` and
+does not survive its removal:
+
+```bash
+$ grep '^home' .venv/pyvenv.cfg
+```
+
+If the path names `~/.pyenv`, rebuild afterwards:
+
+```bash
+$ uv python install 3.12
+$ rm -rf .venv
+$ uv sync --all-groups --all-extras
 ```
 
 ## Troubleshooting
@@ -254,6 +304,28 @@ Re-sync from the lock file:
 $ uv sync --all-groups --all-extras
 ```
 
+### The environment stops working after removing a tool or updating VS Code
+
+`uv run` fails to start, or every import raises. `.venv` names its base interpreter by
+absolute path, so it breaks whenever that path goes away — after removing pyenv, or after
+a VS Code snap revision bump moved the directory `XDG_DATA_HOME` pointed at.
+
+```bash
+$ grep '^home' .venv/pyvenv.cfg
+$ ls "$(grep '^home' .venv/pyvenv.cfg | cut -d' ' -f3)"
+```
+
+A missing directory confirms it. Rebuild, and set the two variables in [Install the
+Python interpreter](#install-the-python-interpreter) so it does not recur:
+
+```bash
+$ uv python install 3.12
+$ rm -rf .venv
+$ uv sync --all-groups --all-extras
+```
+
+`./scripts/utils/find_pythons.sh` checks this on every run.
+
 ---
 
-*Last updated: 2026-07-12*
+*Last updated: 2026-08-29*

@@ -90,6 +90,16 @@ format: ## Format code with ruff
 # second one -- an empty target set or an empty ledger would fail every reference rather than
 # none, which is a confusing way to learn the gate is broken.
 #
+# check_group_pin_parity.py is the same idea applied to pyproject.toml rather than to prose.
+# The sandbox group re-pins thirteen packages that core, interp and training also pin, so a
+# torch-free environment can still collect the suite, and its own comment states the
+# obligation to keep them equal. Nothing enforced it: `uv lock --check` proves one resolution
+# is internally consistent, not that two literal `==` strings agree, so bumping a core pin
+# left the sandbox copy behind silently -- surfacing later as a sandbox that resolves
+# differently from the workstation, which is the worst place to have an unexplained
+# difference. Exact pins only: a package pinned in one section and left free in another is
+# normal, and only two exact pins can contradict each other.
+#
 # Shell files are enumerated with find, not `git ls-files`. The git form fails in a
 # contained agent sandbox (/work is a linked worktree whose gitdir is outside the bind
 # mount), and because it sat on the left of a pipe the recipe's status came from xargs --
@@ -102,7 +112,7 @@ format: ## Format code with ruff
 # dies on a missing tool -- and the gate has to be followed by `make install` to
 # undo what it did. Checking first turns that into a named error that changes
 # nothing. Skipped in a sandbox, which has no .venv by design.
-quality: ## Run the full quality gate (format check, lint, mypy, lock check, doc refs, retired names, make targets, doc counts, KB refs, shellcheck, rust gate)
+quality: ## Run the full quality gate (format check, lint, mypy, lock check, doc refs, retired names, make targets, doc counts, KB refs, pin parity, shellcheck, rust gate)
 ifndef AI_SANDBOX
 	@if [ ! -x .venv/bin/ruff ] || [ ! -e "$$(readlink -f .venv/bin/python 2>/dev/null)" ]; then \
 	  printf '[ERROR] .venv is missing, incomplete, or points at an interpreter that no longer exists\n'; \
@@ -132,6 +142,7 @@ endif
 	$(RUN_PY) python scripts/docs/check_kb_refs.py
 	$(RUN_PY) python scripts/docs/check_runbook_entries.py
 	$(RUN_PY) python scripts/docs/check_surface_census.py
+	$(RUN_PY) python scripts/docs/check_group_pin_parity.py
 	@files=$$(find . -name '*.sh' -type f \
 	    -not -path './.git/*' -not -path './.venv/*' \
 	    -not -path './node_modules/*' -not -path '*/target/*' \
