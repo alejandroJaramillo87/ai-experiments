@@ -145,11 +145,63 @@ RETIRED: dict[str, tuple[str, str]] = {
         "the sibling of gpu_benchmark_results in test_perplexity.sh, retired "
         "for the same reason and at the same time",
     ),
+    # ComfyUI and the diffusion stack left this repository entirely. Nothing
+    # replaced them here: image and video generation is a different problem
+    # with a different dependency graph -- its own torch pin, its own pip
+    # environment, its own custom-node checkouts -- and carrying it beside the
+    # LLM stack meant one repository answering to two sets of version
+    # constraints. Each key below names something deleted, so the replacement
+    # half says so rather than pointing at a path that is not there.
     "./outputs/comfyui": (
-        "/mnt/ai-data/comfyui/output",
-        "generated images and video are multi-GB data with no reason to sit "
+        "nothing; removed with the ComfyUI service",
+        "generated images and video were multi-GB data with no reason to sit "
         "next to source; the mount put them one `git add -A` away from a "
-        "commit, and .gitignore had no entry for the directory",
+        "commit, and .gitignore had no entry for the directory. The output "
+        "tree moved to /mnt/ai-data before the service itself was retired",
+    ),
+    "/mnt/ai-data/comfyui": (
+        "nothing; removed with the ComfyUI service",
+        "the output tree on the data SSD, created by setup_data_ssd.sh and "
+        "bound into the container; both ends went with the service",
+    ),
+    "docker/comfyui/": (
+        "nothing; removed with the ComfyUI service",
+        "the only image in the tree built on stdlib venv and pip rather than "
+        "uv against uv.lock, and the only one setting PYTHONPATH -- it had to "
+        "be, because its torch pin and its custom-node requirements could not "
+        "resolve against the core environment",
+    ),
+    "make/comfy.mk": (
+        "nothing; removed with the ComfyUI service",
+        "held comfy-up/down/logs/shell/build/status and the art-mode and "
+        "llm-mode swap targets; every one of them addressed the retired "
+        "service",
+    ),
+    "make art-mode": (
+        "nothing; removed with the ComfyUI service",
+        "stopped the GPU LLM services and started ComfyUI in their place. "
+        "With one fewer GPU consumer there is nothing to swap between",
+    ),
+    "make llm-mode": (
+        "make up",
+        "the counterpart to art-mode, meaningful only as `switch back`; "
+        "starting the LLM services is what `make up` already does",
+    ),
+    "scripts/models/download_art_models.sh": (
+        "nothing; removed with the ComfyUI service",
+        "fetched diffusion checkpoints, text encoders, VAEs and LoRAs into "
+        "models/diffusion_models, models/clip and models/vae -- the three "
+        "model directories retired alongside it",
+    ),
+    "docs/inference/art-generation.md": (
+        "nothing; removed with the ComfyUI service",
+        "the service overview; the inference docs now cover llama.cpp and vLLM only",
+    ),
+    "./workflows": (
+        "nothing; removed with the ComfyUI service",
+        "held the ComfyUI workflow JSON templates and was bind-mounted to "
+        "/app/user/default/workflows. Keyed with the ./ prefix so the bare "
+        "word, which names unrelated things in agent tooling, stays legal",
     ),
     # The GGUF-to-checkpoint move (rust-harness P2-P8). Keys are qualified,
     # because gguf.rs and the two artifact readers survive: the Python interp

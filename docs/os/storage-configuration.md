@@ -161,10 +161,7 @@ the code that writes them and are absent on a fresh machine.
 │   ├── hf/           # HuggingFace format, one directory per model
 │   ├── gguf/         # GGUF quantized models
 │   ├── trained/      # Exported GGUFs; the one writable window
-│   ├── checkpoints/  # Imported third-party checkpoints
-│   ├── clip/         # CLIP encoders (image generation)
-│   ├── diffusion_models/
-│   └── vae/
+│   └── checkpoints/  # Imported third-party checkpoints
 ├── training/         # Training tier; identity-mounted read-write
 │   ├── datasets/     # Prepared datasets
 │   ├── shards/       # Tokenized shards with manifests
@@ -189,8 +186,6 @@ the code that writes them and are absent on a fresh machine.
 │   ├── gpu/          # scripts/benchmark/benchmark_gpu.sh (BENCH_RESULTS_DIR)
 │   ├── perplexity/   # scripts/benchmark/test_perplexity.sh (BENCH_RESULTS_DIR)
 │   └── nsys/         # Nsight reports, written in-container when NSYS_PROFILE=true
-├── comfyui/
-│   └── output/       # Generated images and video
 ├── logs/             # Structured observability records (OBS_LOG_DIR)
 │   ├── training/     # One directory per CLI: event files plus runs.jsonl
 │   ├── interp/       # Interp CLI records
@@ -208,7 +203,7 @@ the code that writes them and are absent on a fresh machine.
 
 | Directory | Services | Mode |
 |-----------|----------|------|
-| `models/` | training, export, interp, harness, llama-cpu, llama-gpu, vllm-gpu, comfyui | read-only |
+| `models/` | training, export, interp, harness, llama-cpu, llama-gpu, vllm-gpu | read-only |
 | `models/trained/` | training, export | read-write |
 | `training/` | training, export, interp | read-write |
 | `interp/` | interp | read-write |
@@ -216,7 +211,6 @@ the code that writes them and are absent on a fresh machine.
 | `interp/logs/` | harness-serve | read-write |
 | `logs/` | training, export, interp, prepare | read-write |
 | `benchmarks/nsys/` | llama-gpu, vllm-gpu | read-write |
-| `comfyui/output/` | comfyui | read-write |
 | `models/hf/` | prepare | read-write |
 | `cache/huggingface/` | prepare | read-write |
 | `cache/torch/`, `cache/pip/`, `cache/uv/` | none | n/a |

@@ -21,9 +21,6 @@ repository and the results that justify them. Container and compose details live
 - **[parameters/llama-cpp-parameters.md](parameters/llama-cpp-parameters.md)** - Tested llama.cpp parameters and findings
 - **[parameters/vllm-parameters.md](parameters/vllm-parameters.md)** - vLLM configuration and throughput optimization
 
-### Generation Services
-- **[art-generation.md](art-generation.md)** - The ComfyUI image and video generation service on port 8188
-
 ### Forward Looking
 - **[future-optimizations.md](../optimizations/ideation/future-inference-optimizations.md)** - Parked survey of custom kernel and runtime work, with the conditions gating it
 
@@ -37,7 +34,6 @@ repository and the results that justify them. Container and compose details live
 | llama-cpu | llama.cpp | 8001 | Active | Latency-optimized CPU inference |
 | llama-gpu | llama.cpp | 8002 | Active | GPU-accelerated low-latency inference |
 | vllm-gpu | vLLM | 8003 | Active | High-throughput batch serving |
-| comfyui | ComfyUI | 8188 | Active | Image and video generation; see [art-generation.md](art-generation.md) |
 | open-webui | — | 3000 | Active | Web interface, published as `127.0.0.1:3000:8080` |
 
 ## Architecture Summary

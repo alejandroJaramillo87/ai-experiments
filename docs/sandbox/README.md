@@ -8,7 +8,7 @@ deployment.
 This documentation covers the specific Docker implementation deployed in this project. The
 three inference images are built from `docker/llama-cpu/Dockerfile.cpu`,
 `docker/llama-gpu/Dockerfile.llama-gpu`, and `docker/vllm-gpu/Dockerfile.vllm-gpu`; the
-repository holds nine Dockerfiles in total, the rest covering the agents, ComfyUI, interp,
+repository holds eight Dockerfiles in total, the rest covering the agents, interp,
 the interp log proxy, the Rust harness, and training. `docker-compose.inference.yaml`
 orchestrates concurrent model hosting across CPU and GPU resources.
 
@@ -74,7 +74,6 @@ The implementation consists of:
 - **CPU inference container** (`llama-cpu`) utilizing AMD Zen 5 optimization with zen5_optimizer hugepage support (16 cores, 96GB RAM)
 - **GPU inference container** (`llama-gpu`) optimized for RTX 5090 with CUDA 13.0.2 and Blackwell architecture support
 - **vLLM GPU container** (`vllm-gpu`) for high-performance transformer model serving with vLLM 0.25.0
-- **ComfyUI container** (`comfyui`) for image and video generation
 - **Open WebUI container** providing a secure web interface for model interaction
 - **Isolated Docker network** (`ai-network`) with controlled inter-service communication
 
@@ -217,7 +216,6 @@ Localhost-only port binding prevents external access:
 - **llama-cpu**: `127.0.0.1:8001:8001`
 - **llama-gpu**: `127.0.0.1:8002:8002`
 - **vllm-gpu**: `127.0.0.1:8003:8003`
-- **comfyui**: `127.0.0.1:8188:8188`
 - **open-webui**: `127.0.0.1:3000:8080`
 
 **Network Policy Enforcement**

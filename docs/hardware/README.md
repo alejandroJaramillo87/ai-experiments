@@ -117,7 +117,6 @@ Blackwell Architecture Specifications:
 AI Workload Optimization:
 - **Large Language Models**: Supports 30B+ parameter models in VRAM
 - **Computer Vision**: Accelerated image processing and neural network inference
-- **Generative AI**: Optimized for stable diffusion and image generation
 - **Mixed Precision**: FP32, FP16, and FP8 support
 
 Professional AI Features:

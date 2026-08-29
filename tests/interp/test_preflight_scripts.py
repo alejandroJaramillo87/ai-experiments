@@ -44,7 +44,7 @@ class TestPreflight:
         assert result.returncode == 0
         assert "[OK]" in result.stdout
 
-    @pytest.mark.parametrize("service", ["llama-gpu", "vllm-gpu", "comfyui"])
+    @pytest.mark.parametrize("service", ["llama-gpu", "vllm-gpu"])
     def test_refuses_while_a_gpu_service_runs(self, compose, run_script, service):
         compose(COMPOSE_OK)
         result = run_script("interp/preflight.sh", env={"STUB_SERVICES": service})

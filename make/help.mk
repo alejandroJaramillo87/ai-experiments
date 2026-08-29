@@ -13,6 +13,5 @@ help: ## Display this help message
 	@echo "  $(GREEN)GPU Service:$(RESET)     http://localhost:8002/v1"
 	@echo "  $(GREEN)vLLM Service:$(RESET)    http://localhost:8003/v1"
 	@echo "  $(GREEN)Open WebUI:$(RESET)      http://localhost:3000"
-	@echo "  $(GREEN)ComfyUI:$(RESET)         http://localhost:8188"
 	@echo ""
 	@echo "$(YELLOW)Model Directory:$(RESET)  /mnt/ai-data/models/"

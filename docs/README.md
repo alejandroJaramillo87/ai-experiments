@@ -70,7 +70,6 @@ orientation, not explanation: they point here for the detail.
 | [inference/engines/vllm.md](inference/engines/vllm.md) | vLLM PagedAttention and continuous batching |
 | [inference/parameters/llama-cpp-parameters.md](inference/parameters/llama-cpp-parameters.md) | llama.cpp parameter tuning guide |
 | [inference/parameters/vllm-parameters.md](inference/parameters/vllm-parameters.md) | vLLM configuration for throughput (vLLM 0.25.0) |
-| [inference/art-generation.md](inference/art-generation.md) | The ComfyUI image-generation service |
 
 ### Rust Harness
 

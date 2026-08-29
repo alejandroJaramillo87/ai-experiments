@@ -16,11 +16,11 @@ if [[ -n "${NO_COLOR:-}" ]] || [[ "${1:-}" == "--no-color" ]]; then
 fi
 
 # GPU consumers in docker-compose.inference.yaml (service names per the compose file,
-# the source of truth: llama-gpu 8002, vllm-gpu 8003, comfyui 8188)
+# the source of truth: llama-gpu 8002, vllm-gpu 8003)
 # Not named COMPOSE_FILE: that is a docker compose variable, and exporting it would
 # change behavior rather than just naming the file for the -f flags below.
 INFER_COMPOSE=docker-compose.inference.yaml
-GPU_SERVICES="llama-gpu vllm-gpu comfyui"
+GPU_SERVICES="llama-gpu vllm-gpu"
 
 # Separate "compose reported nothing running" from "compose failed". Discarding stderr and
 # swallowing the status with `|| true` makes the two indistinguishable, and an empty service
