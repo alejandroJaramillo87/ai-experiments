@@ -17,6 +17,7 @@ inputs are lists of floats, and a failing list of floats is already small.
 
 from __future__ import annotations
 
+import dataclasses
 import random
 
 import pytest
@@ -152,6 +153,39 @@ class TestSampleGuards:
         two = metrics.reduce_samples([arrival_series(rng, 8)], concurrency=2)
         assert one["includes_queue"] is False
         assert two["includes_queue"] is True
+
+    def test_a_span_metric_is_never_reported_over_a_subset_of_a_point(self):
+        """BQ-F01. Refusal is decided for the point, not sample by sample.
+
+        A per-sample refusal takes the median over the samples that resolved. Those
+        are not a random subset: a sample loses arrivals when the server packed its
+        chunks, which happens under the heaviest batching, so the survivors are the
+        faster requests and the median reads better than the run was. Either the whole
+        point reports these two or none of it does.
+        """
+        rng = random.Random(SEED + 16)
+        for _ in range(CASES):
+            point = [
+                arrival_series(rng, rng.randint(2, 20))
+                for _ in range(rng.randint(2, 8))
+            ]
+            coarse = rng.randrange(len(point) + 1)  # how many samples lose an arrival
+            for index in range(coarse):
+                sample = point[index]
+                point[index] = dataclasses.replace(
+                    sample, arrivals=sample.arrivals[:-1]
+                )
+            block = metrics.reduce_samples(point, concurrency=1)
+            assert block["arrivals_incomplete"] == coarse
+            if coarse:
+                assert block["decode_tok_s"] is None
+                assert block["tpot_ms"] is None
+            else:
+                assert block["decode_tok_s"]["n"] == len(point)
+                assert block["tpot_ms"]["n"] == len(point)
+            # Packing moves neither of these, so they cover the point either way.
+            assert block["ttft_ms"]["n"] == len(point)
+            assert block["e2e_tok_s"]["n"] == len(point)
 
     def test_the_latency_series_is_one_shorter_than_the_arrivals(self):
         rng = random.Random(SEED + 5)

@@ -37,7 +37,9 @@ class Sample:
     SSE line was decoded and before it was parsed. `prompt_tokens` and
     `completion_tokens` come from the server's own `usage` object, never from counting
     SSE frames: a server that packs more than one token into a chunk makes a frame count
-    an undercount, silently.
+    an undercount, silently. Reconciling the two counts is
+    `arrivals_resolve_generation`, and what each metric below does when they disagree
+    follows the single policy stated there.
     """
 
     t_submit: float
@@ -55,14 +57,22 @@ class Sample:
     def arrivals_resolve_generation(self) -> bool:
         """Whether the arrival series accounts for every token the server generated.
 
-        Fewer arrivals than tokens means the stamps do not span the generation the
-        token count describes, and every quantity below anchored on the first or last
-        arrival is then divided by a count it does not cover. llama.cpp sends no frame
-        at all for a token that leaves an incomplete UTF-8 sequence; a frame that fails
-        to parse is skipped here; a server packing two tokens into one chunk produces
-        the same observation. The three are indistinguishable from stamps alone, and
-        each moves a different metric in the direction that flatters the result, so the
-        reconciliation against the server's own count is the only detector available.
+        Fewer arrivals than tokens has three causes that arrival stamps cannot tell
+        apart: a server packing two tokens into one chunk, which vLLM does routinely
+        under continuous batching; llama.cpp sending no frame at all for a token that
+        leaves an incomplete UTF-8 sequence; and a frame that failed to parse being
+        skipped here. Reconciliation against the server's own count is the only
+        detector available, and it detects the condition, never the cause.
+
+        The policy that follows, applied per metric here and again over a whole point
+        in `reduce_samples`: report what packing -- the ordinary cause -- cannot bias,
+        and refuse what it can. Packing cannot move the end-to-end span at all (the
+        submit stamp at one end, and at the other the last token's text has to ride in
+        the last content-bearing chunk), and can only move the first arrival later,
+        which is the pessimistic direction. It does distort the first-to-last span,
+        which then covers fewer observed intervals than the token count describes with
+        nothing to say which went missing, so `tpot_ms` and `decode_tok_s` are refused.
+        The rest are reported, with the condition declared in the point's block.
         """
         return self.chunks >= self.completion_tokens
 
@@ -73,10 +83,11 @@ class Sample:
         concurrency 1 it also contains queue wait, which is why the caller labels the
         block `includes_queue` rather than this function pretending otherwise.
 
-        Absent when the arrivals do not resolve the generation: the first arrival is
-        then some later token, and the stamp reads one or more intervals late.
+        Reported even when the arrivals do not resolve the generation: a first chunk
+        carrying two tokens is stamped when the second was generated, so the value
+        reads late and never early. Absent only when no chunk carried text at all.
         """
-        if not self.arrivals_resolve_generation:
+        if not self.arrivals:
             return None
         return (self.arrivals[0] - self.t_submit) * 1000.0
 
@@ -127,10 +138,15 @@ class Sample:
         folded in. Kept, and named for what it is, so new measurements can be reconciled
         against the numbers already quoted in docs/optimizations/.
 
-        Absent on an unresolved generation: a token withheld at the end shortens the
-        span while the numerator stays at the server's count, inflating the rate.
+        Reported on an unresolved generation, because both ends of this span are
+        invariant under the packing that is the ordinary cause of one. A token withheld
+        at the very end does shorten the span while the numerator stays at the server's
+        count, but by less than the same lost arrival moves the decode rate (1.61% at
+        the quick profile's 64 generated tokens, 0.39% at the publish profile's 256),
+        since this span also carries prefill. Both are under the 5% threshold at which
+        this suite reports a change.
         """
-        if not self.arrivals_resolve_generation:
+        if not self.arrivals:
             return None
         span = self.arrivals[-1] - self.t_submit
         if span <= 0:
@@ -194,6 +210,19 @@ def reduce_samples(samples: list[Sample], concurrency: int) -> dict:
     for sample in samples:
         itl.extend(sample.itl_ms())
 
+    # Fewer arrivals than the server's token count, counted once. Both the packing flag
+    # and the reconciliation count below are this one predicate reported two ways: a
+    # sample whose mean tokens per chunk exceeds one is exactly a sample that did not
+    # resolve its own generation.
+    arrivals_incomplete = sum(1 for s in samples if not s.arrivals_resolve_generation)
+
+    # Refusal is decided for the point, not sample by sample. Per sample it would take
+    # the median over the samples that resolved, and those are not a random subset --
+    # a sample loses arrivals when the server packed its chunks, which happens under
+    # the heaviest batching, so the survivors are the faster requests and the median
+    # would read better than the run was.
+    span_resolved = arrivals_incomplete == 0
+
     # A chunk carrying more than one token makes the ITL series coarser than per-token.
     # Reporting it as a per-token latency anyway would be a quiet lie, so the block says
     # so. What it can say is each sample's mean tokens per chunk, and the largest of
@@ -212,18 +241,21 @@ def reduce_samples(samples: list[Sample], concurrency: int) -> dict:
         "includes_queue": concurrency > 1,
         "ttft_ms": stats(_collect(samples, Sample.ttft_ms)),
         "itl_ms": stats(itl),
-        "tpot_ms": stats(_collect(samples, Sample.tpot_ms)),
-        "decode_tok_s": stats(_collect(samples, Sample.decode_tok_s)),
+        "tpot_ms": (
+            stats(_collect(samples, Sample.tpot_ms)) if span_resolved else None
+        ),
+        "decode_tok_s": (
+            stats(_collect(samples, Sample.decode_tok_s)) if span_resolved else None
+        ),
         "e2e_tok_s": stats(_collect(samples, Sample.e2e_tok_s)),
-        "itl_approximate": tokens_per_chunk_mean_max > 1.0,
+        "itl_approximate": arrivals_incomplete > 0,
         "tokens_per_chunk_mean_max": tokens_per_chunk_mean_max,
         # How many samples produced fewer arrivals than the server reported tokens.
-        # Their arrival-derived metrics are absent above rather than wrong, and this
-        # count is what tells the two apart: a metric nobody could measure versus a
-        # metric this many samples were refused for.
-        "arrivals_incomplete": sum(
-            1 for s in samples if not s.arrivals_resolve_generation
-        ),
+        # Nonzero refuses `tpot_ms` and `decode_tok_s` for the whole point, and this
+        # count against `n` above is what makes that absence reconcilable: a metric
+        # nobody could measure versus a metric refused for a stated number of samples.
+        # The other metrics still cover all `n`.
+        "arrivals_incomplete": arrivals_incomplete,
         "prompt_tokens_observed": stats([float(s.prompt_tokens) for s in samples]),
         "completion_tokens_observed": stats(
             [float(s.completion_tokens) for s in samples]

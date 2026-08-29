@@ -56,6 +56,58 @@ class TestSample:
         assert sample.e2e_tok_s() == pytest.approx(4 / 0.28)
         assert sample.e2e_tok_s() < sample.decode_tok_s()
 
+    def test_packing_cannot_move_the_end_to_end_rate(self):
+        # BQ-F01, narrowed. Both endpoints of the end-to-end span are invariant under
+        # chunk packing: the submit stamp is taken before the request goes out, and the
+        # last token's text has to ride in the last content-bearing chunk. Eight tokens
+        # in four chunks and eight tokens in eight chunks that end at the same instant
+        # are the same rate, so refusing the packed one discards a figure packing
+        # cannot bias.
+        packed = Sample(
+            t_submit=0.0,
+            arrivals=(0.25, 0.26, 0.27, 0.28),
+            prompt_tokens=128,
+            completion_tokens=8,
+        )
+        unpacked = Sample(
+            t_submit=0.0,
+            arrivals=tuple(0.21 + i * 0.01 for i in range(8)),
+            prompt_tokens=128,
+            completion_tokens=8,
+        )
+        assert packed.arrivals_resolve_generation is False
+        assert unpacked.arrivals_resolve_generation is True
+        assert packed.e2e_tok_s() == pytest.approx(8 / 0.28)
+        assert packed.e2e_tok_s() == pytest.approx(unpacked.e2e_tok_s())
+
+    def test_packing_leaves_time_to_first_token_reported(self):
+        # Packing can only move the first stamp later -- a first chunk carrying two
+        # tokens arrives after the second was generated -- so the bias is pessimistic
+        # and cannot flatter a result. Refusing it removed the prefill arm's only
+        # client-side metric.
+        packed = make_sample(0.25, 0.01, 8, chunks=4)
+        assert packed.arrivals_resolve_generation is False
+        assert packed.ttft_ms() == pytest.approx(250.0)
+
+    def test_packing_still_refuses_the_two_span_derived_metrics(self):
+        # The span between first and last arrival loses however many intervals the
+        # packing swallowed while the denominator stays at the server's token count,
+        # and no stamp says where they went. These two stay refused.
+        packed = make_sample(0.25, 0.01, 8, chunks=4)
+        assert packed.tpot_ms() is None
+        assert packed.decode_tok_s() is None
+
+    def test_a_sample_with_no_arrivals_has_no_arrival_derived_metrics(self):
+        # The client refuses a response carrying no text, so this shape does not reach
+        # the runner; the reduction is a pure function and must not raise on it.
+        empty = Sample(
+            t_submit=0.0, arrivals=(), prompt_tokens=128, completion_tokens=8
+        )
+        assert empty.ttft_ms() is None
+        assert empty.e2e_tok_s() is None
+        assert empty.tpot_ms() is None
+        assert empty.decode_tok_s() is None
+
     def test_single_token_response_has_no_decode_metrics(self):
         # The prefill arm generates exactly one token; a duration-based fallback here
         # would silently reintroduce prefill into a decode metric.
@@ -141,15 +193,48 @@ class TestReduceSamples:
         assert block["tokens_per_chunk_mean_max"] == pytest.approx(2.0)
         assert "tokens_per_chunk_max" not in block
 
-    def test_an_arrival_series_short_of_the_token_count_is_counted(self):
-        # BQ-F01. The reduction says how many samples did not resolve their own
-        # generation, so an absent rate is a recorded refusal rather than a silence.
+    def test_one_unresolved_sample_refuses_the_span_metrics_for_the_whole_point(self):
+        # BQ-F01. Refusing per sample took the median over the samples that resolved,
+        # and the ones that do not resolve are the ones the scheduler batched hardest
+        # -- correlated with load, so systematically slower. Dropping them flatters the
+        # published median, which is the direction the refusal exists to prevent. The
+        # point refuses as a whole instead, and `n` against `arrivals_incomplete` is
+        # what makes the absence reconcilable.
         block = reduce_samples(
-            [make_sample(0.1, 0.01, 8, chunks=7), make_sample(0.1, 0.01, 8)],
+            [make_sample(0.1, 0.01, 8, chunks=7)]
+            + [make_sample(0.1, 0.01, 8) for _ in range(3)],
             concurrency=1,
         )
+        assert block["n"] == 4
         assert block["arrivals_incomplete"] == 1
-        assert block["decode_tok_s"]["n"] == 1
+        assert block["decode_tok_s"] is None
+        assert block["tpot_ms"] is None
+        # Both endpoints of these two are packing-invariant, so they are reported --
+        # over every sample of the point, never a subset of it.
+        assert block["ttft_ms"]["n"] == 4
+        assert block["e2e_tok_s"]["n"] == 4
+
+    def test_a_resolved_point_reports_the_span_metrics_over_every_sample(self):
+        block = reduce_samples([make_sample(0.1, 0.01, 8) for _ in range(4)], 1)
+        assert block["arrivals_incomplete"] == 0
+        assert block["decode_tok_s"]["n"] == 4
+        assert block["tpot_ms"]["n"] == 4
+
+    def test_the_packing_flag_and_the_incomplete_count_are_one_predicate(self):
+        # BQ-F01. `itl_approximate` and `arrivals_incomplete` answer the same question
+        # -- did some sample deliver fewer chunks than the server counted tokens -- and
+        # were computed twice from the same data five lines apart. A sample carrying no
+        # arrival at all diverged them: the per-sample packing mean skips it and falls
+        # back to 1.0, while the reconciliation counts it.
+        cases = [
+            [make_sample(0.1, 0.01, 8)],
+            [make_sample(0.1, 0.01, 8, chunks=4)],
+            [make_sample(0.1, 0.01, 8), make_sample(0.1, 0.01, 8, chunks=7)],
+            [make_sample(0.1, 0.01, 8, chunks=0)],
+        ]
+        for samples in cases:
+            block = reduce_samples(samples, concurrency=1)
+            assert block["itl_approximate"] == (block["arrivals_incomplete"] > 0)
 
     def test_a_clean_point_records_no_incomplete_arrivals(self):
         block = reduce_samples([make_sample(0.1, 0.01, 8)], concurrency=1)

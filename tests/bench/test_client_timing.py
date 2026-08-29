@@ -188,8 +188,14 @@ class TestWithheldFrames:
     time per output token reads low; a leading withhold puts time to first token one
     interval late and a trailing one inflates the end-to-end rate. In the interior
     every aggregate is correct and one fabricated interval enters the latency series.
-    Indistinguishable from arrival stamps alone, so all four arrival-derived
-    quantities are refused together rather than a wrong one being published.
+
+    Only the two quantities divided by the first-to-last span are refused. Time to
+    first token moves late, never early, and the end-to-end rate is inflated by one
+    interval out of a span that also carries prefill -- under the shipped generation
+    lengths that is smaller than the 1.61% (64 tokens) the decode rate would move, and
+    both are under the 5% reporting threshold. The same detector fires on ordinary
+    chunk packing, which vLLM does under continuous batching and which cannot move
+    either of those two at all, so they are reported with the condition declared.
     """
 
     def test_an_interior_withhold_fabricates_a_latency_outlier(self):
@@ -215,15 +221,27 @@ class TestWithheldFrames:
         assert sample.decode_tok_s() is None
         assert sample.tpot_ms() is None
 
-    def test_a_leading_withhold_does_not_overstate_time_to_first_token(self):
+    def test_a_leading_withhold_leaves_time_to_first_token_late_but_reported(self):
         # The first arrival the client sees is the second token, so the stamp is one
-        # inter-token interval late and nothing in the series says so.
+        # inter-token interval late. Late is the pessimistic direction and the only
+        # direction available -- a chunk carrying two tokens is stamped when the second
+        # was generated, never earlier -- so the figure is reported rather than
+        # refused, and the point's block declares that the series was coarse.
         sample = sample_from(stream_scripted(generation(withhold=0)))
-        assert sample.ttft_ms() is None
+        assert sample.arrivals_resolve_generation is False
+        ttft = sample.ttft_ms()
+        assert ttft is not None
+        assert ttft > TTFT_S * 1000.0
 
-    def test_a_trailing_withhold_does_not_inflate_the_end_to_end_rate(self):
+    def test_a_trailing_withhold_leaves_the_end_to_end_rate_reported(self):
+        # Both endpoints of this span are invariant under the packing that fires the
+        # same detector, so refusing it cost the concurrency sweep a metric packing
+        # cannot bias. A trailing withhold does shorten the span by one interval; at
+        # the shipped generation lengths that is under the reporting threshold, and
+        # `arrivals_incomplete` on the point says the samples were coarse.
         sample = sample_from(stream_scripted(generation(withhold=TOKENS - 1)))
-        assert sample.e2e_tok_s() is None
+        assert sample.arrivals_resolve_generation is False
+        assert sample.e2e_tok_s() is not None
 
     def test_a_complete_generation_still_reports_every_metric(self):
         # The refusal must cost nothing on the clean path, which is every sample the
