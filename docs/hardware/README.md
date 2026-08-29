@@ -149,7 +149,7 @@ EXPO Profile Optimization:
 - **Stability**: Validated memory configuration for sustained AI development workloads
 - **Bandwidth**: Maximized memory throughput for large model parameter access
 
-**Configuration Note**: Install memory modules exclusively in slots A1 and B1 to maintain DDR5-6000 EXPO speeds. Adding additional modules reduces memory frequency on current AM5 platforms, impacting AI workload performance.
+**Configuration Note**: Install memory modules exclusively in slots A2 and B2 to maintain DDR5-6000 EXPO speeds. Adding additional modules reduces memory frequency on current AM5 platforms, impacting AI workload performance.
 
 ### Storage Layout
 
@@ -227,9 +227,8 @@ Case Specifications:
 
 **Cooling Configuration:**
 - **Total Fan Count**: 10 case fans providing positive pressure airflow optimization
-- **Intake Configuration**: 3x front intake fans for cool air delivery to components
+- **Intake Configuration**: 6x intake fans (3x front, 3x side panel) for cool air delivery to components
 - **Exhaust Configuration**: 3x top exhaust + 1x rear exhaust for efficient heat removal
-- **Additional Cooling**: 3x supplementary fans for optimal airflow distribution
 
 Thermal Management Strategy:
 - **Positive Pressure**: Intake fans exceed exhaust capacity reducing dust accumulation

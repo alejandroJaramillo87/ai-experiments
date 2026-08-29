@@ -186,7 +186,7 @@ Common memory problems in high-capacity configurations:
 
 - **Code 15/19/55**: Memory module detection failure
   - **Causes**: Improper seating, incompatible modules, insufficient power
-  - **Resolution**: Reseat modules, verify DIMM slot compatibility (A1/B1 priority)
+  - **Resolution**: Reseat modules, verify DIMM slot compatibility (A2/B2 priority)
 
 - **Code 0d**: Memory training failure during EXPO activation
   - **Causes**: EXPO profile incompatibility, insufficient voltage, thermal issues
@@ -225,7 +225,7 @@ Diagnostic Documentation Process:
 Category-Specific Troubleshooting:
 
 Memory Code Resolution (10-3F):
-- **Initial Steps**: Reseat memory modules in A1/B1 slots, verify proper seating
+- **Initial Steps**: Reseat memory modules in A2/B2 slots, verify proper seating
 - **EXPO Testing**: Disable EXPO profile, test JEDEC standard speeds (DDR5-4800)
 - **Module Isolation**: Test single memory module, alternate between modules
 - **Environmental Factors**: Verify adequate cooling, stable power delivery
@@ -331,7 +331,7 @@ EXPO Troubleshooting Protocol:
 
 POST Failure Resolution:
 - **No POST Response**: Clear CMOS using motherboard button or jumper
-- **Single Module Testing**: Test individual memory modules in A1 slot
+- **Single Module Testing**: Test individual memory modules in A2 slot
 - **Voltage Adjustment**: Increase DRAM voltage by 0.05V increments (up to 1.4V)
 - **Temperature Monitoring**: Verify adequate case ventilation and memory cooling
 
@@ -342,7 +342,7 @@ Instability Mitigation:
 - **Power Supply Verification**: Ensure stable 12V rail under full system load
 
 Performance Optimization:
-- **Slot Configuration**: Verify modules installed in A1/B1 (Channel A/B, Slot 1)
+- **Slot Configuration**: Verify modules installed in A2/B2 (Channel A/B, Slot 2)
 - **Infinity Fabric Tuning**: Optimize IF clock for AMD Zen 5 architecture
 - **Memory Mapping**: Configure NUMA topology for optimal AI framework performance
 
