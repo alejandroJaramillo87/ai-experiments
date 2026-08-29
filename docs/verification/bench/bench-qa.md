@@ -595,6 +595,22 @@ low until the verification phase records a verdict.
 | BQ-F24 | `bench/commands/run.py::cmd`, `bench/delta.py::check_comparable` | critical | The A/B arms are not interleaved. `cmd` runs one arm's entire profile to completion, writes it, then recreates the service and runs the next, so drift over the run aliases wholly onto the second arm -- the exact failure the design exists to prevent, and which the subcommand's own description promises it prevents: "With two --arm flags the arms are interleaved at the repeat level, so drift over the run cannot alias onto one of them." Interleaving is implemented at the repeat level within one arm, never between arms. The guard that would catch it is defeated by the same gap: the comparison warns when the baseline's `run.order` is not `interleaved`, and that field is copied from the profile, which says `interleaved` in both profiles on disk regardless of how the arms were sequenced. So the one warning that exists can never fire. Surfaced by a verifier working BQ-F08 and confirmed by reading; filed here rather than folded into that finding because it is a different defect in a different file. |
 | BQ-F25 | `bench/delta.py::floor_from_pair` | medium | The floor builder differences every metric in the mapping and takes the largest absolute change as `worst_pct`, with none of the filtering the comparison command applies to its own table. An observed token count, which is not a performance metric, can therefore set the published worst spread. `bench.md` B2 reads `worst_pct` as an acceptance signal and `bench/commands/noise.py` warns on it against the five percent threshold, so a tokenization artifact can declare the rig unable to resolve a real change. Surfaced by a verifier working BQ-F04, whose own claim it refuted. |
 | BQ-F26 | `docs/verification/bench/bench-qa.md` | low | The observed block for BQ.7 recorded `29 passed, 1 xfailed` for a command that produces `31 passed, 1 xfailed` against the same unchanged tree: a figure captured before the last two properties were written and never refreshed. Recorded evidence that does not reproduce is worse than none, because the entry is marked verified on the strength of it. Every command in this document was re-run during verification; this was the only one that did not reproduce. Corrected in this batch. |
+| BQ-F27 | `bench/registry.py::_validate` | medium | The guard that refuses a registry entry whose stated quantization contradicts its filename is skipped for the only model registered. The shared filename parser accepts a suffix only if it starts with `Q` or names a float type, so every IQ-family and TQ-family llama.cpp quantization parses as unknown and the check treats unknown as nothing to verify. The shipped entry is an IQ4_XS file, so the guard is inert on exactly the case it exists for, and the unchecked value flows into the report and into the fields a comparison refuses to cross. The suite covers the guard with a `Q4_K_M` path, proving it on a shape the registry does not contain. |
+| BQ-F28 | `bench/registry.py::resolve` | high | Resolving a model checks only that a hand-maintained list in the same file names the service. Nothing reads the model file, and nothing compares the registry's claim against what the service is actually serving, at resolve time or after. The report then carries both: `conditions.model` from the registry and `conditions.env_knobs` plus `server_argv` from the running container, with nothing reconciling them and no warning when they disagree. The comparison refuses on the asserted fields and ignores the observed ones. The precondition is reachable, because the training commands swap models on these same services. This is the defect the package's own conditions module names as its reason to exist: a condition recorded from configuration rather than from the running system. |
+| BQ-F29 | `bench/commands/models.py` | medium | The machine-readable listing cannot answer the question the human listing answers. The JSON branch dumps the model block a report carries, whose key set is fixed elsewhere and contains no `engines`, so a consumer cannot tell which services a model resolves for and must scrape the human lines from standard error instead. `bench.md` B3 states its acceptance in terms of `engines` while piping the JSON form. |
+| BQ-F30 | `bench/registry.py::_validate` | medium | Validation checks field presence and two enumerations and nothing about type, shape, or internal consistency. A bare string for the engine list becomes a per-character tuple that the listing prints one letter at a time; an empty list makes an entry advertised but unresolvable for every service; an engine name that is not a service is accepted, though a test exists to assert otherwise; and active parameters exceeding total, active experts exceeding total, a negative parameter count and a string context length all reach the report unchallenged. |
+| BQ-F31 | `bench/commands/models.py::cmd` | low | The command catches only the registry error type, so a registry entry with a wrong-typed field raises out of the loader as a type error, past the handler, and reaches the user as a traceback with no exit code from the command — which the Python output style names among the things to avoid. The same handler shape appears in the run and noise commands. |
+| BQ-F32 | `bench/cli.py` | low | The top-level description, the first thing the help output prints, names the rust harness among the benchmarked services. The same parser's service choices refuse it, deliberately and with a documented reason. |
+| BQ-F33 | `bench/workloads.py::build_prompt`, `bench/commands/noise.py` | high | The noise floor is measured against a warm prefix cache. The prompt nonce is built from the profile seed, the cell index and the slot, all deterministic, and the noise command runs both arms in one process against one live service with no recreate between them, because the arm helper returns early on an empty environment. The second arm therefore replays the first arm's prompts byte for byte -- 76 of 76 identical in the reproduction -- and vLLM's prefix caching is on by default and not switchable per request, which the adapter names as the single reason the runner varies the prefix at all. The floor is the difference between a cold arm and a cached one, and every `within_noise` verdict rests on it. |
+| BQ-F34 | `bench/workloads.py::load`, `bench/delta.py` | high | No profile hash is computed anywhere in the tree, though the module docstring says a workload is reproducible from one and the benchmarking skill lists a profile hash among the mismatches a comparison refuses. What the comparison actually blocks on is the profile's declared name, a string the file asserts about itself. Two profiles with different sweeps and the same declared name compare with no warning; unmatched points are dropped in silence, while the prefill slope is keyed on the phase alone and is differenced across two fits through different sweeps. |
+| BQ-F35 | `bench/workloads.py::Profile.cells` | medium | The ordering field selects round-robin only on an exact string match and is never enumerated, so a typo, a capitalisation or a synonym silently falls through to the blocked ordering the protocol exists to forbid. Mutating the selector to accept any string beginning with the right letter leaves the whole suite green. The comparison warns only on the baseline arm's recorded order, never the candidate's, and a warning is not a refusal. |
+| BQ-F36 | `bench/workloads.py::points` | medium | An empty concurrency list, or an empty decode generation list, is a value rather than an absence, so it passes the presence guard and produces a report with one arm missing. The refusal message for the missing key directs the operator to write a list even if it is a single entry, and an empty list is a list. The run exits 0 with a schema-valid document carrying half the measurement. |
+| BQ-F37 | `bench/workloads.py::load` | medium | Per-service overrides are resolved with fallback lookups on both the service key and the field name, so a misspelling of either matches nothing and silently falls back to the base sweep. The shipped override exists because an eight-thousand-token prefill on CPU takes minutes; a typo in it widens that sweep inside a serialized measurement window with no error and no warning. An override naming a service that does not exist is accepted as dead configuration. |
+| BQ-F38 | `bench/workloads.py`, `bench/runner.py::reduce` | medium | The character-per-token constant carries a comment saying it is only used to slice a candidate and that the length reaching the report is always the server's own count. It is not: the estimate is written as each point's identity and is the x-axis the prefill slope is fitted through, while the server's own count is reduced beside it and never used. The slope is therefore a rate in estimated tokens while the server-sourced prefill rate in the same document is in real ones, and both are graded as throughput. |
+| BQ-F39 | `bench/workloads.py::load` | medium | Nine required fields are bare subscripts and the only read error caught is a missing file, so every other malformation -- a missing key, malformed TOML, a scalar where a list belongs -- escapes the command's handler and reaches the user as a traceback with exit 1, which the CLI documents as failure or regression rather than invalid usage. A string where a repeat count belongs raises nothing at all. |
+| BQ-F40 | `bench/workloads.py::load` | medium | No field is range- or type-checked, so three plausible values load cleanly and then raise uncaught from inside the run loop -- after the health gate has passed and, for an A/B arm, after a container recreate that on a thirty-billion-parameter model is a full reload. A repeat count of zero loads, produces only warm-up cells, and the run command misdiagnoses the empty result as every cell having failed. Negative counts and a scalar where the decode prompt length belongs reach the report as degenerate point identities. |
+| BQ-F41 | `bench/profiles/publish.toml`, `bench/README.md` | low | Both state the publish profile covers four services. The concurrency table twenty-five lines below enumerates three, the adapter map has three, and a fourth would be refused. Not covered by the documentation row already in this ledger, which named different files. |
+| BQ-F42 | `bench/workloads.py::build_prompt` | low | Two paths return a prompt that is only the nonce, against a comment promising a short region is repeated rather than silently yielding a shorter prompt: an empty region repeats to nothing, and a target small enough that the nonce fills the budget makes the length guard compare against a negative number. Reachable only through the unvalidated prompt length above, so filed low. |
 
 ### Verdicts
 
@@ -603,7 +619,7 @@ phase moved it and the reason is in the restatements underneath.
 
 | ID | Verdicts | Outcome | Settled |
 |----|----------|---------|---------|
-| BQ-F01 | 1 refuted, 1 confirmed, tie-breaker | mechanism confirmed against upstream source; filed arithmetic wrong | pending tie-breaker |
+| BQ-F01 | 1 refuted, 1 confirmed, 1 refuted | mechanism reproduced three times; the wording was wrong three times | high |
 | BQ-F02 | 2 refuted | flag fires correctly on every reachable input; naming defect only | low |
 | BQ-F03 | 2 refuted | gap real, stated consequence false, true chain is worse | re-file, see below |
 | BQ-F04 | 2 refuted | one field pinned by construction, the other invisible without a flag | low |
@@ -620,7 +636,7 @@ phase moved it and the reason is in the restatements underneath.
 | BQ-F20 | 1 confirmed | confirmed | medium |
 | BQ-F21 | 1 confirmed | confirmed, weaker than filed: an exit code is set | medium |
 | BQ-F22 | 1 refuted | the premise is false; the modules are imported | low |
-| BQ-F24 | 1 confirmed, 1 pending | confirmed | critical |
+| BQ-F24 | 1 confirmed, 1 refuted | core confirmed and broader than filed; two legs of the filing wrong | high |
 | BQ-F25, BQ-F26 | 0 | filed during verification, unverified | pending |
 
 Nine findings were refuted as filed. In seven the mechanism survived and the description did
@@ -656,6 +672,41 @@ send, it sends an empty string, and that branch is unreachable here because
 where no frame is sent at all — so no change to the client can recover the arrival, and the
 defect has to be met in the reduction. The filed figures were also wrong: they are the
 arithmetic for a forty millisecond inter-token gap, and the reproduction they cite uses twenty.
+
+**BQ-F01 took three verifiers to reach an accurate sentence, and the third refuted the
+correction.** Every verifier reproduced the mechanism and both strict expected failures, and
+two independently read the engine source. What kept failing was the description. The filed
+figures were the arithmetic for a forty millisecond gap against a reproduction that uses
+twenty. The correction offered to the tie-breaker then asserted that the mean time per output
+token reads high at the ends; it reads low — 17.3 against a true 20.2 milliseconds, because the
+span loses a gap from the numerator while the denominator stays at the server's token count —
+which is what this document already said two hundred lines above, and what the correction
+contradicted. The accurate statement, which is what remediation works from:
+
+> At either end of the generation the decode rate reads high and the mean time per output token
+> reads low. A leading withhold additionally puts time to first token one interval late; a
+> trailing withhold additionally inflates the end-to-end rate. In the interior every aggregate
+> is correct and one fabricated interval enters the latency series. Nothing rejects the sample,
+> though `itl_approximate` and the chunk-packing field do fire, so the report is not silent.
+> Recovery is impossible in `../../../bench/client.py` because the reachable engine branch sends
+> no frame at all; detection fits in the client, the runner, or the reduction.
+
+Severity settles at high rather than critical on two grounds the verifier named: the packing
+flag already makes the condition visible in the report to a reader who looks, and reachability
+is unproven here — the corpus statistic this campaign cited is about the *prompt* text, while
+the trigger is a *generated* token whose bytes end mid-character. Raising it needs a host run.
+
+**BQ-F24 was confirmed on its core and wrong on two legs.** Both verifiers confirmed the arms
+run sequentially and that the promise of interleaving is false, and the second found the
+overclaim repeated in two more places this campaign had not looked: the benchmarking skill,
+which invents a design rationale for machinery that does not exist, and the noise command's own
+description. But the filing said the comparison's ordering warning "can never fire", and that is
+false — a profile with `order = "blocked"` loads unvalidated and does fire it, which the
+property suite already exercises. The true statement is narrower: the warning cannot detect the
+condition its own message describes, because arm-level sequencing is never recorded anywhere.
+Severity settles at high rather than critical because every dependent runbook entry is still
+pending, so no published number is invalidated — the defect is to be fixed before those entries
+run, not after they have misled anyone.
 
 **Two findings were refuted by verifiers who then found a real defect next to them.** BQ-F08's
 verifier found that the A/B arms are not interleaved at all, which is BQ-F24 and is graver than
