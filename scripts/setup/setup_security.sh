@@ -1,440 +1,329 @@
 #!/bin/bash
+#
+# setup_security.sh -- harden the workstation without getting in the way of AI
+# development.
+#
+# Six independent areas, each idempotent: unattended security updates, a UFW
+# policy, fail2ban, auditd, kernel parameters, and resource limits for large
+# model loads.
+#
+# The firewall is deliberately narrow. Every inference service in
+# docker-compose.inference.yaml binds 127.0.0.1, so opening development ports to
+# the network would grant access to nothing while widening the attack surface.
+# Only SSH and the Docker bridge are allowed in.
+#
+# Runs as a regular user with sudo rights, not as root.
 
-# Ubuntu 24.04 AI Workstation Security Hardening Script
-# Designed for AI engineering workflows with RTX 5090 + AMD 9950
-# Balances security with development flexibility
+set -euo pipefail
 
-set -e
+DRY_RUN=false
 
-echo "🔒 Starting Ubuntu AI Workstation Security Hardening..."
-echo "This script will secure your system while preserving AI development workflows"
+RED='\033[0;31m' GREEN='\033[0;32m' YELLOW='\033[1;33m'
+BLUE='\033[0;34m' CYAN='\033[0;36m' NC='\033[0m'
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+print_ok()    { printf "${GREEN}[OK]${NC} %s\n" "$*"; }
+print_warn()  { printf "${YELLOW}[WARN]${NC} %s\n" "$*"; }
+print_error() { printf "${RED}[ERROR]${NC} %s\n" "$*" >&2; }
+print_info()  { printf "${CYAN}[INFO]${NC} %s\n" "$*"; }
+print_run()   { printf "${BLUE}[RUN]${NC} %s\n" "$*"; }
+print_skip()  { printf "${BLUE}[SKIP]${NC} %s\n" "$*"; }
 
-# Function to print colored output
-print_status() {
-    echo -e "${GREEN}[INFO]${NC} $1"
+usage() {
+    cat <<'EOF'
+Usage: setup_security.sh [OPTIONS]
+
+Harden the workstation: unattended security updates, a UFW policy, fail2ban,
+auditd, kernel security parameters, and AI resource limits.
+
+Options:
+  --dry-run        Print every action without executing it
+  --no-color       Disable ANSI color
+  --help           Show this message
+
+Run as a regular user with sudo rights, not as root. The firewall allows only
+SSH and the Docker bridge inbound; the inference services bind 127.0.0.1 and
+need no rule. Reboot afterwards to apply every change.
+EOF
 }
 
-print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --dry-run)  DRY_RUN=true; shift ;;
+        --no-color) RED='' GREEN='' YELLOW='' BLUE='' CYAN='' NC=''; shift ;;
+        --help|-h)  usage; exit 0 ;;
+        *)          print_error "Unknown option: $1"; usage >&2; exit 2 ;;
+    esac
+done
 
-print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
-
-# Check if running as root
-if [[ $EUID -eq 0 ]]; then
-   print_error "This script should not be run as root. Run as your regular user with sudo access."
-   exit 1
+if [[ -n "${NO_COLOR:-}" ]]; then
+    RED='' GREEN='' YELLOW='' BLUE='' CYAN='' NC=''
 fi
 
-# 1. UPDATE SYSTEM AND ENABLE AUTOMATIC UPDATES
-print_status "Setting up automatic security updates..."
-sudo apt update && sudo apt upgrade -y
+$DRY_RUN && print_info "Dry run: no changes will be made"
 
-# Install unattended-upgrades
-sudo apt install -y unattended-upgrades apt-listchanges
+run() {
+    if $DRY_RUN; then
+        printf "[DRY-RUN] %s\n" "$*"
+    else
+        print_run "$*"
+        "$@"
+    fi
+}
 
-# Configure automatic updates
-sudo dpkg-reconfigure -plow unattended-upgrades
+# Writing a root-owned file needs a pipe into tee, which run() cannot express
+# because it takes argv. Every config below is written whole rather than
+# appended, so a second run replaces its own output instead of duplicating it.
+write_root_file() {
+    local path="$1" content="$2"
+    if $DRY_RUN; then
+        printf "[DRY-RUN] %s\n" "write $path"
+    else
+        print_run "write $path"
+        printf '%s\n' "$content" | sudo tee "$path" >/dev/null
+    fi
+}
 
-# Configure unattended-upgrades for security updates only
-sudo tee /etc/apt/apt.conf.d/20auto-upgrades > /dev/null <<EOF
-APT::Periodic::Update-Package-Lists "1";
+# Install packages one at a time. A single apt call under set -e means one
+# package missing from the archive silently skips every step below it.
+install_packages() {
+    local pkg
+    for pkg in "$@"; do
+        if run sudo apt-get install --yes "$pkg"; then
+            print_ok "$pkg"
+        else
+            print_warn "$pkg: not available in this archive; skipped"
+        fi
+    done
+}
+
+if [[ $EUID -eq 0 ]]; then
+    print_error "This script must not run as root"
+    echo "  Command: ./scripts/setup/setup_security.sh"
+    exit 1
+fi
+
+echo "=== Security hardening ==="
+echo
+
+echo "=== Automatic security updates ==="
+run sudo apt-get update
+install_packages unattended-upgrades apt-listchanges
+
+write_root_file /etc/apt/apt.conf.d/20auto-upgrades \
+'APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
 APT::Periodic::AutocleanInterval "7";
-APT::Periodic::Download-Upgradeable-Packages "1";
-EOF
+APT::Periodic::Download-Upgradeable-Packages "1";'
 
-# Configure what gets updated automatically
-sudo tee -a /etc/apt/apt.conf.d/50unattended-upgrades > /dev/null <<EOF
-// Only install security updates automatically
+# A dedicated file rather than an append to the distro's 50unattended-upgrades:
+# appending duplicates the whole block on every re-run, and the higher number
+# means these settings win without editing a file apt also owns.
+write_root_file /etc/apt/apt.conf.d/51ai-workstation \
+'// Security pockets only. Feature updates are applied deliberately, because an
+// unattended CUDA or driver bump breaks inference without warning.
 Unattended-Upgrade::Allowed-Origins {
-    "\${distro_id}:\${distro_codename}-security";
-    "\${distro_id}ESMApps:\${distro_codename}-apps-security";
-    "\${distro_id}ESM:\${distro_codename}-infra-security";
+    "${distro_id}:${distro_codename}-security";
+    "${distro_id}ESMApps:${distro_codename}-apps-security";
+    "${distro_id}ESM:${distro_codename}-infra-security";
 };
 
-// Automatically reboot if required (important for kernel updates)
+// Kernel updates need a reboot to take effect; 03:00 is outside working hours.
 Unattended-Upgrade::Automatic-Reboot "true";
-Unattended-Upgrade::Automatic-Reboot-Time "03:00";
+Unattended-Upgrade::Automatic-Reboot-Time "03:00";'
 
-// Send email notifications (configure your email)
-// Unattended-Upgrade::Mail "your-email@example.com";
-EOF
+run sudo systemctl enable unattended-upgrades
+print_ok "Unattended security updates configured"
+echo
 
-# 2. CONFIGURE UFW FIREWALL FOR AI WORKSTATION
-print_status "Configuring UFW firewall for AI development..."
-sudo ufw --force reset
-sudo ufw default deny incoming
-sudo ufw default allow outgoing
+echo "=== Firewall ==="
+install_packages ufw
+run sudo ufw --force reset
+run sudo ufw default deny incoming
+run sudo ufw default allow outgoing
+run sudo ufw allow 22/tcp comment "SSH"
+# The Docker bridge, so containers can reach host services. No development
+# ports: llama.cpp, vLLM, Open WebUI, and ComfyUI all bind 127.0.0.1 in
+# docker-compose.inference.yaml and are unreachable from the network by design.
+run sudo ufw allow from 172.17.0.0/16 comment "Docker containers"
+run sudo ufw --force enable
+print_ok "Firewall enabled: SSH and the Docker bridge only"
+echo
 
-# Allow SSH (change port if you use custom SSH port)
-sudo ufw allow 22/tcp
+echo "=== Intrusion prevention ==="
+install_packages fail2ban
 
-# Allow common AI/ML development ports
-sudo ufw allow 8888/tcp comment "Jupyter Notebook"
-sudo ufw allow 8080/tcp comment "Development servers"
-sudo ufw allow 3000/tcp comment "React/Node dev servers"
-sudo ufw allow 5000/tcp comment "Flask dev servers"
-sudo ufw allow 8000/tcp comment "Django/Python dev servers"
-sudo ufw allow 6006/tcp comment "TensorBoard"
-sudo ufw allow 7860/tcp comment "Gradio apps"
-sudo ufw allow 8501/tcp comment "Streamlit apps"
-
-# Allow Docker-related ports (if using Docker containers)
-sudo ufw allow from 172.17.0.0/16 comment "Docker containers"
-
-# Enable firewall
-sudo ufw --force enable
-
-
-
-# 4. INSTALL AND CONFIGURE FAIL2BAN
-print_status "Installing and configuring Fail2Ban..."
-sudo apt install -y fail2ban
-
-# Configure fail2ban for SSH and common attacks
-sudo tee /etc/fail2ban/jail.local > /dev/null <<EOF
-[DEFAULT]
+# The jail is named sshd to match the distro's own definition; a second jail
+# under a different name would run the same filter twice over one log.
+write_root_file /etc/fail2ban/jail.local \
+'[DEFAULT]
 bantime = 3600
 findtime = 600
 maxretry = 3
 backend = systemd
 
-[ssh]
+[sshd]
 enabled = true
 port = 22
-filter = sshd
-logpath = /var/log/auth.log
-maxretry = 3
-bantime = 3600
+maxretry = 3'
 
-[nginx-http-auth]
-enabled = false
+run sudo systemctl enable fail2ban
+run sudo systemctl restart fail2ban
+print_ok "fail2ban configured for SSH"
+echo
 
-[nginx-noscript]
-enabled = false
+echo "=== System auditing ==="
+install_packages auditd audispd-plugins
 
-[nginx-badbots]
-enabled = false
-
-[apache-auth]
-enabled = false
-
-[apache-badbots]
-enabled = false
-EOF
-
-sudo systemctl enable fail2ban
-sudo systemctl start fail2ban
-
-# 5. CONFIGURE SYSTEM AUDITING
-print_status "Setting up system auditing..."
-sudo apt install -y auditd audispd-plugins
-
-# Basic audit rules for security monitoring
-sudo tee /etc/audit/rules.d/audit.rules > /dev/null <<EOF
-# Monitor file access
+write_root_file /etc/audit/rules.d/audit.rules \
+'# Account and privilege files
 -w /etc/passwd -p wa -k identity
 -w /etc/group -p wa -k identity
 -w /etc/shadow -p wa -k identity
 -w /etc/sudoers -p wa -k identity
+-w /etc/sudoers.d -p wa -k identity
 
-# Monitor authentication
+# Authentication records
 -w /var/log/auth.log -p wa -k authentication
 -w /var/log/faillog -p wa -k authentication
 
-# Monitor system calls
+# Clock changes, which can be used to confuse log correlation
 -a always,exit -F arch=b64 -S adjtimex -S settimeofday -k time-change
 -a always,exit -F arch=b32 -S adjtimex -S settimeofday -S stime -k time-change
 
-# Monitor network configuration
+# Host identity changes
 -a always,exit -F arch=b64 -S sethostname -S setdomainname -k system-locale
--a always,exit -F arch=b32 -S sethostname -S setdomainname -k system-locale
+-a always,exit -F arch=b32 -S sethostname -S setdomainname -k system-locale'
 
-# Monitor sudo usage
--w /var/log/sudo.log -p wa -k actions
-EOF
+run sudo systemctl enable auditd
+run sudo systemctl restart auditd
+print_ok "Audit rules installed"
+echo
 
-sudo systemctl enable auditd
-sudo systemctl start auditd
-
-# 6. SECURE KERNEL PARAMETERS
-print_status "Configuring secure kernel parameters..."
-sudo tee /etc/sysctl.d/99-security.conf > /dev/null <<EOF
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# NETWORK SECURITY PARAMETERS
-# ═══════════════════════════════════════════════════════════════════════════════
-
-# IP Spoofing Protection (Reverse Path Filtering)
-# Prevents attackers from sending packets with fake source IP addresses
-# Value 1 = Strict mode: drop packets if return path differs from incoming path
-# Value 0 = Disabled (vulnerable to IP spoofing attacks)
-net.ipv4.conf.all.rp_filter = 1          # Apply to all network interfaces
-net.ipv4.conf.default.rp_filter = 1      # Apply to future interfaces by default
-
-# ICMP Redirect Protection
-# ICMP redirects can be used by attackers to hijack network traffic
-# by convincing your system to route traffic through malicious hosts
-# Value 0 = Ignore ICMP redirect messages (secure)
-# Value 1 = Accept ICMP redirects (vulnerable to man-in-the-middle attacks)
-net.ipv4.conf.all.accept_redirects = 0      # Ignore IPv4 redirects on all interfaces
-net.ipv6.conf.all.accept_redirects = 0      # Ignore IPv6 redirects on all interfaces  
-net.ipv4.conf.default.accept_redirects = 0  # Default for new IPv4 interfaces
-net.ipv6.conf.default.accept_redirects = 0  # Default for new IPv6 interfaces
-
-# Prevent Sending ICMP Redirects
-# Your system shouldn't send ICMP redirects to other hosts
-# as this can leak network topology information to attackers
-# Value 0 = Don't send ICMP redirects (secure)
-# Value 1 = Send ICMP redirects (information disclosure risk)
-net.ipv4.conf.all.send_redirects = 0        # Never send redirects from any interface
-net.ipv4.conf.default.send_redirects = 0    # Default for new interfaces
-
-# Source Route Protection
-# Source routing allows the sender to specify the route packets should take
-# This can be abused to bypass firewall rules and routing policies
-# Value 0 = Reject source-routed packets (secure)
-# Value 1 = Accept source-routed packets (vulnerable to routing attacks)
-net.ipv4.conf.all.accept_source_route = 0      # Block IPv4 source routing
-net.ipv6.conf.all.accept_source_route = 0      # Block IPv6 source routing
-net.ipv4.conf.default.accept_source_route = 0  # Default for new IPv4 interfaces
-net.ipv6.conf.default.accept_source_route = 0  # Default for new IPv6 interfaces
-
-# Log Martian Packets (Impossible Addresses)
-# "Martian" packets have source addresses that shouldn't exist on your network
-# Examples: private IPs from internet, localhost from external sources
-# Value 1 = Log these suspicious packets for security monitoring
-# Value 0 = Silently drop without logging
-net.ipv4.conf.all.log_martians = 1          # Log suspicious packets on all interfaces
-net.ipv4.conf.default.log_martians = 1      # Log on future interfaces
-
-# ICMP Echo (Ping) Response Policy
-# Responding to pings can reveal that your system exists to network scanners
-# Value 0 = Respond to ping requests (normal behavior, but reveals presence)
-# Value 1 = Ignore ping requests (stealth mode, breaks some network diagnostics)
-# Set to 0 here to maintain normal network functionality for AI development
-net.ipv4.icmp_echo_ignore_all = 0
-
-# Ignore Bogus ICMP Error Messages
-# Malformed ICMP errors can be used in various network attacks
-# Value 1 = Ignore malformed ICMP error messages (secure)
-# Value 0 = Process all ICMP errors (vulnerable to ICMP-based attacks)
+echo "=== Kernel parameters ==="
+write_root_file /etc/sysctl.d/99-security.conf \
+'# Network
+net.ipv4.conf.all.rp_filter = 1                # Reverse-path filter: drop spoofed source addresses
+net.ipv4.conf.default.rp_filter = 1
+net.ipv4.conf.all.accept_redirects = 0         # ICMP redirects can reroute traffic through a hostile host
+net.ipv6.conf.all.accept_redirects = 0
+net.ipv4.conf.default.accept_redirects = 0
+net.ipv6.conf.default.accept_redirects = 0
+net.ipv4.conf.all.send_redirects = 0           # Sending them leaks local routing topology
+net.ipv4.conf.default.send_redirects = 0
+net.ipv4.conf.all.accept_source_route = 0      # Source routing bypasses firewall path assumptions
+net.ipv6.conf.all.accept_source_route = 0
+net.ipv4.conf.default.accept_source_route = 0
+net.ipv6.conf.default.accept_source_route = 0
+net.ipv4.conf.all.log_martians = 1             # Log impossible source addresses
+net.ipv4.conf.default.log_martians = 1
 net.ipv4.icmp_ignore_bogus_error_responses = 1
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# TCP SYN FLOOD PROTECTION
-# ═══════════════════════════════════════════════════════════════════════════════
+# Ping is answered deliberately: dropping it breaks routine network diagnostics
+# on a machine that is not internet-facing, and hides nothing from a scanner.
+net.ipv4.icmp_echo_ignore_all = 0
 
-# SYN Flood Attack Protection
-# SYN floods overwhelm servers by sending many connection requests without completing them
-# SYN cookies allow the server to handle connections without storing state
-# Value 1 = Enable SYN cookies when under attack (essential protection)
-# Value 0 = Disable SYN cookies (vulnerable to SYN flood attacks)
-net.ipv4.tcp_syncookies = 1
-
-# Maximum SYN Backlog Queue Size
-# How many half-open connections can be queued before SYN cookies activate
-# Higher values = can handle more legitimate simultaneous connections
-# Lower values = faster activation of SYN cookie protection
-# 2048 is a good balance for AI workstations that might run web services
+# TCP SYN flood handling
+net.ipv4.tcp_syncookies = 1                    # Serve connections without holding half-open state
 net.ipv4.tcp_max_syn_backlog = 2048
-
-# SYN-ACK Retry Attempts
-# How many times to retry sending SYN-ACK packets for incoming connections
-# Lower values = faster detection of SYN flood attacks
-# Higher values = more tolerance for legitimate slow connections
-# 2 retries provides good protection while maintaining compatibility
 net.ipv4.tcp_synack_retries = 2
-
-# SYN Retry Attempts (Outgoing Connections)
-# How many times to retry SYN packets when making outgoing connections
-# 5 retries provides good reliability for AI workstation's outbound connections
-# (downloading models, connecting to remote services, etc.)
 net.ipv4.tcp_syn_retries = 5
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# MEMORY AND PROCESS SECURITY (Critical for AI Workloads)
-# ═══════════════════════════════════════════════════════════════════════════════
-
-# Address Space Layout Randomization (ASLR)
-# Randomizes memory layout to prevent buffer overflow exploits
-# Value 2 = Full randomization (strongest protection)
-# Value 1 = Partial randomization  
-# Value 0 = No randomization (vulnerable to memory-based attacks)
-# Essential for AI workstations handling large datasets and complex computations
-kernel.randomize_va_space = 2
-
-# Kernel Pointer Restriction
-# Prevents unprivileged users from reading kernel memory addresses
-# Value 1 = Hide kernel pointers from unprivileged users (secure)
-# Value 0 = Allow reading kernel pointers (information disclosure risk)
-# Important for AI workstations running untrusted ML code or models
-kernel.kptr_restrict = 1
-
-# Kernel Message Restriction
-# Controls who can read kernel debug messages (dmesg)
-# Value 1 = Only privileged users can read kernel messages
-# Value 0 = All users can read kernel messages (information disclosure)
-# Protects against information leakage from kernel logs
+# Memory and process
+kernel.randomize_va_space = 2                  # Full ASLR
+kernel.kptr_restrict = 1                       # Hide kernel addresses from unprivileged readers
 kernel.dmesg_restrict = 1
+kernel.yama.ptrace_scope = 1                   # Restrict ptrace to descendants
 
-# Process Tracing (Debugging) Restrictions
-# Controls which processes can be debugged by unprivileged users
-# Value 1 = Only allow tracing child processes (secure)
-# Value 0 = Allow tracing any process owned by same user (less secure)
-# Prevents malicious code from debugging other processes to steal data
-kernel.yama.ptrace_scope = 1
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# CORE DUMP SECURITY
-# ═══════════════════════════════════════════════════════════════════════════════
-
-# SUID Program Core Dump Control
-# SUID programs run with elevated privileges and their core dumps could contain sensitive data
-# Value 0 = Disable core dumps for SUID programs (secure)
-# Value 1 = Allow core dumps for SUID programs (data leakage risk)
+# Core dumps
 fs.suid_dumpable = 0
+# Discarded rather than written: a dump from an inference process contains model
+# weights and whatever was in the prompt, which is not wanted on disk.
+kernel.core_pattern = /dev/null'
 
-# Core Dump File Location
-# Redirect all core dumps to /dev/null (discard them)
-# This prevents sensitive data from AI applications being written to disk
-# Default would be to write core dumps to current directory
-# For AI workstations, core dumps could contain model weights or training data
-kernel.core_pattern = /dev/null
+run sudo sysctl -p /etc/sysctl.d/99-security.conf
+print_ok "Kernel parameters applied"
+echo
 
-EOF
+echo "=== Mandatory access control ==="
+install_packages apparmor-profiles apparmor-utils
+run sudo systemctl enable apparmor
+run sudo systemctl start apparmor
+print_ok "AppArmor active"
+echo
 
-# Apply all the security settings immediately
-# -p flag loads settings from the specified file
-sudo sysctl -p /etc/sysctl.d/99-security.conf
-
-# 7. CONFIGURE APPARMOR (already enabled by default in Ubuntu 24.04)
-print_status "Ensuring AppArmor is active..."
-sudo systemctl enable apparmor
-sudo systemctl start apparmor
-
-# Install additional AppArmor profiles
-sudo apt install -y apparmor-profiles apparmor-utils
-
-# 8. SECURE SHARED MEMORY
-print_status "Securing shared memory..."
-if ! grep -q "tmpfs /run/shm" /etc/fstab; then
-    echo "tmpfs /run/shm tmpfs defaults,noexec,nosuid 0 0" | sudo tee -a /etc/fstab
+echo "=== Shared memory ==="
+if grep -q "tmpfs /run/shm" /etc/fstab; then
+    print_skip "/run/shm entry already in fstab"
+elif $DRY_RUN; then
+    printf "[DRY-RUN] %s\n" "append /run/shm entry to /etc/fstab"
+else
+    echo "tmpfs /run/shm tmpfs defaults,noexec,nosuid 0 0" | sudo tee -a /etc/fstab >/dev/null
+    print_ok "/run/shm mounted noexec,nosuid at next boot"
 fi
+echo
 
-# 9. INSTALL SECURITY TOOLS
-print_status "Installing security monitoring tools..."
-sudo apt install -y \
-    rkhunter \
-    chkrootkit \
-    lynis \
-    aide \
-    logwatch \
-    tiger
+echo "=== Security monitoring tools ==="
+install_packages rkhunter chkrootkit lynis aide logwatch tiger
 
-# Configure rkhunter
-# sudo rkhunter --update
-# sudo rkhunter --propupd
+write_root_file /etc/cron.daily/security-scan \
+'#!/bin/bash
+# Daily security scan. Output reaches root via cron mail.
 
-# 10. CONFIGURE SECURE PACKAGE MANAGEMENT
-print_status "Securing package management..."
-# Ensure only signed packages are installed
-sudo tee /etc/apt/apt.conf.d/99-security > /dev/null <<EOF
-APT::Get::AllowUnauthenticated "false";
+/usr/bin/rkhunter --check --skip-keypress --report-warnings-only
+/usr/sbin/chkrootkit
+/usr/bin/lastb | head -20
+/usr/bin/ss -tuln'
+
+run sudo chmod +x /etc/cron.daily/security-scan
+print_ok "Daily security scan installed"
+echo
+
+echo "=== Package management policy ==="
+write_root_file /etc/apt/apt.conf.d/99-security \
+'APT::Get::AllowUnauthenticated "false";
 APT::Get::Assume-Yes "false";
 APT::Install-Recommends "false";
-APT::Install-Suggests "false";
-EOF
+APT::Install-Suggests "false";'
+print_ok "Only signed packages, no recommends"
+echo
 
-# 11. CONFIGURE AUTOMATIC SECURITY SCANS
-print_status "Setting up automated security scans..."
-sudo tee /etc/cron.daily/security-scan > /dev/null <<'EOF'
-#!/bin/bash
-# Daily security scan script
-
-# Run rkhunter scan
-/usr/bin/rkhunter --check --skip-keypress --report-warnings-only
-
-# Run chkrootkit
-/usr/sbin/chkrootkit
-
-# Check for failed login attempts
-/usr/bin/lastb | head -20
-
-# Check listening ports
-/bin/netstat -tuln
-EOF
-
-sudo chmod +x /etc/cron.daily/security-scan
-
-# # 12. SETUP NVIDIA DRIVER SECURITY (for RTX 5090)
-# print_status "Configuring NVIDIA driver security..."
-# # Ensure NVIDIA persistence daemon runs securely
-# sudo tee /etc/systemd/system/nvidia-persistenced.service.d/override.conf > /dev/null <<EOF
-# [Service]
-# ExecStart=
-# ExecStart=/usr/bin/nvidia-persistenced --user nvidia-persistenced --no-persistence-mode --verbose
-# EOF
-
-# 13. CONFIGURE LIMITS FOR AI WORKLOADS
-print_status "Setting up resource limits for AI workloads..."
-sudo tee /etc/security/limits.d/99-ai-limits.conf > /dev/null <<EOF
-# Resource limits for AI workstation
-* soft nofile 65536
+echo "=== Resource limits for AI workloads ==="
+# memlock unlimited is what lets a model be locked into RAM rather than paged;
+# the file descriptor and process ceilings cover many-shard model loads.
+write_root_file /etc/security/limits.d/99-ai-limits.conf \
+'* soft nofile 65536
 * hard nofile 65536
 * soft nproc 32768
 * hard nproc 32768
 * soft memlock unlimited
-* hard memlock unlimited
-EOF
+* hard memlock unlimited'
+print_ok "Resource limits installed"
+echo
 
-# 14. BACKUP CONFIGURATION
-print_status "Creating configuration backup..."
-sudo mkdir -p /root/security-backup
-sudo cp /etc/fail2ban/jail.conf /root/security-backup/
-sudo cp /etc/ufw/before.rules /root/security-backup/
+echo "=== Configuration backup ==="
+# The distro defaults, kept so a later diff can show what this script changed.
+run sudo mkdir -p /root/security-backup
+for original in /etc/fail2ban/jail.conf /etc/ufw/before.rules; do
+    if [[ -f "$original" ]]; then
+        run sudo cp "$original" /root/security-backup/
+        print_ok "$(basename "$original")"
+    else
+        print_skip "$(basename "$original") (not present)"
+    fi
+done
+echo
 
-# 15. FINAL SYSTEM CONFIGURATION
-print_status "Applying final configurations..."
-# Restart services
-sudo systemctl restart fail2ban
-sudo systemctl restart ufw
+echo "=== Complete ==="
+if $DRY_RUN; then
+    print_info "No changes were made"
+    exit 0
+fi
 
-# Set up automatic updates check
-sudo systemctl enable unattended-upgrades
-
-print_status "Security hardening complete!"
-echo ""
-echo "🎉 Your AI workstation is now secured with the following features:"
-echo "✅ Automatic security updates enabled"
-echo "✅ UFW firewall configured for AI development"
-echo "✅ System auditing enabled"
-echo "✅ Kernel security parameters optimized"
-echo "✅ AppArmor profiles active"
-echo "✅ Security monitoring tools installed"
-echo "✅ Daily security scans configured"
-echo ""
-echo "🔧 Post-installation recommendations:"
-echo "1. Reboot your system to apply all changes: sudo reboot"
-echo "2. Configure email notifications in /etc/apt/apt.conf.d/50unattended-upgrades"
-echo "3. Review firewall rules: sudo ufw status numbered"
-echo "4. Check fail2ban status: sudo fail2ban-client status"
-echo "5. Monitor logs: tail -f /var/log/auth.log"
-echo "6. Run security scan: sudo lynis audit system"
-echo ""
-echo "🚨 AI Development Notes:"
-echo "- Jupyter ports (8888) and development servers are allowed"
-echo "- Docker container communication is permitted"
-echo "- GPU workloads have appropriate resource limits"
-echo "- System will auto-reboot at 3 AM for kernel updates"
-echo ""
-echo "Your system maintains full AI development capability while being secure!"
+print_ok "Security hardening applied"
+echo "  Reboot to apply every change: sudo reboot"
+echo
+echo "Verify:"
+echo "  sudo ufw status numbered"
+echo "  sudo fail2ban-client status sshd"
+echo "  sudo sysctl -a --pattern 'kernel.(randomize_va_space|kptr_restrict)'"
+echo "  sudo lynis audit system"

@@ -1,82 +1,143 @@
 #!/bin/bash
-
-# install_cuda_exact_steps.sh
-# This script performs a CUDA Toolkit 12.8 installation exactly as per the provided steps,
-# including setting up a local repository and then installing the toolkit.
-# It also configures environment variables in ~/.zshrc and reboots the system.
 #
-# IMPORTANT:
-# - This script will REBOOT your system automatically at the end.
-# - This method primarily uses a *local* CUDA repository installer. While it adds
-#   the general CUDA pin file, future updates for CUDA Toolkit might require
-#   downloading new local installer DEBs if NVIDIA doesn't push updates
-#   to the general network repository for this specific version.
-# - Ensure your NVIDIA GPU driver is already installed and working
-#   before running this script.
+# setup_cuda.sh -- install the CUDA toolkit from NVIDIA's apt repository and
+# put nvcc on the shell PATH.
+#
+# The network repository is used rather than a local installer DEB. An earlier
+# version of this script downloaded the versioned local installer, which is a
+# URL that 404s on every CUDA release; and it bought nothing, because the two
+# repositories sit at equal apt priority and the newer network candidate wins
+# regardless. On this workstation the local repo was pinned at 13.0.0 while the
+# installed toolkit had already moved to 13.0.3 from the network repo.
+#
+# The same cuda-keyring package configures the repository for setup_cudnn.sh,
+# so both scripts now take one path to NVIDIA's archive.
+#
+# The NVIDIA driver must already be installed; see setup_nvidia.sh. This script
+# does not reboot.
 
-echo "==================================================="
-echo " Installing NVIDIA CUDA Toolkit 12.8 (Exact Steps)"
-echo "==================================================="
-echo
+set -euo pipefail
 
-echo "--- 1. Setting up CUDA Repository Pin ---"
-# Downloads a pin file that tells APT to prefer NVIDIA's CUDA packages
-# from their repositories over potentially older versions from Ubuntu's default.
-wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-ubuntu2404.pin
-sudo mv cuda-ubuntu2404.pin /etc/apt/preferences.d/cuda-repository-pin-600 || { echo "Error moving cuda-ubuntu2404.pin. Exiting."; exit 1; }
-echo "CUDA repository pin file moved to /etc/apt/preferences.d/"
-echo
+# Toolkit branch. Bump this one line to move branches; the patch version comes
+# from whatever the repository currently serves. See AGENTS.md on pinning.
+CUDA_BRANCH="13-0"
+CUDA_PACKAGE="cuda-toolkit-${CUDA_BRANCH}"
 
-echo "--- 2. Installing Local CUDA Repository DEB ---"
-# Downloads a specific local installer DEB for CUDA 12.8.1.
-# This DEB sets up a local APT repository on your system (e.g., in /var/cuda-repo-...).
-wget https://developer.download.nvidia.com/compute/cuda/12.8.1/local_installers/cuda-repo-ubuntu2404-12-8-local_12.8.1-570.124.06-1_amd64.deb
-sudo dpkg -i cuda-repo-ubuntu2404-12-8-local_12.8.1-570.124.06-1_amd64.deb || { echo "Error installing local CUDA repo DEB. Exiting."; exit 1; }
-echo "Local CUDA repository DEB installed."
-echo
+KEYRING_URL="https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb"
 
-echo "--- 3. Copying CUDA Keyring ---"
-# Copies the GPG keyring from the local repository to a system-wide location.
-# This allows APT to verify the authenticity of packages from the local CUDA repository.
-sudo cp /var/cuda-repo-ubuntu2404-12-8-local/cuda-*-keyring.gpg /usr/share/keyrings/ || { echo "Error copying CUDA keyring. Exiting."; exit 1; }
-echo "CUDA keyring copied to /usr/share/keyrings/"
-echo
-
-echo "--- 4. Updating APT Package Lists and Installing CUDA Toolkit 12.8 ---"
-# Updates the list of available packages from all repositories (including the newly added local one).
-# Then, installs the cuda-toolkit-12-8 package.
-sudo apt-get update && sudo apt-get -y install cuda-toolkit-12-8 || { echo "Error during APT update or CUDA Toolkit installation. Exiting."; exit 1; }
-echo "APT package lists updated and cuda-toolkit-12-8 installed."
-echo
-
-echo "--- 5. Configuring ~/.zshrc for CUDA Environment Variables ---"
 ZSHRC_FILE="$HOME/.zshrc"
-CUDA_PATH_LINE='export PATH=/usr/local/cuda/bin${PATH:+:${PATH}}'
-CUDA_LD_LIBRARY_PATH_LINE='export LD_LIBRARY_PATH=/usr/local/cuda/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}'
+DRY_RUN=false
 
-# Check if lines already exist to prevent duplicates
-if ! grep -qxF "${CUDA_PATH_LINE}" "${ZSHRC_FILE}"; then
-    echo "${CUDA_PATH_LINE}" >> "${ZSHRC_FILE}"
-    echo "Added CUDA PATH to ${ZSHRC_FILE}"
-else
-    echo "CUDA PATH already present in ${ZSHRC_FILE}"
+RED='\033[0;31m' GREEN='\033[0;32m' YELLOW='\033[1;33m'
+BLUE='\033[0;34m' CYAN='\033[0;36m' NC='\033[0m'
+
+print_ok()    { printf "${GREEN}[OK]${NC} %s\n" "$*"; }
+print_warn()  { printf "${YELLOW}[WARN]${NC} %s\n" "$*"; }
+print_error() { printf "${RED}[ERROR]${NC} %s\n" "$*" >&2; }
+print_info()  { printf "${CYAN}[INFO]${NC} %s\n" "$*"; }
+print_run()   { printf "${BLUE}[RUN]${NC} %s\n" "$*"; }
+print_skip()  { printf "${BLUE}[SKIP]${NC} %s\n" "$*"; }
+
+usage() {
+    cat <<'EOF'
+Usage: setup_cuda.sh [OPTIONS]
+
+Install the CUDA toolkit from NVIDIA's apt repository and append the CUDA
+PATH and LD_LIBRARY_PATH exports to ~/.zshrc.
+
+Options:
+  --dry-run        Print every action without executing it
+  --no-color       Disable ANSI color
+  --help           Show this message
+
+No reboot is performed. Open a new shell, or source ~/.zshrc, to pick up nvcc.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --dry-run)  DRY_RUN=true; shift ;;
+        --no-color) RED='' GREEN='' YELLOW='' BLUE='' CYAN='' NC=''; shift ;;
+        --help|-h)  usage; exit 0 ;;
+        *)          print_error "Unknown option: $1"; usage >&2; exit 2 ;;
+    esac
+done
+
+if [[ -n "${NO_COLOR:-}" ]]; then
+    RED='' GREEN='' YELLOW='' BLUE='' CYAN='' NC=''
 fi
 
-if ! grep -qxF "${CUDA_LD_LIBRARY_PATH_LINE}" "${ZSHRC_FILE}"; then
-    echo "${CUDA_LD_LIBRARY_PATH_LINE}" >> "${ZSHRC_FILE}"
-    echo "Added CUDA LD_LIBRARY_PATH to ${ZSHRC_FILE}"
-else
-    echo "CUDA LD_LIBRARY_PATH already present in ${ZSHRC_FILE}"
+$DRY_RUN && print_info "Dry run: no changes will be made"
+
+run() {
+    if $DRY_RUN; then
+        printf "[DRY-RUN] %s\n" "$*"
+    else
+        print_run "$*"
+        "$@"
+    fi
+}
+
+# The keyring DEB lands in a temp directory and is removed on exit. The earlier
+# version left its downloads in whatever directory it was invoked from.
+if ! $DRY_RUN; then
+    WORKDIR=$(mktemp -d)
+    trap 'rm -rf "$WORKDIR"' EXIT
 fi
 
-echo "Please remember to 'source ~/.zshrc' or open a new terminal after reboot to apply env vars."
+echo "=== Installing $CUDA_PACKAGE ==="
 echo
 
-echo "==================================================="
-echo " CUDA Toolkit Installation Complete"
-echo "==================================================="
-echo "The system will now reboot to finalize the installation."
-echo "Press Ctrl+C to cancel reboot, otherwise rebooting in 5 seconds..."
-sleep 5
+echo "=== Adding the NVIDIA apt repository ==="
+# cuda-keyring installs both the signing key and the repository definition, and
+# carries the apt pin that makes NVIDIA's packages win over Ubuntu's older ones.
+if $DRY_RUN; then
+    printf "[DRY-RUN] %s\n" "download and install $(basename "$KEYRING_URL")"
+else
+    KEYRING_DEB="$WORKDIR/$(basename "$KEYRING_URL")"
+    if ! run wget -q -O "$KEYRING_DEB" "$KEYRING_URL"; then
+        print_error "Failed to download the CUDA keyring"
+        echo "  Solution: check network access to developer.download.nvidia.com"
+        exit 1
+    fi
+    run sudo dpkg -i "$KEYRING_DEB"
+    print_ok "CUDA keyring installed"
+fi
+echo
 
-# sudo shutdown -r now
+echo "=== Installing the toolkit ==="
+run sudo apt-get update
+run sudo apt-get install --yes "$CUDA_PACKAGE"
+print_ok "Toolkit installed: $CUDA_PACKAGE"
+echo
+
+echo "=== Configuring the shell environment ==="
+CUDA_PATH_LINE='export PATH=/usr/local/cuda/bin${PATH:+:${PATH}}'
+CUDA_LIB_LINE='export LD_LIBRARY_PATH=/usr/local/cuda/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}'
+
+# Appending to a file that does not exist yet is a first-boot case, not an
+# error: grep on a missing file would otherwise abort the script under set -e.
+if $DRY_RUN; then
+    printf "[DRY-RUN] %s\n" "append CUDA PATH and LD_LIBRARY_PATH to $ZSHRC_FILE"
+else
+    [[ -f "$ZSHRC_FILE" ]] || run touch "$ZSHRC_FILE"
+
+    for line in "$CUDA_PATH_LINE" "$CUDA_LIB_LINE"; do
+        if grep -qxF "$line" "$ZSHRC_FILE"; then
+            print_skip "Already present in $(basename "$ZSHRC_FILE"): ${line%%=*}"
+        else
+            printf '%s\n' "$line" >> "$ZSHRC_FILE"
+            print_ok "Appended to $(basename "$ZSHRC_FILE"): ${line%%=*}"
+        fi
+    done
+fi
+echo
+
+echo "=== Complete ==="
+if $DRY_RUN; then
+    print_info "No changes were made"
+else
+    print_ok "CUDA toolkit installed"
+    echo "  Verify: source ~/.zshrc && nvcc --version"
+    print_info "No reboot performed; a new shell is enough to pick up nvcc"
+fi

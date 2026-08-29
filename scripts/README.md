@@ -12,7 +12,7 @@ and driven as subprocesses by `tests/`, through the `run_script` fixture in
 
 | Directory | Purpose | Runs in a sandbox |
 |-----------|---------|-------------------|
-| `setup/` | one-time provisioning: CUDA, cuDNN, NVIDIA, Docker, data SSD, security | no — sudo, GPU, host filesystem |
+| `setup/` | one-time provisioning: CUDA, cuDNN, NVIDIA, Docker, data SSD, security | install paths no — sudo, GPU, host filesystem; `--help` yes |
 | `update/` | GPU and Python stack updates — see [update/README.md](update/README.md) | no — network, sudo |
 | `benchmark/` | latency and throughput measurement against live services | no — GPU and running services |
 | `interp/` | preflight and smoke checks for the interp and Neuronpedia stacks | no — GPU gate |
@@ -22,7 +22,9 @@ and driven as subprocesses by `tests/`, through the `run_script` fixture in
 
 The sandbox-runnable half is exactly the half with test coverage, which is not a coincidence:
 a script that cannot run in the sandbox cannot be exercised by the suite either, so those are
-verified by review and by the human running them.
+verified by review and by the human running them. `setup/` is the one split case — its install
+paths need a host, but every script answers `--help` without touching anything, and
+`tests/setup/` holds that one path to the output contract.
 
 Every `*.sh` in the repository is linted by `shellcheck --severity=warning` in
 `make quality`, with a guard that fails loudly if the file enumeration comes back empty.

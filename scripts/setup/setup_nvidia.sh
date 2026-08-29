@@ -1,104 +1,129 @@
 #!/bin/bash
+#
+# setup_nvidia.sh -- purge any installed NVIDIA driver and install the branch
+# this workstation is qualified on.
+#
+# The open kernel-module flavor is not optional: Blackwell (RTX 5090, SM 12.0)
+# is only supported by the open packages. The proprietary flavor builds but
+# will not bind to the card. Both -open and -server-open are open-kernel
+# builds; this workstation is provisioned on -server-open, which is what the
+# installed metapackage has always been.
+#
+# The purge step is destructive to a running display server. Run it from a TTY
+# (Ctrl+Alt+F2), not from a desktop session, or X will die mid-transaction.
 
-# NVIDIA Driver Installation Script
-# This script removes old NVIDIA drivers and installs nvidia-driver-570-server-open
+set -euo pipefail
 
-set -e  # Exit on any error
+# Driver branch. Bump this one line, then re-run; see AGENTS.md on pinning.
+# Verify first: apt-cache policy nvidia-driver-<N>-server-open
+DRIVER_BRANCH="580"
+DRIVER_PACKAGE="nvidia-driver-${DRIVER_BRANCH}-server-open"
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+DRY_RUN=false
 
-# Function to print colored output
-print_status() {
-    echo -e "${GREEN}[INFO]${NC} $1"
+RED='\033[0;31m' GREEN='\033[0;32m' YELLOW='\033[1;33m'
+BLUE='\033[0;34m' CYAN='\033[0;36m' NC='\033[0m'
+
+print_ok()    { printf "${GREEN}[OK]${NC} %s\n" "$*"; }
+print_warn()  { printf "${YELLOW}[WARN]${NC} %s\n" "$*"; }
+print_error() { printf "${RED}[ERROR]${NC} %s\n" "$*" >&2; }
+print_info()  { printf "${CYAN}[INFO]${NC} %s\n" "$*"; }
+print_run()   { printf "${BLUE}[RUN]${NC} %s\n" "$*"; }
+
+usage() {
+    cat <<'EOF'
+Usage: setup_nvidia.sh [OPTIONS]
+
+Remove every installed NVIDIA driver and install the qualified branch, then
+offer a reboot. The new module is not loaded until the machine reboots.
+
+Options:
+  --dry-run        Print every action without executing it
+  --no-color       Disable ANSI color
+  --help           Show this message
+
+Run from a TTY (Ctrl+Alt+F2). Purging the driver under a live desktop session
+kills the display server partway through the transaction.
+EOF
 }
 
-print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --dry-run)  DRY_RUN=true; shift ;;
+        --no-color) RED='' GREEN='' YELLOW='' BLUE='' CYAN='' NC=''; shift ;;
+        --help|-h)  usage; exit 0 ;;
+        *)          print_error "Unknown option: $1"; usage >&2; exit 2 ;;
+    esac
+done
 
-print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
+if [[ -n "${NO_COLOR:-}" ]]; then
+    RED='' GREEN='' YELLOW='' BLUE='' CYAN='' NC=''
+fi
 
+$DRY_RUN && print_info "Dry run: no changes will be made"
 
-# Function to run command with error handling
-run_command() {
-    local cmd="$1"
-    local description="$2"
-    
-    print_status "$description"
-    echo "Running: $cmd"
-    
-    if eval "$cmd"; then
-        print_status "✓ $description completed successfully"
-        echo
+# Takes argv, not a string: `run sudo apt-get install foo`, never
+# `run "sudo apt-get install foo"`. The glob passed to the purge step below is
+# quoted so apt expands it, not the shell against the current directory.
+run() {
+    if $DRY_RUN; then
+        printf "[DRY-RUN] %s\n" "$*"
     else
-        print_error "✗ Failed: $description"
-        print_error "Command that failed: $cmd"
-        exit 1
+        print_run "$*"
+        "$@"
     fi
 }
 
-# Main script execution
-main() {
-    print_status "Starting NVIDIA driver installation process..."
-    echo
-    
+echo "=== NVIDIA driver installation ==="
+echo
+print_info "Target package: $DRIVER_PACKAGE"
+echo "  1. Remove all existing NVIDIA drivers"
+echo "  2. Remove orphaned packages and clean the apt cache"
+echo "  3. Install $DRIVER_PACKAGE"
+echo
 
-    
-    # Confirm with user
-    print_warning "This script will:"
-    echo "  1. Remove all existing NVIDIA drivers"
-    echo "  2. Clean up orphaned packages"
-    echo "  3. Install nvidia-driver-570-server-open"
-    echo
-    read -p "Do you want to continue? (y/N): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        print_status "Operation cancelled by user."
+if ! $DRY_RUN; then
+    read -r -p "Continue? (y/N): " REPLY
+    if [[ ! "$REPLY" =~ ^[Yy]$ ]]; then
+        print_info "Cancelled; no changes made"
         exit 0
     fi
-    
     echo
-    print_status "Starting driver cleanup and installation..."
-    echo
-    
-    # Step 1: Remove existing NVIDIA drivers
-    run_command 'sudo apt-get --purge remove "nvidia-*"' "Removing existing NVIDIA drivers"
-    
-    # Step 2: Remove orphaned packages
-    run_command "sudo apt autoremove --purge" "Removing orphaned packages"
-    
-    # Step 3: Clean package cache
-    run_command "sudo apt clean" "Cleaning package cache"
-    
-    # Step 4: Update package list
-    run_command "sudo apt update" "Updating package list"
-    
-    # Step 5: Install new NVIDIA driver
-    run_command "sudo apt install nvidia-driver-570-server-open" "Installing nvidia-driver-570-server-open"
-    
-    # Success message
-    print_status "✓ NVIDIA driver installation completed successfully!"
-    echo
-    print_warning "IMPORTANT: A system reboot is required for the new driver to take effect."
-    echo
-    read -p "Would you like to reboot now? (y/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        print_status "Rebooting system..."
-        sudo reboot
-    else
-        print_warning "Please remember to reboot your system before using the new NVIDIA driver."
-    fi
-}
+fi
 
-# Trap to handle script interruption
-trap 'print_error "Script interrupted by user"; exit 1' INT TERM
+echo "=== Removing existing drivers ==="
+# A machine with no NVIDIA packages installed is a valid starting state, so a
+# purge that matches nothing is not an error.
+if $DRY_RUN; then
+    printf "[DRY-RUN] %s\n" "sudo apt-get --purge --yes remove nvidia-*"
+elif sudo apt-get --purge --yes remove 'nvidia-*'; then
+    print_ok "Existing NVIDIA packages removed"
+else
+    print_warn "No NVIDIA packages matched the purge; continuing"
+fi
 
-# Run main function
-main "$@"
+run sudo apt-get --purge --yes autoremove
+run sudo apt-get clean
+print_ok "Orphaned packages removed and cache cleaned"
+echo
+
+echo "=== Installing $DRIVER_PACKAGE ==="
+run sudo apt-get update
+run sudo apt-get install --yes "$DRIVER_PACKAGE"
+print_ok "Driver installed: $DRIVER_PACKAGE"
+echo
+
+if $DRY_RUN; then
+    print_info "No changes were made"
+    exit 0
+fi
+
+print_warn "A reboot is required before the new driver loads"
+echo "  Verify after reboot: nvidia-smi"
+read -r -p "Reboot now? (y/N): " REPLY
+if [[ "$REPLY" =~ ^[Yy]$ ]]; then
+    print_info "Rebooting"
+    sudo reboot
+else
+    print_warn "Reboot before using the GPU; nvidia-smi will fail until you do"
+fi
