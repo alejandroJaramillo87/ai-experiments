@@ -17,6 +17,7 @@ import concurrent.futures
 import dataclasses
 import json
 import os
+from typing import Any
 
 from bench import adapters, conditions, metrics, report
 from bench.registry import ModelSpec
@@ -173,7 +174,7 @@ def reduce(observations: list[Observation], profile: Profile) -> dict:
 
     phases: dict[str, dict] = {}
     for phase in (PREFILL, DECODE):
-        points = []
+        points: list[dict[str, Any]] = []
         for key, samples in by_point.items():
             cell = identity[key]
             if cell.point.phase != phase:

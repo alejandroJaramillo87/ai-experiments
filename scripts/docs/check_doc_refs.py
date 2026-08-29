@@ -139,6 +139,9 @@ KNOWN_ABSENT = {
     ("docs/agents/tooling-parity.md", ".opencode/plugin/evil.ts"),
     # Written at run time by the usage ledger; .gitignore excludes .agent-state/.
     ("docs/agents/README.md", ".agent-state/usage.jsonl"),
+    # Per-checkout Claude Code policy. The sentence citing it says the file is
+    # git-ignored, so its absence from a fresh clone is what the text describes.
+    ("docs/agents/README.md", ".claude/settings.local.json"),
     ("docs/agents/tooling-parity.md", ".agent-state/usage.jsonl"),
     # Evaluation output directory, created by the run that writes into it.
     (".claude/skills/training-runs/SKILL.md", "logs/eval/"),

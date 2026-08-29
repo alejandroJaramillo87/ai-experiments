@@ -18,6 +18,7 @@ it.
 from __future__ import annotations
 
 import dataclasses
+from typing import Any
 
 # The benchmarking skill's threshold. A change must clear this AND the measured floor.
 REGRESSION_PCT = 5.0
@@ -74,7 +75,7 @@ class MetricDelta:
 
 
 def _dig(report: dict, path: tuple[str, ...]):
-    node = report
+    node: Any = report
     for key in path:
         if not isinstance(node, dict):
             return None
