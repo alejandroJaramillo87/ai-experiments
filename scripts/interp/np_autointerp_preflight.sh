@@ -42,14 +42,14 @@ if ! running=$(docker compose -f "$INFER_COMPOSE" ps --status running --format '
     echo "  Detail: $running"
     exit 1
 fi
-for svc in llama-gpu; do
-    if grep -qx "$svc" <<< "$running"; then
-        print_error "GPU service running: $svc (vllm-gpu is the only permitted GPU consumer here)"
-        echo "  Solution: stop it first"
-        echo "  Command: docker compose -f $INFER_COMPOSE stop $svc"
-        exit 1
-    fi
-done
+# llama-gpu is the only inference-stack GPU consumer left to exclude: vllm-gpu is the
+# permitted one here, and llama-cpu never touches the card.
+if grep -qx "llama-gpu" <<< "$running"; then
+    print_error "GPU service running: llama-gpu (vllm-gpu is the only permitted GPU consumer here)"
+    echo "  Solution: stop it first"
+    echo "  Command: docker compose -f $INFER_COMPOSE stop llama-gpu"
+    exit 1
+fi
 
 # Neuronpedia GPU services must be down (PS3 inference instance, PS5 graph server)
 np_gpu=$(docker ps --filter label=com.docker.compose.project=neuronpedia \
