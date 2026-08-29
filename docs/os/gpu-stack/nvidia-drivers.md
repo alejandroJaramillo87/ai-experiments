@@ -131,8 +131,9 @@ sudo apt-get purge nvidia-*
 # (Handled by script)
 
 # 3. Install the qualified driver branch
-# The -open flavor is required: Blackwell (SM 12.0) is only supported there.
-sudo apt install nvidia-driver-580-open
+# An open-kernel-module build is required: Blackwell (SM 12.0) is only
+# supported there. This workstation is provisioned on the -server-open flavor.
+sudo apt install nvidia-driver-580-server-open
 
 # 4. Configure persistence mode
 sudo nvidia-smi -pm 1

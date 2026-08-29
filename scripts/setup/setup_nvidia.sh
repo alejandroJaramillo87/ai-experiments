@@ -4,8 +4,10 @@
 # this workstation is qualified on.
 #
 # The open kernel-module flavor is not optional: Blackwell (RTX 5090, SM 12.0)
-# is only supported by the -open packages. The proprietary flavor builds but
-# will not bind to the card.
+# is only supported by the open packages. The proprietary flavor builds but
+# will not bind to the card. Both -open and -server-open are open-kernel
+# builds; this workstation is provisioned on -server-open, which is what the
+# installed metapackage has always been.
 #
 # The purge step is destructive to a running display server. Run it from a TTY
 # (Ctrl+Alt+F2), not from a desktop session, or X will die mid-transaction.
@@ -13,9 +15,9 @@
 set -euo pipefail
 
 # Driver branch. Bump this one line, then re-run; see AGENTS.md on pinning.
-# Verify the package exists before bumping: apt-cache policy nvidia-driver-<N>-open
+# Verify first: apt-cache policy nvidia-driver-<N>-server-open
 DRIVER_BRANCH="580"
-DRIVER_PACKAGE="nvidia-driver-${DRIVER_BRANCH}-open"
+DRIVER_PACKAGE="nvidia-driver-${DRIVER_BRANCH}-server-open"
 
 DRY_RUN=false
 
