@@ -13,6 +13,7 @@ unhealthy service is not a slow result, it is no result."
 
 from __future__ import annotations
 
+import concurrent.futures
 import dataclasses
 import json
 import os
@@ -60,6 +61,7 @@ def _sample_from_stream(result, cell: Cell, adapter) -> metrics.Sample:
         completion_tokens=usage.completion_tokens,
         server_prompt_ms=result.timings.prompt_ms if result.timings else None,
         server_predicted_ms=result.timings.predicted_ms if result.timings else None,
+        streamed=adapter.streams,
     )
 
 
@@ -73,11 +75,12 @@ def execute(
     """Run every cell in order, returning the kept observations and any errors.
 
     `stream_fn` is injected so the loop can be exercised without a service; production
-    callers leave it None and get bench.client.stream.
+    callers leave it None and get bench.client.send, which picks the streaming or
+    whole-response transport from the adapter.
     """
-    from bench.client import stream as default_stream
+    from bench.client import send as default_send
 
-    stream_fn = stream_fn or default_stream
+    stream_fn = stream_fn or default_send
     adapter = adapters.for_service(service)
     regions = prompting.slices(model.decode_prompts)
 
@@ -91,17 +94,32 @@ def execute(
         # Rotate regions across repeats so an MoE's decode arm sees disjoint prompts and
         # the spread between them becomes the reported routing sensitivity.
         region = regions[max(cell.repeat, 0) % len(regions)]
-        nonce = f"{profile.seed}-{index}"
-        prompt = prompting.build(point.prompt_tokens, region, nonce)
-        body = adapter.build_request(
-            prompt, point.max_tokens, seed=profile.seed + index
-        )
         label = (
             f"{point.key} {'warmup' if cell.warmup else f'repeat {cell.repeat + 1}'}"
         )
+        # One cell at concurrency N is N requests in flight together, not N requests one
+        # after another. Running them serially and labelling the point "concurrency 16"
+        # would report a queue-free latency under a queued label and a single stream's
+        # throughput as a batched one -- wrong in the direction that flatters the
+        # result. Continuous batching is the reason vLLM is in this stack, so the only
+        # honest way to measure it is to actually contend for the scheduler.
+        bodies = []
+        for slot in range(point.concurrency):
+            # Each in-flight request needs its own prompt: identical prompts would let a
+            # prefix cache serve all but the first, and the batch would measure the
+            # cache rather than the model.
+            nonce = f"{profile.seed}-{index}-{slot}"
+            prompt = prompting.build(point.prompt_tokens, region, nonce)
+            bodies.append(
+                adapter.build_request(
+                    prompt,
+                    point.max_tokens,
+                    seed=profile.seed + index * 1000 + slot,
+                )
+            )
+
         try:
-            result = stream_fn(adapter, body, REQUEST_TIMEOUT_S)
-            sample = _sample_from_stream(result, cell, adapter)
+            samples = _dispatch(stream_fn, adapter, bodies, cell)
         except ServingError as exc:
             printer.warn(f"Cell {label}: {exc}")
             errors.append({"cell": point.key, "repeat": cell.repeat, "error": str(exc)})
@@ -110,8 +128,42 @@ def execute(
             # Discarded on purpose: caches, clocks and any JIT are not settled yet.
             printer.info(f"Warm-up: {point.key} discarded")
             continue
-        observations.append(Observation(cell, sample))
+        observations.extend(Observation(cell, sample) for sample in samples)
     return observations, errors
+
+
+def _dispatch(
+    stream_fn, adapter, bodies: list[dict], cell: Cell
+) -> list[metrics.Sample]:
+    """Send one cell's requests, together, and return their samples.
+
+    A single request runs on this thread; anything more goes through a pool sized to the
+    batch so every request is genuinely in flight at once. The pool is created per cell
+    rather than once per run so that a cell cannot inherit a queue from the previous one
+    -- the point of the sweep is the server's scheduler, not the client's.
+    """
+    if len(bodies) == 1:
+        return [
+            _sample_from_stream(
+                stream_fn(adapter, bodies[0], REQUEST_TIMEOUT_S), cell, adapter
+            )
+        ]
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(bodies)) as pool:
+        futures = [
+            pool.submit(stream_fn, adapter, body, REQUEST_TIMEOUT_S) for body in bodies
+        ]
+        # Collect every result before raising: a partial batch left running would still
+        # be loading the server while the next cell started measuring it.
+        results, failure = [], None
+        for future in futures:
+            try:
+                results.append(future.result())
+            except ServingError as exc:
+                failure = failure or exc
+    if failure is not None:
+        raise failure
+    return [_sample_from_stream(result, cell, adapter) for result in results]
 
 
 def reduce(observations: list[Observation], profile: Profile) -> dict:

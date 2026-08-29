@@ -11,8 +11,9 @@ import json
 
 import pytest
 
-from bench import adapters, runner
+from bench import adapters, metrics, runner
 from bench.client import StreamResult
+from bench.metrics import Sample
 from bench.registry import ModelSpec
 from bench.report import read
 from bench.workloads import load
@@ -22,6 +23,9 @@ from common.serving import ServingError
 
 DENSE = ModelSpec(
     "d", "/m/x-Q4_K_M.gguf", ("llama-cpu",), "dense", 7.0, "Q4_K_M", 32768
+)
+DENSE_VLLM = ModelSpec(
+    "dv", "/m/x-Q4_K_M.gguf", ("vllm-gpu",), "dense", 7.0, "Q4_K_M", 32768
 )
 MOE = ModelSpec(
     "m",
@@ -266,3 +270,101 @@ class TestAssembleAndWrite:
         lines = [json.loads(line) for line in open(path, encoding="utf-8")]
         assert len(lines) == len(observations)
         assert {"point", "repeat", "arrivals", "completion_tokens"} <= set(lines[0])
+
+
+class TestConcurrency:
+    """A concurrency-N point must put N requests in flight, not run N serially.
+
+    The absence of this test is what let the runner label a serial sweep
+    `concurrency: 16`. A serial run reports queue-free latency under a queued label and
+    one stream's throughput as a batched one -- wrong in the direction that flatters
+    vLLM, which is the engine the sweep exists to measure.
+    """
+
+    def test_a_concurrent_cell_overlaps_its_requests_in_time(self):
+        import threading
+        import time as time_mod
+
+        in_flight, peak = 0, 0
+        lock = threading.Lock()
+
+        def slow(adapter, body, timeout):
+            nonlocal in_flight, peak
+            with lock:
+                in_flight += 1
+                peak = max(peak, in_flight)
+            time_mod.sleep(0.05)
+            with lock:
+                in_flight -= 1
+            return FakeEngine()(adapter, body, timeout)
+
+        profile = load("quick", "vllm-gpu")
+        runner.execute(
+            "vllm-gpu", profile, DENSE_VLLM, Printer(quiet=True), stream_fn=slow
+        )
+        # quick.toml sweeps vllm-gpu at [1, 16]; serial execution would peak at 1.
+        assert peak == 16, f"requests never overlapped (peak in flight: {peak})"
+
+    def test_a_concurrent_cell_yields_one_sample_per_request(self):
+        engine = FakeEngine()
+        profile = load("quick", "vllm-gpu")
+        observations, _ = runner.execute(
+            "vllm-gpu", profile, DENSE_VLLM, Printer(quiet=True), stream_fn=engine
+        )
+        by_point: dict[str, int] = {}
+        for obs in observations:
+            by_point[obs.cell.point.key] = by_point.get(obs.cell.point.key, 0) + 1
+        c16 = next(k for k in by_point if k.endswith("/c16"))
+        c1 = next(k for k in by_point if k.endswith("/c1") and k.startswith("decode"))
+        # 16 in flight per repeat against 1, over the same repeat count.
+        assert by_point[c16] == by_point[c1] * 16
+
+    def test_concurrent_requests_do_not_share_a_prompt(self):
+        # Identical prompts would let a prefix cache serve all but the first, and the
+        # batch would measure the cache rather than the model.
+        engine = FakeEngine()
+        profile = load("quick", "vllm-gpu")
+        runner.execute(
+            "vllm-gpu", profile, DENSE_VLLM, Printer(quiet=True), stream_fn=engine
+        )
+        assert len(set(engine.prompts)) == len(engine.prompts)
+
+    def test_a_serial_point_still_runs_on_this_thread(self):
+        engine = FakeEngine()
+        profile = load("quick", "llama-cpu")
+        observations, _ = runner.execute(
+            "llama-cpu", profile, DENSE, Printer(quiet=True), stream_fn=engine
+        )
+        assert len(observations) == len(profile.points()) * profile.repeats
+
+
+class TestNonStreamingEngine:
+    """The harness answers whole, so phase metrics are absent rather than invented."""
+
+    def test_a_non_streamed_sample_reports_no_phase_metrics(self):
+        sample = Sample(
+            t_submit=0.0,
+            arrivals=(2.0,),
+            prompt_tokens=128,
+            completion_tokens=64,
+            streamed=False,
+        )
+        assert sample.ttft_ms() is None
+        assert sample.itl_ms() == []
+        assert sample.tpot_ms() is None
+        assert sample.decode_tok_s() is None
+        # What a whole response can honestly support: 64 tokens over 2s.
+        assert sample.e2e_tok_s() == pytest.approx(32.0)
+
+    def test_the_reduced_block_says_the_transport_could_not_produce_them(self):
+        samples = [Sample(0.0, (2.0,), 128, 64, streamed=False) for _ in range(3)]
+        block = metrics.reduce_samples(samples, concurrency=1)
+        assert block["streamed"] is False
+        assert block["ttft_ms"] is None
+        assert block["decode_tok_s"] is None
+        assert block["e2e_tok_s"]["median"] == pytest.approx(32.0)
+
+    def test_a_streamed_block_is_marked_streamed(self):
+        _, observations, _, _ = run()
+        block = metrics.reduce_samples([o.sample for o in observations], concurrency=1)
+        assert block["streamed"] is True

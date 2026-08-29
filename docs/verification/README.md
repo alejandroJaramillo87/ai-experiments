@@ -12,7 +12,7 @@ never executed, and never updated, and exempt from both gates for that reason.**
 One folder per tier, and the folder name is the tier: [training/](training/),
 [interp/](interp/), [rust-harness/](rust-harness/),
 [observability/](observability/), [hardware/](hardware/),
-[sandbox/](sandbox/), [bugs/](bugs/).
+[sandbox/](sandbox/), [bench/](bench/), [bugs/](bugs/).
 
 Every tier gets a folder, including the ones holding a single document today.
 A root mixing folders with loose files is the thing that is actually hard to
@@ -117,6 +117,7 @@ Each runbook's own progress line is authoritative; this table is the index.
 | [rust-harness/rust-harness-ux.md](rust-harness/rust-harness-ux.md) | 0 | 0 | 9 | 9 |
 | [hardware/hardware-stress.md](hardware/hardware-stress.md) | 0 | 0 | 6 | 6 |
 | [interp/reference-captures.md](interp/reference-captures.md) | 0 | 0 | 2 | 2 |
+| [bench/bench.md](bench/bench.md) | 0 | 0 | 9 | 9 |
 
 A pending entry is not the same as a blocked one, and the difference is whether
 a command exists that changes the situation. An entry waiting on a GPU slot, on
@@ -197,6 +198,13 @@ multi-hour activation captures that feed P4-D3 SAE training. They are separated 
 [interp/interp.md](interp/interp.md) because each holds the GPU for most of a day and most of the
 `/mnt/ai-data` volume, so they are scheduled rather than run in sequence. Their preconditions
 are the interp tier through I.9b, verified at smoke scale on 2026-08-08.
+
+Also outside the numbered order: [bench/bench.md](bench/bench.md), the benchmark suite
+against the four serving services. It is not in the numbered sequence because it gates
+no other phase and depends on none of them: it needs a healthy service and a free GPU
+slot, and nothing else. Its own internal order does matter — B2 establishes the noise
+floor, and until it exists every delta the later entries produce is uninterpretable
+against a 5% threshold whose second clause has no number.
 
 Also outside the numbered order: [hardware/hardware-stress.md](hardware/hardware-stress.md), the
 one-time firmware stability soak for the BIOS undervolt profile. It is

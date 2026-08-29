@@ -58,13 +58,18 @@ class Adapter:
     # run.
     forces_exact_length = True
     reports_server_timings = False
+    # Whether the engine streams at all. A non-streaming engine yields exactly one
+    # timestamp for the whole response, so time to first token and the inter-token
+    # series are unobservable and are reported absent rather than approximated from it.
+    streams = True
+    path = "/v1/completions"
 
     def __init__(self, service: ServiceSpec) -> None:
         self.service = service
 
     @property
     def url(self) -> str:
-        return self.service.base_url + "/v1/completions"
+        return self.service.base_url + self.path
 
     def build_request(self, prompt: str, max_tokens: int, seed: int) -> dict:
         body = {
@@ -137,11 +142,43 @@ class VllmAdapter(Adapter):
 
 
 class HarnessAdapter(Adapter):
+    """The rust harness, which serves neither the completions path nor a stream.
+
+    schemas/harness_chat_endpoint.json is the contract: the only generation path is
+    `POST /v1/chat/completions`, it takes `messages` rather than `prompt`, and
+    `stream: true` is refused with a 400 rather than answered with a whole body -- a
+    deliberate choice, so that a streaming client cannot silently receive a non-streamed
+    response and believe it timed one.
+
+    The consequence for benchmarking is real and is not worked around: with one
+    timestamp for the whole response there is no time to first token and no inter-token
+    series, so this service yields end-to-end latency and a tokens/second figure that
+    includes prefill, and nothing else. Those are reported for what they are. Phase
+    separation here needs the chunk streamer that
+    schemas/harness_chat_endpoint.json notes already exists in harness/src/stream.rs but
+    is not exposed; wiring it up is Rust work in another crate, not something this
+    adapter can paper over.
+    """
+
     engine = HARNESS
     # The harness runtime exposes no ignore_eos, so a response can stop early. The
     # runner asserts completion_tokens == max_tokens and discards a short sample rather
     # than averaging a truncated generation into a decode rate.
     forces_exact_length = False
+    streams = False
+    path = "/v1/chat/completions"
+
+    def build_request(self, prompt: str, max_tokens: int, seed: int) -> dict:
+        # A chat-shaped body, and no stream_options: the endpoint's optional field list
+        # does not include it, and an unknown field is not worth risking on a server
+        # that already refuses the field next to it.
+        return {
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "temperature": 0.0,
+            "seed": seed,
+            "stream": False,
+        }
 
 
 _ADAPTERS = {
