@@ -1,30 +1,29 @@
 #!/bin/bash
 #
-# setup_cuda.sh -- install the CUDA toolkit from NVIDIA's local repository DEB
-# and put nvcc on the shell PATH.
+# setup_cuda.sh -- install the CUDA toolkit from NVIDIA's apt repository and
+# put nvcc on the shell PATH.
 #
-# The local installer is used rather than the network repository because it
-# pins the toolkit to one patch release: the network repo tracks the newest
-# build in the branch, which is a silent version bump on every apt upgrade.
-# The cost is that the artifact URL below carries a patch version and has to be
-# updated by hand -- see the comment on CUDA_LOCAL_INSTALLER_URL.
+# The network repository is used rather than a local installer DEB. An earlier
+# version of this script downloaded the versioned local installer, which is a
+# URL that 404s on every CUDA release; and it bought nothing, because the two
+# repositories sit at equal apt priority and the newer network candidate wins
+# regardless. On this workstation the local repo was pinned at 13.0.0 while the
+# installed toolkit had already moved to 13.0.3 from the network repo.
+#
+# The same cuda-keyring package configures the repository for setup_cudnn.sh,
+# so both scripts now take one path to NVIDIA's archive.
 #
 # The NVIDIA driver must already be installed; see setup_nvidia.sh. This script
 # does not reboot.
 
 set -euo pipefail
 
-# Toolkit branch. This is the apt package name and is patch-independent; the
-# installer URL below must point at the same branch.
+# Toolkit branch. Bump this one line to move branches; the patch version comes
+# from whatever the repository currently serves. See AGENTS.md on pinning.
 CUDA_BRANCH="13-0"
 CUDA_PACKAGE="cuda-toolkit-${CUDA_BRANCH}"
 
-# Local repository DEB. The filename encodes both the toolkit patch version and
-# the driver bundled with it, so it changes on every CUDA release. Confirm the
-# current artifact before bumping:
-#   https://developer.download.nvidia.com/compute/cuda/13.0.0/local_installers/
-CUDA_LOCAL_INSTALLER_URL="https://developer.download.nvidia.com/compute/cuda/13.0.0/local_installers/cuda-repo-ubuntu2404-13-0-local_13.0.0-580.65.06-1_amd64.deb"
-CUDA_PIN_URL="https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-ubuntu2404.pin"
+KEYRING_URL="https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb"
 
 ZSHRC_FILE="$HOME/.zshrc"
 DRY_RUN=false
@@ -43,8 +42,8 @@ usage() {
     cat <<'EOF'
 Usage: setup_cuda.sh [OPTIONS]
 
-Install the CUDA toolkit from NVIDIA's local repository DEB and append the
-CUDA PATH and LD_LIBRARY_PATH exports to ~/.zshrc.
+Install the CUDA toolkit from NVIDIA's apt repository and append the CUDA
+PATH and LD_LIBRARY_PATH exports to ~/.zshrc.
 
 Options:
   --dry-run        Print every action without executing it
@@ -79,49 +78,30 @@ run() {
     fi
 }
 
-# Everything downloaded lands in a temp directory and is removed on exit. The
-# earlier version left two DEBs in whatever directory it was invoked from.
+# The keyring DEB lands in a temp directory and is removed on exit. The earlier
+# version left its downloads in whatever directory it was invoked from.
 if ! $DRY_RUN; then
     WORKDIR=$(mktemp -d)
     trap 'rm -rf "$WORKDIR"' EXIT
 fi
 
 echo "=== Installing $CUDA_PACKAGE ==="
-print_info "Local installer: $(basename "$CUDA_LOCAL_INSTALLER_URL")"
 echo
 
-echo "=== Adding the CUDA repository pin ==="
-# The pin makes apt prefer NVIDIA's packages over Ubuntu's older ones.
+echo "=== Adding the NVIDIA apt repository ==="
+# cuda-keyring installs both the signing key and the repository definition, and
+# carries the apt pin that makes NVIDIA's packages win over Ubuntu's older ones.
 if $DRY_RUN; then
-    printf "[DRY-RUN] %s\n" "download $CUDA_PIN_URL to /etc/apt/preferences.d/cuda-repository-pin-600"
+    printf "[DRY-RUN] %s\n" "download and install $(basename "$KEYRING_URL")"
 else
-    run wget -q -O "$WORKDIR/cuda-ubuntu2404.pin" "$CUDA_PIN_URL"
-    run sudo install -m 644 "$WORKDIR/cuda-ubuntu2404.pin" \
-        /etc/apt/preferences.d/cuda-repository-pin-600
-    print_ok "Repository pin installed"
-fi
-echo
-
-echo "=== Installing the local repository DEB ==="
-if $DRY_RUN; then
-    printf "[DRY-RUN] %s\n" "download and dpkg -i $(basename "$CUDA_LOCAL_INSTALLER_URL")"
-else
-    LOCAL_DEB="$WORKDIR/$(basename "$CUDA_LOCAL_INSTALLER_URL")"
-    if ! run wget -q -O "$LOCAL_DEB" "$CUDA_LOCAL_INSTALLER_URL"; then
-        print_error "Failed to download the local CUDA repository DEB"
-        echo "  Context: the URL carries a patch version and goes stale on each release"
-        echo "  Solution: find the current artifact and update CUDA_LOCAL_INSTALLER_URL"
-        echo "  Command: xdg-open https://developer.download.nvidia.com/compute/cuda/"
+    KEYRING_DEB="$WORKDIR/$(basename "$KEYRING_URL")"
+    if ! run wget -q -O "$KEYRING_DEB" "$KEYRING_URL"; then
+        print_error "Failed to download the CUDA keyring"
+        echo "  Solution: check network access to developer.download.nvidia.com"
         exit 1
     fi
-    run sudo dpkg -i "$LOCAL_DEB"
-    print_ok "Local repository registered"
-
-    # The keyring lives inside the local repo; apt cannot verify it until the
-    # key is copied somewhere apt trusts.
-    run sudo cp /var/cuda-repo-ubuntu2404-"${CUDA_BRANCH}"-local/cuda-*-keyring.gpg \
-        /usr/share/keyrings/
-    print_ok "Repository keyring installed"
+    run sudo dpkg -i "$KEYRING_DEB"
+    print_ok "CUDA keyring installed"
 fi
 echo
 
