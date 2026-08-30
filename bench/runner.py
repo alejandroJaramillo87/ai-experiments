@@ -17,7 +17,7 @@ import concurrent.futures
 import dataclasses
 import json
 import os
-from typing import Any
+from typing import Any, TextIO
 
 from bench import adapters, conditions, metrics, report
 from bench.registry import ModelSpec
@@ -28,6 +28,11 @@ from common.serving import SERVICES, ServingError, ServingTransientError, wait_h
 # A 256-token decode arm on CPU runs into minutes; a prefill probe takes seconds. One
 # generous ceiling beats a per-service table that will drift out of date.
 REQUEST_TIMEOUT_S = 600
+
+# Whether a report covers the whole profile. A run that collapsed still writes what it
+# measured; bench/delta.py refuses to difference anything but COMPLETE.
+COMPLETE = "complete"
+PARTIAL = "partial"
 
 
 @dataclasses.dataclass
@@ -72,6 +77,7 @@ def execute(
     *,
     run_key: str,
     cells: list[Cell] | None = None,
+    sink: SampleSink | None = None,
     stream_fn=None,
 ) -> tuple[list[Observation], list[dict]]:
     """Run every cell in order, returning the kept observations and any errors.
@@ -85,6 +91,10 @@ def execute(
 
     `cells` overrides the workload, so a caller interleaving arms can hand over one
     repeat at a time; the default is the profile's own full ordering.
+
+    `sink` receives every kept observation as it is produced. A run reaches an hour on
+    the publish profile, so the samples are written through rather than buffered to the
+    end: the failure that would discard them is the one they would have explained.
 
     `stream_fn` is injected so the loop can be exercised without a service; production
     callers leave it None and get bench.client.stream.
@@ -150,11 +160,32 @@ def execute(
             printer.warn(f"Cell {label}: {exc}")
             errors.append({"cell": point.key, "repeat": cell.repeat, "error": str(exc)})
             continue
+        except Exception as exc:  # noqa: BLE001 -- deliberately everything else
+            # ServingError is what the stack raises for a service that is unreachable
+            # or unhealthy, and it is survivable per cell. Anything else -- a client
+            # bug, a protocol change, an OSError from the socket layer -- is not, and
+            # used to leave the process with a traceback and the disk with nothing.
+            # The loop stops, but what was already measured is returned and written.
+            detail = f"{type(exc).__name__}: {exc}"
+            printer.error(f"Cell {label}: {detail}")
+            errors.append(
+                {
+                    "cell": point.key,
+                    "repeat": cell.repeat,
+                    "error": detail,
+                    "fatal": True,
+                }
+            )
+            break
         if cell.warmup:
             # Discarded on purpose: caches, clocks and any JIT are not settled yet.
             printer.info(f"Warm-up: {point.key} discarded")
             continue
-        observations.extend(Observation(cell, sample) for sample in samples)
+        kept = [Observation(cell, sample) for sample in samples]
+        observations.extend(kept)
+        if sink is not None:
+            for observation in kept:
+                sink.write(observation)
     return observations, errors
 
 
@@ -295,28 +326,56 @@ def slope_axis(points: list[dict]) -> tuple[list[float], str]:
     return [float(p["prompt_tokens"]) for p in points], "estimated"
 
 
+def sample_row(obs: Observation) -> dict:
+    """One raw sample as it is written: the cell's identity and the client's stamps."""
+    return {
+        "point": obs.cell.point.key,
+        "repeat": obs.cell.repeat,
+        "t_submit": obs.sample.t_submit,
+        "arrivals": list(obs.sample.arrivals),
+        "prompt_tokens": obs.sample.prompt_tokens,
+        "completion_tokens": obs.sample.completion_tokens,
+        "server_prompt_ms": obs.sample.server_prompt_ms,
+        "server_predicted_ms": obs.sample.server_predicted_ms,
+    }
+
+
+class SampleSink:
+    """samples.jsonl, appended and flushed as each cell completes.
+
+    The raw samples are the irreplaceable half of a result: the reduction can be
+    recomputed from them and they cannot be recomputed from it. Each line is flushed
+    rather than left to the buffer, because the process that would flush it at exit is
+    the one that is about to die.
+    """
+
+    def __init__(self, directory: str):
+        os.makedirs(directory, exist_ok=True)
+        self.path = os.path.join(directory, "samples.jsonl")
+        self._handle: TextIO | None = None
+
+    def __enter__(self) -> SampleSink:
+        self._handle = open(self.path, "w", encoding="utf-8")
+        return self
+
+    def __exit__(self, *exc_info) -> None:
+        if self._handle is not None:
+            self._handle.close()
+            self._handle = None
+
+    def write(self, obs: Observation) -> None:
+        if self._handle is None:
+            raise RuntimeError("SampleSink.write outside the context manager")
+        self._handle.write(json.dumps(sample_row(obs)) + "\n")
+        self._handle.flush()
+
+
 def write_samples(observations: list[Observation], directory: str) -> str:
     """Every raw sample, one JSON object per line, beside the reduced report."""
-    os.makedirs(directory, exist_ok=True)
-    path = os.path.join(directory, "samples.jsonl")
-    with open(path, "w", encoding="utf-8") as handle:
+    with SampleSink(directory) as sink:
         for obs in observations:
-            handle.write(
-                json.dumps(
-                    {
-                        "point": obs.cell.point.key,
-                        "repeat": obs.cell.repeat,
-                        "t_submit": obs.sample.t_submit,
-                        "arrivals": list(obs.sample.arrivals),
-                        "prompt_tokens": obs.sample.prompt_tokens,
-                        "completion_tokens": obs.sample.completion_tokens,
-                        "server_prompt_ms": obs.sample.server_prompt_ms,
-                        "server_predicted_ms": obs.sample.server_predicted_ms,
-                    }
-                )
-                + "\n"
-            )
-    return path
+            sink.write(obs)
+    return sink.path
 
 
 def gate(service: str, printer: Printer) -> float:
@@ -339,6 +398,7 @@ def assemble(
     errors: list[dict],
     samples_path: str | None,
     arm_sequence: str,
+    status: str,
     pair_id: str | None = None,
 ) -> dict:
     """Build the bench_result document for one arm.
@@ -349,6 +409,11 @@ def assemble(
     points *within* one pass, and it is required rather than defaulted because the
     caller is the only party that knows which it did; a default would let a blocked
     pair be published under whichever label happened to be written first.
+
+    `status` is COMPLETE or PARTIAL, and is required for the same reason. A report
+    written after a run collapsed carries the cells that did run, which is worth
+    keeping and dangerous to mistake for a whole one: differenced against a full arm it
+    would report the missing cells as whatever the survivors happened to measure.
     """
     host = conditions.collect(service)
     return report.build(
@@ -359,6 +424,7 @@ def assemble(
             "pair_id": pair_id,
             "order": profile.order,
             "arm_sequence": arm_sequence,
+            "status": status,
             "repeats": profile.repeats,
             "warmup_discarded": profile.warmup,
             "seed": profile.seed,

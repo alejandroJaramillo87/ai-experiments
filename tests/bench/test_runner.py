@@ -229,6 +229,7 @@ class TestAssembleAndWrite:
             errors=errors,
             samples_path=None,
             arm_sequence="blocked",
+            status=runner.COMPLETE,
         )
         # docs/observability/report_schema.md requires this of every emitter.
         validate_report(document)
@@ -248,6 +249,7 @@ class TestAssembleAndWrite:
             errors=errors,
             samples_path=None,
             arm_sequence="blocked",
+            status=runner.COMPLETE,
         )
         conditions = document["conditions"]
         assert conditions["service"] == "llama-cpu"
@@ -277,6 +279,7 @@ class TestAssembleAndWrite:
             errors=errors,
             samples_path=None,
             arm_sequence="blocked",
+            status=runner.COMPLETE,
         )
         path = report_mod.write(document, str(tmp_path))
         assert read(path)["run"]["arm"] == "base"

@@ -195,3 +195,62 @@ class TestInterleaveRefusals:
         document = read(str(written[0]))
         assert document["run"]["order"] == "blocked"
         assert document["run"]["arm_sequence"] == "blocked"
+
+
+class Collapsing:
+    """A service that answers a few cells and then fails in a way nothing anticipated.
+
+    Deliberately not a ServingError: that type is caught per cell and recorded, so it
+    can never lose a run. What loses a run is everything else -- a client bug, a
+    protocol change, an OSError from the socket layer -- arriving forty minutes in.
+    """
+
+    def __init__(self, engine, *, after: int):
+        self.engine = engine
+        self.after = after
+        self.calls = 0
+
+    def __call__(self, adapter, body, timeout):
+        self.calls += 1
+        if self.calls > self.after:
+            raise RuntimeError("chunked encoding ended without a terminating frame")
+        return self.engine(adapter, body, timeout)
+
+
+class TestAnUnexpectedFailureKeepsWhatWasMeasured:
+    """BQ-F07: a run is up to an hour, and it used to write nothing until the end.
+
+    Samples were buffered in memory and flushed once, and `assemble` sat outside the
+    error handler, so any failure the serving error type does not cover discarded every
+    cell that had already succeeded. The samples are the irreplaceable half -- the
+    reduction can be recomputed from them, and the failure that lost them is usually
+    the one they would have explained.
+    """
+
+    def test_the_samples_measured_before_the_failure_are_on_disk(
+        self, host, tmp_path, monkeypatch
+    ):
+        engine = Collapsing(host.engine, after=8)
+        monkeypatch.setattr("bench.client.stream", engine)
+        assert run_cmd.cmd(argv(out=tmp_path)) == 1
+        written = list(tmp_path.glob("*/samples.jsonl"))
+        assert len(written) == 1, "an hour of measurement left nothing on disk"
+        # Three of the first eight cells are warm-ups, which are discarded by design.
+        assert len(written[0].read_text().splitlines()) == 5
+
+    def test_the_partial_report_says_it_is_partial(self, host, tmp_path, monkeypatch):
+        """A partial result that reads as a complete one is worse than none.
+
+        It would be differenced against a full arm without complaint, and the missing
+        cells would show up as whatever the surviving ones happened to measure.
+        """
+        monkeypatch.setattr("bench.client.stream", Collapsing(host.engine, after=8))
+        assert run_cmd.cmd(argv(out=tmp_path)) == 1
+        document = read(str(next(tmp_path.glob("*/result.json"))))
+        assert document["run"]["status"] == "partial"
+        assert any("terminating frame" in e["error"] for e in document["errors"])
+
+    def test_a_completed_run_says_so(self, host, tmp_path):
+        assert run_cmd.cmd(argv(out=tmp_path)) == 0
+        document = read(str(next(tmp_path.glob("*/result.json"))))
+        assert document["run"]["status"] == "complete"

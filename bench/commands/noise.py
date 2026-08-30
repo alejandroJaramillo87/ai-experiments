@@ -114,6 +114,9 @@ def cmd(args) -> int:
                     phases=runner.reduce(observations, profile),
                     errors=errors,
                     samples_path=None,
+                    # Every cell of both arms ran, or the command has already
+                    # returned: a floor over a truncated arm is not a floor.
+                    status=runner.COMPLETE,
                     pair_id=pair_id,
                     # Back to back in one process, with no recreate between them. The
                     # floor must record the ordering it was measured under rather than
@@ -132,10 +135,9 @@ def cmd(args) -> int:
     # nothing in the file recording that anything had failed. Carrying the pair also
     # makes the number checkable -- delta.floor_from_pair over document["arms"]
     # reproduces document["floor"] exactly -- rather than a figure to be trusted.
-    coverage = {
-        "floor_metrics": len(floor["floor"]),
-        "arm_metrics": {arm["run"]["arm"]: metric_count(arm) for arm in arms},
-    }
+    arm_metrics = {arm["run"]["arm"]: metric_count(arm) for arm in arms}
+    floor_metrics = len(floor["floor"])
+    coverage = {"floor_metrics": floor_metrics, "arm_metrics": arm_metrics}
     document = report_header(
         report.NOISE_REPORT_TYPE, schema_version=report.SCHEMA_VERSION
     )
@@ -170,14 +172,14 @@ def cmd(args) -> int:
     printer.ok(
         f"Noise: worst spread {floor['worst_pct']:.1f}% across {len(floor['floor'])} metrics"
     )
-    widest = max(coverage["arm_metrics"].values())
-    if document["errors"] or coverage["floor_metrics"] < widest:
+    widest = max(arm_metrics.values())
+    if document["errors"] or floor_metrics < widest:
         lost = ", ".join(
             f"{arm}: {sum(1 for e in document['errors'] if e['arm'] == arm)}"
             for arm in ARMS
         )
         printer.warn(
-            f"Noise: this floor covers {coverage['floor_metrics']} of {widest} "
+            f"Noise: this floor covers {floor_metrics} of {widest} "
             f"metrics, because cells failed during the pair ({lost}). The metrics it "
             "does not cover are ungraded rather than within noise, and its worst "
             "spread is taken over the survivors"

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import json
 import os
@@ -134,6 +135,13 @@ class Arm:
     run_id: str
     observations: list = dataclasses.field(default_factory=list)
     errors: list[dict] = dataclasses.field(default_factory=list)
+    samples_path: str | None = None
+    report_path: str | None = None
+
+    @property
+    def collapsed(self) -> bool:
+        """Whether a failure the run could not continue through was recorded."""
+        return any(error.get("fatal") for error in self.errors)
 
 
 def persist(
@@ -145,12 +153,16 @@ def persist(
     pair_id: str | None,
     arm_sequence: str,
     printer: Printer,
-) -> str | None:
-    """Write one arm's samples and report; returns the path, or None if empty."""
+) -> dict | None:
+    """Write one arm's report beside its samples; returns the document, or None.
+
+    The samples are already on disk -- runner.SampleSink wrote them through as they
+    were produced -- so this adds the reduction over them and the conditions they were
+    measured under.
+    """
     if not arm.observations:
         return None
     directory = os.path.join(args.out, arm.run_id)
-    samples_path = runner.write_samples(arm.observations, directory)
     document = runner.assemble(
         service=args.service,
         profile=profile,
@@ -159,16 +171,25 @@ def persist(
         run_id=arm.run_id,
         phases=runner.reduce(arm.observations, profile),
         errors=arm.errors,
-        samples_path=samples_path,
+        samples_path=arm.samples_path,
         arm_sequence=arm_sequence,
+        status=runner.PARTIAL if arm.collapsed else runner.COMPLETE,
         pair_id=pair_id,
     )
     path = report.write(document, directory)
-    printer.ok(f"Arm {arm.name}: {len(arm.observations)} samples -> {path}")
+    arm.report_path = path
+    if arm.collapsed:
+        printer.warn(
+            f"Arm {arm.name}: the run stopped early, so {path} covers "
+            f"{len(arm.observations)} samples of the profile and is marked partial. "
+            "Its samples are complete up to the failure"
+        )
+    else:
+        printer.ok(f"Arm {arm.name}: {len(arm.observations)} samples -> {path}")
     if args.json:
         json.dump(document, sys.stdout, indent=2)
         sys.stdout.write("\n")
-    return path
+    return document
 
 
 def cmd(args) -> int:
@@ -197,7 +218,7 @@ def cmd(args) -> int:
             f"{model.decode_prompts} disjoint prompts so routing sensitivity is reported"
         )
 
-    written: list[str] = []
+    written: list[dict] = []
     if args.interleave:
         code = run_interleaved(
             arms,
@@ -221,10 +242,11 @@ def cmd(args) -> int:
     if code != 0:
         return code
 
-    if len(written) > 1:
+    paths = [arm.report_path for arm in arms if arm.report_path]
+    if len(paths) > 1:
         printer.info(
-            "Compare: python3 -m bench compare "
-            f"{written[0]} {written[1]} --noise <noise.json>"
+            f"Compare: python3 -m bench compare {paths[0]} {paths[1]} "
+            "--noise <noise.json>"
         )
     return 0
 
@@ -259,35 +281,68 @@ def check_interleavable(arms: list[Arm], profile, printer: Printer) -> bool:
     return True
 
 
+def run_pass(arm: Arm, *, args, profile, model, printer, sink, run_key, cells=None):
+    """One arm's recreate, gate and workload. Returns a failure message, or None.
+
+    The service errors are separated from everything else because only the first are
+    the caller's to explain: an unreachable or unhealthy service is a message worth
+    printing on its own, while anything else has already been recorded against the cell
+    it happened on and stopped the run there.
+    """
+    try:
+        apply_arm(args.service, arm.env, printer)
+        runner.gate(args.service, printer)
+        observations, errors = runner.execute(
+            args.service,
+            profile,
+            model,
+            printer,
+            run_key=run_key,
+            cells=cells,
+            sink=sink,
+        )
+    except ServingError as exc:
+        return str(exc)
+    arm.observations.extend(observations)
+    arm.errors.extend(errors)
+    arm.samples_path = sink.path
+    return None
+
+
 def run_blocked(arms, *, args, profile, model, pair_id, printer, written) -> int:
     """Each arm's whole profile in turn -- the default, and the cheaper instrument."""
     for arm in arms:
-        try:
-            apply_arm(args.service, arm.env, printer)
-            runner.gate(args.service, printer)
-            observations, errors = runner.execute(
-                args.service, profile, model, printer, run_key=arm.name
+        with runner.SampleSink(os.path.join(args.out, arm.run_id)) as sink:
+            failure = run_pass(
+                arm,
+                args=args,
+                profile=profile,
+                model=model,
+                printer=printer,
+                sink=sink,
+                run_key=arm.name,
             )
-        except ServingError as exc:
-            printer.error(f"Arm {arm.name}: {exc}")
+        if failure is not None:
+            printer.error(f"Arm {arm.name}: {failure}")
             return 1
-        arm.observations.extend(observations)
-        arm.errors.extend(errors)
         if not arm.observations:
             printer.error(
                 f"Arm {arm.name}: every cell failed; there is no result to write"
             )
             return 1
-        path = persist(
-            arm,
-            args=args,
-            profile=profile,
-            model=model,
-            pair_id=pair_id,
-            arm_sequence=BLOCKED,
-            printer=printer,
+        written.append(
+            persist(
+                arm,
+                args=args,
+                profile=profile,
+                model=model,
+                pair_id=pair_id,
+                arm_sequence=BLOCKED,
+                printer=printer,
+            )
         )
-        written.append(path)
+        if arm.collapsed:
+            return 1
     return 0
 
 
@@ -299,26 +354,42 @@ def run_interleaved(arms, *, args, profile, model, pair_id, printer, written) ->
     of the run key as well as the arm name: warm-up occurrence ordinals restart with
     every pass, so an arm-only key would make each pass's warm-ups byte-identical to
     the last pass's and hand them to the prefix cache the nonce exists to defeat.
+
+    One sink per arm stays open across every pass, because an arm's samples are one
+    file however many passes contributed to it.
     """
-    for repeat, cells in runner.interleaved_passes(profile):
-        for arm in arms:
-            printer.info(f"Pass: arm {arm.name}, repeat {repeat + 1}/{profile.repeats}")
-            try:
-                apply_arm(args.service, arm.env, printer)
-                runner.gate(args.service, printer)
-                observations, errors = runner.execute(
-                    args.service,
-                    profile,
-                    model,
-                    printer,
+    collapsed = False
+    with contextlib.ExitStack() as stack:
+        sinks = {
+            arm.name: stack.enter_context(
+                runner.SampleSink(os.path.join(args.out, arm.run_id))
+            )
+            for arm in arms
+        }
+        for repeat, cells in runner.interleaved_passes(profile):
+            for arm in arms:
+                printer.info(
+                    f"Pass: arm {arm.name}, repeat {repeat + 1}/{profile.repeats}"
+                )
+                failure = run_pass(
+                    arm,
+                    args=args,
+                    profile=profile,
+                    model=model,
+                    printer=printer,
+                    sink=sinks[arm.name],
                     run_key=f"{arm.name}-r{repeat}",
                     cells=cells,
                 )
-            except ServingError as exc:
-                printer.error(f"Arm {arm.name} repeat {repeat + 1}: {exc}")
-                return 1
-            arm.observations.extend(observations)
-            arm.errors.extend(errors)
+                if failure is not None:
+                    printer.error(f"Arm {arm.name} repeat {repeat + 1}: {failure}")
+                    return 1
+                collapsed = collapsed or arm.collapsed
+            if collapsed:
+                # Every arm's remaining passes are abandoned together: half a pair
+                # measured over more repeats than its partner is not a comparison, and
+                # continuing would spend an hour producing one.
+                break
 
     for arm in arms:
         if not arm.observations:
@@ -326,14 +397,15 @@ def run_interleaved(arms, *, args, profile, model, pair_id, printer, written) ->
                 f"Arm {arm.name}: every cell failed; there is no result to write"
             )
             return 1
-        path = persist(
-            arm,
-            args=args,
-            profile=profile,
-            model=model,
-            pair_id=pair_id,
-            arm_sequence=INTERLEAVED,
-            printer=printer,
+        written.append(
+            persist(
+                arm,
+                args=args,
+                profile=profile,
+                model=model,
+                pair_id=pair_id,
+                arm_sequence=INTERLEAVED,
+                printer=printer,
+            )
         )
-        written.append(path)
-    return 0
+    return 1 if collapsed else 0
