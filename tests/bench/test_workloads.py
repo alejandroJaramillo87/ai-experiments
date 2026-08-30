@@ -552,9 +552,7 @@ class TestThePromptFloorAgainstTheRealNonce:
         )
 
     def test_a_prompt_at_the_floor_is_built_rather_than_refused(self):
-        prompt = build_prompt(
-            MIN_PROMPT_TOKENS, corpus()[:4096], self.WORST_CASE_NONCE
-        )
+        prompt = build_prompt(MIN_PROMPT_TOKENS, corpus()[:4096], self.WORST_CASE_NONCE)
         assert prompt.startswith(f"[{self.WORST_CASE_NONCE}] ")
         body = prompt[len(f"[{self.WORST_CASE_NONCE}] ") :]
         assert len(body) > len(self.WORST_CASE_NONCE)

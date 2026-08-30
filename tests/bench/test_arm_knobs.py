@@ -27,7 +27,11 @@ COMPOSE = os.path.join(
 
 # The knobs bench/commands/run.py's docstring names as measurable without new code, and
 # the service each one belongs to.
-ARM_KNOBS = [("llama-cpu", "HUGEPAGES"), ("llama-cpu", "NO_REPACK"), ("llama-cpu", "THREADS")]
+ARM_KNOBS = [
+    ("llama-cpu", "HUGEPAGES"),
+    ("llama-cpu", "NO_REPACK"),
+    ("llama-cpu", "THREADS"),
+]
 
 
 def _environment(service: str) -> dict[str, str]:
@@ -42,7 +46,9 @@ def _environment(service: str) -> dict[str, str]:
         rf"^  {re.escape(service)}:\n(.*?)(?=^  \S|\Z)", text, re.M | re.S
     )
     assert block, f"no service {service!r} in {COMPOSE}"
-    env = re.search(r"^    environment:\n(.*?)(?=^    \S|\Z)", block.group(1), re.M | re.S)
+    env = re.search(
+        r"^    environment:\n(.*?)(?=^    \S|\Z)", block.group(1), re.M | re.S
+    )
     assert env, f"service {service!r} declares no environment block"
     pairs = {}
     for line in env.group(1).splitlines():
