@@ -50,6 +50,23 @@ NSYS_OUTPUT=${NSYS_OUTPUT:-"/app/nsys_output/profile"}
 # load time. Opt in per model (TRUST_REMOTE_CODE=true) only for trusted sources.
 TRUST_REMOTE_CODE=${TRUST_REMOTE_CODE:-false}
 DISABLE_LOG_STATS=${DISABLE_LOG_STATS:-true}
+# Per-request timings on the final usage frame: time to first token, generation time,
+# mean inter-token latency and queue time. Queue time is the one quantity a streaming
+# client cannot derive, and it is what lets the concurrency sweep report a queue-free
+# latency. Default off because the stats path it needs costs engine-side accounting on
+# every request, which is not what a serving default should pay for.
+ENABLE_PER_REQUEST_METRICS=${ENABLE_PER_REQUEST_METRICS:-false}
+
+# vLLM refuses the combination itself (entrypoints/openai/cli_args.py at 0.25.0:
+# "--enable-per-request-metrics requires engine statistics logging"), but it does so
+# after the model has been resolved. Failing here costs the operator seconds rather
+# than a load.
+if [[ "$ENABLE_PER_REQUEST_METRICS" == "true" && "$DISABLE_LOG_STATS" == "true" ]]; then
+    print_error "Per-request metrics: the timings are read from engine statistics"
+    echo "  Solution: set DISABLE_LOG_STATS=false alongside"
+    echo "  ENABLE_PER_REQUEST_METRICS=true."
+    exit 1
+fi
 
 echo "=== Starting vLLM GPU Server ==="
 echo
@@ -65,6 +82,7 @@ echo "  Dtype: $DTYPE"
 echo "  KV cache dtype: $KV_CACHE_DTYPE"
 [[ -n "$QUANTIZATION" ]] && echo "  Quantization: $QUANTIZATION"
 echo "  Attention backend: $ATTENTION_BACKEND"
+echo "  Per-request metrics: $ENABLE_PER_REQUEST_METRICS"
 echo
 
 # GPU memory status before loading
@@ -92,6 +110,7 @@ CMD_ARGS=(
 [[ -n "$QUANTIZATION" ]] && CMD_ARGS+=("--quantization" "$QUANTIZATION")
 [[ "$TRUST_REMOTE_CODE" == "true" ]] && CMD_ARGS+=("--trust-remote-code")
 [[ "$DISABLE_LOG_STATS" == "true" ]] && CMD_ARGS+=("--disable-log-stats")
+[[ "$ENABLE_PER_REQUEST_METRICS" == "true" ]] && CMD_ARGS+=("--enable-per-request-metrics")
 
 # Execute with optional nsys profiling
 if [[ "$NSYS_PROFILE" == "true" ]]; then

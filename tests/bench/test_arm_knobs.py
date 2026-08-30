@@ -31,6 +31,13 @@ ARM_KNOBS = [
     ("llama-cpu", "HUGEPAGES"),
     ("llama-cpu", "NO_REPACK"),
     ("llama-cpu", "THREADS"),
+    ("llama-cpu", "THREADS_BATCH"),
+    # The pair the vLLM per-request timings ride on. The engine refuses
+    # --enable-per-request-metrics while statistics logging is off, so an arm that turns
+    # the timings on has to turn the other off in the same invocation -- which it can
+    # only do if both cross into the container.
+    ("vllm-gpu", "DISABLE_LOG_STATS"),
+    ("vllm-gpu", "ENABLE_PER_REQUEST_METRICS"),
 ]
 
 

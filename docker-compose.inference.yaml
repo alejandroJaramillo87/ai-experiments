@@ -119,6 +119,13 @@ services:
       - NVIDIA_VISIBLE_DEVICES=0
       - CUDA_VISIBLE_DEVICES=0
       - MODEL_PATH=${VLLM_GPU_MODEL}
+      # Both interpolated so `bench run --arm` can set them. The entrypoint has always
+      # read DISABLE_LOG_STATS; without this line the variable never crossed into the
+      # container. Per-request timings (time to first token, generation time, mean
+      # inter-token latency, queue time) ride the final usage frame and need the engine
+      # statistics that DISABLE_LOG_STATS turns off, so the two move together.
+      - DISABLE_LOG_STATS=${DISABLE_LOG_STATS:-true}
+      - ENABLE_PER_REQUEST_METRICS=${ENABLE_PER_REQUEST_METRICS:-false}
       # Nsight Systems profiling (set NSYS_PROFILE=true to enable)
       - NSYS_PROFILE=${NSYS_PROFILE:-false}
       - NSYS_OUTPUT=${NSYS_OUTPUT:-/app/nsys_output/profile}
