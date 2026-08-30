@@ -274,10 +274,12 @@ def reduce_samples(samples: list[Sample], concurrency: int) -> dict:
     return block
 
 
-def prefill_slope(points: list[tuple[int, float]]) -> dict | None:
+def prefill_slope(points: list[tuple[float, float]]) -> dict | None:
     """Fit prefill throughput from a time-to-first-token sweep.
 
-    `points` is (prompt_tokens, median ttft_ms). Least squares through them gives a line
+    `points` is (prompt_tokens, median ttft_ms). The token count is a float because the
+    caller prefers the server's own observed median over the integer estimate that sliced
+    the prompt; see bench/runner.py::slope_axis for which one a given fit used. Least squares through them gives a line
     whose slope is milliseconds per prompt token and whose intercept is the fixed
     per-request cost -- the HTTP round trip, tokenization, and the single decode step
     that a max_tokens=1 response still pays.

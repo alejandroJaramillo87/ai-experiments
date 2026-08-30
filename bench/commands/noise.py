@@ -7,9 +7,14 @@ workstation have been recorded spreading 44%
 (docs/optimizations/ideation/rust-harness-optimization-candidates.md). A 5% threshold
 underneath a floor that wide reports noise as findings.
 
-So this runs the identical configuration as two interleaved arms and takes the
-per-metric difference between them. Whatever comes out is the smallest difference a real
-A/B on this workload is entitled to call a result.
+So this runs the identical configuration as two arms and takes the per-metric difference
+between them. Whatever comes out is the smallest difference a real A/B on this workload
+is entitled to call a result.
+
+The two arms run back to back in one process against one live service, not interleaved:
+they share a configuration, so there is nothing to recreate between them, and each arm
+is written with `arm_sequence` recording that. Drift over the pair therefore lands on the
+second arm and widens the floor, which suppresses findings rather than fabricating them.
 """
 
 from __future__ import annotations
@@ -34,7 +39,7 @@ def configure(sub) -> None:
         "noise",
         help="measure the run-to-run noise floor for a service and profile",
         description=(
-            "Runs one unchanged configuration twice, interleaved, and reports the "
+            "Runs one unchanged configuration twice, back to back, and reports the "
             "per-metric spread. Pass the result to `bench compare --noise`."
         ),
     )
@@ -63,7 +68,9 @@ def cmd(args) -> int:
     try:
         runner.gate(args.service, printer)
         for label in ("a", "a-prime"):
-            observations, errors = runner.execute(args.service, profile, model, printer)
+            observations, errors = runner.execute(
+                args.service, profile, model, printer, run_key=label
+            )
             if not observations:
                 printer.error(f"Noise arm {label}: every cell failed")
                 return 1
@@ -78,6 +85,10 @@ def cmd(args) -> int:
                     errors=errors,
                     samples_path=None,
                     pair_id=pair_id,
+                    # Back to back in one process, with no recreate between them. The
+                    # floor must record the ordering it was measured under rather than
+                    # the one the design would prefer.
+                    arm_sequence="blocked",
                 )
             )
     except ServingError as exc:

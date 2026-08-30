@@ -856,9 +856,9 @@ had checked what the comparison does with that absence.
 finding was filed from my own reading and asserted that B5 accepts on a rate the reduction now
 refuses. The verifier established the missing half -- that the refusal is actually reachable --
 by reading the pinned engine: at `VLLM_VERSION=0.25.0` a streamed completion is served as
-`RequestOutputKind.DELTA`, `vllm/v1/engine/output_processor.py` merges queued deltas "if the
-producer gets ahead of the consumer", and `vllm/entrypoints/openai/completion/serving.py` emits
-that merged multi-token delta as one SSE chunk. `../../../bench/client.py` stamps one arrival per
+`RequestOutputKind.DELTA`, the v1 engine's output processor merges queued deltas "if the
+producer gets ahead of the consumer", and the OpenAI completion serving layer emits that
+merged multi-token delta as one SSE chunk. `../../../bench/client.py` stamps one arrival per
 content-bearing chunk, so a merged chunk is exactly `chunks < completion_tokens`.
 
 It also found the consequence is worse than filed. A concurrency-16 cell contributes sixteen
