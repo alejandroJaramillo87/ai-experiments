@@ -117,8 +117,8 @@ Each runbook's own progress line is authoritative; this table is the index.
 | [rust-harness/rust-harness-ux.md](rust-harness/rust-harness-ux.md) | 0 | 0 | 9 | 9 |
 | [hardware/hardware-stress.md](hardware/hardware-stress.md) | 0 | 0 | 6 | 6 |
 | [interp/reference-captures.md](interp/reference-captures.md) | 0 | 0 | 2 | 2 |
-| [bench/bench.md](bench/bench.md) | 0 | 0 | 8 | 8 |
-| [bench/bench-qa.md](bench/bench-qa.md) | 9 | 0 | 0 | 9 |
+| [bench/bench.md](bench/bench.md) | 0 | 0 | 9 | 9 |
+| [bench/bench-qa.md](bench/bench-qa.md) | 14 | 0 | 0 | 14 |
 
 A pending entry is not the same as a blocked one, and the difference is whether
 a command exists that changes the situation. An entry waiting on a GPU slot, on
@@ -208,7 +208,7 @@ establishes the noise floor, and until it exists every delta the later entries p
 is uninterpretable against a 5% threshold whose second clause has no number.
 
 Its sandbox-executable sibling is [bench/bench-qa.md](bench/bench-qa.md), the quality
-campaign against `bench/` itself (entries BQ.1 to BQ.9), which a contained agent session
+campaign against `bench/` itself (entries BQ.1 to BQ.14), which a contained agent session
 runs with no GPU and no service. The two divide by what a property depends on: a claim
 about what an engine returns belongs to the host runbook, and a claim about what the
 tool does with a given stream of bytes belongs to the sandbox one. Findings from the
