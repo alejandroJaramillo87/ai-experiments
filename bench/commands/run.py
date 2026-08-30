@@ -170,6 +170,7 @@ def persist(
     model,
     pair_id: str | None,
     arm_sequence: str,
+    status: str,
     printer: Printer,
 ) -> dict | None:
     """Write one arm's report beside its samples; returns the document, or None.
@@ -191,13 +192,13 @@ def persist(
         errors=arm.errors,
         samples_path=arm.samples_path,
         arm_sequence=arm_sequence,
-        status=runner.PARTIAL if arm.collapsed else runner.COMPLETE,
+        status=status,
         host=arm.host or {},
         pair_id=pair_id,
     )
     path = report.write(document, directory)
     arm.report_path = path
-    if arm.collapsed:
+    if status == runner.PARTIAL:
         printer.warn(
             f"Arm {arm.name}: the run stopped early, so {path} covers "
             f"{len(arm.observations)} samples of the profile and is marked partial. "
@@ -369,6 +370,9 @@ def run_pass(
             sink=sink,
         )
     except ServingError as exc:
+        arm.errors.append(
+            {"cell": None, "repeat": None, "error": str(exc), "fatal": True}
+        )
         return str(exc)
     arm.observations.extend(observations)
     arm.errors.extend(errors)
@@ -392,6 +396,19 @@ def run_blocked(arms, *, args, profile, model, pair_id, printer, written) -> int
             )
         if failure is not None:
             printer.error(f"Arm {arm.name}: {failure}")
+            if arm.observations:
+                written.append(
+                    persist(
+                        arm,
+                        args=args,
+                        profile=profile,
+                        model=model,
+                        pair_id=pair_id,
+                        arm_sequence=BLOCKED,
+                        status=runner.PARTIAL,
+                        printer=printer,
+                    )
+                )
             return 1
         if not arm.observations:
             printer.error(
@@ -406,6 +423,7 @@ def run_blocked(arms, *, args, profile, model, pair_id, printer, written) -> int
                 model=model,
                 pair_id=pair_id,
                 arm_sequence=BLOCKED,
+                status=runner.PARTIAL if arm.collapsed else runner.COMPLETE,
                 printer=printer,
             )
         )
@@ -425,6 +443,11 @@ def run_interleaved(arms, *, args, profile, model, pair_id, printer, written) ->
 
     One sink per arm stays open across every pass, because an arm's samples are one
     file however many passes contributed to it.
+
+    A pass that fails stops the whole pair rather than returning: both arms still have
+    their completed repeats, and a partial report is what makes those samples readable.
+    Continuing with one arm ahead of the other would produce halves that cannot be
+    differenced.
     """
     collapsed = False
     with contextlib.ExitStack() as stack:
@@ -452,8 +475,9 @@ def run_interleaved(arms, *, args, profile, model, pair_id, printer, written) ->
                 )
                 if failure is not None:
                     printer.error(f"Arm {arm.name} repeat {repeat + 1}: {failure}")
-                    return 1
                 collapsed = collapsed or arm.collapsed
+                if collapsed:
+                    break
             if collapsed:
                 # Every arm's remaining passes are abandoned together: half a pair
                 # measured over more repeats than its partner is not a comparison, and
@@ -474,6 +498,9 @@ def run_interleaved(arms, *, args, profile, model, pair_id, printer, written) ->
                 model=model,
                 pair_id=pair_id,
                 arm_sequence=INTERLEAVED,
+                # Run-level, not per-arm. An interleaved pair cut short leaves both
+                # arms covering the repeats that ran, whichever arm's pass failed.
+                status=runner.PARTIAL if collapsed else runner.COMPLETE,
                 printer=printer,
             )
         )

@@ -386,3 +386,42 @@ class TestALeftOverArmIsAnnounced:
     def test_a_run_with_no_overrides_says_nothing(self, host, tmp_path, capsys):
         assert run_cmd.cmd(argv(out=tmp_path)) == 0
         assert "force-recreate" not in capsys.readouterr().err
+
+
+class TestAnInterleavedRunKeepsItsCompletedPasses:
+    """An interleaved arm is measured across several passes, each gated separately.
+
+    A service that fails its gate at the third pass leaves two repeats of both arms
+    already measured. Returning at the failure discarded their reports -- the samples
+    survived on disk, but nothing said what they were or under what conditions, which
+    is the same loss BQ-F07 is about arriving through the other door.
+    """
+
+    def test_a_gate_failure_mid_pair_still_writes_both_arms(
+        self, host, tmp_path, monkeypatch
+    ):
+        from bench import runner as runner_mod
+        from common.serving import ServingError
+
+        def failing_gate(spec, budget_s=None):
+            host.gated.append(spec.name)
+            if len(host.gated) > 4:
+                raise ServingError("llama-cpu: unhealthy after 300s")
+            return 0.1
+
+        monkeypatch.setattr(runner_mod, "wait_healthy", failing_gate)
+        args = argv(
+            "--arm",
+            "on:HUGEPAGES=on",
+            "--arm",
+            "off:HUGEPAGES=off",
+            "--interleave",
+            out=tmp_path,
+        )
+        assert run_cmd.cmd(args) == 1
+        written = sorted(tmp_path.glob("*/result.json"))
+        assert len(written) == 2, "two completed passes left no report"
+        for path in written:
+            document = read(str(path))
+            assert document["run"]["status"] == "partial"
+            assert document["phases"]
