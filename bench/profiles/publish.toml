@@ -1,5 +1,6 @@
 # Blog-grade profile: enough repeats to state a spread, enough prefill points to fit a
-# slope. Roughly 45-60 minutes for all four services including cold starts.
+# slope. Roughly 45-60 minutes for all three benchmarked services, including cold
+# starts. The concurrency table below is the list; a service missing from it is refused.
 #
 # The repeat count and the interleaving are not style choices. Unpinned runs on this
 # workstation have been measured varying by up to 44% across four consecutive runs of
