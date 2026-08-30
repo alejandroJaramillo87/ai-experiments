@@ -270,6 +270,8 @@ def cmd(args) -> int:
     if code != 0:
         return code
 
+    announce_leftover(args.service, arms, printer)
+
     paths = [arm.report_path for arm in arms if arm.report_path]
     if len(paths) > 1:
         printer.info(
@@ -277,6 +279,27 @@ def cmd(args) -> int:
             "--noise <noise.json>"
         )
     return 0
+
+
+def announce_leftover(service: str, arms: list[Arm], printer: Printer) -> None:
+    """Say what the last arm left the service running.
+
+    An arm is a compose recreate, so the run ends with the service configured as its
+    last arm set it -- and the huge-page wrapper is a knob that genuinely reaches the
+    container. The leak is not sticky, because the next ordinary bring-up re-resolves
+    the default, but it is invisible, which is enough for the next measurement to be
+    taken under the previous run's arm without anyone knowing.
+    """
+    last = arms[-1] if arms else None
+    if last is None or not last.env:
+        return
+    spec = SERVICES[service]
+    knobs = ", ".join(f"{k}={v}" for k, v in last.env.items())
+    printer.info(f"Arm: {service} is still running the last arm's {knobs}")
+    printer.line(
+        f"  Restore: docker compose -f {spec.compose_file} up -d "
+        f"--force-recreate {spec.service}"
+    )
 
 
 def check_interleavable(arms: list[Arm], profile, printer: Printer) -> bool:

@@ -362,3 +362,27 @@ class TestTheMachineFormIsOneDocument:
         document = json.loads(capsys.readouterr().out)
         assert document["report"] == "bench_result"
         assert document["phases"]
+
+
+class TestALeftOverArmIsAnnounced:
+    """BQ-F53: the last arm's overrides outlive the run.
+
+    An arm is a compose recreate, so when the run ends the service is still running
+    whatever the last arm set. One knob reaches the container for real -- the huge-page
+    wrapper -- so `--arm off:HUGEPAGES=off` leaves it off. The leak is not sticky: the
+    next ordinary bring-up re-resolves the default. It is only invisible, which is
+    enough to have the next measurement quietly taken under the previous run's arm.
+    """
+
+    def test_the_restore_command_is_printed(self, host, tmp_path, capsys):
+        args = argv(
+            "--arm", "on:HUGEPAGES=on", "--arm", "off:HUGEPAGES=off", out=tmp_path
+        )
+        assert run_cmd.cmd(args) == 0
+        printed = capsys.readouterr().err
+        assert "HUGEPAGES=off" in printed
+        assert "--force-recreate llama-cpu" in printed
+
+    def test_a_run_with_no_overrides_says_nothing(self, host, tmp_path, capsys):
+        assert run_cmd.cmd(argv(out=tmp_path)) == 0
+        assert "force-recreate" not in capsys.readouterr().err
