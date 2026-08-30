@@ -81,7 +81,12 @@ def run(model=DENSE, engine=None, profile_name="quick"):
     engine = engine or FakeEngine()
     profile = load(profile_name, "llama-cpu")
     observations, errors = runner.execute(
-        "llama-cpu", profile, model, Printer(quiet=True), stream_fn=engine
+        "llama-cpu",
+        profile,
+        model,
+        Printer(quiet=True),
+        run_key="base",
+        stream_fn=engine,
     )
     return profile, observations, errors, engine
 
@@ -129,7 +134,12 @@ class TestExecute:
 
         profile = load("quick", "llama-cpu")
         observations, errors = runner.execute(
-            "llama-cpu", profile, DENSE, Printer(quiet=True), stream_fn=flaky
+            "llama-cpu",
+            profile,
+            DENSE,
+            Printer(quiet=True),
+            run_key="base",
+            stream_fn=flaky,
         )
         assert len(errors) == 1
         assert "connection reset" in errors[0]["error"]
@@ -143,7 +153,12 @@ class TestExecute:
 
         profile = load("quick", "llama-cpu")
         observations, errors = runner.execute(
-            "llama-cpu", profile, DENSE, Printer(quiet=True), stream_fn=no_usage
+            "llama-cpu",
+            profile,
+            DENSE,
+            Printer(quiet=True),
+            run_key="base",
+            stream_fn=no_usage,
         )
         assert not observations
         assert all("usage" in e["error"] for e in errors)
@@ -213,6 +228,7 @@ class TestAssembleAndWrite:
             phases=runner.reduce(observations, profile),
             errors=errors,
             samples_path=None,
+            arm_sequence="blocked",
         )
         # docs/observability/report_schema.md requires this of every emitter.
         validate_report(document)
@@ -231,6 +247,7 @@ class TestAssembleAndWrite:
             phases=runner.reduce(observations, profile),
             errors=errors,
             samples_path=None,
+            arm_sequence="blocked",
         )
         conditions = document["conditions"]
         assert conditions["service"] == "llama-cpu"
@@ -259,6 +276,7 @@ class TestAssembleAndWrite:
             phases=runner.reduce(observations, profile),
             errors=errors,
             samples_path=None,
+            arm_sequence="blocked",
         )
         path = report_mod.write(document, str(tmp_path))
         assert read(path)["run"]["arm"] == "base"
@@ -299,7 +317,12 @@ class TestConcurrency:
 
         profile = load("quick", "vllm-gpu")
         runner.execute(
-            "vllm-gpu", profile, DENSE_VLLM, Printer(quiet=True), stream_fn=slow
+            "vllm-gpu",
+            profile,
+            DENSE_VLLM,
+            Printer(quiet=True),
+            run_key="base",
+            stream_fn=slow,
         )
         # quick.toml sweeps vllm-gpu at [1, 16]; serial execution would peak at 1.
         assert peak == 16, f"requests never overlapped (peak in flight: {peak})"
@@ -308,7 +331,12 @@ class TestConcurrency:
         engine = FakeEngine()
         profile = load("quick", "vllm-gpu")
         observations, _ = runner.execute(
-            "vllm-gpu", profile, DENSE_VLLM, Printer(quiet=True), stream_fn=engine
+            "vllm-gpu",
+            profile,
+            DENSE_VLLM,
+            Printer(quiet=True),
+            run_key="base",
+            stream_fn=engine,
         )
         by_point: dict[str, int] = {}
         for obs in observations:
@@ -324,7 +352,12 @@ class TestConcurrency:
         engine = FakeEngine()
         profile = load("quick", "vllm-gpu")
         runner.execute(
-            "vllm-gpu", profile, DENSE_VLLM, Printer(quiet=True), stream_fn=engine
+            "vllm-gpu",
+            profile,
+            DENSE_VLLM,
+            Printer(quiet=True),
+            run_key="base",
+            stream_fn=engine,
         )
         assert len(set(engine.prompts)) == len(engine.prompts)
 
@@ -332,6 +365,194 @@ class TestConcurrency:
         engine = FakeEngine()
         profile = load("quick", "llama-cpu")
         observations, _ = runner.execute(
-            "llama-cpu", profile, DENSE, Printer(quiet=True), stream_fn=engine
+            "llama-cpu",
+            profile,
+            DENSE,
+            Printer(quiet=True),
+            run_key="base",
+            stream_fn=engine,
         )
         assert len(observations) == len(profile.points()) * profile.repeats
+
+
+class TestPromptIdentity:
+    """Which prompts a pass sends, and what the nonce has to carry for that.
+
+    The nonce is what defeats a prefix cache: vLLM caches on the leading tokens with
+    no per-request override, so two passes that send the same bytes measure the cache
+    on the second one. That makes prompt identity a property of the measurement, not
+    of the string formatting, and it has to hold across every axis a pass varies on --
+    across arms, across repeats, and whether or not the cell list was sliced.
+    """
+
+    def test_two_arms_in_one_process_share_no_prompt(self):
+        # A noise pair runs both arms against one live service with no recreate
+        # between them. A nonce built only from the seed and the position makes the
+        # second arm a replay of the first, so the floor is a cold arm differenced
+        # against a cached one -- too wide, which suppresses real findings.
+        prompts = {}
+        profile = load("quick", "vllm-gpu")
+        for label in ("a", "a-prime"):
+            engine = FakeEngine()
+            runner.execute(
+                "vllm-gpu",
+                profile,
+                DENSE_VLLM,
+                Printer(quiet=True),
+                run_key=label,
+                stream_fn=engine,
+            )
+            prompts[label] = engine.prompts
+        shared = set(prompts["a"]) & set(prompts["a-prime"])
+        assert not shared, (
+            f"{len(shared)} of {len(prompts['a'])} prompts are byte-identical between "
+            "the two arms; the second arm measures the first arm's prefix cache"
+        )
+
+    def test_a_run_split_into_per_repeat_passes_repeats_no_prompt(self):
+        # Interleaving arms means handing execute one repeat's cells at a time. A
+        # nonce keyed on the enumerate position restarts with each pass, so every
+        # repeat would send the first repeat's prompts.
+        profile = load("quick", "llama-cpu")
+        groups: dict[int, list] = {}
+        for cell in profile.cells():
+            groups.setdefault(cell.repeat, []).append(cell)
+
+        sent: list[str] = []
+        for group in groups.values():
+            engine = FakeEngine()
+            runner.execute(
+                "llama-cpu",
+                profile,
+                DENSE,
+                Printer(quiet=True),
+                run_key="base",
+                cells=group,
+                stream_fn=engine,
+            )
+            sent.extend(engine.prompts)
+        assert len(set(sent)) == len(sent), (
+            f"{len(sent) - len(set(sent))} prompts repeated across per-repeat passes"
+        )
+
+    def test_a_cell_sends_the_same_prompt_sliced_or_whole(self):
+        # The nonce is the cell's identity, not its offset in whatever list it
+        # arrived in, so slicing the list cannot change what is sent.
+        profile = load("quick", "llama-cpu")
+        cells = profile.cells()
+
+        whole = FakeEngine()
+        runner.execute(
+            "llama-cpu",
+            profile,
+            DENSE,
+            Printer(quiet=True),
+            run_key="base",
+            cells=cells,
+            stream_fn=whole,
+        )
+        tail = FakeEngine()
+        runner.execute(
+            "llama-cpu",
+            profile,
+            DENSE,
+            Printer(quiet=True),
+            run_key="base",
+            cells=cells[-4:],
+            stream_fn=tail,
+        )
+        assert tail.prompts == whole.prompts[-4:]
+
+    def test_the_default_cell_list_is_the_whole_profile(self):
+        profile = load("quick", "llama-cpu")
+        engine = FakeEngine()
+        runner.execute(
+            "llama-cpu",
+            profile,
+            DENSE,
+            Printer(quiet=True),
+            run_key="base",
+            stream_fn=engine,
+        )
+        assert len(engine.prompts) == len(profile.cells())
+
+
+class LinearPrefillEngine:
+    """A server whose TTFT is linear in the tokens *it* counted.
+
+    `ratio` is server tokens per estimated token: the estimate that slices a prompt is
+    four characters to the token, and no real BPE vocabulary agrees with it exactly. A
+    slope fitted against the estimate is therefore a rate in a unit no engine reports,
+    while `prefill_tok_s_server` in the same document is in real tokens.
+    """
+
+    def __init__(self, ms_per_token: float = 0.5, ratio: float = 2.0):
+        self.ms_per_token = ms_per_token
+        self.ratio = ratio
+        self.clock = 0.0
+        self.prompts: list[str] = []
+
+    def __call__(self, adapter, body, timeout):
+        self.prompts.append(body["prompt"])
+        server_tokens = int(len(body["prompt"]) // 4 * self.ratio)
+        ttft_s = server_tokens * self.ms_per_token / 1000.0
+        n = body["max_tokens"]
+        arrivals = [self.clock + ttft_s + i * 0.02 for i in range(n)]
+        result = StreamResult(
+            t_submit=self.clock,
+            arrivals=arrivals,
+            usage=adapters.Usage(prompt_tokens=server_tokens, completion_tokens=n),
+            timings=None,
+            chunks_seen=n + 1,
+        )
+        self.clock = arrivals[-1] + 1.0
+        return result
+
+
+class TestPrefillSlopeAxis:
+    """What the prefill slope is a rate *in*.
+
+    The slope and prefill_tok_s_server sit in one document and are both graded as
+    throughput by bench compare, so they have to be in the same unit. The absolute
+    figure is the one docs/optimizations/README.md publishes; an A/B delta cancels the
+    rescale, a published rate does not.
+    """
+
+    def test_the_slope_is_a_rate_in_the_servers_tokens_not_the_estimate(self):
+        # 0.5 ms per real prompt token is 2000 real tokens/s. The server counts two
+        # tokens for every one the four-chars-per-token estimate predicts, so a fit
+        # through the estimate reports 1000 -- half the truth, and in no unit at all.
+        profile, observations, _, _ = run(engine=LinearPrefillEngine(0.5, 2.0))
+        slope = runner.reduce(observations, profile)["prefill"]["slope"]
+        assert slope["prefill_tok_s_slope"] == pytest.approx(2000.0, rel=1e-6)
+
+    def test_the_slope_names_which_token_count_it_was_fitted_through(self):
+        profile, observations, _, _ = run(engine=LinearPrefillEngine(0.5, 2.0))
+        slope = runner.reduce(observations, profile)["prefill"]["slope"]
+        assert slope["prompt_tokens_source"] == "observed"
+
+    def test_the_estimate_is_the_fallback_when_the_server_counted_nothing(self):
+        points = [
+            {"prompt_tokens": 128, "metrics": {"ttft_ms": {"median": 64.0}}},
+            {"prompt_tokens": 1024, "metrics": {"ttft_ms": {"median": 512.0}}},
+        ]
+        xs, source = runner.slope_axis(points)
+        assert xs == [128.0, 1024.0]
+        assert source == "estimated"
+
+    def test_one_point_missing_its_observed_count_falls_the_whole_axis_back(self):
+        # Mixing the two would put two units on one x-axis, which is worse than
+        # either: the fit would be through a line that changes meaning halfway.
+        points = [
+            {
+                "prompt_tokens": 128,
+                "metrics": {
+                    "ttft_ms": {"median": 64.0},
+                    "prompt_tokens_observed": {"median": 140.0},
+                },
+            },
+            {"prompt_tokens": 1024, "metrics": {"ttft_ms": {"median": 512.0}}},
+        ]
+        xs, source = runner.slope_axis(points)
+        assert xs == [128.0, 1024.0]
+        assert source == "estimated"

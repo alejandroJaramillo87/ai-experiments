@@ -69,9 +69,22 @@ def execute(
     profile: Profile,
     model: ModelSpec,
     printer: Printer,
+    *,
+    run_key: str,
+    cells: list[Cell] | None = None,
     stream_fn=None,
 ) -> tuple[list[Observation], list[dict]]:
     """Run every cell in order, returning the kept observations and any errors.
+
+    `run_key` identifies this pass and lands in every prompt nonce. It is required
+    rather than defaulted because two passes that share it send byte-identical
+    prompts, and vLLM's prefix cache -- on by default, with no per-request override --
+    then answers the second pass from the first pass's fill. That is not a slower or
+    faster number, it is a different measurement wearing the same label, and a caller
+    that forgets to distinguish its arms must fail here rather than publish it.
+
+    `cells` overrides the workload, so a caller interleaving arms can hand over one
+    repeat at a time; the default is the profile's own full ordering.
 
     `stream_fn` is injected so the loop can be exercised without a service; production
     callers leave it None and get bench.client.stream.
@@ -84,11 +97,19 @@ def execute(
 
     observations: list[Observation] = []
     errors: list[dict] = []
-    cells = profile.cells()
+    cells = profile.cells() if cells is None else cells
     printer.info(f"Workload: {len(cells)} cells, {profile.warmup} warm-up per point")
+
+    # Occurrence within (point, repeat). Every measured cell is already unique on that
+    # pair; a point's warm-up cells are not, because they all carry repeat -1. Counting
+    # them separates the warm-ups without putting the position in the list back into the
+    # nonce, which is the dependence that made a sliced list replay its prompts.
+    occurrences: dict[tuple[str, int], int] = {}
 
     for index, cell in enumerate(cells):
         point = cell.point
+        occurrence = occurrences.get((point.key, cell.repeat), 0)
+        occurrences[(point.key, cell.repeat)] = occurrence + 1
         # Rotate regions across repeats so an MoE's decode arm sees disjoint prompts and
         # the spread between them becomes the reported routing sensitivity.
         region = regions[max(cell.repeat, 0) % len(regions)]
@@ -105,13 +126,20 @@ def execute(
         for slot in range(point.concurrency):
             # Each in-flight request needs its own prompt: identical prompts would let a
             # prefix cache serve all but the first, and the batch would measure the
-            # cache rather than the model.
-            nonce = f"{profile.seed}-{index}-{slot}"
+            # cache rather than the model. The nonce is the cell's identity plus the
+            # pass's -- point, repeat, warm-up occurrence, slot, run key -- so no two
+            # requests anywhere in a run or in an A/B pair can collide.
+            nonce = (
+                f"{profile.seed}-{run_key}-{point.key}-"
+                f"{cell.repeat}-{occurrence}-{slot}"
+            )
             prompt = build_prompt(point.prompt_tokens, region, nonce)
             bodies.append(
                 adapter.build_request(
                     prompt,
                     point.max_tokens,
+                    # A sampling seed, not a cache key: two passes may reuse one
+                    # safely now that their prompts differ.
                     seed=profile.seed + index * 1000 + slot,
                 )
             )
@@ -164,6 +192,23 @@ def _dispatch(
     return [_sample_from_stream(result, cell, adapter) for result in results]
 
 
+def interleaved_passes(profile: Profile) -> list[tuple[int, list[Cell]]]:
+    """The profile split into one (repeat, cells) pass per repeat.
+
+    Interleaving two arms means alternating them at the repeat level, which requires
+    handing the runner one repeat's worth of work at a time. Every pass is led by the
+    profile's full warm-up set, not just the first: each pass follows a container
+    recreate, so without it every repeat but the first would measure a cold service --
+    a worse instrument than the drift interleaving exists to spread.
+    """
+    cells = profile.cells()
+    warmups = [cell for cell in cells if cell.warmup]
+    return [
+        (repeat, warmups + [c for c in cells if c.repeat == repeat])
+        for repeat in range(profile.repeats)
+    ]
+
+
 def reduce(observations: list[Observation], profile: Profile) -> dict:
     """Group observations by point and reduce each into its reported block."""
     by_point: dict[str, list[metrics.Sample]] = {}
@@ -202,17 +247,52 @@ def reduce(observations: list[Observation], profile: Profile) -> dict:
             "points": points,
         }
         if phase == PREFILL:
+            fitted = [p for p in points if p["metrics"].get("ttft_ms")]
+            xs, source = slope_axis(fitted)
             fit = metrics.prefill_slope(
-                [
-                    (p["prompt_tokens"], p["metrics"]["ttft_ms"]["median"])
-                    for p in points
-                    if p["metrics"].get("ttft_ms")
-                ]
+                # strict: slope_axis returns one x per fitted point on both its
+                # branches, so a length mismatch is a bug in it rather than a short
+                # fit to be silently accepted.
+                list(
+                    zip(
+                        xs,
+                        (p["metrics"]["ttft_ms"]["median"] for p in fitted),
+                        strict=True,
+                    )
+                )
             )
             if fit:
+                fit["prompt_tokens_source"] = source
                 body["slope"] = fit
         phases[phase] = body
     return phases
+
+
+def slope_axis(points: list[dict]) -> tuple[list[float], str]:
+    """The x-axis for the prefill fit, and which token count it came from.
+
+    A point's `prompt_tokens` is the four-characters-per-token estimate that sliced the
+    prompt; the server's own count is reduced beside it as `prompt_tokens_observed`. A
+    slope fitted through the estimate is milliseconds per estimated token, so its
+    reciprocal is a throughput in a unit no engine reports -- while
+    `prefill_tok_s_server` in the same document is in real tokens and bench compare
+    grades both as throughput. The rescale cancels in an A/B delta and does not cancel
+    in the absolute figure, which is the one docs/optimizations/README.md publishes.
+
+    The fallback is all-or-nothing on purpose: mixing an observed count for one point
+    with an estimate for another puts two units on one axis, and the fit through them
+    means neither.
+    """
+    observed = [
+        (p.get("metrics", {}).get("prompt_tokens_observed") or {}).get("median")
+        for p in points
+    ]
+    # Truthiness, not just presence: a zero observed count is as unusable an x-axis as
+    # a missing one, and both fall back together.
+    usable = [value for value in observed if value]
+    if points and len(usable) == len(points):
+        return [float(value) for value in usable], "observed"
+    return [float(p["prompt_tokens"]) for p in points], "estimated"
 
 
 def write_samples(observations: list[Observation], directory: str) -> str:
@@ -258,9 +338,18 @@ def assemble(
     phases: dict,
     errors: list[dict],
     samples_path: str | None,
+    arm_sequence: str,
     pair_id: str | None = None,
 ) -> dict:
-    """Build the bench_result document for one arm."""
+    """Build the bench_result document for one arm.
+
+    `arm_sequence` is how the arms of the pair were ordered against each other --
+    BLOCKED for one arm's whole profile then the other's, INTERLEAVED for round-robin
+    at the repeat level. It is a separate axis from `run.order`, which orders the
+    points *within* one pass, and it is required rather than defaulted because the
+    caller is the only party that knows which it did; a default would let a blocked
+    pair be published under whichever label happened to be written first.
+    """
     host = conditions.collect(service)
     return report.build(
         run={
@@ -269,6 +358,7 @@ def assemble(
             "arm": arm,
             "pair_id": pair_id,
             "order": profile.order,
+            "arm_sequence": arm_sequence,
             "repeats": profile.repeats,
             "warmup_discarded": profile.warmup,
             "seed": profile.seed,
