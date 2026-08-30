@@ -163,3 +163,23 @@ class TestEachArmIsGated:
         """
         assert noise_cmd.cmd(argv(tmp_path)) == 0
         assert host.gated == ["llama-cpu", "llama-cpu"]
+
+
+class TestTheFloorNamesTheWorkloadItMeasured:
+    def test_the_digest_travels_with_the_floor(self, host, tmp_path):
+        """The name is what the file calls itself; the digest is what ran.
+
+        `bench compare` refuses a floor whose digest does not match the arms', which
+        only works if both sides write it.
+        """
+        from bench.workloads import load as load_profile
+
+        assert noise_cmd.cmd(argv(tmp_path)) == 0
+        document = report.read(
+            str(next(tmp_path.glob("noise-*/noise.json"))),
+            expect=report.NOISE_REPORT_TYPE,
+        )
+        assert (
+            document["run"]["workload_hash"]
+            == load_profile("quick", "llama-cpu").workload_hash
+        )

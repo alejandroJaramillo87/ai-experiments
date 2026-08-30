@@ -214,3 +214,216 @@ class TestUnreadableInputsAreDiagnosed:
         argv = ["compare", str(tmp_path / "absent.json"), str(tmp_path / "b.json")]
         argv += list(flags)
         assert compare.cmd(build_parser().parse_args(argv)) == 2
+
+
+class TestAPairMustBeOnePair:
+    """BQ-F50: the pair identifier had writers and no reader.
+
+    When the second arm of a pair fails, the first arm's file stays on disk carrying a
+    pair identifier whose sibling does not exist -- indistinguishable from a completed
+    pair. Reproduced before the fix: that orphan, compared against a different pair's
+    arm of the same name, graded fifteen metrics with no warning and exited 0.
+    """
+
+    def test_two_halves_of_different_pairs_are_refused(self, tmp_path, capsys):
+        baseline = support.result(arm="on", pair_id="pair-a")
+        candidate = support.result(arm="off", pair_id="pair-b")
+        assert run_compare(tmp_path, baseline, candidate) == 2
+        assert "pair" in capsys.readouterr().err
+
+    def test_one_half_of_a_pair_against_a_standalone_run_warns(self, tmp_path, capsys):
+        baseline = support.result(arm="on", pair_id="pair-a")
+        candidate = support.result(arm="off")
+        run_compare(tmp_path, baseline, candidate)
+        assert "sibling" in capsys.readouterr().err
+
+    def test_the_two_arms_of_one_pair_compare_cleanly(self, tmp_path, capsys):
+        baseline = support.result(arm="on", pair_id="pair-a")
+        candidate = support.result(arm="off", pair_id="pair-a")
+        run_compare(tmp_path, baseline, candidate)
+        assert "pair" not in capsys.readouterr().err
+
+    def test_two_standalone_runs_still_compare(self, tmp_path, capsys):
+        run_compare(tmp_path, support.result(arm="on"), support.result(arm="off"))
+        assert "pair" not in capsys.readouterr().err
+
+
+class TestAnArmMustActuallyDifferFromItsPartner:
+    """BQ-F52: two arm names over one configuration measure nothing.
+
+    THREADS was a literal in docker-compose.inference.yaml and NO_REPACK appeared in no
+    compose file, so `--arm t12:THREADS=12` set a variable that never crossed into the
+    container. Both arms ran the same service and the comparison reported a clean null
+    on an A/B that measured nothing. The compose file is fixed; this is the check that
+    would have caught it, and the disproof was already in the artifact.
+    """
+
+    def test_identical_service_state_under_two_arm_names_is_refused(
+        self, tmp_path, capsys
+    ):
+        knobs = {"THREADS": "16"}
+        argv = ["llama-server", "--threads", "16"]
+        baseline = support.result(arm="t12", env_knobs=knobs, server_argv=argv)
+        candidate = support.result(arm="t16", env_knobs=knobs, server_argv=argv)
+        assert run_compare(tmp_path, baseline, candidate) == 2
+        assert "measured nothing" in capsys.readouterr().err
+
+    def test_a_real_difference_is_compared(self, tmp_path):
+        baseline = support.result(
+            arm="t12",
+            env_knobs={"THREADS": "12"},
+            server_argv=["llama-server", "--threads", "12"],
+        )
+        candidate = support.result(
+            arm="t16",
+            env_knobs={"THREADS": "16"},
+            server_argv=["llama-server", "--threads", "16"],
+        )
+        assert run_compare(tmp_path, baseline, candidate) == 0
+
+    def test_an_unobserved_container_is_not_accused(self, tmp_path):
+        """docker inspect can fail, and both arms then carry nothing to compare.
+
+        Refusing on that would refuse every comparison run where the container was
+        named differently -- an absent fact, not two identical ones.
+        """
+        assert (
+            run_compare(tmp_path, support.result(arm="a"), support.result(arm="b")) == 0
+        )
+
+
+class TestAPartialRunIsNotAnArm:
+    """A run that collapsed carries the cells that ran and no marker a reader used.
+
+    Differenced against a full arm it reports the missing cells as whatever the
+    survivors happened to measure, which is the failure mode the status field exists
+    to prevent.
+    """
+
+    def test_a_partial_baseline_is_refused(self, tmp_path, capsys):
+        baseline = support.result(arm="on", status="partial")
+        assert run_compare(tmp_path, baseline, support.result(arm="off")) == 2
+        assert "partial" in capsys.readouterr().err
+
+
+class TestTheFloorMustMatchTheWorkloadItGrades:
+    def test_a_floor_from_a_different_workload_is_refused(self, tmp_path, capsys):
+        """The profile name is not the workload: a file can be edited under its name.
+
+        `quick` and `publish` share the point key prefill/p128/g1/c1, so a stale floor
+        lands on exactly the keys a regression would be graded against.
+        """
+        baseline = support.result(arm="on", workload_hash="aaa")
+        candidate = support.result(arm="off", workload_hash="aaa")
+        floor = noise_document({"decode/p128/g256/c1:decode_tok_s": 40.0})
+        floor["run"]["workload_hash"] = "bbb"
+        assert run_compare(tmp_path, baseline, candidate, floor) == 2
+        assert "workload_hash" in capsys.readouterr().err
+
+    def test_a_floor_measured_over_failed_cells_is_refused(self, tmp_path, capsys):
+        """BQ-F44's consumer half.
+
+        An arm that lost eight of nine cells wrote a floor of four entries where a
+        clean run writes fifteen. The metrics it does not carry grade as inconclusive,
+        which does not fail, so that floor returned a green all-clear on a genuine
+        thirty-three percent decode regression.
+        """
+        floor = noise_document({"decode/p128/g256/c1:decode_tok_s": 1.0})
+        floor["errors"] = [{"cell": "prefill/p128/g1/c1", "repeat": 0, "arm": "a"}]
+        floor["coverage"] = {"floor_metrics": 1, "arm_metrics": {"a": 12, "a-prime": 4}}
+        assert (
+            run_compare(
+                tmp_path, support.result(arm="on"), support.result(arm="off"), floor
+            )
+            == 2
+        )
+        assert "cell(s) failed while it was being measured" in capsys.readouterr().err
+
+
+class TestTheOrderingWarningDetectsTheOrdering:
+    """BQ-F24: the warning read run.order, which is the ordering within one pass.
+
+    Whether the arms alternated is run.arm_sequence, a different axis, and the old
+    condition could never be true for a profile the runner would accept.
+    """
+
+    def test_a_blocked_pair_is_warned_about(self, tmp_path, capsys):
+        baseline = support.result(arm="on", arm_sequence="blocked")
+        candidate = support.result(arm="off", arm_sequence="blocked")
+        run_compare(tmp_path, baseline, candidate)
+        assert "not run interleaved" in capsys.readouterr().err
+
+    def test_an_interleaved_pair_is_not(self, tmp_path, capsys):
+        baseline = support.result(arm="on", arm_sequence="interleaved")
+        candidate = support.result(arm="off", arm_sequence="interleaved")
+        run_compare(tmp_path, baseline, candidate)
+        assert "not run interleaved" not in capsys.readouterr().err
+
+
+class TestAPackedChunkIsNotAFailedCell:
+    """BQ-F55: a metric refused at the reduction was diagnosed as a failed cell.
+
+    When one arm's samples resolved their generation and the other's did not,
+    bench/metrics.py nulls tpot_ms and decode_tok_s for the whole point in that arm
+    only. The comparison enumerated the pair for one arm and not the other and exited 1
+    under "rerun the arm whose cells failed". No cell failed: both errors lists are
+    empty, and the cause is the server packing several tokens into one chunk, so a
+    rerun reproduces it. The exit code was right; only the diagnosis was false.
+    """
+
+    def packed(self, arm: str) -> dict:
+        document = support.result(arm=arm)
+        for body in document["phases"].values():
+            for entry in body.get("points", []):
+                if entry["point"] == "decode/p128/g256/c1":
+                    entry["metrics"].update(
+                        arrivals_incomplete=4,
+                        itl_approximate=True,
+                        tokens_per_chunk_mean_max=3.4,
+                        n=5,
+                    )
+                    entry["metrics"].pop("decode_tok_s")
+        return document
+
+    def test_the_packing_is_named_and_the_failed_cells_are_not(self, tmp_path, capsys):
+        baseline = support.result(arm="on")
+        assert run_compare(tmp_path, baseline, self.packed("off")) == 1
+        printed = capsys.readouterr().err
+        assert "packed" in printed
+        assert "rerun the arm whose cells failed" not in printed
+
+    def test_a_genuinely_failed_cell_still_says_so(self, tmp_path, capsys):
+        baseline = support.result(arm="on")
+        candidate = support.result(arm="off")
+        for body in candidate["phases"].values():
+            body["points"] = [
+                e for e in body.get("points", []) if e["point"] != "decode/p128/g256/c1"
+            ]
+        candidate["errors"] = [
+            {"cell": "decode/p128/g256/c1", "repeat": 0, "error": "connection reset"}
+        ]
+        assert run_compare(tmp_path, baseline, candidate) == 1
+        printed = capsys.readouterr().err
+        assert "failed cell" in printed
+        assert "packed" not in printed
+
+
+class TestTheFloorExcludesTokenCounts:
+    """BQ-F25, pinned rather than assumed closed.
+
+    floor_from_pair builds from compare's deltas, and the observed token counts moved
+    out of the graded set at the reduction, so a tokenization artifact can no longer
+    set the published worst spread. Nothing asserted that, and it is one edit in
+    delta.DIAGNOSTIC away from coming back.
+    """
+
+    def test_an_observed_token_count_cannot_set_the_worst_spread(self):
+        from bench import delta
+
+        arm_a = support.result(arm="a")
+        arm_b = support.result(arm="a")
+        set_metric(arm_a, "decode/p128/g256/c1", "prompt_tokens_observed", 128.0)
+        set_metric(arm_b, "decode/p128/g256/c1", "prompt_tokens_observed", 512.0)
+        floor = delta.floor_from_pair(arm_a, arm_b)
+        assert floor["worst_pct"] == 0.0
+        assert not [key for key in floor["floor"] if "tokens_observed" in key]

@@ -79,6 +79,60 @@ def _inventory(document: dict) -> set[tuple[str, str]]:
     return {(d.point, d.metric) for d in self_deltas if d.metric in GATED}
 
 
+def _explain_ungraded(
+    baseline: dict, candidate: dict, ungraded: set[tuple[str, str]]
+) -> tuple[list[str], bool]:
+    """Why each missing metric is missing, and whether any cell actually failed.
+
+    A metric refused at the reduction was diagnosed here as a failed cell. When one
+    arm's samples resolve their generation and the other's do not,
+    bench/metrics.py::reduce_samples nulls tpot_ms and decode_tok_s for the whole point
+    in that arm only, and the pair is enumerated for one arm and not the other. No cell
+    failed: both errors lists are empty, the cause is the server packing several tokens
+    into one chunk, and a rerun reproduces it. The exit code was right and only the
+    diagnosis was false, which is the worse half -- it sends an operator to rerun an
+    arm that will come back identical.
+    """
+    sides = {"baseline": baseline, "candidate": candidate}
+    blocks = {label: delta.point_metrics(document) for label, document in sides.items()}
+    lines: list[str] = []
+    any_failed = False
+    for point, metric in sorted(ungraded):
+        missing = [
+            label
+            for label, points in blocks.items()
+            if (points.get(point) or {}).get(metric) is None
+        ]
+        for label in missing:
+            block = blocks[label].get(point) or {}
+            incomplete = block.get("arrivals_incomplete") or 0
+            failed = [
+                error
+                for error in (sides[label].get("errors") or [])
+                if error.get("cell") == point
+            ]
+            if failed:
+                any_failed = True
+                lines.append(
+                    f"{point} {metric}: the {label} lost {len(failed)} cell(s) at this "
+                    "point, so it was never reduced"
+                )
+            elif incomplete:
+                packed = block.get("tokens_per_chunk_mean_max")
+                lines.append(
+                    f"{point} {metric}: the {label} packed up to {packed:.1f} tokens "
+                    f"into the mean chunk, so {incomplete} of {block.get('n')} samples "
+                    "produced fewer arrivals than the server reported tokens and the "
+                    "per-token rates are refused for this point. No cell failed"
+                )
+            else:
+                lines.append(
+                    f"{point} {metric}: absent from the {label}, and it records "
+                    "neither a failed cell at this point nor incomplete arrivals"
+                )
+    return lines, any_failed
+
+
 def configure(sub) -> None:
     parser = sub.add_parser(
         "compare",
@@ -185,7 +239,17 @@ def cmd(args) -> int:
             "comparison is incomplete: "
             + ", ".join(f"{point} {metric}" for point, metric in sorted(ungraded))
         )
-        printer.line("  Solution: rerun the arm whose cells failed, then compare again")
+        reasons, any_failed = _explain_ungraded(baseline, candidate, ungraded)
+        for reason in reasons:
+            printer.line(f"  {reason}")
+        if any_failed:
+            printer.line("  Solution: rerun the arm that lost cells, then compare")
+            printer.line("  again.")
+        else:
+            printer.line("  Solution: a rate refused for packing comes back the same")
+            printer.line("  on a rerun -- it is what the server does under load, not a")
+            printer.line("  failure. Compare on e2e_tok_s and itl_ms, which are")
+            printer.line("  invariant under packing, or lower the concurrency.")
         return 1
 
     regressions = [d for d in graded if d.verdict == delta.REGRESSION]

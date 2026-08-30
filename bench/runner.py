@@ -426,6 +426,10 @@ def assemble(
         run={
             "run_id": run_id,
             "profile": profile.name,
+            # The digest of the resolved workload beside the name it goes by. A profile
+            # file edited between two arms keeps its name and changes what it measures,
+            # and bench/delta.py refuses a pair or a floor whose digests disagree.
+            "workload_hash": profile.workload_hash,
             "arm": arm,
             "pair_id": pair_id,
             "order": profile.order,

@@ -319,16 +319,24 @@ class TestComparingAResultWithItself:
         assert all(value == pytest.approx(0.0) for value in floor["floor"].values())
 
     def test_a_blocked_run_warns_and_an_interleaved_one_does_not(self):
-        # The order warning is the only thing standing between a blocked run and a
-        # delta that quietly carries the session's thermal drift on one arm.
-        interleaved = support.result()
+        # The warning is the only thing standing between a blocked run and a delta that
+        # quietly carries the session's thermal drift on one arm. It reads
+        # run.arm_sequence, which is how the arms were ordered against each other;
+        # run.order is a different axis -- how points are ordered within one pass --
+        # and reading it made the warning unable to detect the condition it describes.
+        interleaved = support.result(arm_sequence="interleaved")
         _, clean = delta.compare(interleaved, support.result())
         assert not any("interleaved" in warning for warning in clean)
 
-        blocked = support.result()
-        blocked["run"]["order"] = "blocked"
+        blocked = support.result(arm_sequence="blocked")
         _, warnings = delta.compare(blocked, support.result())
         assert any("interleaved" in warning for warning in warnings)
+
+        # A report written before the field existed says so rather than passing.
+        legacy = support.result()
+        legacy["run"].pop("arm_sequence")
+        _, warnings = delta.compare(legacy, support.result())
+        assert any("unrecorded" in warning for warning in warnings)
 
     def test_an_arm_against_itself_is_never_a_regression(self):
         rng = random.Random(SEED + 12)

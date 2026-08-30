@@ -425,3 +425,30 @@ class TestAnInterleavedRunKeepsItsCompletedPasses:
             document = read(str(path))
             assert document["run"]["status"] == "partial"
             assert document["phases"]
+
+
+class TestAPairSurvivesItsOwnComparison:
+    """The seam: everything `bench run` writes, read back by `bench compare`.
+
+    Four refusals were added to the comparison in one pass -- an orphan pair, a partial
+    arm, a workload digest that moved, and two arm names over one service state. Each
+    is correct in isolation and each is a way to make the ordinary A/B unreachable, so
+    the path is exercised end to end rather than field by field.
+    """
+
+    def test_an_ab_written_by_run_compares_cleanly(self, host, tmp_path, capsys):
+        from bench.commands import compare as compare_cmd
+
+        args = argv(
+            "--arm", "on:HUGEPAGES=on", "--arm", "off:HUGEPAGES=off", out=tmp_path
+        )
+        assert run_cmd.cmd(args) == 0
+        written = sorted(str(p) for p in tmp_path.glob("*/result.json"))
+        assert len(written) == 2
+        capsys.readouterr()
+        compare_args = build_parser().parse_args(["compare", *written])
+        assert compare_cmd.cmd(compare_args) == 0
+        printed = capsys.readouterr().err
+        # Blocked is the default, so the one warning the pair earns is that one.
+        assert "not run interleaved" in printed
+        assert "pair" not in printed

@@ -31,30 +31,47 @@ def result(
     profile: str = "quick",
     cpuset: str = "8-15",
     git_sha: str = "deadbeef",
+    pair_id: str | None = None,
+    arm_sequence: str = "interleaved",
+    status: str = "complete",
+    workload_hash: str | None = None,
+    env_knobs: dict | None = None,
+    server_argv: list | None = None,
 ) -> dict:
+    conditions = {
+        "service": service,
+        "engine": "llama.cpp",
+        "port": 8001,
+        "model": {
+            "name": "m",
+            "architecture": architecture,
+            "quantization": quantization,
+            "context_length": 32768,
+        },
+        "prompt_source": prompt_source,
+        "host": {"client_cpuset": cpuset, "service_cpuset": "0-15"},
+    }
+    # Absent by default rather than empty: a container nobody could inspect records no
+    # fact, and the checks that read these two must not mistake that for agreement.
+    if env_knobs is not None:
+        conditions["env_knobs"] = env_knobs
+    if server_argv is not None:
+        conditions["server_argv"] = server_argv
     document = report.build(
         run={
             "run_id": f"run-{arm}",
             "profile": profile,
+            "workload_hash": workload_hash,
             "arm": arm,
+            "pair_id": pair_id,
             "order": "interleaved",
+            "arm_sequence": arm_sequence,
+            "status": status,
             "repeats": 5,
             "warmup_discarded": 1,
             "seed": 42,
         },
-        conditions={
-            "service": service,
-            "engine": "llama.cpp",
-            "port": 8001,
-            "model": {
-                "name": "m",
-                "architecture": architecture,
-                "quantization": quantization,
-                "context_length": 32768,
-            },
-            "prompt_source": prompt_source,
-            "host": {"client_cpuset": cpuset, "service_cpuset": "0-15"},
-        },
+        conditions=conditions,
         phases={
             "prefill": {
                 "timings_source": "server",

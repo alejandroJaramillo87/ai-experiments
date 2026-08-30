@@ -155,6 +155,7 @@ def cmd(args) -> int:
         run={
             "pair_id": pair_id,
             "profile": profile.name,
+            "workload_hash": profile.workload_hash,
             "service": args.service,
             "arm_sequence": BLOCKED,
             "repeats": profile.repeats,
