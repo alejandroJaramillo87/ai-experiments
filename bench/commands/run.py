@@ -79,18 +79,29 @@ def parse_arm(spec: str) -> tuple[str, dict[str, str]]:
     return name or "base", env
 
 
-def apply_arm(service: str, env: dict[str, str], printer: Printer) -> None:
+def apply_arm(
+    service: str, env: dict[str, str], printer: Printer, *, always: bool = False
+) -> None:
     """Recreate the service with the arm's environment applied.
 
     An arm is a service configuration, not a code path, so switching arms is a compose
     recreate rather than anything the benchmark does differently. That is what lets
     HUGEPAGES, NO_REPACK and THREADS be measured without a line of new code per knob.
+
+    `always` recreates even when the arm carries no overrides, and every arm of a pair
+    sets it. The overrides are documented as optional, so `--arm base --arm
+    off:HUGEPAGES=off` is an advertised invocation -- and skipping the recreate for the
+    bare arm measured a service up for an unknown time, with a warm page cache and
+    settled clocks, against one recreated seconds earlier. A single unmodified run has
+    no partner and so no asymmetry to correct; recreating it anyway would spend a model
+    reload to make it marginally colder.
     """
-    if not env:
+    if not (env or always):
         return
     spec = SERVICES[service]
     printer.run(
-        f"Arm: recreating {service} with {', '.join(f'{k}={v}' for k, v in env.items())}"
+        f"Arm: recreating {service} with "
+        + (", ".join(f"{k}={v}" for k, v in env.items()) or "no overrides")
     )
     merged = {**os.environ, **env}
     compose(
@@ -281,7 +292,9 @@ def check_interleavable(arms: list[Arm], profile, printer: Printer) -> bool:
     return True
 
 
-def run_pass(arm: Arm, *, args, profile, model, printer, sink, run_key, cells=None):
+def run_pass(
+    arm: Arm, *, args, profile, model, printer, sink, run_key, cells=None, paired=False
+):
     """One arm's recreate, gate and workload. Returns a failure message, or None.
 
     The service errors are separated from everything else because only the first are
@@ -290,7 +303,7 @@ def run_pass(arm: Arm, *, args, profile, model, printer, sink, run_key, cells=No
     it happened on and stopped the run there.
     """
     try:
-        apply_arm(args.service, arm.env, printer)
+        apply_arm(args.service, arm.env, printer, always=paired)
         runner.gate(args.service, printer)
         observations, errors = runner.execute(
             args.service,
@@ -321,6 +334,7 @@ def run_blocked(arms, *, args, profile, model, pair_id, printer, written) -> int
                 printer=printer,
                 sink=sink,
                 run_key=arm.name,
+                paired=len(arms) > 1,
             )
         if failure is not None:
             printer.error(f"Arm {arm.name}: {failure}")
@@ -380,6 +394,7 @@ def run_interleaved(arms, *, args, profile, model, pair_id, printer, written) ->
                     sink=sinks[arm.name],
                     run_key=f"{arm.name}-r{repeat}",
                     cells=cells,
+                    paired=len(arms) > 1,
                 )
                 if failure is not None:
                     printer.error(f"Arm {arm.name} repeat {repeat + 1}: {failure}")

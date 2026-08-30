@@ -254,3 +254,29 @@ class TestAnUnexpectedFailureKeepsWhatWasMeasured:
         assert run_cmd.cmd(argv(out=tmp_path)) == 0
         document = read(str(next(tmp_path.glob("*/result.json"))))
         assert document["run"]["status"] == "complete"
+
+
+class TestBothArmsAreRecreated:
+    """BQ-F51: an arm with no overrides used to skip the recreate entirely.
+
+    The benchmarking skill documents the overrides as optional, so `--arm base --arm
+    off:HUGEPAGES=off` is an advertised invocation. It measured a service that had been
+    up for an unknown time -- warm page cache, settled clocks, whatever a previous run
+    left behind -- against one recreated seconds earlier, and neither artifact recorded
+    the asymmetry. The bias runs warm-arm-faster, which is the direction that invents
+    an improvement.
+    """
+
+    def test_a_bare_arm_is_recreated_like_its_partner(self, host, tmp_path):
+        args = argv("--arm", "base", "--arm", "off:HUGEPAGES=off", out=tmp_path)
+        assert run_cmd.cmd(args) == 0
+        assert len(host.composed) == 2, "one arm measured a service nobody recreated"
+
+    def test_a_single_unmodified_run_is_left_alone(self, host, tmp_path):
+        """One arm has no partner, so there is no asymmetry to correct.
+
+        Recreating anyway would spend a model reload -- minutes on the CPU service --
+        to make a single run marginally colder, which is not what the finding is about.
+        """
+        assert run_cmd.cmd(argv(out=tmp_path)) == 0
+        assert host.composed == []
