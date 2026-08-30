@@ -15,6 +15,14 @@ The two arms run back to back in one process against one live service, not inter
 they share a configuration, so there is nothing to recreate between them, and each arm
 is written with `arm_sequence` recording that. Drift over the pair therefore lands on the
 second arm and widens the floor, which suppresses findings rather than fabricating them.
+Each arm is health-gated separately, because a service that degrades between them widens
+the floor the same way and is otherwise never looked for.
+
+The document carries both arms in full, their conditions, their errors tagged by arm,
+and a coverage block. A floor is quoted as an acceptance signal, so what it was measured
+over has to travel with it: a pair that lost cells produces a narrower floor over a
+smaller worst spread, and the artifact must be readable as such rather than as a clean
+run that happened to be quiet.
 """
 
 from __future__ import annotations
@@ -28,10 +36,27 @@ from bench import delta, report, runner
 from bench.adapters import ENGINE_FOR_SERVICE
 from bench.commands.run import RESULTS_ROOT
 from bench.registry import RegistryError, resolve
-from bench.workloads import ProfileError, load
+from bench.workloads import BLOCKED, ProfileError, load
 from common.output import Printer
 from common.reports import report_header
 from common.serving import ServingError
+
+# The two passes. Named here because they appear in the arm documents, in the tagged
+# error list and in the coverage block, and a floor whose three views disagree about
+# which arm lost cells is worse than one that carries none of them.
+ARMS = ("a", "a-prime")
+
+
+def metric_count(document: dict) -> int:
+    """How many metrics this arm reduced, counted the way the comparison counts them.
+
+    Differencing an arm against itself enumerates exactly the metrics a comparison
+    would grade -- the same diagnostic exclusions, the same slope handling -- so the
+    floor's coverage is measured against the consumer's own view rather than against a
+    second inventory that would drift from it.
+    """
+    deltas, _ = delta.compare(document, document, noise=None)
+    return len(deltas)
 
 
 def configure(sub) -> None:
@@ -66,8 +91,13 @@ def cmd(args) -> int:
     pair_id = uuid.uuid4().hex[:12]
     arms = []
     try:
-        runner.gate(args.service, printer)
-        for label in ("a", "a-prime"):
+        for label in ARMS:
+            # Gated per arm, not once for the pair. Gating once checks the state the
+            # first arm ran under and assumes it for the second -- and the second arm
+            # is the one drift lands on, so it is the arm the assumption is least safe
+            # for. A service degrading between the two widens the floor, and a wide
+            # floor suppresses findings in every comparison that later cites it.
+            runner.gate(args.service, printer)
             observations, errors = runner.execute(
                 args.service, profile, model, printer, run_key=label
             )
@@ -88,7 +118,7 @@ def cmd(args) -> int:
                     # Back to back in one process, with no recreate between them. The
                     # floor must record the ordering it was measured under rather than
                     # the one the design would prefer.
-                    arm_sequence="blocked",
+                    arm_sequence=BLOCKED,
                 )
             )
     except ServingError as exc:
@@ -96,6 +126,16 @@ def cmd(args) -> int:
         return 1
 
     floor = delta.floor_from_pair(arms[0], arms[1])
+    # Both arms in full, plus the conditions and the tagged error list. The floor used
+    # to be a header and four fields, which made an arm that lost most of its cells
+    # indistinguishable from a clean run: a narrower floor, a smaller worst spread, and
+    # nothing in the file recording that anything had failed. Carrying the pair also
+    # makes the number checkable -- delta.floor_from_pair over document["arms"]
+    # reproduces document["floor"] exactly -- rather than a figure to be trusted.
+    coverage = {
+        "floor_metrics": len(floor["floor"]),
+        "arm_metrics": {arm["run"]["arm"]: metric_count(arm) for arm in arms},
+    }
     document = report_header(
         report.NOISE_REPORT_TYPE, schema_version=report.SCHEMA_VERSION
     )
@@ -105,7 +145,22 @@ def cmd(args) -> int:
             "pair_id": pair_id,
             "profile": profile.name,
             "service": args.service,
+            "arm_sequence": BLOCKED,
+            "repeats": profile.repeats,
+            "warmup_discarded": profile.warmup,
+            "seed": profile.seed,
         },
+        # The reference arm's. check_comparable has already refused a pair whose
+        # service, model or cpusets disagree, so the two blocks are equal by the time
+        # the floor exists.
+        conditions=arms[0]["conditions"],
+        errors=[
+            {**error, "arm": arm["run"]["arm"]}
+            for arm in arms
+            for error in arm["errors"]
+        ],
+        coverage=coverage,
+        arms=arms,
         floor=floor["floor"],
         worst_pct=floor["worst_pct"],
     )
@@ -115,6 +170,18 @@ def cmd(args) -> int:
     printer.ok(
         f"Noise: worst spread {floor['worst_pct']:.1f}% across {len(floor['floor'])} metrics"
     )
+    widest = max(coverage["arm_metrics"].values())
+    if document["errors"] or coverage["floor_metrics"] < widest:
+        lost = ", ".join(
+            f"{arm}: {sum(1 for e in document['errors'] if e['arm'] == arm)}"
+            for arm in ARMS
+        )
+        printer.warn(
+            f"Noise: this floor covers {coverage['floor_metrics']} of {widest} "
+            f"metrics, because cells failed during the pair ({lost}). The metrics it "
+            "does not cover are ungraded rather than within noise, and its worst "
+            "spread is taken over the survivors"
+        )
     if floor["worst_pct"] >= delta.REGRESSION_PCT:
         printer.warn(
             f"Noise: the floor ({floor['worst_pct']:.1f}%) is at or above the 5% "

@@ -10,9 +10,10 @@ Everything host-side is substituted, as in test_run_command.py. No number here i
 
 from __future__ import annotations
 
-from bench import report, runner
+from bench import delta, report, runner
 from bench.cli import build_parser
 from bench.commands import noise as noise_cmd
+from common.serving import ServingError
 
 MODEL = "qwen3-coder-30b-a3b-IQ4_XS"
 
@@ -69,3 +70,96 @@ class TestTheFloorIsWritten:
         monkeypatch.setattr(noise_cmd.runner, "assemble", spy)
         noise_cmd.cmd(argv(tmp_path))
         assert {call["arm_sequence"] for call in seen} == {"blocked"}
+
+
+class FailingArm:
+    """A service that answers one arm and refuses part of the other.
+
+    The floor is a difference between two arms, so a cell lost in one of them removes
+    a metric from the difference rather than from one side of it. That is the asymmetry
+    BQ-F44 is about, and it cannot be built from the clean fake.
+    """
+
+    def __init__(self, engine, *, fail_run_key: str, fail_points: tuple[str, ...]):
+        self.engine = engine
+        self.fail_run_key = fail_run_key
+        self.fail_points = fail_points
+
+    def __call__(self, adapter, body, timeout):
+        # Selected off the nonce, which leads the prompt and carries the pass key and
+        # the point key: "<seed>-<run key>-<point>/<gen>/<conc>-<repeat>-...".
+        prompt = body["prompt"]
+        if f"-{self.fail_run_key}-" in prompt and any(
+            f"/{point}/" in prompt for point in self.fail_points
+        ):
+            raise ServingError("llama-cpu: connection reset")
+        return self.engine(adapter, body, timeout)
+
+
+class TestTheFloorCarriesItsOwnEvidence:
+    """BQ-F44: what the pair actually did must survive into the artifact.
+
+    The floor document was assembled by hand from a header plus four fields, so an arm
+    that lost most of its cells produced a narrower floor with a smaller worst spread
+    and nothing in the file saying which cells were missing, or under what conditions,
+    or that anything had failed at all.
+    """
+
+    def test_a_pair_that_lost_cells_says_so(self, host, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            "bench.client.stream",
+            FailingArm(
+                host.engine, fail_run_key="a-prime", fail_points=("p128", "p512")
+            ),
+        )
+        assert noise_cmd.cmd(argv(tmp_path)) == 0
+        document = report.read(
+            str(next(tmp_path.glob("noise-*/noise.json"))),
+            expect=report.NOISE_REPORT_TYPE,
+        )
+        assert document["errors"], "a floor built over failed cells recorded none"
+        assert {e["arm"] for e in document["errors"]} == {"a-prime"}
+
+    def test_the_conditions_the_floor_was_measured_under_are_recorded(
+        self, host, tmp_path
+    ):
+        """A floor is only the spread of one machine in one state.
+
+        Without the conditions block the artifact cannot be checked against the arms it
+        is later applied to, which is the whole basis for refusing a mismatched floor.
+        """
+        assert noise_cmd.cmd(argv(tmp_path)) == 0
+        document = report.read(
+            str(next(tmp_path.glob("noise-*/noise.json"))),
+            expect=report.NOISE_REPORT_TYPE,
+        )
+        assert document["conditions"]["service"] == "llama-cpu"
+        assert document["conditions"]["model"]["quantization"]
+
+    def test_the_pair_is_recoverable_from_the_artifact(self, host, tmp_path):
+        """Both arms' reductions are carried, so the difference can be recomputed.
+
+        A floor that cannot be re-derived from its own file is a number to be trusted
+        rather than checked, and `worst_pct` is quoted as an acceptance signal.
+        """
+        assert noise_cmd.cmd(argv(tmp_path)) == 0
+        document = report.read(
+            str(next(tmp_path.glob("noise-*/noise.json"))),
+            expect=report.NOISE_REPORT_TYPE,
+        )
+        assert [arm["run"]["arm"] for arm in document["arms"]] == ["a", "a-prime"]
+        recomputed = delta.floor_from_pair(document["arms"][0], document["arms"][1])
+        assert recomputed["floor"] == document["floor"]
+
+
+class TestEachArmIsGated:
+    def test_the_health_gate_runs_once_per_arm(self, host, tmp_path):
+        """A service degrading between the arms must not pass unnoticed.
+
+        Gating once for the pair checks the state the first arm ran under and assumes
+        it for the second. The second arm is the one drift lands on, so it is the arm
+        the assumption is least safe for -- and a floor widened by a degrading service
+        suppresses findings for every comparison that later cites it.
+        """
+        assert noise_cmd.cmd(argv(tmp_path)) == 0
+        assert host.gated == ["llama-cpu", "llama-cpu"]
