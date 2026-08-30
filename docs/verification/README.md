@@ -213,7 +213,9 @@ runs with no GPU and no service. The two divide by what a property depends on: a
 about what an engine returns belongs to the host runbook, and a claim about what the
 tool does with a given stream of bytes belongs to the sandbox one. Findings from the
 sandbox campaign that would surface at a host entry are named in that entry rather than
-left in the campaign log.
+left in the campaign log. The campaign's own findings, refuted ones included, are in
+[bench/bench-qa-findings.md](bench/bench-qa-findings.md); it carries no entries of its
+own and so does not appear in the table above.
 
 Also outside the numbered order: [hardware/hardware-stress.md](hardware/hardware-stress.md), the
 one-time firmware stability soak for the BIOS undervolt profile. It is

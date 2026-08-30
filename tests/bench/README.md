@@ -36,6 +36,7 @@ against a live service. Until then `provenance.json` records exactly which infer
 each fixture rests on, so a wrong one is traceable rather than mysterious.
 
 What cannot be proven here is any actual number. Those come from the workstation through
-the `verify-host` handshake. The campaign that produced the modules above, and the
-findings still open against `bench/`, are recorded in
-[bench-qa.md](../../docs/verification/bench/bench-qa.md).
+the `verify-host` handshake. The campaign that produced the modules above is recorded in
+[bench-qa.md](../../docs/verification/bench/bench-qa.md), and every finding it raised, with
+the disposition and verdicts each one drew, in
+[bench-qa-findings.md](../../docs/verification/bench/bench-qa-findings.md).
