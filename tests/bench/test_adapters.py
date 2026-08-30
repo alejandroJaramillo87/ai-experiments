@@ -9,12 +9,21 @@ from __future__ import annotations
 
 import io
 import json
+import pathlib
 from unittest import mock
 
 import pytest
 
 from bench import adapters, client
 from common.serving import ServingError
+
+FIXTURES = pathlib.Path(__file__).parent / "fixtures"
+
+
+def fixture(name: str) -> dict:
+    """A wire frame as the pinned engine emits it; see fixtures/provenance.json."""
+    return json.loads((FIXTURES / f"{name}.json").read_text())
+
 
 # --- wire fixtures --------------------------------------------------------------
 
@@ -136,6 +145,80 @@ class TestUsageAndTimings:
     def test_a_content_chunk_carries_no_usage(self):
         assert adapters.for_service("llama-cpu").parse_usage(LLAMA_CHUNK) is None
 
+    def test_the_real_llama_cpp_partial_frame_is_text_and_nothing_else(self):
+        # BQ-F23. The source-derived partial frame, previously read by no test. It is
+        # what proves the inline chunk above is not an idealisation: the real frame
+        # carries logprobs, a model name and a fingerprint, and still yields neither a
+        # usage object nor timings, so only the terminal frame can supply either.
+        adapter = adapters.for_service("llama-cpu")
+        partial = fixture("llama_cpp_partial")
+        assert adapter.parse_usage(partial) is None
+        assert adapter.parse_timings(partial) is None
+
+    def test_a_non_numeric_token_count_is_refused_rather_than_raised(self):
+        # BQ-F10. No pinned engine emits this: llama.cpp and vLLM both serialize the
+        # counts as integers. The guard exists because parse_usage runs inside
+        # bench/client.py::stream, whose only caller handles the serving error type --
+        # a ValueError here would end a run of up to an hour with a traceback, while an
+        # absent usage object degrades to the runner's explained refusal.
+        adapter = adapters.for_service("vllm-gpu")
+        assert (
+            adapter.parse_usage(
+                {"usage": {"prompt_tokens": "n/a", "completion_tokens": 4}}
+            )
+            is None
+        )
+
+
+class TestVllmPerRequestTimings:
+    """BQ-F19. vLLM attaches per-request timings to the frame already being parsed.
+
+    `PerRequestTimingMetrics` rides on the same final usage chunk under the launch flag
+    `--enable-per-request-metrics`, which docker-compose.inference.yaml does not pass.
+    The parser is therefore inert against today's wire shape and lights up on the day
+    the flag is set, rather than needing to be written then.
+    """
+
+    def test_todays_production_frame_still_yields_no_server_timings(self):
+        # The shape the running service emits: usage, no metrics object.
+        assert (
+            adapters.for_service("vllm-gpu").parse_timings(fixture("vllm_final"))
+            is None
+        )
+
+    def test_the_metrics_frame_is_parsed_when_the_flag_is_set(self):
+        timings = adapters.for_service("vllm-gpu").parse_timings(
+            fixture("vllm_final_with_metrics")
+        )
+        # Carried raw: vLLM stamps this from scheduling, not arrival, so it is already
+        # queue-free and is the same phase llama.cpp reports as prompt_ms. The envelope
+        # is slightly wider -- vLLM includes any preemption during prefill -- which is a
+        # caveat on the comparison, not a term to subtract.
+        assert timings.prompt_ms == pytest.approx(512.0)
+        assert timings.predicted_ms == pytest.approx(240.0)
+        assert timings.queue_ms == pytest.approx(18.0)
+
+    def test_metrics_without_a_queue_field_still_yield_prefill(self):
+        # Queue time is informational, not a term in the prefill arithmetic, so its
+        # absence costs the contention signal and nothing else.
+        body = {
+            "usage": {},
+            "metrics": {"time_to_first_token_ms": 512.0, "generation_time_ms": 240.0},
+        }
+        timings = adapters.for_service("vllm-gpu").parse_timings(body)
+        assert timings.prompt_ms == pytest.approx(512.0)
+        assert timings.queue_ms is None
+
+    def test_llama_cpp_timings_carry_no_queue_wait(self):
+        # llama.cpp's timings object has no queue field, and the runner must not read
+        # an absent one as zero wait.
+        assert (
+            adapters.for_service("llama-cpu")
+            .parse_timings(fixture("llama_cpp_final"))
+            .queue_ms
+            is None
+        )
+
 
 def run_stream(service: str, payload: bytes) -> client.StreamResult:
     adapter = adapters.for_service(service)
@@ -185,6 +268,18 @@ class TestStreamDecoding:
     def test_a_response_with_no_text_is_an_error_not_an_empty_result(self):
         with pytest.raises(ServingError, match="no text chunks"):
             run_stream("llama-cpu", sse(LLAMA_FINAL))
+
+    def test_the_source_derived_frames_decode_like_the_inline_ones(self):
+        # BQ-F23. The fixtures are the shapes the pinned llama.cpp serializers emit;
+        # driving them through the real client is what keeps the hand-written chunks
+        # above honest about the extra fields a real frame carries.
+        result = run_stream(
+            "llama-cpu",
+            sse(fixture("llama_cpp_partial"), fixture("llama_cpp_final")),
+        )
+        assert len(result.arrivals) == 1
+        assert result.usage.completion_tokens == 8
+        assert result.timings.prompt_ms == pytest.approx(512.0)
 
     def test_non_sse_lines_are_ignored(self):
         payload = b": keep-alive\n\n" + sse(LLAMA_CHUNK, LLAMA_FINAL)

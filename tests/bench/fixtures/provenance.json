@@ -50,7 +50,7 @@
     "vllm_final_with_metrics.json": {
       "engine": "vllm",
       "emitted_by": "the same final usage chunk, with PerRequestTimingMetrics attached, vllm/entrypoints/openai/completion/serving.py lines 461-481; the model is defined in vllm/entrypoints/openai/engine/protocol.py lines 118-123",
-      "note": "Not currently reachable in this stack, and recorded as finding BQ-F19. The metrics object is populated only when the server was launched with per-request metrics enabled, and only for a single prompt with n equal to one. It carries queue_time_ms, which is the one quantity this suite documents as impossible to derive client-side: the adapter reports no server timings for vllm and the report therefore labels every vllm phase client-sourced, which is a statement about the launch flags rather than about the engine."
+      "note": "Not currently reachable in this stack, and recorded as finding BQ-F19. The metrics object is populated only when the server was launched with --enable-per-request-metrics, and only for a single prompt with n equal to one; that flag is also rejected alongside --disable-log-stats, which docker/vllm-gpu/entrypoint.sh passes by default, so reaching it is two launch changes. bench/adapters.py::VllmAdapter.parse_timings reads this shape and is inert without it, so the report labels every vllm phase client-sourced because of the launch line rather than because of the engine."
     }
   }
 }
