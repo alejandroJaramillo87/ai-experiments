@@ -658,6 +658,8 @@ low until the verification phase records a verdict.
 | BQ-F53 | `bench/commands/run.py::apply_arm` | low | The residual of BQ-F43, which was refuted because the knobs it named never reach the container. One knob does: the huge-page wrapper is interpolated, so an arm setting it off leaves the service that way with no restore and no printed hint. A later ordinary bring-up re-resolves the default and recreates the container, so the leak is not sticky, which is why this is low rather than the high it was filed as. Filed fresh rather than folded into the refuted row, and carrying no verdict. |
 | BQ-F54 | `docs/verification/bench/bench.md` | medium | Entry B5 accepts on the decode rate across the concurrency sweep, and that rate is now refused wherever a sample carried more than one token per chunk -- which is what the one service with a sweep does under load, and the reason it is in the stack. The refusal is correct: the decode rate reads high when the first chunk is packed and the client cannot tell that from a frame that never arrived. But the entry must then accept on the end-to-end rate, which is invariant under packing at both ends and is reported for exactly that reason. Throughput rising with concurrency is still demonstrable; it is a different field. Surfaced by narrowing the fix for BQ-F01, and unverified. |
 
+| BQ-F55 | `bench/commands/compare.py::cmd` | medium | A metric refused at the reduction is diagnosed as a failed cell. When one arm's samples resolved their generation and the other's did not, `bench/metrics.py::reduce_samples` sets `tpot_ms` and `decode_tok_s` to `None` for the whole point in the second arm only; `bench/delta.py::compare` skips a `None` block, so the pair is enumerated for one arm and not the other and the command exits 1 with "2 metric(s) present in one arm only, so this comparison is incomplete" under the solution line "rerun the arm whose cells failed, then compare again". No cell failed: both arms' errors lists are empty, and the condition is the server packing chunks, so a rerun reproduces it. The exit code is right and only the diagnosis is false, which is why this is medium and not high. A verifier added the adjacent gap: `arrivals_incomplete`, `itl_approximate` and `tokens_per_chunk_mean_max` appear only in `../../../bench/metrics.py` and its tests, so the comparison never surfaces the real cause even though the reduction recorded it. Surfaced by the cross-package seam the batch-two integrator flagged as reasoning only. |
+
 ### Verdicts
 
 Severity below is the settled grade, not the proposed one. Where they differ, the verification
@@ -837,6 +839,67 @@ pool, so a replay from the start of the sequence cannot hit. The filed causal cl
 wrong -- the noise command does not call the arm helper at all, so there is no early return to
 blame. And the direction matters: caching can only make the second arm faster, so the floor
 comes out too wide, which suppresses real findings rather than fabricating them.
+
+### Verdicts, the seam between the reduction and the comparison
+
+Two findings were filed while opening the remediation batch, from a seam the batch-two
+integrator could only flag as `reasoning only`: the reduction now refuses `tpot_ms` and
+`decode_tok_s` for a whole point whose samples did not resolve their generation, and nothing
+had checked what the comparison does with that absence.
+
+| ID | Verdicts | Outcome | Settled |
+|----|----------|---------|---------|
+| BQ-F54 | 1 confirmed | confirmed, and worse than filed: the sweep comes out incomparable, not merely short a number | medium |
+| BQ-F55 | 1 confirmed | confirmed, and the exit code is right -- only the diagnosis is false | medium |
+
+**BQ-F54's engine premise was settled from vLLM's source, not from this suite's fixtures.** The
+finding was filed from my own reading and asserted that B5 accepts on a rate the reduction now
+refuses. The verifier established the missing half -- that the refusal is actually reachable --
+by reading the pinned engine: at `VLLM_VERSION=0.25.0` a streamed completion is served as
+`RequestOutputKind.DELTA`, `vllm/v1/engine/output_processor.py` merges queued deltas "if the
+producer gets ahead of the consumer", and `vllm/entrypoints/openai/completion/serving.py` emits
+that merged multi-token delta as one SSE chunk. `../../../bench/client.py` stamps one arrival per
+content-bearing chunk, so a merged chunk is exactly `chunks < completion_tokens`.
+
+It also found the consequence is worse than filed. A concurrency-16 cell contributes sixteen
+samples per repeat, so a `publish` point is eighty samples and **one** packed sample among them
+nulls the metric for the whole point. Concurrency 1 will usually still report while 4 and 16 do
+not, so B5 is left holding an incomparable sweep rather than a sweep missing one figure -- and
+`../../../bench/delta.py` skips a `None` block silently, so the absence does not announce itself
+in a comparison either. The remedy stands: `e2e_tok_s * concurrency` rising while the per-request
+figure falls is the same batching-versus-serialization discriminator, on a span both of whose
+endpoints are packing-invariant.
+
+The verifier's own caveat, recorded because it bounds the claim: the *frequency* of packing at
+concurrency 16 is inferred from the pinned source's merge path, not measured on the hardware.
+
+**Half of what I predicted was wrong, and I refuted it myself before filing it.** The claim
+was that with *both* arms packed a decode regression would pass silently, reintroducing BQ-F45
+through a new absence. It does not. Reproduced with a matched floor: the candidate 40% slower
+on decode was caught on `e2e_tok_s` and on `itl_ms`, two regressions beyond the floor, exit 1.
+The green line appears only with no floor at all, which is the state in which every verdict is
+already `inconclusive` by design. Filing that half would have repeated the batch-one error of
+recording a consequence I had not computed.
+
+The half that survived is narrower and real. From the verifier, who reproduced it
+independently rather than from my transcript:
+
+> The refusal is per-point, not per-cell: `bench/metrics.py:224` sets `span_resolved` from
+> `arrivals_incomplete == 0` and `:244-249` set both metrics to `None` for the whole point, so
+> `runner.execute` records nothing in `errors` and the claim's "no cell failed" is structurally
+> true. `delta.py:230-241` skips a pair when either block is `None`, so `compare.py`'s
+> `_inventory` enumerates it for the resolved arm only and the command exits 1 with the false
+> diagnosis and the unactionable solution line.
+
+The verifier also found the adjacent gap, which the fix must close with it: `arrivals_incomplete`,
+`itl_approximate` and `tokens_per_chunk_mean_max` appear only in `../../../bench/metrics.py` and
+its tests. The reduction records exactly why the metric is missing and the comparison never reads
+it, so the operator is told to rerun an arm rather than told the server packed its chunks.
+
+Reachability is what holds this at medium rather than high: the packing that triggers it is
+vLLM's, no A/B entry in [bench.md](bench.md) targets vLLM, and the asymmetry needs one arm at
+exactly zero packed samples. Reachable through the supported CLI, unproven on hardware.
+
 
 ## What this campaign does not cover
 
