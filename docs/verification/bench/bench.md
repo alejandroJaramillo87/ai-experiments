@@ -355,7 +355,7 @@ Status: PENDING
 
 Implementation: `docker-compose.inference.yaml`, `bench/commands/run.py`.
 
-[../../optimizations/README.md](../../optimizations/README.md) carries a 26.2%
+[../../bench/results.md](../../bench/results.md) carries a 26.2%
 improvement figure measured at `THREADS=12` on a service that now runs 16, by a script
 no longer in the repository, with prefill folded into a decode-shaped number. It is
 marked superseded. This entry is what replaces it.

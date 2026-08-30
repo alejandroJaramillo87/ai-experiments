@@ -73,6 +73,14 @@ orientation, not explanation: they point here for the detail.
 | [inference/parameters/vllm-parameters.md](inference/parameters/vllm-parameters.md) | vLLM configuration for throughput (vLLM 0.25.0) |
 | [inference/art-generation.md](inference/art-generation.md) | The ComfyUI image-generation service |
 
+### Benchmarking
+
+| Document | Description |
+|----------|-------------|
+| [bench/README.md](bench/README.md) | What each benchmarking document owns, and how the two runbooks next door divide the work |
+| [bench/method.md](bench/method.md) | What makes a number citable: a delta is of a change and not of a layer, and each optimization needs two of them |
+| [bench/results.md](bench/results.md) | The recorded measurements, and the four grounds on which the one entry is superseded |
+
 ### Rust Harness
 
 Design and reference documentation for the `rust-harness` workspace.
@@ -103,7 +111,7 @@ audit.
 
 | Document | Description | Impact |
 |----------|-------------|--------|
-| [optimizations/README.md](optimizations/README.md) | Optimization overview and verification | +26% CPU performance (superseded) |
+| [optimizations/README.md](optimizations/README.md) | Optimization overview and verification | Settings only; measurements in [bench/results.md](bench/results.md) |
 | [optimizations/roadmap.md](optimizations/roadmap.md) | The order in which to measure every optimization, from a firmware reset onward | Campaign plan |
 | [optimizations/bios/bios-optimizations.md](optimizations/bios/bios-optimizations.md) | BIOS settings for AMD Ryzen 9950X | FCLK 2100MHz |
 | [optimizations/os/os-optimizations.md](optimizations/os/os-optimizations.md) | Operating system tuning | Performance governor |
@@ -263,9 +271,12 @@ is whoever is running the checks, and the human's pasted output is the evidence.
 ### Benchmarking
 
 `python3 -m bench` measures inference performance on this workstation, reporting prefill
-and decode separately against a measured noise floor. See [../bench/README.md](../bench/README.md)
-for the entry points and [optimizations/roadmap.md](optimizations/roadmap.md) for the order
-in which the measurements are taken.
+and decode separately against a measured noise floor. [bench/](bench/) is the topic
+index: [bench/results.md](bench/results.md) holds what has actually been measured, and
+[bench/method.md](bench/method.md) holds what makes such a number citable. See
+[../bench/README.md](../bench/README.md) for the entry points and
+[optimizations/roadmap.md](optimizations/roadmap.md) for the order in which the
+measurements are taken.
 
 ### Key optimizations applied
 
@@ -301,6 +312,8 @@ full writing standard:
      `docs/optimizations/ideation/`)
    - Container and sandbox docs: `docs/sandbox/`
    - Inference tuning: `docs/inference/`
+   - Benchmark method and recorded measurements: `docs/bench/` (the acceptance
+     runbooks stay in `docs/verification/bench/`)
    - Model architecture references and header transcripts: `docs/models/`
    - Rust harness design: `docs/rust-harness/`
    - Observability and the JSON contracts commands emit: `docs/observability/`

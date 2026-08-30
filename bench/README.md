@@ -20,7 +20,7 @@ Three consequences shaped this package:
   so the deltas were never differenced. A single tokens/second figure moves when either
   phase moves and identifies neither.
 - **Results carried no conditions.** The only persisted field was a total runtime, so
-  `docs/optimizations/README.md`'s 26.2% figure cannot be reproduced: it was measured at
+  `docs/bench/results.md`'s 26.2% figure cannot be reproduced: it was measured at
   `THREADS=12` against a service that now runs 16, on a mixture-of-experts model, and
   nothing in the artifact says so.
 - **Architecture was unrecorded.** Nothing in the tree stated which served model is

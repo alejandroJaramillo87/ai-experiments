@@ -30,18 +30,11 @@ evidence. Nothing here restates a setting value that one of those files already 
 
 ## Method
 
-### A measurement is of a change, not of a layer
-
-"Benchmark the BIOS" is not an operation that can be performed. The operation that can be
-performed is "measure the delta from BIOS change X, with every other layer held at state S",
-and the result is valid only at S.
-
-This is why the archived 26.2 percent figure cannot be re-anchored. It was measured at 12
-threads and `cpuset 0-11`; the service now runs 16 threads and `cpuset 0-15`. The number is
-the answer to a question about a configuration that no longer exists.
-
-Every delta this campaign produces therefore names its reference state, and the reference
-state is a committed artifact rather than a description.
+The general rules — that a delta is of a change and not of a layer, that each
+optimization is measured twice, and that a result carries its reference state — are
+owned by [../bench/method.md](../bench/method.md). What follows is what those rules
+imply for the order of this campaign, which is a separate question and the one this
+document exists to answer.
 
 ### Order by redo cost
 
@@ -74,23 +67,6 @@ leave until the queue for that state is empty.
 Each stage below therefore lists its arms as a queue rather than a sequence, and the GPU
 track (M8) is explicitly drained inside whichever boot state is current rather than
 scheduled as a block at the end.
-
-### Two deltas per optimization
-
-Each optimization is measured twice, and the two numbers differ.
-
-- **Baseline delta.** One knob changed from the reference, everything else at reference.
-  Answers what the optimization adds to nothing.
-- **Ablation delta.** One knob turned off from the final configuration, everything else at
-  final. Answers what the optimization adds to everything.
-
-The ablation delta is the publishable number, because it is measured at the configuration
-that actually runs. The gap between the two is the interaction, quantified. An optimization
-worth 12 percent from the reference and 4 percent from the final configuration has had most
-of its benefit captured by something else in the stack, and identifying that something is a
-result in its own right.
-
-`bench compare` performs both; only the reference file differs.
 
 ### Positive controls
 
@@ -483,6 +459,10 @@ them.
 ## See also
 
 - [README.md](README.md) — validated optimizations and their measurements
+- [../bench/method.md](../bench/method.md) — what makes a measurement citable, the rules
+  this campaign's ordering serves
+- [../bench/results.md](../bench/results.md) — the recorded measurements, and what each
+  is still worth
 - [../verification/bench/bench.md](../verification/bench/bench.md) — the acceptance runbook
   for the benchmark suite itself
 - [../../bench/README.md](../../bench/README.md) — the suite that produces every number here
