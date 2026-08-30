@@ -168,7 +168,7 @@ export CUDA_VISIBLE_DEVICES=0    # Use RTX 5090
 
 | Configuration | Inference Speed | Relative Performance |
 |--------------|----------------|---------------------|
-| **CPU-only** (12 cores, benchmark config) | 35.44 tok/s | Baseline |
+| **CPU-only** (12 cores, superseded benchmark config) | 35.44 tok/s, end-to-end with prefill folded in ([superseded](../../bench/results.md)) | Baseline |
 | **GPU with CUDA** | High-throughput GPU inference | GPU-accelerated |
 | **Without CUDA** (driver only) | 0 tok/s | No acceleration |
 

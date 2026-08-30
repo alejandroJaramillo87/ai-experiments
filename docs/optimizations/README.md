@@ -20,7 +20,6 @@ System optimizations for LLM inference on AMD Ryzen 9950X + RTX 5090: latency-fo
   - [Validated Performance Results](#validated-performance-results)
     - [Benchmark Summary](#benchmark-summary)
     - [Key Validated Settings Impact](#key-validated-settings-impact)
-  - [Performance Impact](#performance-impact)
   - [See Also](#see-also)
 
 ## Optimization Philosophy: Latency vs Throughput
@@ -33,7 +32,8 @@ For interactive chatbot applications prioritizing single-request response time:
 **llama-cpu** (port 8001):
 - **16 dedicated cores** (0-15) for single model instance
 - **CPU optimizations**: Huge pages, C-states disabled, memory locking
-- **Result**: 35 tokens/sec with 26% latency improvement
+- **Result**: unmeasured on this configuration. The one recorded figure was taken at 12
+  cores and is superseded ([../bench/results.md](../bench/results.md))
 
 **llama-gpu** (port 8002):
 - **RTX 5090** for single-request GPU inference
@@ -73,7 +73,9 @@ below.
   - Memory performance (DDR5-6000 with power-down disabled)
   - FCLK 2100 MHz for interconnect optimization
   - Single-model optimization focus
-- **cpu_benchmark_results_*.json** - Benchmark data showing 26% improvement
+- **cpu_benchmark_results_*.json** - The raw before and after captures behind the
+  superseded figure in [../bench/results.md](../bench/results.md); not regenerable by
+  anything in the tree
 
 ### os/
 - **os-optimizations.md** - Host operating system optimizations for containerized workloads
@@ -180,15 +182,6 @@ them.
 - **Conservative Curve Optimizer (-15)**: Achieved excellent results with stability
 - **CPU Boost 200 MHz increase**: Stable at maximum recommended setting
 - **Power optimizations**: C-states disabled, power down disabled for consistency
-
-## Performance Impact
-
-Validated improvements with optimizations enabled:
-
-- **Latency**: 26% improvement in tokens per second (validated via benchmarking)
-- **Cache Efficiency**: Optimized cache access patterns
-- **Memory Access**: Reduced TLB misses with explicit huge pages
-- **Consistency**: Predictable token generation timing (0.08-0.28 stdev vs 0.08-0.84)
 
 ## See Also
 

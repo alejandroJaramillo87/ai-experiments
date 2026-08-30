@@ -35,7 +35,7 @@ CPU-based LLM inference presents a fundamental choice between optimizing for:
 - **Throughput**: Processing many requests simultaneously (batch processing, API servers)
 - **Latency**: Minimizing response time for individual requests (chatbots, interactive assistants)
 
-This guide optimizes for **latency**, with validated benchmarks showing 26 percent performance improvement for interactive workloads.
+This guide optimizes for **latency**. What that is worth in throughput is unmeasured on the current configuration; the one recorded figure is superseded and is owned by [../../bench/results.md](../../bench/results.md).
 
 **Key Optimization Features:**
 - **12-Core Dedication**: Allocates 12 cores to single LLM instance (cores 0-11)
@@ -58,7 +58,10 @@ This guide optimizes for **latency**, with validated benchmarks showing 26 perce
 
 ## Production-Validated Configuration
 
-The following settings have been validated in production with a **26.2 percent performance improvement**:
+The following settings have been validated in production for stability. The 26.2 percent
+performance improvement once quoted here is superseded and is owned by
+[../../bench/results.md](../../bench/results.md), which states the four grounds on which
+it cannot be attributed to these settings.
 
 ### Validated CPU Settings
 - **PBO Limits**: Motherboard
@@ -85,12 +88,12 @@ The following settings have been validated in production with a **26.2 percent p
 
 ### Benchmark Validation Results
 
-Measured at the previous 12-core CPU configuration; the current llama-cpu service runs 16 cores (cpuset 0-15).
-
-- **Before optimizations**: 28.09 tokens/second average
-- **After optimizations**: 35.44 tokens/second average
-- **Performance gain**: 26.2 percent increase
-- **Consistency improvement**: 59 percent reduction in standard deviation
+The before-and-after capture is owned by [../../bench/results.md](../../bench/results.md).
+It was measured at the previous 12-core CPU configuration, and the current llama-cpu
+service runs 16 cores (cpuset 0-15); three further grounds disqualify it from being
+quoted as current, and that document states them. Entry B7 of
+[../../verification/bench/bench.md](../../verification/bench/bench.md) is what replaces
+it.
 
 ## BIOS Performance Optimizations
 
@@ -129,11 +132,13 @@ Advanced CPU configuration for optimal AI inference performance, maximizing proc
   - **Configuration**:
     - **Mode**: `Per CCD` or `All Cores`
     - **Sign**: `Negative`
-    - **Validated**: `-15` (stable, achieved 26% performance improvement)
+    - **Validated**: `-15` (stable; the performance figure once attributed to it is
+      superseded, see [../../bench/results.md](../../bench/results.md))
     - **Maximum**: `-20 to -25` (potential for additional gains with extensive testing)
     - **Method**: Start conservative, increase incrementally, validate with CoreCycler
   - **Benefit**: Reduces power consumption (P∝V²), creates headroom for higher sustained frequencies
-  - **Impact**: Validated 26% improvement with conservative -15 setting
+  - **Impact**: Stability validated at the conservative -15 setting. The performance
+    delta is unmeasured on the current configuration
   - **Revalidation**: Validated against bursty chat inference only; sustained combined CPU+GPU workloads (training runs) require the stability soak in `docs/verification/hardware/hardware-stress.md` before first use
 
 - **Curve Shaper**: `Frequency-Specific Optimization` (Zen 5 Feature)
@@ -154,7 +159,9 @@ Advanced CPU configuration for optimal AI inference performance, maximizing proc
 
 **Latency Optimization Benefits:**
 - **Optimized Cache Access**: Enhanced cache utilization patterns
-- **Reduced First-Token Latency**: 26 percent validated improvement in tokens/second
+- **Reduced First-Token Latency**: unmeasured. The superseded 26 percent figure was an
+  end-to-end tokens/second average with prefill folded in, which is not a time to first
+  token; `python3 -m bench` reports the two separately
 - **Consistent Token Timing**: Reduced variance provides predictable generation
 - **Single-Model Performance**: 12 cores dedicated to one LLM for maximum speed
 
@@ -289,4 +296,4 @@ All optimizations prioritize **inference latency** over throughput. These settin
 
 ---
 
-*This hardware optimization guide minimizes inference latency on the AMD Ryzen 9950X + RTX 5090 AI engineering workstation. Validated Zen 5 optimizations including Curve Optimizer (-15), Curve Shaper, and FCLK 2100 MHz achieved 26.2% performance improvement in testing. Settings prioritize stability and consistency for interactive chatbot applications.*
+*This hardware optimization guide minimizes inference latency on the AMD Ryzen 9950X + RTX 5090 AI engineering workstation. The Zen 5 settings it carries, including Curve Optimizer (-15), Curve Shaper, and FCLK 2100 MHz, are validated for stability; what they are worth in throughput is unmeasured on the current configuration, and the superseded figure is recorded in [../../bench/results.md](../../bench/results.md). Settings prioritize stability and consistency for interactive chatbot applications.*

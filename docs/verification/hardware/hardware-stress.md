@@ -229,8 +229,10 @@ during the phase:
    leaving all other settings in place.
 2. Re-run HS.3 (the combined soak). Repeat until it passes clean.
 3. Re-run the CPU benchmark suite and record the performance cost of the
-   reduced offset against the validated 26.2 percent figure in
-   [bios-optimizations.md](../../optimizations/bios/bios-optimizations.md).
+   reduced offset. There is no current figure to compare against: the 26.2
+   percent record in [../../bench/results.md](../../bench/results.md) is
+   superseded, and entry B7 of [../bench/bench.md](../bench/bench.md) is what
+   establishes the reference this step needs.
 4. If errors persist at Curve Optimizer 0, remove the boost clock
    override next, then re-validate FCLK 2100 MHz; update the BIOS guide
    to match whatever configuration finally passes.
