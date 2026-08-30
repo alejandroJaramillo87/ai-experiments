@@ -314,10 +314,11 @@ so this hazard is new relative to the existing weights path.
 Also run `llama.cpp`'s own `--numa` modes as a zero-code arm before building the shim. If they
 already deliver the placement, the shim's scope narrows.
 
-**Instrumentation.** `bench run --perf` scoped to the measurement window supplies
-`dTLB-load-misses` and a page-table-walk event. The rust-harness ideation document names those
-counters as the prerequisite for the huge page claim: without them the A/B shows the outcome
-and not the mechanism.
+**Instrumentation.** `perf stat -e dTLB-load-misses` against the container, scoped to the
+measurement window, plus a page-table-walk event. `bench` reports latency and throughput and
+collects no counters, so this runs alongside it rather than through it. The rust-harness
+ideation document names those counters as the prerequisite for the huge page claim: without
+them the A/B shows the outcome and not the mechanism.
 
 **Acceptance:** the huge page arm produces a delta with TLB counters that corroborate its
 direction, and the perplexity script confirms unchanged numerics.
@@ -424,11 +425,14 @@ for the llama.cpp services.
 
 - **One GPU consumer at a time**, per `AGENTS.md`. CPU and GPU arms serialize within a boot
   state; they do not overlap.
-- **Thermal drift aliases onto whatever is measured last.** `bench` interleaves repeats
-  round-robin within one comparison, which handles drift inside a comparison but not across
-  comparisons in a long session. Record session boundaries in the run notes, and do not
-  compare a result from the start of a session against one from its fourth hour without
-  re-running one of them.
+- **Thermal drift aliases onto whatever is measured last.** `bench run` orders repeats
+  round-robin over the points within one arm, which spreads drift across that arm's own
+  measurement. It does not alternate two arms: by default each arm runs its whole profile in
+  turn, so drift over a two-arm run lands on the second arm. `--interleave` alternates them at
+  the repeat level and is opt-in, because it costs a container recreate and a warm-up pass per
+  arm per repeat. Neither handles drift across comparisons in a long session. Record session
+  boundaries in the run notes, and do not compare a result from the start of a session against
+  one from its fourth hour without re-running one of them.
 - **A benchmark against an unhealthy service is not a slow result, it is no result.** Run
   `make status` and `make health` before each session; `bench run` gates on health, but a
   prior check makes a failure attributable.
