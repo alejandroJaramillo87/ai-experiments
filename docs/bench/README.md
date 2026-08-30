@@ -24,6 +24,21 @@ what it claims, against real services on the host;
 logic and the failure paths in a sandbox. Both are executed. Neither is read for
 understanding, which is what the two documents here are for.
 
+## One trap this directory introduced
+
+`bench/` and `docs/bench/` are now both real, and `scripts/docs/check_doc_refs.py` resolves a
+markdown link only against the citing document's own directory. Both depths therefore resolve,
+and a link aimed at the wrong one passes the gate silently:
+
+| Citing directory | The package README | This directory's README |
+|------------------|--------------------|-------------------------|
+| `docs/bench/` | `../../bench/README.md` | `README.md` |
+| `docs/optimizations/` | `../../bench/README.md` | `../bench/README.md` |
+| `docs/verification/bench/` | `../../../bench/README.md` | `../../bench/README.md` |
+
+No gate catches a mistake here, so check the depth by hand when adding a link. Running
+`realpath -m --relative-to=. <target>` from the citing document's directory settles it.
+
 ## Related documentation
 
 - [../../bench/README.md](../../bench/README.md) — the package: what it consumes, its module
