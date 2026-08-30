@@ -63,7 +63,13 @@ def configure(sub) -> None:
     )
     parser.add_argument("--out", default=RESULTS_ROOT)
     parser.add_argument(
-        "--json", action="store_true", help="write the report to stdout as well"
+        "--json",
+        action="store_true",
+        help=(
+            "write the report to stdout as well. One arm emits its bench_result; two "
+            "or more emit a single bench_pair whose `arms` maps each arm name to its "
+            "report -- read the envelope's `report` field rather than guessing"
+        ),
     )
     parser.set_defaults(func=cmd)
 
@@ -199,9 +205,6 @@ def persist(
         )
     else:
         printer.ok(f"Arm {arm.name}: {len(arm.observations)} samples -> {path}")
-    if args.json:
-        json.dump(document, sys.stdout, indent=2)
-        sys.stdout.write("\n")
     return document
 
 
@@ -252,6 +255,18 @@ def cmd(args) -> int:
         printer.line("  (`make up`), or register what it is serving in")
         printer.line("  MODELS in bench/registry.py.")
         return 2
+    if args.json and written:
+        # Emitted once, after every arm, rather than inside the loop. A single arm
+        # writes its report at the top level because the runbook pipes it straight
+        # into a parser that reads phases from there.
+        emitted = (
+            written[0]
+            if len(written) == 1
+            else report.pair({document["run"]["arm"]: document for document in written})
+        )
+        json.dump(emitted, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+
     if code != 0:
         return code
 

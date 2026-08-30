@@ -11,6 +11,8 @@ What cannot be proven here is any actual number.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from bench.cli import build_parser
@@ -323,3 +325,40 @@ class TestTheServedModelIsReconciled:
         or a container compose named differently -- produces.
         """
         assert run_cmd.cmd(argv(out=tmp_path)) == 0
+
+
+class TestTheMachineFormIsOneDocument:
+    """BQ-F48: --json dumped inside the per-arm loop.
+
+    A two-arm run wrote two top-level documents back to back on one stream, against a
+    flag documented as writing the report. The result does not parse -- json.load
+    raises on the trailing data -- so the machine-readable form was unusable for
+    exactly the invocation that produces a comparison.
+    """
+
+    def test_a_pair_emits_one_parseable_document(self, host, tmp_path, capsys):
+        args = argv(
+            "--arm",
+            "on:HUGEPAGES=on",
+            "--arm",
+            "off:HUGEPAGES=off",
+            "--json",
+            out=tmp_path,
+        )
+        assert run_cmd.cmd(args) == 0
+        document = json.loads(capsys.readouterr().out)
+        assert document["report"] == "bench_pair"
+        assert sorted(document["arms"]) == ["off", "on"]
+        assert document["arms"]["on"]["run"]["arm"] == "on"
+
+    def test_a_single_arm_still_emits_its_report(self, host, tmp_path, capsys):
+        """The runbook pipes a one-arm run straight into a parser expecting the report.
+
+        docs/verification/bench/bench.md B1, B4 and B5 all read phases off the top
+        level, so the shape a consumer gets is stated by the envelope's discriminator
+        rather than inferred from the arm count.
+        """
+        assert run_cmd.cmd(argv("--json", out=tmp_path)) == 0
+        document = json.loads(capsys.readouterr().out)
+        assert document["report"] == "bench_result"
+        assert document["phases"]

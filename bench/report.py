@@ -28,6 +28,11 @@ from common.reports import report_header, validate_report
 
 REPORT_TYPE = "bench_result"
 NOISE_REPORT_TYPE = "bench_noise"
+# An A/B pair on one stream. A run of two arms produces two reports, and `--json` used
+# to write both as top-level documents back to back, which does not parse. The pair
+# gets its own discriminator rather than a shape a consumer has to infer from the arm
+# count -- the envelope already requires one, and B1 already reads it.
+PAIR_REPORT_TYPE = "bench_pair"
 SCHEMA_VERSION = 1
 
 
@@ -62,6 +67,15 @@ def build(
     )
     validate_report(report)
     return report
+
+
+def pair(documents: dict[str, dict]) -> dict:
+    """Both arms of a run as one validated document, keyed by arm name."""
+    envelope = report_header(PAIR_REPORT_TYPE, schema_version=SCHEMA_VERSION)
+    envelope["git_sha"] = git_sha()
+    envelope["arms"] = documents
+    validate_report(envelope)
+    return envelope
 
 
 def write(report: dict, directory: str, filename: str = "result.json") -> str:
