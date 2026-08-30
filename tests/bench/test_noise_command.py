@@ -10,6 +10,8 @@ Everything host-side is substituted, as in test_run_command.py. No number here i
 
 from __future__ import annotations
 
+import json
+
 from bench import delta, report, runner
 from bench.cli import build_parser
 from bench.commands import noise as noise_cmd
@@ -183,3 +185,78 @@ class TestTheFloorNamesTheWorkloadItMeasured:
             document["run"]["workload_hash"]
             == load_profile("quick", "llama-cpu").workload_hash
         )
+
+
+class TestTheFloorRefusesWhatItCannotMeasure:
+    """The paths that end a floor run early, none of which had a test.
+
+    `bench noise` is the command every `within_noise` verdict rests on, and it spent
+    its whole life uncovered -- which is how a required argument reached its one call
+    site uncalled. Its refusals are worth as much as its happy path.
+    """
+
+    def test_a_service_running_another_model_is_refused(
+        self, host, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "bench.conditions.collect",
+            lambda service, container_name=None: {
+                "host": {"client_cpuset": "0-15"},
+                "env_knobs": {"MODEL_PATH": "/models/something-else.gguf"},
+                "server_argv": ["llama-server"],
+            },
+        )
+        assert noise_cmd.cmd(argv(tmp_path)) == 2
+        assert list(tmp_path.glob("noise-*")) == []
+
+    def test_an_arm_that_lost_every_cell_writes_no_floor(
+        self, host, tmp_path, monkeypatch
+    ):
+        """A floor over nothing is not a wide floor, it is no floor."""
+
+        def refuse(adapter, body, timeout):
+            raise ServingError("llama-cpu: connection refused")
+
+        monkeypatch.setattr("bench.client.stream", refuse)
+        assert noise_cmd.cmd(argv(tmp_path)) == 1
+        assert list(tmp_path.glob("noise-*")) == []
+
+    def test_an_unknown_model_is_refused_before_the_service_is_touched(
+        self, host, tmp_path
+    ):
+        args = build_parser().parse_args(
+            [
+                "noise",
+                "--service",
+                "llama-cpu",
+                "--model",
+                "not-a-model",
+                "--out",
+                str(tmp_path),
+            ]
+        )
+        assert noise_cmd.cmd(args) == 2
+        assert host.gated == []
+
+    def test_a_floor_at_the_regression_threshold_is_warned_about(
+        self, host, tmp_path, monkeypatch, capsys
+    ):
+        """A floor at or above 5% means the 5% bar cannot be evaluated on this rig."""
+        monkeypatch.setattr(
+            noise_cmd.delta,
+            "floor_from_pair",
+            lambda a, b: {"floor": {"decode:decode_tok_s": 44.0}, "worst_pct": 44.0},
+        )
+        assert noise_cmd.cmd(argv(tmp_path)) == 0
+        assert "not resolvable" in capsys.readouterr().err
+
+    def test_the_json_form_is_the_document_that_was_written(
+        self, host, tmp_path, capsys
+    ):
+        assert noise_cmd.cmd(argv(tmp_path, "--json")) == 0
+        emitted = json.loads(capsys.readouterr().out)
+        written = report.read(
+            str(next(tmp_path.glob("noise-*/noise.json"))),
+            expect=report.NOISE_REPORT_TYPE,
+        )
+        assert emitted == written
