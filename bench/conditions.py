@@ -113,6 +113,10 @@ def container(name: str) -> dict:
         info = json.loads(raw)
     except json.JSONDecodeError:
         return {}
+    # Valid JSON that is not an object would make every lookup below raise, and this
+    # function runs after all measurement, outside the caller's error handler.
+    if not isinstance(info, dict):
+        return {}
     config = info.get("Config") or {}
     host_config = info.get("HostConfig") or {}
     env = {}
@@ -155,7 +159,16 @@ def client_cpuset() -> str | None:
 
 
 def collect(service: str, container_name: str | None = None) -> dict:
-    """Every host-side fact a report carries under conditions.host."""
+    """Every host-side fact a report carries under conditions.host.
+
+    `container_name` defaults to the compose service key, which works only because
+    docker-compose.inference.yaml pins `container_name:` to that key for all three
+    benchmarked services. Drop that line there and compose names the container
+    `<project>-<service>-<index>`, every inspect returns nothing, and this document
+    quietly loses its cpuset, image digest, thread count and argv -- the failure mode
+    is an absent fact, not an error. The parameter is the override for that day, and
+    tests/bench/test_conditions.py fails when the coincidence ends.
+    """
     host: dict = {"client_cpuset": client_cpuset()}
     host.update(gpu())
     pages = hugepages()

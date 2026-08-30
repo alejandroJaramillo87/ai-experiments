@@ -13,11 +13,14 @@ whatever machine runs the suite, and assert nothing about what comes back.
 from __future__ import annotations
 
 import json
+import pathlib
 import subprocess
 
-import pytest
+import yaml
 
 from bench import conditions
+
+COMPOSE = pathlib.Path(__file__).resolve().parents[2] / "docker-compose.inference.yaml"
 
 
 class TestRunDegrades:
@@ -116,13 +119,11 @@ class TestContainer:
         assert facts["server_argv"] == ["/app/entrypoint.sh", "--threads", "16"]
         assert facts["service_cpuset"] == "0-15"
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="BQ-F11: valid JSON that is not a mapping reaches .get on a list, "
-        "raising AttributeError out of container() and out of collect(), which "
-        "runs after all measurement and outside the caller's handler",
-    )
     def test_valid_json_that_is_not_a_mapping_is_refused(self, monkeypatch):
+        # BQ-F11. A JSON array parses, and .get on a list raises AttributeError out of
+        # container() and out of collect(), which runs after all measurement and outside
+        # the caller's handler. No real `docker inspect --format '{{json .}}'` produces
+        # this shape, so the guard is for the contract, not for a reachable input.
         monkeypatch.setattr(conditions, "_run", lambda *a, **k: '["a", "b"]')
         assert conditions.container("llama-cpu") == {}
 
@@ -188,3 +189,33 @@ class TestCollect:
         # BQ-F13. The compose service key stands in for a container name, and the
         # parameter that would carry a resolved name is unused at both call sites.
         assert seen == ["llama-cpu"]
+
+    def test_a_resolved_name_overrides_the_service_key(self, monkeypatch):
+        seen: list[str] = []
+        monkeypatch.setattr(conditions, "_run", lambda *a, **k: None)
+        monkeypatch.setattr(
+            conditions, "container", lambda name: seen.append(name) or {}
+        )
+        monkeypatch.setattr(conditions, "MEMINFO", "/proc/does-not-exist")
+        conditions.collect("llama-cpu", container_name="ai-experiments-llama-cpu-1")
+        assert seen == ["ai-experiments-llama-cpu-1"]
+
+
+class TestTheServiceKeyIsAlsoTheContainerName:
+    """BQ-F13, as a tripwire rather than a fix.
+
+    `collect` hands the compose service key to `docker inspect`, which wants a container
+    name. The two coincide only because docker-compose.inference.yaml pins
+    `container_name:` to the service key for every benchmarked service. Drop that line
+    and compose names the container `<project>-<service>-<index>`, every inspect returns
+    nothing, and conditions.host silently loses its cpuset, image digest, thread count
+    and argv -- an absent fact, by design, so no run would fail to report the loss.
+    """
+
+    def test_compose_pins_the_container_name_to_the_service_key(self):
+        services = yaml.safe_load(COMPOSE.read_text(encoding="utf-8"))["services"]
+        for name in ("llama-cpu", "llama-gpu", "vllm-gpu"):
+            assert services[name].get("container_name") == name, (
+                f"{name} no longer pins container_name, so conditions.collect must be "
+                "passed a resolved container name rather than the service key"
+            )
