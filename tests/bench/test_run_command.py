@@ -280,3 +280,46 @@ class TestBothArmsAreRecreated:
         """
         assert run_cmd.cmd(argv(out=tmp_path)) == 0
         assert host.composed == []
+
+
+class TestTheServedModelIsReconciled:
+    """The registry's claim and the container's state, checked before measuring.
+
+    A report carries conditions.model from bench/registry.py and conditions.server_argv
+    from the container, and nothing reconciled them. The disagreement is reachable
+    without any fault: the training commands swap models on these same services and
+    skip their restore under --keep-serving, and an arm can override the model path.
+    The result is a citable report describing a model that was not loaded.
+    """
+
+    def served(self, path):
+        return lambda service, container_name=None: {
+            "host": {"client_cpuset": "0-15", "service_cpuset": "0-15"},
+            "env_knobs": {"MODEL_PATH": path},
+            "server_argv": ["llama-server", "-m", path],
+        }
+
+    def test_a_service_running_another_model_is_refused(
+        self, host, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "bench.conditions.collect", self.served("/models/something-else.gguf")
+        )
+        assert run_cmd.cmd(argv(out=tmp_path)) == 2
+        assert host.engine.prompts == [], "a workload ran against the wrong model"
+        assert list(tmp_path.glob("*/result.json")) == []
+
+    def test_the_registered_path_is_accepted(self, host, tmp_path, monkeypatch):
+        from bench.registry import resolve
+
+        spec = resolve(MODEL, "llama-cpu")
+        monkeypatch.setattr("bench.conditions.collect", self.served(spec.path))
+        assert run_cmd.cmd(argv(out=tmp_path)) == 0
+
+    def test_a_container_stating_no_model_is_not_contradicted(self, host, tmp_path):
+        """docker inspect can fail, and unobserved is not the same as disagreeing.
+
+        The fixture's block carries no model path at all, which is what a sandbox --
+        or a container compose named differently -- produces.
+        """
+        assert run_cmd.cmd(argv(out=tmp_path)) == 0

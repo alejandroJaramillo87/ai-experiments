@@ -19,7 +19,7 @@ import json
 import os
 from typing import Any, TextIO
 
-from bench import adapters, conditions, metrics, report
+from bench import adapters, metrics, report
 from bench.registry import ModelSpec
 from bench.workloads import DECODE, PREFILL, Cell, Profile, build_prompt, slices
 from common.output import Printer
@@ -399,6 +399,7 @@ def assemble(
     samples_path: str | None,
     arm_sequence: str,
     status: str,
+    host: dict,
     pair_id: str | None = None,
 ) -> dict:
     """Build the bench_result document for one arm.
@@ -414,8 +415,13 @@ def assemble(
     written after a run collapsed carries the cells that did run, which is worth
     keeping and dangerous to mistake for a whole one: differenced against a full arm it
     would report the missing cells as whatever the survivors happened to measure.
+
+    `host` is bench/conditions.py's collected block, passed in rather than probed here.
+    The caller has already collected it to reconcile the served model against the
+    registry, and collecting a second time would describe a second container state --
+    an arm's recreate sits between the two -- while presenting it as the state the
+    numbers were measured under.
     """
-    host = conditions.collect(service)
     return report.build(
         run={
             "run_id": run_id,

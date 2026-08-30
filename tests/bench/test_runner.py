@@ -216,6 +216,24 @@ class TestReduce:
         )
 
 
+# The conditions block as bench/conditions.py collects it, injected rather than probed.
+# These tests used to let assemble shell out to `docker inspect` and `nvidia-smi`
+# against whatever machine ran the suite, which made them pass or fail on the presence
+# of a container nobody had declared -- and assert nothing about the values, because
+# there were no values to expect.
+HOST = {
+    "host": {
+        "client_cpuset": "0-7",
+        "service_cpuset": "0-15",
+        "threads": "16",
+        "gpu": "NVIDIA GeForce RTX 5090",
+        "driver_version": "580.65.06",
+    },
+    "env_knobs": {"MODEL_PATH": "/m/y-Q4_K_M.gguf", "THREADS": "16"},
+    "server_argv": ["llama-server", "-m", "/m/y-Q4_K_M.gguf", "--threads", "16"],
+}
+
+
 class TestAssembleAndWrite:
     def test_the_document_validates_against_the_shared_envelope(self, tmp_path):
         profile, observations, errors, _ = run()
@@ -230,6 +248,7 @@ class TestAssembleAndWrite:
             samples_path=None,
             arm_sequence="blocked",
             status=runner.COMPLETE,
+            host=HOST,
         )
         # docs/observability/report_schema.md requires this of every emitter.
         validate_report(document)
@@ -250,6 +269,7 @@ class TestAssembleAndWrite:
             samples_path=None,
             arm_sequence="blocked",
             status=runner.COMPLETE,
+            host=HOST,
         )
         conditions = document["conditions"]
         assert conditions["service"] == "llama-cpu"
@@ -259,9 +279,14 @@ class TestAssembleAndWrite:
         assert conditions["model"]["params_active_b"] == 3.3
         assert conditions["model"]["quantization"] == "Q4_K_M"
         # Recording the server's own argv is what turns a silent misconfiguration --
-        # an entrypoint execing a command it never built -- into a diffable field.
-        assert "server_argv" in conditions
-        assert "host" in conditions
+        # an entrypoint execing a command it never built -- into a diffable field. The
+        # values are asserted, not just the keys: the block reaching the report
+        # unaltered is the whole basis for `bench compare` refusing a pair whose
+        # cpusets or knobs disagree.
+        assert conditions["server_argv"] == HOST["server_argv"]
+        assert conditions["env_knobs"]["THREADS"] == "16"
+        assert conditions["host"]["client_cpuset"] == "0-7"
+        assert conditions["host"]["service_cpuset"] == "0-15"
         assert document["run"]["profile"] == profile.name
         assert document["run"]["warmup_discarded"] == profile.warmup
 
@@ -280,6 +305,7 @@ class TestAssembleAndWrite:
             samples_path=None,
             arm_sequence="blocked",
             status=runner.COMPLETE,
+            host=HOST,
         )
         path = report_mod.write(document, str(tmp_path))
         assert read(path)["run"]["arm"] == "base"

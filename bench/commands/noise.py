@@ -32,10 +32,10 @@ import os
 import sys
 import uuid
 
-from bench import delta, report, runner
+from bench import conditions, delta, report, runner
 from bench.adapters import ENGINE_FOR_SERVICE
 from bench.commands.run import RESULTS_ROOT
-from bench.registry import RegistryError, resolve
+from bench.registry import RegistryError, reconcile, resolve
 from bench.workloads import BLOCKED, ProfileError, load
 from common.output import Printer
 from common.reports import report_header
@@ -98,6 +98,14 @@ def cmd(args) -> int:
             # for. A service degrading between the two widens the floor, and a wide
             # floor suppresses findings in every comparison that later cites it.
             runner.gate(args.service, printer)
+            observed = conditions.collect(args.service)
+            mismatch = reconcile(model, observed)
+            if mismatch is not None:
+                printer.error(mismatch)
+                printer.line("  Solution: bring the service up on the registered")
+                printer.line("  model (`make up`), or register what it is serving")
+                printer.line("  in MODELS in bench/registry.py.")
+                return 2
             observations, errors = runner.execute(
                 args.service, profile, model, printer, run_key=label
             )
@@ -117,6 +125,7 @@ def cmd(args) -> int:
                     # Every cell of both arms ran, or the command has already
                     # returned: a floor over a truncated arm is not a floor.
                     status=runner.COMPLETE,
+                    host=observed,
                     pair_id=pair_id,
                     # Back to back in one process, with no recreate between them. The
                     # floor must record the ordering it was measured under rather than

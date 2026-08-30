@@ -9,9 +9,9 @@ import os
 import sys
 import uuid
 
-from bench import report, runner
+from bench import conditions, report, runner
 from bench.adapters import ENGINE_FOR_SERVICE
-from bench.registry import RegistryError, resolve
+from bench.registry import RegistryError, reconcile, resolve
 from bench.workloads import BLOCKED, INTERLEAVED, ProfileError, load
 from common.output import Printer
 from common.serving import SERVICES, ServingError, compose
@@ -148,6 +148,7 @@ class Arm:
     errors: list[dict] = dataclasses.field(default_factory=list)
     samples_path: str | None = None
     report_path: str | None = None
+    host: dict | None = None
 
     @property
     def collapsed(self) -> bool:
@@ -185,6 +186,7 @@ def persist(
         samples_path=arm.samples_path,
         arm_sequence=arm_sequence,
         status=runner.PARTIAL if arm.collapsed else runner.COMPLETE,
+        host=arm.host or {},
         pair_id=pair_id,
     )
     path = report.write(document, directory)
@@ -230,8 +232,9 @@ def cmd(args) -> int:
         )
 
     written: list[dict] = []
-    if args.interleave:
-        code = run_interleaved(
+    passes = run_interleaved if args.interleave else run_blocked
+    try:
+        code = passes(
             arms,
             args=args,
             profile=profile,
@@ -240,16 +243,15 @@ def cmd(args) -> int:
             printer=printer,
             written=written,
         )
-    else:
-        code = run_blocked(
-            arms,
-            args=args,
-            profile=profile,
-            model=model,
-            pair_id=pair_id,
-            printer=printer,
-            written=written,
-        )
+    except RegistryError as exc:
+        # Refused rather than warned. A warning leaves a citable report on disk whose
+        # conditions.model describes a model the service was not running, and the
+        # measurement it labels is unrepeatable from the artifact.
+        printer.error(str(exc))
+        printer.line("  Solution: bring the service up on the registered model")
+        printer.line("  (`make up`), or register what it is serving in")
+        printer.line("  MODELS in bench/registry.py.")
+        return 2
     if code != 0:
         return code
 
@@ -305,6 +307,20 @@ def run_pass(
     try:
         apply_arm(args.service, arm.env, printer, always=paired)
         runner.gate(args.service, printer)
+        # Collected once, here, and reused for the report. Between this call and the
+        # end of the pass nothing recreates the container, so it describes the state
+        # the numbers were measured under; a second inspect at assembly time would
+        # describe whatever the next arm's recreate had already produced.
+        observed = conditions.collect(args.service)
+        mismatch = reconcile(model, observed)
+        if mismatch is not None:
+            raise RegistryError(mismatch)
+        # An interleaved arm is measured across several passes. The first pass's block
+        # is the one recorded, because it is the state the arm's earliest cells ran
+        # under; every pass is still reconciled, so a model swapped in mid-run is
+        # refused rather than averaged in.
+        if arm.host is None:
+            arm.host = observed
         observations, errors = runner.execute(
             args.service,
             profile,
