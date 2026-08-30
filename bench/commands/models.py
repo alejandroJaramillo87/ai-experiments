@@ -30,8 +30,17 @@ def cmd(args) -> int:
         printer.error(str(exc))
         return 1
     if args.json:
+        # conditions() is the model block a report carries, and its key set is what
+        # bench/delta.py refuses a comparison on -- engines is a registry fact about
+        # which services a model can run on, not a condition of any one run, so it is
+        # added here rather than widened into that block. Without it the machine form
+        # cannot answer what the human listing answers, and a consumer is left
+        # scraping stderr (docs/verification/bench/bench.md B3 asks for engines).
         json.dump(
-            {slug: spec.conditions() for slug, spec in specs.items()},
+            {
+                slug: {**spec.conditions(), "engines": list(spec.engines)}
+                for slug, spec in specs.items()
+            },
             sys.stdout,
             indent=2,
         )
