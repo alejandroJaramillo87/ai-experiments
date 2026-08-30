@@ -185,8 +185,10 @@ them.
 
 ## See Also
 
-- roadmap.md - The measurement campaign order and its reasoning
-- bios/bios-optimizations.md - Detailed BIOS configuration guide
-- os/os-optimizations.md - Operating system tuning
-- docker-compose.inference.yaml - Container orchestration
-- docker/llama-cpu/Dockerfile.cpu - Latency-optimized CPU container
+- [roadmap.md](roadmap.md) — the measurement campaign order and its reasoning
+- [bios/bios-optimizations.md](bios/bios-optimizations.md) — BIOS configuration guide
+- [os/os-optimizations.md](os/os-optimizations.md) — operating system tuning
+- [../bench/results.md](../bench/results.md) — what has actually been measured, and its status
+- `docker-compose.inference.yaml` — container orchestration, and the source of truth for
+  every service argument and cpuset named here
+- `docker/llama-cpu/Dockerfile.cpu` — the latency-optimized CPU container

@@ -14,7 +14,7 @@ and driven as subprocesses by `tests/`, through the `run_script` fixture in
 |-----------|---------|-------------------|
 | `setup/` | one-time provisioning: CUDA, cuDNN, NVIDIA, Docker, data SSD, security | no — sudo, GPU, host filesystem |
 | `update/` | GPU and Python stack updates — see [update/README.md](update/README.md) | no — network, sudo |
-| `benchmark/` | latency and throughput measurement against live services | no — GPU and running services |
+| `benchmark/` | the perplexity quality arm, and the wikitext prompt corpus the inference stack mounts | no — GPU and running services |
 | `interp/` | preflight and smoke checks for the interp and Neuronpedia stacks | no — GPU gate |
 | `models/` | model download and header transcripts | transcripts only |
 | `agents/` | guard hook, preflight scan, role acceptance, version checks | yes |
