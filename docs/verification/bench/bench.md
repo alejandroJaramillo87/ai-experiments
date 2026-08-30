@@ -72,7 +72,7 @@ reserves it for machine output; the `[RUN]`/`[OK]` lines belong on stderr).
 Every `points[].metrics.ttft_ms.n` equals the profile's `repeats` (3 for `quick`), which
 is what proves the warm-up was discarded rather than counted.
 
-**Do not accept on `slope.r2` here.** `quick` sweeps two prefill lengths, and a least
+**Do not accept on `slope.r2` here** (BQ-F05). `quick` sweeps two prefill lengths, and a least
 squares line through two points passes through both: `r2` is 1.0 by construction and says
 nothing about the fit. `bench/metrics.py::prefill_slope` now returns `None` below three
 points, so `slope` is absent from a `quick` run entirely and its presence would be the
@@ -138,7 +138,7 @@ and a stale floor would land on exactly the keys a regression is graded against.
 `bench noise --profile publish` for those entries, and expect the wall clock to match a
 `publish` run.
 
-The floor document carries the pair it was measured from -- both arms in full, their
+The floor document carries the pair it was measured from (BQ-F44) -- both arms in full, their
 conditions, and a `coverage` block. Check `coverage.floor_metrics` against
 `coverage.arm_metrics`: a floor narrower than the workload was measured over cells that
 failed, and `compare` refuses it rather than applying it, because the metrics it does not
@@ -171,7 +171,7 @@ python3 -m bench models --json | python3 -c "import json,sys; json.load(sys.stdi
 ```
 
 Expected signal: exit 0, and each of `llama-cpu`, `llama-gpu` and `vllm-gpu` appears in
-at least one entry's `engines`, in the JSON form as well as the human one. The loader
+at least one entry's `engines`, in the JSON form as well as the human one (BQ-F29). The loader
 validates on read, so a `quantization` that disagrees with the model filename, an unknown
 `architecture`, or an MoE entry missing `params_active_b` fails here rather than in a
 published number.
@@ -219,7 +219,7 @@ intercept is the fixed per-request cost, and it is the number that makes a singl
 prefill estimate wrong. `publish` sweeps enough prefill lengths for `slope.r2 >= 0.95` to
 mean something; read it here rather than at B1.
 
-**The separation is conditional, not a property of the measurement.** `decode_tok_s`
+**The separation is conditional, not a property of the measurement** (BQ-F20). `decode_tok_s`
 exceeds `e2e_tok_s` exactly when time to first token exceeds the mean time per output
 token, which is expected on this hardware and is not guaranteed by arithmetic. A run where
 they converge is a finding about the service -- prefill has become cheap relative to
@@ -261,7 +261,7 @@ working. If per-request throughput is flat across the sweep, the requests are no
 contending and the concurrency is still not real. Every point at concurrency > 1 carries
 `includes_queue: true`.
 
-**Accept on `e2e_tok_s`, not `decode_tok_s`.** vLLM merges queued deltas into one
+**Accept on `e2e_tok_s`, not `decode_tok_s`** (BQ-F54). vLLM merges queued deltas into one
 streamed chunk under load, which is what it is in this stack to do, and a client cannot
 distinguish a chunk carrying four tokens from four chunks it never received. The
 reduction refuses `decode_tok_s` and `tpot_ms` for any point where that happened, so on
@@ -269,7 +269,7 @@ the one service with a concurrency sweep those two fields are expected to be `nu
 exactly where the sweep is most interesting. `e2e_tok_s` spans submission to last
 arrival, and both endpoints are invariant under packing.
 
-Record `tokens_per_chunk_mean_max` and `arrivals_incomplete` per point. They are the
+Record `tokens_per_chunk_mean_max` and `arrivals_incomplete` per point (BQ-F55). They are the
 evidence that packing, rather than a lost cell, is why the per-token rates are absent --
 `bench compare` reads the same two fields to say so.
 
@@ -301,7 +301,7 @@ repacking is the main CPU throughput lever on AVX-512", and it has never been me
 Weight repacking trades startup time for GEMM throughput, so the decode arm is where it
 should show if anywhere.
 
-`NO_REPACK` appeared in no compose file until this campaign, so the variable never
+`NO_REPACK` appeared in no compose file until this campaign (BQ-F52), so the variable never
 crossed into the container and both arms of this entry ran the same service. It is
 interpolated in `docker-compose.inference.yaml` now, and `bench compare` refuses a pair
 whose `conditions.env_knobs` and `conditions.server_argv` are identical while the arm
@@ -360,7 +360,7 @@ improvement figure measured at `THREADS=12` on a service that now runs 16, by a 
 no longer in the repository, with prefill folded into a decode-shaped number. It is
 marked superseded. This entry is what replaces it.
 
-`THREADS` was a literal in `docker-compose.inference.yaml` until this campaign, so
+`THREADS` was a literal in `docker-compose.inference.yaml` until this campaign (BQ-F52), so
 `--arm t12:THREADS=12` set a variable in the client's environment that the container never
 read: both arms ran 16 threads and the comparison reported a clean null on an A/B that
 measured nothing. The compose file interpolates it now, and `THREADS_BATCH` beside it --
@@ -444,7 +444,7 @@ Implementation: `docker/vllm-gpu/entrypoint.sh`, `docker-compose.inference.yaml`
 `bench/adapters.py::VllmAdapter`.
 
 Every vLLM phase reports `timings_source: client`, because the adapter had no server
-timings to parse. At the pinned version the engine can attach per-request timings to the
+timings to parse (BQ-F19). At the pinned version the engine can attach per-request timings to the
 same final usage frame the adapter already reads: `time_to_first_token_ms`,
 `generation_time_ms`, `inter_token_latency_ms` and `queue_time_ms`. Queue time is the
 quantity this suite documents as impossible to derive client-side, and it is what lets the
