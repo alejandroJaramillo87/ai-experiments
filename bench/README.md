@@ -52,7 +52,7 @@ Nothing imports `bench`. It is a host-side CLI whose output is read by a human, 
 ## Entry points
 
 ```
-python3 -m bench run     --service <name> --model <slug> [--profile quick|publish] [--arm ...]
+python3 -m bench run     --service <name> --model <slug> [--profile quick|publish] [--arm ...] [--interleave]
 python3 -m bench noise   --service <name> --model <slug>
 python3 -m bench compare <baseline.json> <candidate.json> --noise <noise.json>
 python3 -m bench models  [--json]
@@ -72,7 +72,7 @@ python3 -m bench models  [--json]
 | `runner.py` | health gate, warm-up discard, execution, reduction, assembly |
 | `report.py` | envelope assembly, write, read |
 | `delta.py` | verdicts against the 5% bar and the measured floor |
-| `profiles/` | `quick` (~8 min) and `publish` (~45-60 min, all four services) |
+| `profiles/` | `quick` (~8 min) and `publish` (~45-60 min, every benchmarked service) |
 
 ## Traps
 

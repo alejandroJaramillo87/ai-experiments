@@ -90,9 +90,14 @@ measurement to its CPU track without noticing.
 
 - Name each arm with `--arm <name>[:KEY=VALUE,...]`. An arm is a service configuration,
   not a code path, so `--arm off:HUGEPAGES=off` needs no new code.
-- Two `--arm` flags interleave at the repeat level, so drift over the run cannot alias
-  onto one arm. A container recreate costs 30–300s, which is why interleaving is per
-  repeat and not per request.
+- Two `--arm` flags run each arm's whole profile in turn by default. Add `--interleave`
+  to alternate them at the repeat level instead, so drift over the run cannot alias onto
+  one arm. It is opt-in because it costs a container recreate and a full warm-up pass per
+  arm per repeat — roughly 2 to 2.5 times the wall clock on `publish`, every invocation —
+  so it is for a contested result rather than for every run. Every report records
+  `run.arm_sequence`, and `bench compare` warns when a differenced pair was blocked.
+- Both arms are recreated whether or not they carry an override, so neither measures a
+  service that has been up longer than the other.
 - Full output and raw samples go to `/mnt/ai-data/benchmarks/bench/<run_id>/`; results
   are run data and do not belong in the worktree.
 - Every report carries its own conditions — model, architecture, quantization, thread
@@ -105,7 +110,7 @@ A change is a regression when the median is more than **5%** slower than the bas
 **and** the difference is outside the measured run-to-run spread. Both clauses bind.
 
 The second one needs a number, so measure it: `bench noise` runs one unchanged
-configuration twice, interleaved, and the per-metric difference between the two is the
+configuration twice, back to back, and the per-metric difference between the two is the
 floor — the largest difference this rig produces from having changed nothing. Four
 consecutive runs of one unmodified binary on this workstation have been recorded
 spreading 44% (`docs/optimizations/ideation/rust-harness-optimization-candidates.md`), so

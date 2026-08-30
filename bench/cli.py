@@ -32,7 +32,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Phase-separated inference benchmarks for the llama.cpp and vLLM services. "
             "Reports time to first token and inter-token latency separately, as median "
-            "and spread over repeated interleaved runs, against a measured noise floor."
+            "and spread over repeated runs, against a measured noise floor."
         ),
         epilog=(
             "Protocol: .claude/skills/benchmarking/SKILL.md. "
