@@ -172,3 +172,39 @@ def test_ground_truth_window_matches_the_injected_events(scenario: str) -> None:
     assert len(in_window) > 20, (
         f"{scenario} declares a window with almost nothing in it"
     )
+
+
+class TestLogIdDeclarations:
+    """Every id the generator emits is classified, and nothing else.
+
+    Not marked `corpus`: it needs no fetched manual, only the two sets the
+    module declares. It runs in the default suite because the cost of an
+    undeclared id is that the module docstring -- which says exactly which ids
+    MongoDB documents and which are stand-ins -- quietly stops being true.
+    """
+
+    def test_every_generated_id_is_declared(self) -> None:
+        from logtriage.fixtures.generator import (
+            DOCUMENTED_IDS,
+            REPRESENTATIVE_IDS,
+            generate,
+        )
+        from logtriage.fixtures.scenarios import SCENARIOS
+        from logtriage.mongod.records import LogRecord, parse_lines
+
+        declared = DOCUMENTED_IDS | REPRESENTATIVE_IDS
+        emitted: set[int] = set()
+        for scenario in SCENARIOS:
+            log = generate(scenario, minutes=20, seed=1)
+            emitted |= {
+                record.log_id
+                for record in parse_lines(log.lines)
+                if isinstance(record, LogRecord)
+            }
+        assert emitted, "no records generated"
+        assert emitted <= declared, f"undeclared log ids: {sorted(emitted - declared)}"
+
+    def test_the_two_categories_do_not_overlap(self) -> None:
+        from logtriage.fixtures.generator import DOCUMENTED_IDS, REPRESENTATIVE_IDS
+
+        assert not (DOCUMENTED_IDS & REPRESENTATIVE_IDS)

@@ -82,6 +82,11 @@ class LogRecord:
     ctx: str
     msg: str
     attr: dict[str, Any] = field(default_factory=dict)
+    # Which service wrote the line: "R" for a router (mongos), "S" for a shard
+    # (mongod). Added in 8.0 and present on every line the 8.x manual shows.
+    # Empty for anything older, and for a merged log it is the only thing that
+    # says which process a record came from.
+    svc: str = ""
 
     @property
     def record_id(self) -> str:
@@ -165,6 +170,7 @@ def parse_line(line: str, line_no: int) -> LogRecord | ParseError:
         ctx=str(doc["ctx"]),
         msg=str(doc["msg"]),
         attr=attr,
+        svc=str(doc.get("svc", "")),
     )
 
 

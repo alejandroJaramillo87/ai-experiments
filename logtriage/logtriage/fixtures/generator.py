@@ -5,18 +5,28 @@ answer, which is what lets the diagnostics be tested rather than eyeballed. A
 seed fixes every choice, so the same arguments always produce byte-identical
 output and a diff between two runs means a code change and nothing else.
 
-On the log ids below. Every mongod line carries a numeric id identifying its
-call site, and three of them are load-bearing and well known: 51803 (Slow
-query), 22943 (Connection accepted), 22944 (Connection ended). The rest of the
-ids used here are *representative*: plausible five- and seven-digit values in
-the right components, not values verified against a specific server build.
-That is deliberate and it is why diagnostics.py keys on (component, msg) for
-everything outside those three -- matching on an id this module invented would
-be a test that only ever passes against this module.
+On the log ids below, reconciled against the Database Manual at commit
+88ec8192b924 (manual 8.3), reference/log-messages.txt:
 
-TODO: reconcile the representative ids against source/reference/log-messages.txt
-in the real MongoDB manual once `logtriage fetch-kb` lands (Phase B). The corpus
-is the authority; this table is a stand-in until it is available.
+  51803  confirmed exactly -- component COMMAND, severity I, msg "Slow query".
+  22943  id and component NETWORK confirmed.
+  22944  id and component NETWORK confirmed.
+
+The manual's example messages for the two connection ids are the 4.4-era
+templated form, `connection accepted from {session_remote} ...`, which 5.0
+replaced with a plain message plus attributes. This module emits the modern
+form, so it is the published example that is stale rather than the fixture.
+
+The reconciliation also settled what the corpus cannot supply. MongoDB
+publishes no catalogue of log ids; the manual shows fourteen of them, inside
+worked examples, and none covers connection refusal, heartbeats, elections or
+index builds. The ids used here for those remain *representative* -- plausible
+values in the right components, not values verified against a server build --
+and that is why diagnostics.py keys on (component, msg) throughout. A detector
+matching an id this module invented would be a test that only ever passes
+against this module; one matching a documented id would still go quiet after
+the call site moved. kb/log_ids.py extracts what the manual documents, and a
+corpus-marked test holds this table against it.
 """
 
 from __future__ import annotations
@@ -33,12 +43,16 @@ from logtriage.fixtures.scenarios import SCENARIOS, GroundTruth
 # Arbitrary but stable; the tool never reasons about absolute dates.
 EPOCH = datetime(2026, 8, 30, 9, 0, 0, tzinfo=UTC)
 
-# Verified ids (see the module docstring).
+# Ids the manual documents (see the module docstring).
 SLOW_QUERY = 51803
 CONNECTION_ACCEPTED = 22943
 CONNECTION_ENDED = 22944
+DOCUMENTED_IDS = frozenset({SLOW_QUERY, CONNECTION_ACCEPTED, CONNECTION_ENDED})
 
-# Representative ids. Never matched on by diagnostics.
+# Representative ids: the manual documents none of these, and no detector
+# matches on them. Declared as a set so a corpus-marked test can hold every id
+# this module emits against the two categories and fail on a new one that
+# belongs to neither.
 CONNECTION_REFUSED = 20883
 HEARTBEAT_FAILED = 23974
 ELECTION_STARTING = 21438
@@ -48,6 +62,19 @@ INDEX_BUILD_STARTING = 20384
 INDEX_BUILD_SCAN_DONE = 20391
 INDEX_BUILD_FAILED = 20449
 WT_CHECKPOINT = 22430
+REPRESENTATIVE_IDS = frozenset(
+    {
+        CONNECTION_REFUSED,
+        HEARTBEAT_FAILED,
+        ELECTION_STARTING,
+        ELECTION_SUCCEEDED,
+        STATE_TRANSITION,
+        INDEX_BUILD_STARTING,
+        INDEX_BUILD_SCAN_DONE,
+        INDEX_BUILD_FAILED,
+        WT_CHECKPOINT,
+    }
+)
 
 # The synthetic deployment. One database, three collections, of which orders is
 # the large one every scenario picks on.
