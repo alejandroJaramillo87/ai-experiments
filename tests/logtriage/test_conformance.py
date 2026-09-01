@@ -123,7 +123,13 @@ def test_copy_imports_nothing_first_party() -> None:
     test above and break the moment the directory is copied to another machine.
     """
     source = COPY_PATH.read_text()
-    for forbidden in ("common.", "from common", "import common", "interp.", "training."):
+    for forbidden in (
+        "common.",
+        "from common",
+        "import common",
+        "interp.",
+        "training.",
+    ):
         assert forbidden not in source, f"logtriage/output.py reaches for {forbidden}"
 
 

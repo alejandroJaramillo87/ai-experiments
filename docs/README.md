@@ -26,6 +26,7 @@ orientation, not explanation: they point here for the detail.
 | [../scripts/README.md](../scripts/README.md) | Host-side tooling, and which scripts run in a sandbox |
 | [../docker/README.md](../docker/README.md) | Build contexts; the compose files above them are the source of truth |
 | [../rust-harness/README.md](../rust-harness/README.md) | The Rust harness workspace, its test tiers, and its quality gate |
+| [../logtriage/README.md](../logtriage/README.md) | Offline mongod log triage: a self-contained project with its own virtualenv and gate |
 | [../hugepages/README.md](../hugepages/README.md) | The huge-page interceptor library |
 | [../schemas/README.md](../schemas/README.md) | Cross-language artifact contracts |
 
