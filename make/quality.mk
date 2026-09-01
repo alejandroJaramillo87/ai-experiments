@@ -102,7 +102,7 @@ format: ## Format code with ruff
 # dies on a missing tool -- and the gate has to be followed by `make install` to
 # undo what it did. Checking first turns that into a named error that changes
 # nothing. Skipped in a sandbox, which has no .venv by design.
-quality: ## Run the full quality gate (format check, lint, mypy, lock check, doc refs, retired names, make targets, doc counts, KB refs, shellcheck, rust gate)
+quality: ## Run the full quality gate (format check, lint, mypy, lock check, doc refs, retired names, make targets, doc counts, KB refs, shellcheck, logtriage gate, rust gate)
 ifndef AI_SANDBOX
 	@if [ ! -x .venv/bin/ruff ] || [ ! -e "$$(readlink -f .venv/bin/python 2>/dev/null)" ]; then \
 	  printf '[ERROR] .venv is missing, incomplete, or points at an interpreter that no longer exists\n'; \
@@ -142,6 +142,7 @@ endif
 	fi; \
 	printf '[INFO] shellcheck: %s files\n' "$$(printf '%s\n' "$$files" | wc -l)"; \
 	printf '%s\n' "$$files" | xargs $(RUN_PY) shellcheck --severity=warning
+	@if [ -d logtriage ]; then $(MAKE) -C logtriage quality; fi
 	@if [ -d rust-harness ]; then $(MAKE) -C rust-harness quality; fi
 
 # Hardware tier for `make quality-full`. smoke is the before-every-session tier: under five

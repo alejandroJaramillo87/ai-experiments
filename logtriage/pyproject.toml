@@ -1,0 +1,97 @@
+# pyproject.toml
+# Managed with uv. Pins are exact per the pin-then-fix-then-update rule; bump one
+# at a time and re-run `make quality` after each.
+#
+# This project is deliberately self-contained: it imports nothing from the
+# surrounding ai-experiments repository, so `cp -r logtriage/ elsewhere` yields a
+# working repository. That is why the ruff configuration below duplicates the
+# parent's rather than inheriting it -- an extracted copy has no parent to
+# inherit from, and a lint configuration that changes on extraction is a
+# configuration nobody can trust.
+
+[project]
+name = "logtriage"
+version = "0.1.0"
+description = "Offline triage of mongod JSON logs with a local LLM and a MongoDB-backed knowledge base"
+requires-python = ">=3.12,<3.13"
+
+dependencies = [
+    # Aggregation and vector search against MongoDB 8.2+ Community. Used only by
+    # store/mongo.py (Phase C); the in-memory fakes need nothing.
+    "pymongo==4.17.0",
+    # Clustering for the genuinely free-text log fields (attr.errmsg, attr.error).
+    # Deliberately NOT the primary template engine: mongod tags every line with a
+    # unique numeric id since 4.4, which is an exact template for free.
+    "drain3==0.9.11",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "ruff==0.15.21",
+    "mypy==2.3.0",
+    # Executes $match/$group/$sort pipelines in-process, so the pipeline builders
+    # are exercised by a real interpreter without a running mongod. It does NOT
+    # implement $search/$vectorSearch -- that path stays unverified until a real
+    # server is available.
+    "mongomock==4.3.0",
+]
+
+[tool.uv]
+# Virtual project: the dependencies are installed, the project itself is not.
+# Entry is `python -m logtriage` from this directory, matching the parent repo.
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Tiers needing something the sandbox does not have are deselected by default, so
+# a bare `pytest` is green in a bare checkout. A command-line -m replaces this.
+addopts = "-m 'not corpus and not differential and not services'"
+markers = [
+    "corpus: needs the real MongoDB documentation clone (logtriage fetch-kb)",
+    "differential: compares the in-memory stores against a real MongoDB",
+    "services: needs a running mongod, mongot, or llama-server",
+]
+
+[tool.mypy]
+files = ["logtriage"]
+python_version = "3.12"
+warn_redundant_casts = true
+warn_unused_configs = true
+# Off for the same reason as the parent: ignores differ between an environment
+# with pymongo/drain3 installed and one without, and the run must be clean in both.
+warn_unused_ignores = false
+
+[[tool.mypy.overrides]]
+module = ["drain3.*", "mongomock.*"]
+ignore_missing_imports = true
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long, handled by ruff format
+    "B008",  # do not perform function calls in argument defaults
+    "W191",  # indentation contains tabs
+    "W293",  # blank line contains whitespace
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+
+# Declared for the same reason as the parent's: without it ruff auto-detects
+# first-party and the answer depends on what happens to be installed, which
+# reorders imports and fails the gate in one environment while passing in another.
+[tool.ruff.lint.isort]
+known-first-party = ["logtriage"]
