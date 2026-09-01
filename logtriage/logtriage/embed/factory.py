@@ -52,7 +52,7 @@ def descriptor(name: str, embedder: Embedder) -> dict[str, Any]:
     distinguish the two. A served model carries nothing but its width: which
     checkpoint llama-server has loaded is not something the client can see, so
     that mismatch is a deployment question the index cannot guard against, and
-    docs/verification/desktop.md records it rather than this pretending
+    docs/verification/desktop-model.md records it rather than this pretending
     otherwise.
     """
     fields: dict[str, Any] = {

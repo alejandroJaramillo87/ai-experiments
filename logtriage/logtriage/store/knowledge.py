@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import json
 from array import array
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -173,6 +173,20 @@ class InMemoryKnowledgeStore:
 
     def __len__(self) -> int:
         return len(self._chunks)
+
+    def items(self) -> Iterator[tuple[Chunk, Sequence[float]]]:
+        """Every chunk paired with its vector, in insertion order.
+
+        Exists so a built index can be copied somewhere else -- `index-kb --to
+        mongo` re-uses what the file path already embedded rather than
+        embedding the manual a second time, which on a served model is minutes
+        of GPU time for an identical result.
+
+        Insertion order rather than sorted, because it is the order `save`
+        writes and `load` reads: a copy that reordered would produce a
+        different vectors.f32 for the same corpus.
+        """
+        return zip(self._chunks, self._vectors, strict=True)
 
     def vector_search(self, embedding: Sequence[float], k: int = 5) -> list[Hit]:
         scored = [

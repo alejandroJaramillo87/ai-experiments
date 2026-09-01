@@ -84,7 +84,7 @@ Two consequences that are easy to get wrong and hard to notice:
 
 Whether Gemma's thinking channel leaks into `content` against the official template is
 **unmeasured**; `LOGTRIAGE_REASONING_FORMAT` is the knob and
-[../verification/desktop.md](../verification/desktop.md) carries the check.
+[../verification/desktop-model.md](../verification/desktop-model.md) carries the check.
 
 ## Related
 

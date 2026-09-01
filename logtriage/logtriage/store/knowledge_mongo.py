@@ -22,6 +22,7 @@ the divergence that nothing in this tree could detect.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING, Any
 
@@ -46,6 +47,20 @@ VECTOR_FIELD = "embedding"
 # MongoDB's guidance is a multiple of the limit, and too small a value silently
 # returns fewer or worse results rather than erroring.
 CANDIDATE_MULTIPLIER = 20
+
+# How long to wait for a search index to become queryable, and how often to ask.
+# Generous: mongot builds its Lucene index by reading the collection through a
+# change stream, so the wait scales with the corpus rather than being constant,
+# and 15,025 chunks is not instant. A timeout that fires early would send the
+# reader looking for a fault that is not there.
+READY_TIMEOUT = 600.0
+READY_POLL = 2.0
+
+# Where the index's own description lives: which embedder built it, at what
+# width, over which corpus commit. A sibling collection, so it is never a
+# document a query can return.
+META_COLLECTION = "index_meta"
+META_ID = "logtriage-index"
 
 # Chunk fields, derived from the dataclass so a field added to Chunk cannot be
 # silently dropped on the way back from the server.
@@ -170,6 +185,89 @@ class MongoKnowledgeStore:
             )
         if models:
             self._collection.create_search_indexes(models)
+
+    def save_meta(self, meta: dict[str, Any]) -> None:
+        """Record what built this index, beside it.
+
+        The on-disk index carries its embedder's identity in index.json and
+        `triage --kb` rebuilds exactly that embedder. The MongoDB index needs
+        the same, for the same reason: querying an index with an embedder other
+        than the one that built it still returns k chunks, ranked by a
+        similarity that means nothing, and nothing anywhere errors.
+
+        A sibling collection rather than a document in the chunk collection. A
+        metadata document living among the chunks would be counted by __len__,
+        returned by a $search that happened to match it, and would need
+        excluding from every query written later.
+        """
+        self._meta_collection().replace_one(
+            {"_id": META_ID}, {**meta, "_id": META_ID}, upsert=True
+        )
+
+    def load_meta(self) -> dict[str, Any]:
+        """What built this index, or {} if nothing recorded it."""
+        document = self._meta_collection().find_one({"_id": META_ID})
+        if not document:
+            return {}
+        return {key: value for key, value in document.items() if key != "_id"}
+
+    def _meta_collection(self) -> Collection[dict[str, Any]]:
+        return self._collection.database[META_COLLECTION]
+
+    def index_status(self) -> dict[str, str]:
+        """Each search index's build status, by name.
+
+        Separate from waiting so a caller can report the state without blocking
+        -- which is what an operator wants when the wait has already timed out
+        and the question is whether anything is happening at all.
+        """
+        return {
+            str(index["name"]): str(index.get("status", "UNKNOWN"))
+            for index in self._collection.list_search_indexes()
+        }
+
+    def wait_until_ready(
+        self, timeout: float = READY_TIMEOUT, interval: float = READY_POLL
+    ) -> dict[str, str]:
+        """Block until both search indexes are queryable, or raise.
+
+        Index creation is asynchronous and a query against an index still
+        building returns an empty result rather than an error -- so without this
+        the first $vectorSearch after an index build returns nothing and looks
+        exactly like a bad query. Every minute spent debugging that is a minute
+        spent on a race.
+
+        Returns the final status map so a caller can record it. Raises on
+        timeout naming what each index was doing, because "it did not become
+        ready" and "one of them FAILED" need different responses.
+        """
+        from logtriage.cli import LogtriageError
+
+        deadline = time.monotonic() + timeout
+        status: dict[str, str] = {}
+        while True:
+            status = self.index_status()
+            wanted = {VECTOR_INDEX_NAME, TEXT_INDEX_NAME}
+            if wanted <= status.keys() and all(
+                status[name] == "READY" for name in wanted
+            ):
+                return status
+            failed = {n: s for n, s in status.items() if s in ("FAILED", "DELETING")}
+            if failed:
+                raise LogtriageError(
+                    f"A search index will not become ready: {failed}\n"
+                    "  Solution: read the mongot log for the reason it rejected the definition\n"
+                    "  Command: make logtriage-logs SERVICE=logtriage-mongot"
+                )
+            if time.monotonic() >= deadline:
+                raise LogtriageError(
+                    f"Search indexes were not ready within {timeout:.0f}s: {status}\n"
+                    "  A query against a building index returns nothing rather than erroring,\n"
+                    "  so proceeding now would look like a retrieval bug.\n"
+                    "  Solution: check that mongot is running and syncing\n"
+                    "  Command: curl -s http://127.0.0.1:8008/health"
+                )
+            time.sleep(interval)
 
     def upsert(
         self, chunks: Iterable[Chunk], vectors: Iterable[Sequence[float]]

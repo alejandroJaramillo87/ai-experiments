@@ -54,6 +54,23 @@ SEPARATOR_RE = re.compile(r"^\|[\s:|-]+\|\s*$")
 LIST_ITEM_RE = re.compile(r"^\s*[-*]\s+\S")
 SUBHEADING_RE = re.compile(r"^###\s+\S")
 
+# A verification runbook makes the same kind of claim about itself, in the tally
+# under its front matter. It is updated by hand in the edit that closes an entry
+# -- the edit whose attention is on the entry, not on the header -- and against
+# it stands one `Status:` line per entry, so the document already carries the
+# answer and only needs someone to add it up.
+TALLY_RE = re.compile(
+    r"^\*\*Entries:\s*(?P<verified>\d+)\s+verified,\s*(?P<blocked>\d+)\s+blocked,"
+    r"\s*(?P<pending>\d+)\s+pending,\s*of\s*(?P<total>\d+)\.\*\*"
+)
+
+# Column zero: a bolded `**Status: ...**` inside a paragraph is prose about an
+# entry, and counting it would inflate the tally by one per mention.
+STATUS_RE = re.compile(r"^Status:\s*([A-Za-z]+)")
+
+# A fenced block opener or closer, in either spelling.
+FENCE_RE = re.compile(r"^\s*(?:```|~~~)")
+
 
 def documents(root: Path) -> list[Path]:
     found = []
@@ -93,6 +110,64 @@ def count_rows(lines: list[str], start: int, level: int) -> int:
     return rows if table_header_seen or rows else 0
 
 
+def outside_fences(lines: list[str]) -> list[str]:
+    """The lines that are prose, with fenced blocks blanked out.
+
+    A tally or a status line inside a fenced block is an example of the format,
+    not a claim about this document -- README.md shows both, and counting them
+    made it disagree with itself about a runbook it does not contain.
+    """
+    kept: list[str] = []
+    in_fence = False
+    for line in lines:
+        if FENCE_RE.match(line):
+            in_fence = not in_fence
+            kept.append("")
+            continue
+        kept.append("" if in_fence else line)
+    return kept
+
+
+def check_tally(lines: list[str]) -> tuple[str, str] | None:
+    """Compare a runbook's tally against its own Status lines.
+
+    Returns (stated, counted) when they disagree, None when they agree or when
+    the document carries no tally. Like the heading check, this cannot be wrong
+    about the right answer: both halves are in the same file.
+    """
+    prose = outside_fences(lines)
+
+    tally = None
+    for line in prose:
+        match = TALLY_RE.match(line)
+        if match:
+            tally = match
+            break
+    if tally is None:
+        return None
+
+    counted = {"verified": 0, "blocked": 0, "pending": 0}
+    for line in prose:
+        status = STATUS_RE.match(line)
+        if status:
+            kind = status.group(1).lower()
+            if kind in counted:
+                counted[kind] += 1
+
+    stated = {key: int(tally.group(key)) for key in counted}
+    total_stated = int(tally.group("total"))
+    total_counted = sum(counted.values())
+
+    if stated == counted and total_stated == total_counted:
+        return None
+    return (
+        f"{stated['verified']} verified, {stated['blocked']} blocked, "
+        f"{stated['pending']} pending, of {total_stated}",
+        f"{counted['verified']} verified, {counted['blocked']} blocked, "
+        f"{counted['pending']} pending, of {total_counted}",
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", default=str(PROJECT_ROOT))
@@ -107,7 +182,9 @@ def main() -> int:
         return 1
 
     wrong: list[tuple[Path, str, int, int]] = []
+    tallies: list[tuple[Path, str, str]] = []
     claims = 0
+    tally_claims = 0
     for document in found:
         lines = document.read_text(encoding="utf-8", errors="replace").splitlines()
         for index, line in enumerate(lines):
@@ -122,13 +199,28 @@ def main() -> int:
                     (document.relative_to(root), match.group("title"), stated, actual)
                 )
 
-    if wrong:
-        out.error(f"check_doc_counts: {len(wrong)} heading(s) disagree with their rows")
+        disagreement = check_tally(lines)
+        if disagreement is not None:
+            tally_claims += 1
+            tallies.append((document.relative_to(root), *disagreement))
+        elif any(TALLY_RE.match(line) for line in outside_fences(lines)):
+            tally_claims += 1
+
+    if wrong or tallies:
+        out.error(
+            f"check_doc_counts: {len(wrong)} heading(s) and {len(tallies)} tally "
+            "disagree with their own rows"
+        )
         for document, title, stated, actual in wrong:
             out.line(f"  {document}: '{title}' says {stated}, counted {actual}")
+        for document, stated, counted in tallies:
+            out.line(f"  {document}: tally says {stated}; Status lines say {counted}")
         return 1
 
-    out.ok(f"check_doc_counts: {claims} counted heading(s) agree with their rows")
+    out.ok(
+        f"check_doc_counts: {claims} counted heading(s) and {tally_claims} runbook "
+        "tally/tallies agree with their rows"
+    )
     return 0
 
 

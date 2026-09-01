@@ -1,6 +1,10 @@
 # Phase E: the MacBook M4
 
-**Operational — executed against the laptop. Keep the commands runnable.**
+**Operational runbook. Executed against the MacBook, not read for understanding: the
+operator's pasted output is the evidence. Keep the commands runnable — the documentation
+gate checks every path, make target and CLI verb named here.**
+
+**Entries: 0 verified, 0 blocked, 5 pending, of 5.**
 
 The target machine. Five entries, all pending. Blocked on Phase D: there is no point verifying
 that an unproven pipeline was extracted correctly.
@@ -32,9 +36,11 @@ uv venv --python 3.12 && uv sync
 make quality
 ```
 
-**Observed:** _(pending)_
+Observed:
 
-**Status:** pending
+_(pending)_
+
+Status: PENDING
 
 ### E2 — the corpus provisions without re-cloning
 
@@ -52,9 +58,11 @@ uv run python -m logtriage index-kb --json
 uv run pytest -m corpus -v
 ```
 
-**Observed:** _(pending)_
+Observed:
 
-**Status:** pending
+_(pending)_
+
+Status: PENDING
 
 ## The stack on ARM
 
@@ -77,9 +85,11 @@ make logtriage-bootstrap
 curl -s http://127.0.0.1:8008/health
 ```
 
-**Observed:** _(pending)_
+Observed:
 
-**Status:** pending
+_(pending)_
+
+Status: PENDING
 
 ## The model on Metal
 
@@ -103,9 +113,11 @@ export LOGTRIAGE_EMBED_URL=http://127.0.0.1:8007
 cd ~/logtriage && uv run python -m logtriage triage /tmp/rs.log --llm llama --kb
 ```
 
-**Observed:** _(pending)_
+Observed:
 
-**Status:** pending
+_(pending)_
+
+Status: PENDING
 
 ### E5 — unified memory holds the model, the embedder, and Mongo at once
 
@@ -126,12 +138,14 @@ time uv run python -m logtriage triage /path/to/real-mongod.log --llm llama --kb
 memory_pressure | head -20
 ```
 
-**Observed:** _(pending)_
+Observed:
 
-**Status:** pending
+_(pending)_
+
+Status: PENDING
 
 ## Related
 
-- [desktop.md](desktop.md) — the phase this one is blocked on
+- [desktop-deployment.md](desktop-deployment.md) — the phase this one is blocked on
 - [../operations/three-machines.md](../operations/three-machines.md) — what makes extraction work
 - [../operations/stack.md](../operations/stack.md) — the flags E4 has to reproduce natively

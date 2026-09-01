@@ -12,6 +12,8 @@ import argparse
 import json
 from dataclasses import asdict
 
+from logtriage.store.factory import BACKENDS as STORE_BACKENDS
+
 
 def configure(sub) -> None:
     p = sub.add_parser(
@@ -45,11 +47,111 @@ def configure(sub) -> None:
         help="load a documentation index so the model can search the manual "
         "(default location: <kb dir>/index; see `logtriage index-kb`)",
     )
+    p.add_argument(
+        "--store",
+        default="memory",
+        choices=list(STORE_BACKENDS),
+        help="where the records are queried from (default: memory, built from "
+        "the log just parsed; mongo ingests into the deployment and queries it)",
+    )
+    p.add_argument(
+        "--uri",
+        default=None,
+        help="MongoDB connection string for --store mongo (default: LOGTRIAGE_MONGO_URI)",
+    )
+    p.add_argument(
+        "--no-ingest",
+        action="store_true",
+        help="with --store mongo, query records already present instead of "
+        "writing them first",
+    )
     p.add_argument("--json", action="store_true", help="emit the report as JSON")
     p.set_defaults(func=cmd)
 
 
-def _load_kb(path: str | None, out):
+def _open_store(args, records, out):
+    """The store the detectors and the model's tools query.
+
+    Ingest is idempotent -- `record_id` is a content handle, so a re-run
+    replaces rather than duplicating -- which is what makes writing on every
+    triage run safe rather than merely convenient. `--no-ingest` is for the case
+    where the data is already there and the write is the expensive part.
+    """
+    from logtriage.store.factory import log_store
+
+    store = log_store(args.store, args.uri)
+    if args.store == "memory":
+        store.insert(records)
+        return store
+
+    if args.no_ingest:
+        out.skip("Ingest skipped; querying records already in the deployment")
+    else:
+        out.run(f"Ingesting {len(records):,} records into MongoDB")
+        store.insert(records)
+
+    # A citation that cannot be resolved is a citation nobody can check, so an
+    # empty store is a failed run rather than a report with no evidence.
+    if not store.count(_everything()):
+        from logtriage.cli import LogtriageError
+
+        raise LogtriageError(
+            "No records in the deployment to triage\n"
+            "  Solution: ingest the log first, or drop --no-ingest\n"
+            f"  Command: python -m logtriage ingest {args.log} --store mongo"
+        )
+    return store
+
+
+def _everything():
+    from logtriage.store.base import LogFilter
+
+    return LogFilter()
+
+
+def _load_kb_from_mongo(uri: str | None, out):
+    """Open the documentation index held by MongoDB and mongot.
+
+    The embedder comes from the index's own metadata, exactly as it does for an
+    on-disk index -- `index-kb --to mongo` writes it to a sibling collection for
+    this reason. Without it a caller would have to name an embedder on the
+    command line, and naming the wrong one produces a plausible ranking over
+    meaningless similarities with nothing to catch it.
+    """
+    from logtriage.cli import LogtriageError
+    from logtriage.embed.factory import from_index_meta
+    from logtriage.store.factory import mongo_knowledge_store
+
+    knowledge = mongo_knowledge_store(uri)
+    meta = knowledge.load_meta()
+    if not meta:
+        raise LogtriageError(
+            "The chunk collection does not record which embedder built it\n"
+            "  Querying it would rank against a similarity that means nothing.\n"
+            "  Solution: rebuild the index, which writes its own description\n"
+            "  Command: python -m logtriage index-kb --to mongo --refresh"
+        )
+
+    embedder, expect = from_index_meta(meta)
+    width = int(meta.get("embedder_dimensions", 0))
+    if width and width != embedder.dimensions:
+        raise LogtriageError(
+            f"The index was built at {width} dimensions and this embedder "
+            f"produces {embedder.dimensions}\n"
+            "  Solution: point LOGTRIAGE_EMBED_URL at the model that built it, "
+            "or rebuild\n"
+            "  Command: python -m logtriage index-kb --to mongo --refresh --embedder llama"
+        )
+
+    out.info(
+        f"Manual {meta.get('manual_version', '?')} at "
+        f"{str(meta.get('corpus_commit', '?'))[:12]}: {len(knowledge)} passages "
+        f"({expect.get('embedder', '?')} embeddings, via mongot)"
+    )
+    return knowledge, embedder
+
+
+def _load_kb(path: str | None, out, backend: str = "memory", uri: str | None = None):
     """Open a documentation index, or explain why there is none.
 
     Returns (knowledge, embedder). A missing index is a hard error rather than a
@@ -58,6 +160,9 @@ def _load_kb(path: str | None, out):
     """
     if path is None:
         return None, None
+
+    if backend == "mongo":
+        return _load_kb_from_mongo(uri, out)
 
     import json
     from pathlib import Path
@@ -157,7 +262,6 @@ def cmd(args: argparse.Namespace) -> int:
     from logtriage.mongod.normalize import normalize
     from logtriage.mongod.records import LogRecord, ParseError, read_log
     from logtriage.output import Printer
-    from logtriage.store.memory import InMemoryLogStore
     from logtriage.triage.pipeline import DEFAULT_QUESTION, run_triage
     from logtriage.triage.report import render_report
 
@@ -184,8 +288,8 @@ def cmd(args: argparse.Namespace) -> int:
             f"  Command: head -1 {args.log}"
         )
 
-    store = InMemoryLogStore(records)
-    knowledge, embedder = _load_kb(args.kb, out)
+    store = _open_store(args, records, out)
+    knowledge, embedder = _load_kb(args.kb, out, args.store, args.uri)
 
     if args.llm == "none":
         # Detectors only. Worth having on its own: it is the half of the output

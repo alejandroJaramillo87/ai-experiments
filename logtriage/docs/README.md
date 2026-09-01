@@ -61,7 +61,10 @@ the map.
 | Document | Description |
 |----------|-------------|
 | [verification/README.md](verification/README.md) | The protocol, the phase order, and the standing list of what is not verified |
-| [verification/desktop.md](verification/desktop.md) | Phase D: services, `$search`, real embeddings, a real model round trip |
+| [verification/desktop-deployment.md](verification/desktop-deployment.md) | Phase D1-D5: the stack up, and the differential suite against a real MongoDB |
+| [verification/desktop-search.md](verification/desktop-search.md) | Phase D6-D9: ingest, index into `mongot`, `$search` and `$vectorSearch`, triage end to end |
+| [verification/desktop-model.md](verification/desktop-model.md) | Phase D10-D13: real embeddings, retrieval quality, pooled adjudication, the Gemma round trip |
+| [verification/desktop-scale.md](verification/desktop-scale.md) | Phase D14-D16: ingest throughput, retrieval latency, end-to-end latency |
 | [verification/macbook.md](verification/macbook.md) | Phase E: extraction, ARM images, Metal, unified memory |
 
 ## Document classes

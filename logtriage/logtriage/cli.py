@@ -22,9 +22,30 @@ from __future__ import annotations
 import argparse
 import sys
 
-from logtriage.commands import fetch_kb, gen_logs, index_kb, profile, triage
+from logtriage.commands import (
+    bench,
+    eval_retrieval,
+    fetch_kb,
+    gen_logs,
+    index_kb,
+    ingest,
+    profile,
+    triage,
+)
 
-COMMAND_MODULES = (gen_logs, profile, fetch_kb, index_kb, triage)
+# Order is the order `--help` lists them, and it is the order someone new runs
+# them in: make a log, look at it, fetch and index the manual, load a log into a
+# store, then triage.
+COMMAND_MODULES = (
+    gen_logs,
+    profile,
+    fetch_kb,
+    index_kb,
+    ingest,
+    triage,
+    eval_retrieval,
+    bench,
+)
 
 
 class LogtriageError(Exception):

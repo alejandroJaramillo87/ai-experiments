@@ -81,7 +81,8 @@ Each topic has one owner. Read the owner, not a summary of it.
 | The measured corpus statistics | [docs/corpus/statistics.md](docs/corpus/statistics.md) |
 | The served stack: services, ports, bootstrap | [docs/operations/stack.md](docs/operations/stack.md) |
 | What each machine can prove | [docs/operations/three-machines.md](docs/operations/three-machines.md) |
-| The verification campaign | [docs/verification/README.md](docs/verification/README.md) |
+| The verification campaign, and the entry format | [docs/verification/README.md](docs/verification/README.md) |
+| How retrieval quality is measured, and what the set cannot tell you | [logtriage/evals/README.md](logtriage/evals/README.md) |
 | Everything else | [docs/README.md](docs/README.md) — the documentation index |
 
 ## Style guides

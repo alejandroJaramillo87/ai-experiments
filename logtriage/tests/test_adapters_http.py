@@ -11,7 +11,7 @@ receives a document it can act on.
 What this does not establish, and no test in this tree can: whether Gemma
 answers usefully, whether its tool calls are sensible, whether the embedding
 model's vectors mean anything. Those need a served model; see
-logtriage/docs/verification/desktop.md.
+logtriage/docs/verification/desktop-model.md.
 """
 
 from __future__ import annotations

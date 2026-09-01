@@ -44,7 +44,12 @@ from logtriage.output import Printer  # noqa: E402
 # Example of the shape an entry takes:
 #
 #   "old_module.py": ("new_module.py", "split when the parser grew a resolver"),
-RETIRED: dict[str, tuple[str, str]] = {}
+RETIRED: dict[str, tuple[str, str]] = {
+    "desktop.md": (
+        "desktop-deployment.md, desktop-search.md, desktop-model.md, desktop-scale.md",
+        "the Phase D runbook was split by concern when it grew to sixteen entries",
+    ),
+}
 
 # Scanned: everything textual this project owns. Pruned: caches, the fetched
 # third-party corpus, and .styles/ -- byte-identical copies of the parent's

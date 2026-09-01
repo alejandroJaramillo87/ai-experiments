@@ -34,7 +34,9 @@ CHECKS = (
     "check_doc_refs",
     "check_retired_names",
     "check_make_targets",
+    "check_cli_verbs",
     "check_doc_counts",
+    "check_runbook_entries",
     "check_corpus_stats",
     "check_surface_census",
 )
@@ -249,3 +251,122 @@ class TestSurfaceCensus:
         text = module.documentation(PROJECT_ROOT)
         assert "MongoLogStore" in text
         assert "NoSuchImplementation" not in text
+
+
+class TestCliVerbClassifier:
+    """The gate that would have caught three commands documented before they
+    were written."""
+
+    def test_every_shipped_verb_is_enumerated(self) -> None:
+        module = load("check_cli_verbs")
+        assert module.verbs(PROJECT_ROOT) >= {
+            "ingest",
+            "eval-retrieval",
+            "bench",
+            "triage",
+        }
+
+    def test_a_fenced_invocation_is_found(self) -> None:
+        module = load("check_cli_verbs")
+        assert "ingest" in module.invocations(
+            "```bash\nuv run python -m logtriage ingest x.log\n```"
+        )
+
+    def test_a_code_span_invocation_is_found(self) -> None:
+        module = load("check_cli_verbs")
+        assert "triage" in module.invocations("Run `python -m logtriage triage x.log`.")
+
+    def test_prose_naming_a_command_is_not_an_invocation(self) -> None:
+        """ "the triage command" is English, not a command line."""
+        module = load("check_cli_verbs")
+        assert module.invocations("The triage command reads a log.") == set()
+
+    def test_a_verb_that_does_not_exist_would_be_caught(self) -> None:
+        module = load("check_cli_verbs")
+        found = module.invocations("```\npython -m logtriage nosuchverb\n```")
+        assert found == {"nosuchverb"}
+        assert "nosuchverb" not in module.verbs(PROJECT_ROOT)
+
+
+class TestRunbookEntries:
+    ENTRY = [
+        "### D1 - a thing",
+        "",
+        "**Criteria:** it works.",
+        "",
+        "Status: PENDING",
+    ]
+
+    def test_an_entry_is_found_by_its_identifier(self) -> None:
+        module = load("check_runbook_entries")
+        found = module.entries(self.ENTRY)
+        assert [name for name, _, _ in found] == ["D1"]
+
+    def test_a_section_heading_is_not_an_entry(self) -> None:
+        """ "Deployment" carries no digit, so it is not required to have a
+        status; treating it as an entry would demand one of every heading."""
+        module = load("check_runbook_entries")
+        assert module.entries(["## Deployment", "", "prose"]) == []
+
+    def test_a_placeholder_observed_block_is_not_evidence(self) -> None:
+        """It is what a new runbook is written with. Accepting it would let an
+        entry be marked VERIFIED the moment somebody edited one word."""
+        module = load("check_runbook_entries")
+        assert not module.has_evidence(["Observed:", "", "_(pending)_"])
+
+    def test_pasted_output_is_evidence(self) -> None:
+        module = load("check_runbook_entries")
+        assert module.has_evidence(["Observed:", "", "```", "[OK] ready", "```"])
+
+    def test_a_named_check_is_evidence(self) -> None:
+        module = load("check_runbook_entries")
+        assert module.has_evidence(
+            ["Asserted by `tests/test_evals.py::test_ids_are_unique`"]
+        )
+
+    def test_a_named_check_must_resolve(self) -> None:
+        module = load("check_runbook_entries")
+        assert module.resolve(
+            PROJECT_ROOT, "tests/test_evals.py", "test_ids_are_unique"
+        )
+        assert not module.resolve(PROJECT_ROOT, "tests/test_evals.py", "test_no_such")
+        assert not module.resolve(PROJECT_ROOT, "tests/no_such_file.py", "anything")
+
+
+class TestRunbookTally:
+    def test_a_tally_that_agrees_with_its_status_lines(self) -> None:
+        module = load("check_doc_counts")
+        lines = [
+            "**Entries: 1 verified, 0 blocked, 1 pending, of 2.**",
+            "Status: VERIFIED",
+            "Status: PENDING",
+        ]
+        assert module.check_tally(lines) is None
+
+    def test_a_tally_that_disagrees_is_reported_with_both_halves(self) -> None:
+        module = load("check_doc_counts")
+        lines = [
+            "**Entries: 2 verified, 0 blocked, 0 pending, of 2.**",
+            "Status: VERIFIED",
+            "Status: PENDING",
+        ]
+        disagreement = module.check_tally(lines)
+        assert disagreement is not None
+        stated, counted = disagreement
+        assert "2 verified" in stated
+        assert "1 verified" in counted
+
+    def test_a_document_with_no_tally_is_not_a_finding(self) -> None:
+        module = load("check_doc_counts")
+        assert module.check_tally(["# A document", "", "prose"]) is None
+
+    def test_a_bolded_status_in_prose_is_not_counted(self) -> None:
+        """Column zero is the whole distinction: counting a mention would
+        inflate the tally by one per sentence about an entry."""
+        module = load("check_doc_counts")
+        lines = [
+            "**Entries: 0 verified, 0 blocked, 1 pending, of 1.**",
+            "Its **Status: VERIFIED** claim was premature.",
+            "Status: PENDING",
+        ]
+        assert module.check_tally(lines) is None

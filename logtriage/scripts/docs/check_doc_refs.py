@@ -38,6 +38,7 @@ Each is listed with its reason rather than silently skipped.
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from pathlib import Path
@@ -84,17 +85,24 @@ EXTERNAL_PATHS = {
     "docker/logtriage/mongot.conf": "stack configuration, in the parent repository",
     "docker/logtriage/*.conf": "stack configuration, in the parent repository",
     "docker/llama-gpu/": "the build context the two inference services share",
+    "docker/llama-gpu/entrypoint.sh": "the shared entrypoint, in the parent repository",
+    # Skills the surrounding repository defines for its agents. This project's
+    # runbooks follow them and cite them; a standalone copy has neither.
+    ".claude/skills/verify-host/SKILL.md": "the parent's host-verification handshake",
+    ".claude/skills/benchmarking/SKILL.md": "the parent's benchmark protocol",
     "scripts/logtriage/bootstrap.sh": "host-side stack tooling, in the parent repository",
     "scripts/logtriage/generate-secrets.sh": "host-side stack tooling, in the parent repository",
     "env.logtriage.example": "the stack's template, beside its compose file",
     ".secrets/logtriage/stack.env": "generated at run time and never committed",
     ".env.logtriage": "generated from the template and never committed",
     # The MongoDB documentation monorepo, fetched by `logtriage fetch-kb` and
-    # never committed. These are paths inside that corpus.
+    # never committed. Individual pages are recognised from kb-manifest.json
+    # rather than listed here -- see corpus_pages() -- because the set grows
+    # every time a document cites the manual, and a table that grows on every
+    # edit is a table people stop maintaining. These two are the shapes the
+    # manifest cannot cover: a directory, and a glob.
     "content/manual/manual": "a path inside the fetched MongoDB docs monorepo",
-    "reference/log-messages.txt": "a page of the fetched manual",
     "includes/extracts-*.yaml": "fragments of the fetched manual",
-    "includes/search-in-community/docker-deploy-procedure.rst": "a page of the fetched manual",
     ".styles/BASH_OUTPUT_STYLE.md": "not copied: this project ships no shell scripts of its own",
     ".secrets/logtriage/": "generated at run time and never committed",
     "scripts/logtriage/": "host-side stack tooling, in the parent repository",
@@ -123,6 +131,29 @@ ENDPOINT_RE = re.compile(r"^/v\d+/")
 # `store/knowledge.py:fuse` names a symbol inside a file. The file half is a
 # path claim and rots like any other; the symbol half is checked by a reader.
 SYMBOL_RE = re.compile(r"^(?P<path>[^:]+\.(py|md|toml|yaml|yml|json)):[A-Za-z_]")
+
+
+def corpus_pages(root: Path) -> set[str]:
+    """Every path in the fetched manual, from the committed manifest.
+
+    Documents in this project cite manual pages by their corpus-relative path --
+    `reference/log-messages.txt`, `tutorial/analyze-query-plan.txt` -- and those
+    files are never committed here, so they can never resolve against this tree.
+    They are still checkable: kb-manifest.json lists all 4,260 of them, so a
+    citation of a page that does not exist in the manual is caught, and one that
+    does is not reported.
+
+    That is strictly better than the alternative of adding each to
+    EXTERNAL_PATHS, which would exempt a mistyped page as readily as a real one.
+    """
+    manifest = root / "kb-manifest.json"
+    if not manifest.is_file():
+        return set()
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return set()
+    return {str(entry["path"]) for entry in data.get("files", []) if "path" in entry}
 
 
 def documents(root: Path) -> list[Path]:
@@ -201,6 +232,7 @@ def main() -> int:
         return 1
 
     external = {path.rstrip("/") for path in EXTERNAL_PATHS}
+    external |= corpus_pages(root)
     broken: list[tuple[Path, str]] = []
     checked = 0
 

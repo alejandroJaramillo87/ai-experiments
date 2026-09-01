@@ -126,4 +126,4 @@ and consulted nothing. See [../design/prompting.md](../design/prompting.md).
 
 - [three-machines.md](three-machines.md) — what runs where
 - [../mongodb/search.md](../mongodb/search.md) — why the deployment is shaped this way
-- [../verification/desktop.md](../verification/desktop.md) — checking that it works
+- [../verification/desktop-deployment.md](../verification/desktop-deployment.md) — checking that it works

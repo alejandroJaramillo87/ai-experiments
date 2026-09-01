@@ -60,7 +60,7 @@ narrative — so the disproof is visible before the story starts. The scripted c
 narrative states the ordering explicitly for the same reason.
 
 This is a guard rail, not a proof. That a narrative passes it is evidence about the guard rail
-and not about the model; see [../verification/desktop.md](../verification/desktop.md).
+and not about the model; see [../verification/desktop-model.md](../verification/desktop-model.md).
 
 ## Why the detectors run before the model
 

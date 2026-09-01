@@ -66,6 +66,9 @@ $ uv run python -m logtriage triage mongod.log
 $ uv run python -m logtriage triage mongod.log --kb          # with the manual loaded
 $ uv run python -m logtriage triage mongod.log --llm llama   # against a served model
 $ uv run python -m logtriage triage mongod.log --llm none    # detectors only, no model
+$ uv run python -m logtriage ingest mongod.log --store mongo  # into the deployment
+$ uv run python -m logtriage eval-retrieval                  # score retrieval against ground truth
+$ uv run python -m logtriage bench ingest --log mongod.log   # median and spread over N samples
 ```
 
 Exit codes follow `/.styles/PYTHON_OUTPUT_STYLE.md`: 0 success, 1 failure, 2 invalid usage.
@@ -105,10 +108,11 @@ so a reader cannot reach for the more dramatic event as the cause.
 
 | Directory | Holds |
 |-----------|-------|
-| `logtriage/` | the package: `commands/`, `mongod/`, `store/`, `kb/`, `embed/`, `llm/`, `tools/`, `triage/` |
+| `logtriage/` | the package: `commands/`, `mongod/`, `store/`, `kb/`, `embed/`, `llm/`, `tools/`, `triage/`, `evals/` |
+| `logtriage/evals/` | the committed retrieval ground truth, the metrics over it, and the method |
 | `tests/` | the suite; markers `corpus`, `differential`, `services` are deselected by default |
 | `docs/` | the documentation, indexed by [docs/README.md](docs/README.md) |
-| `scripts/docs/` | the six documentation gates |
+| `scripts/docs/` | the eight documentation gates |
 | `.styles/` | verbatim copies of the style guides, so they survive extraction |
 
 ## Development
@@ -121,7 +125,9 @@ $ make quality
 ```
 
 `make quality` is format, lint, types, the documentation gate, and the tests. It runs offline and
-must pass before every push.
+must pass before every push. The documentation gate is eight checks; two of them have no
+counterpart in the surrounding repository, and one of those exists because three commands were
+written up in a runbook before they were written in the code.
 
 ## Where the real docs live
 

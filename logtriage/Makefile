@@ -41,22 +41,30 @@ lint:
 types:
 	$(RUN_PY) mypy
 
-# The documentation gate. Six checks, cheapest first, each failing on one class
-# of drift the others cannot see: a cited path that does not exist, a retired
-# name still in use, a documented make target that does not, a stated count that
-# disagrees with its rows, a corpus statistic that disagrees with the index, and
-# something the code ships that no document mentions.
+# The documentation gate. Eight checks, cheapest first, each failing on one
+# class of drift the others cannot see: a cited path that does not exist, a
+# retired name still in use, a documented make target or CLI verb that does not,
+# a stated count or runbook tally that disagrees with its own rows, a corpus
+# statistic that disagrees with the index, an entry that looks verified and is
+# not, and something the code ships that no document mentions.
 #
 # Here rather than in `make test` because doc drift is a push-time defect -- the
 # tree moved and the prose did not -- and this is the target that runs before
-# every push. The last two are this project's own: the parent has no analogue
-# for either, and check_surface_census is the only one that reads outwards from
-# the code, which is the only way to see a feature nobody thought to document.
+# every push.
+#
+# Three have no analogue in the parent repository. check_cli_verbs exists
+# because the first draft of the Phase D runbook named five commands and three
+# of them had not been written; nothing else here could see that. check_corpus_stats
+# guards a number that goes stale silently. check_surface_census is the only one
+# that reads outwards from the code, which is the only way to see a feature
+# nobody thought to document.
 docs:
 	$(RUN_PY) python scripts/docs/check_doc_refs.py
 	$(RUN_PY) python scripts/docs/check_retired_names.py
 	$(RUN_PY) python scripts/docs/check_make_targets.py
+	$(RUN_PY) python scripts/docs/check_cli_verbs.py
 	$(RUN_PY) python scripts/docs/check_doc_counts.py
+	$(RUN_PY) python scripts/docs/check_runbook_entries.py
 	$(RUN_PY) python scripts/docs/check_corpus_stats.py
 	$(RUN_PY) python scripts/docs/check_surface_census.py
 

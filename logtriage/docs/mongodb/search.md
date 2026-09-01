@@ -95,7 +95,7 @@ Stated plainly because the code reads as though it works.
   `SERVING` as soon as the process is up; it does not check whether any index has reached
   `Ready`.
 
-[../verification/desktop.md](../verification/desktop.md) carries the checks that would close
+[../verification/desktop-search.md](../verification/desktop-search.md) carries the checks that would close
 these.
 
 ## Related

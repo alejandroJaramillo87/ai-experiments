@@ -151,6 +151,29 @@ def find_sections(text: str) -> list[tuple[int, str, int, list[str]]]:
     return sections
 
 
+def outside_fences(text: str) -> str:
+    """The document with fenced blocks blanked, line numbering preserved.
+
+    A tally or a status line inside a fenced block is an example of the format,
+    not a claim about the document containing it. logtriage's verification
+    README shows both -- it documents the entry format it expects its runbooks
+    to use -- and reading those as claims made it disagree with itself about
+    entries it does not contain.
+
+    Lines are blanked rather than dropped so every line number this module
+    reports still points at the right line.
+    """
+    kept: list[str] = []
+    in_fence = False
+    for line in text.splitlines():
+        if FENCE.match(line):
+            in_fence = not in_fence
+            kept.append("")
+            continue
+        kept.append("" if in_fence else line)
+    return "\n".join(kept)
+
+
 def find_tallies(text: str) -> list[tuple[int, dict[str, int], int]]:
     """Every runbook tally as (line number, claimed count per kind, claimed total).
 
@@ -159,7 +182,7 @@ def find_tallies(text: str) -> list[tuple[int, dict[str, int], int]]:
     is a claim about the same entries and has to agree with them too.
     """
     found = []
-    for lineno, line in enumerate(text.splitlines(), start=1):
+    for lineno, line in enumerate(outside_fences(text).splitlines(), start=1):
         match = TALLY.match(line)
         if not match:
             continue
@@ -187,7 +210,7 @@ def count_statuses(text: str) -> tuple[dict[str, int], list[tuple[int, str]]]:
     """
     counts = dict.fromkeys(STATUS_KINDS, 0)
     unknown: list[tuple[int, str]] = []
-    for lineno, line in enumerate(text.splitlines(), start=1):
+    for lineno, line in enumerate(outside_fences(text).splitlines(), start=1):
         match = STATUS_LINE.match(line)
         if not match:
             continue

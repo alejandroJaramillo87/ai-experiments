@@ -26,8 +26,10 @@ GPU, no `/mnt/ai-data`, and no services. It can prove that the code is right abo
 and about what it puts on a socket. It can prove nothing about a model or a server.
 
 **The desktop** is where `$search`, `$vectorSearch`, real embeddings, and a real Gemma 4 tool
-round trip happen for the first time. Everything in
-[../verification/desktop.md](../verification/desktop.md) needs this machine and only this machine.
+round trip happen for the first time. Sixteen entries across four runbooks —
+[deployment](../verification/desktop-deployment.md), [search](../verification/desktop-search.md),
+[the model](../verification/desktop-model.md), [scale](../verification/desktop-scale.md) — need
+this machine and only this machine.
 
 **The MacBook** is the target. It proves that extraction worked and that the tool runs where it
 is meant to run. Its distinct risks are the ARM images and Metal rather than CUDA; see

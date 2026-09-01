@@ -38,9 +38,57 @@ def configure(sub) -> None:
         "and has no semantics; llama needs LOGTRIAGE_EMBED_URL)",
     )
     p.add_argument(
+        "--to",
+        default="file",
+        choices=["file", "mongo"],
+        help="where the index lands (default: file, an on-disk index triage "
+        "loads; mongo pushes the chunks to mongot and waits for them to be "
+        "queryable)",
+    )
+    p.add_argument(
+        "--uri",
+        default=None,
+        help="MongoDB connection string for --to mongo (default: LOGTRIAGE_MONGO_URI)",
+    )
+    p.add_argument(
         "--json", action="store_true", help="emit the corpus statistics as JSON"
     )
     p.set_defaults(func=cmd)
+
+
+def _push_to_mongo(store, embedder, meta: dict, uri: str | None, out) -> dict[str, str]:
+    """Copy a built index into MongoDB and wait for mongot to catch up.
+
+    The chunks and vectors are already in hand from the file path's build, so
+    this re-uses them rather than embedding the manual twice -- which on a
+    served embedder is minutes of GPU time for an identical result.
+
+    Waiting is the load-bearing half. Search index creation is asynchronous, and
+    a query against an index still building returns nothing rather than an
+    error, so a command that returned here would hand the operator a deployment
+    that looks broken for the next few minutes.
+    """
+    from logtriage.store.factory import mongo_knowledge_store
+
+    remote = mongo_knowledge_store(uri)
+    pairs = list(store.items())
+
+    out.run(f"Writing {len(pairs):,} chunks to MongoDB")
+    remote.upsert([chunk for chunk, _ in pairs], [vector for _, vector in pairs])
+
+    # Written before the wait, so an interrupted build still leaves the index
+    # describing itself. A collection of chunks whose embedder is unknown
+    # cannot be safely queried by anything.
+    remote.save_meta(meta)
+
+    out.run("Creating search indexes")
+    remote.ensure_search_indexes(embedder.dimensions)
+
+    out.run("Waiting for mongot to report both indexes READY")
+    status = remote.wait_until_ready()
+    for name, state in sorted(status.items()):
+        out.ok(f"{name}: {state}")
+    return status
 
 
 def _render(stats, meta: dict) -> str:
@@ -128,7 +176,15 @@ def cmd(args: argparse.Namespace) -> int:
         **descriptor(args.embedder, embedder),
         "stats": stats.as_dict(),
     }
+    # The on-disk index is written either way. It is what `triage --kb` loads,
+    # it is what makes a build reproducible, and pushing to MongoDB without it
+    # would leave the corpus statistics with nowhere to live.
     store.save(destination, meta)
+
+    status: dict[str, str] = {}
+    if args.to == "mongo":
+        status = _push_to_mongo(store, embedder, meta, args.uri, out)
+        meta = {**meta, "mongo_index_status": status}
 
     if args.json:
         print(json.dumps({**meta, "index": str(destination)}, indent=2, sort_keys=True))
@@ -137,6 +193,8 @@ def cmd(args: argparse.Namespace) -> int:
     out.line(_render(stats, meta))
     out.line()
     out.ok(f"Indexed {len(store)} chunks to {destination}")
+    if status:
+        out.ok(f"Search indexes queryable: {', '.join(sorted(status))}")
     if not embedder.semantic:
         out.warn(
             "Vectors are hashed, not semantic: a retrieval score here measures "
