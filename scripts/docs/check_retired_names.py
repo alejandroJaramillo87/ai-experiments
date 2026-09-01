@@ -432,6 +432,10 @@ PRUNE_DIRS = {
     ".git",
     ".venv",
     "node_modules",
+    # Third-party corpora fetched into the tree and never committed. The
+    # MongoDB manual that backs logtriage carries its own CLAUDE.md and
+    # READMEs, whose paths describe that repository rather than this one.
+    ".kb",
     "target",
     "__pycache__",
     ".ruff_cache",

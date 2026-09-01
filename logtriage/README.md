@@ -13,6 +13,7 @@ Invoked as `python -m logtriage <command>`; `cli.py` dispatches to one handler p
 - [Entry points](#entry-points)
 - [How a triage run works](#how-a-triage-run-works)
 - [Ports and their implementations](#ports-and-their-implementations)
+- [The documentation corpus](#the-documentation-corpus)
 - [Development](#development)
 - [What is not verified here](#what-is-not-verified-here)
 
@@ -45,6 +46,8 @@ The parent gate calls this one. `make quality` at the repository root runs
 $ make logtriage-install                 # provision this project's virtualenv (once)
 $ make logtriage-quality                 # format check, lint, mypy, tests
 $ make logtriage-test                    # tests only
+$ make logtriage-fetch-kb                # fetch the MongoDB manual (needs network, once)
+$ make logtriage-index-kb                # chunk and embed it into a retrieval index
 ```
 
 Inside `logtriage/`:
@@ -54,6 +57,7 @@ $ uv run python -m logtriage gen-logs --list
 $ uv run python -m logtriage gen-logs --scenario replica-stepdown --seed 1 --out mongod.log
 $ uv run python -m logtriage profile mongod.log
 $ uv run python -m logtriage triage mongod.log
+$ uv run python -m logtriage triage mongod.log --kb          # with the manual loaded
 $ uv run python -m logtriage triage mongod.log --llm none    # detectors only, no model
 ```
 
@@ -129,6 +133,56 @@ time, because the number looks exactly like the real one.
 makes a broken loop look like a working one: the run completes, the report renders, and nothing
 was exercised.
 
+## The documentation corpus
+
+The knowledge base is the real MongoDB Database Manual, fetched from
+`github.com/mongodb/docs` and never committed.
+
+```bash
+$ uv run python -m logtriage fetch-kb      # sparse clone, writes kb-manifest.json
+$ uv run python -m logtriage index-kb      # chunk, embed, write .kb/index
+$ uv run pytest -m corpus                  # retrieval round trips over the real manual
+```
+
+The manual now sits inside a documentation monorepo carrying every MongoDB docs product, at
+`content/manual/manual`. `fetch-kb` takes a blobless partial clone and a sparse checkout of
+that one directory: 91MB and about five seconds, against a full clone of everything MongoDB
+publishes. If the remote ignores the partial-clone filter git says nothing and fetches the
+lot, so the fetch fails on a size ceiling rather than filling the disk.
+
+Nothing fetched is committed. The manual is CC BY-NC-SA 3.0 US, asserted on the published
+pages rather than in a LICENSE file — the repository has none — and vendoring it would pull
+share-alike terms over this tree. `/logtriage/kb-manifest.json` is committed instead: the
+resolved commit, and a sha256 for every one of the 4,260 corpus files. That is what makes an
+index reproducible, which is the property that matters; a copy of the text would add nothing
+else.
+
+Measured over the manual at commit `88ec8192b924`, version 8.3:
+
+| | |
+|---|---|
+| Pages | 1,611 |
+| Chunks | 15,025 |
+| Tokens per chunk | min 2, p50 123, p95 450, max 5,789 |
+| Chunks carrying code | 4,918 |
+| Include directives resolved | 7,862 of 10,292 |
+| Chunk and embed | 3.8s + 2.7s |
+| Index on disk | 31MB |
+
+**Include resolution is most of the corpus.** Four pages in five pull content in with
+`.. include::`, 7,350 directives against a tree of fragments that are never pages themselves.
+A reader that treats a page file as the page sees a fraction of the manual and a great many
+dangling references. The 2,430 that do not resolve are accounted for by category, and every
+category is a file the documentation toolchain generates during a build or one that lives in
+another repository: 648 code examples, 441 extracts generated from `includes/extracts-*.yaml`,
+31 driver examples, 11 release fragments. A corpus test fails if unclassified misses rise
+above a floor, because that would mean a resolver bug rather than an absent file.
+
+The extracts are the one recoverable category left on the table. They are a build system —
+697 refs across 320 yaml files, 117 of them inheriting from another ref with template
+replacement — and a partial reimplementation would silently produce text MongoDB does not
+publish.
+
 ## Development
 
 ```bash
@@ -159,8 +213,19 @@ Stated because the alternative is a reader assuming coverage that does not exist
 - **`$firstN` and `$dateTrunc` are unexercised.** `mongomock` lacks both, so six differential
   cases skip. They skip by name, saying which operator went untested, because a silent skip is
   indistinguishable from a pass.
-- **No real embeddings have been produced.** Chunking runs against real documentation; the
-  vectors are hashes.
+- **No real embeddings have been produced, so no retrieval quality has been measured.** The
+  corpus is real and the chunking is verified against it, but the vectors are hashes. Every
+  ranking assertion in the corpus suite therefore runs on the text leg, which is honest
+  lexical matching; the vector leg is asserted only to be well-formed. `search_docs` weights
+  the vector leg to zero when the embedder declares itself non-semantic, because fusing a
+  meaningless ranking in at the production weight measurably pushed the correct page out of
+  the top three. Questions that need meaning rather than words are listed in
+  `tests/test_kb_corpus.py` as `SEMANTIC_QUESTIONS` and deliberately not asserted.
 - **Nothing here establishes how a model behaves.** Every test uses the scripted client, so a
   narrative passing the causality check is evidence about the guard rails and not about the
   model. That question needs a served model.
+- **Nine of the twelve log ids in the fixtures are unverified, and cannot be verified here.**
+  MongoDB publishes no catalogue of log ids. The manual documents fourteen inside worked
+  examples, which confirms 51803 exactly and the component of 22943 and 22944, and covers none
+  of connection refusal, heartbeats, elections or index builds. Those remain representative,
+  which is why every detector matches on component and message instead.

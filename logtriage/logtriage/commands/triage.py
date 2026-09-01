@@ -36,8 +36,58 @@ def configure(sub) -> None:
         action="store_true",
         help="replace literal command values with type placeholders at ingest",
     )
+    p.add_argument(
+        "--kb",
+        nargs="?",
+        const="",
+        default=None,
+        help="load a documentation index so the model can search the manual "
+        "(default location: <kb dir>/index; see `logtriage index-kb`)",
+    )
     p.add_argument("--json", action="store_true", help="emit the report as JSON")
     p.set_defaults(func=cmd)
+
+
+def _load_kb(path: str | None, out):
+    """Open a documentation index, or explain why there is none.
+
+    Returns (knowledge, embedder). A missing index is a hard error rather than a
+    quiet fall-through: --kb was asked for explicitly, and a run that silently
+    proceeds without documentation looks identical to one that used it.
+    """
+    if path is None:
+        return None, None
+
+    from pathlib import Path
+
+    from logtriage.cli import LogtriageError
+    from logtriage.embed.hashing import DEFAULT_SEED, DIMENSIONS, HashingEmbedder
+    from logtriage.kb.fetch import default_kb_dir
+    from logtriage.store.knowledge import InMemoryKnowledgeStore
+
+    directory = Path(path) if path else default_kb_dir() / "index"
+    if not directory.is_dir():
+        raise LogtriageError(
+            f"No documentation index at {directory}\n"
+            "  Solution: fetch the manual and build an index\n"
+            "  Command: python -m logtriage fetch-kb && python -m logtriage index-kb"
+        )
+    try:
+        knowledge, meta = InMemoryKnowledgeStore.load(
+            directory,
+            expect={
+                "embedder_seed": DEFAULT_SEED,
+                "embedder_dimensions": DIMENSIONS,
+            },
+        )
+    except (OSError, ValueError) as exc:
+        raise LogtriageError(str(exc)) from exc
+
+    out.info(
+        f"Manual {meta.get('manual_version', '?')} at "
+        f"{str(meta.get('corpus_commit', '?'))[:12]}: {len(knowledge)} passages"
+    )
+    return knowledge, HashingEmbedder()
 
 
 def _canned_client(findings):
@@ -115,6 +165,7 @@ def cmd(args: argparse.Namespace) -> int:
         )
 
     store = InMemoryLogStore(records)
+    knowledge, embedder = _load_kb(args.kb, out)
 
     if args.llm == "none":
         # Detectors only. Worth having on its own: it is the half of the output
@@ -135,6 +186,8 @@ def cmd(args: argparse.Namespace) -> int:
             records,
             store,
             _canned_client(run_all(store)),
+            knowledge=knowledge,
+            embedder=embedder,
             source=args.log,
             question=args.question or DEFAULT_QUESTION,
             parse_errors=len(errors),

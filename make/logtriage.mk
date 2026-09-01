@@ -1,6 +1,6 @@
 ##@ Log triage (self-contained project; its own virtualenv, own gate)
 
-.PHONY: logtriage-quality logtriage-test logtriage-install
+.PHONY: logtriage-quality logtriage-test logtriage-install logtriage-fetch-kb logtriage-index-kb
 
 LOGTRIAGE_DIR := logtriage
 
@@ -12,3 +12,9 @@ logtriage-quality: ## Run the logtriage gate (format check, lint, mypy, tests)
 
 logtriage-test: ## Run the logtriage test suite only
 	$(MAKE) -C $(LOGTRIAGE_DIR) test
+
+logtriage-fetch-kb: ## Fetch the MongoDB manual that backs the knowledge base (needs network)
+	cd $(LOGTRIAGE_DIR) && uv run --no-sync python -m logtriage fetch-kb
+
+logtriage-index-kb: ## Chunk and embed the fetched manual into a retrieval index
+	cd $(LOGTRIAGE_DIR) && uv run --no-sync python -m logtriage index-kb --refresh
