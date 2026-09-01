@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from logtriage.kb.parse import Block, parse_rst
+from logtriage.kb.parse import Block, IncludeResolver, parse_rst
 from logtriage.tools.budget import estimate_tokens
 
 # Target chunk size. Small enough that several fit a retrieval budget alongside
@@ -169,6 +169,8 @@ def chunk_blocks(blocks: list[Block], document: str) -> list[Chunk]:
     return accumulator.chunks
 
 
-def chunk_document(text: str, document: str) -> list[Chunk]:
+def chunk_document(
+    text: str, document: str, resolver: IncludeResolver | None = None
+) -> list[Chunk]:
     """Parse and chunk one reStructuredText document."""
-    return chunk_blocks(parse_rst(text, document), document)
+    return chunk_blocks(parse_rst(text, document, resolver=resolver), document)

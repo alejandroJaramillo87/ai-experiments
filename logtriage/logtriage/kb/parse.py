@@ -21,8 +21,9 @@ keeps code verbatim, and flattens the rest to readable text.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
+from typing import Protocol
 
 # rST section adornment characters. Levels are not fixed by the character --
 # a document establishes its own hierarchy by the order it first uses each one,
@@ -54,6 +55,28 @@ PROSE_DIRECTIVES = frozenset(
     {"note", "warning", "important", "tip", "seealso", "example", "admonition"}
 )
 
+# Directives whose body is code and must survive verbatim.
+CODE_DIRECTIVES = frozenset({"code-block", "code", "literalinclude", "io-code-block"})
+
+# Version annotations. The argument is the version and the body is the note, so
+# they read as a sentence rather than as a bracketed label; the version number
+# is often the answer to the question that retrieved the chunk.
+VERSION_DIRECTIVES = {
+    "versionadded": "New in version",
+    "versionchanged": "Changed in version",
+    "deprecated": "Deprecated since version",
+}
+
+# How deep an include chain may nest. Fragments include other fragments -- 1,135
+# times in this corpus -- so a bound is needed; this one sits far above the
+# deepest real chain and exists to stop a cycle, not to shape output.
+MAX_INCLUDE_DEPTH = 8
+
+# Role syntax that survived a parse. Counted by the indexer rather than repaired
+# here: a residual role is a construct this parser does not yet understand, and
+# a number that can regress is worth more than a silent best effort.
+RESIDUAL_ROLE_RE = re.compile(r":[a-zA-Z0-9_+:.-]+:`")
+
 # Directives that render nothing and carry no retrievable content.
 IGNORED_DIRECTIVES = frozenset(
     {
@@ -67,6 +90,19 @@ IGNORED_DIRECTIVES = frozenset(
         "index",
     }
 )
+
+
+class IncludeResolver(Protocol):
+    """Supplies the text an `.. include::` refers to, or None if it is absent.
+
+    Kept as a callback rather than a filesystem read inside the parser so that
+    the parser stays testable against strings, and so that the one component
+    that touches the corpus tree is the one that knows where the corpus is.
+    """
+
+    def __call__(
+        self, target: str, options: Mapping[str, str], parent: str
+    ) -> str | None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,12 +130,19 @@ def strip_roles(text: str) -> tuple[str, tuple[str, ...]]:
     references: list[str] = []
 
     def with_target(match: re.Match[str]) -> str:
-        references.append(match.group(3))
+        references.append(match.group(3).lstrip("~"))
         return match.group(2)
 
     def bare(match: re.Match[str]) -> str:
         target = match.group(2)
-        references.append(target)
+        references.append(target.lstrip("~"))
+        if target.startswith("~"):
+            # Sphinx's abbreviation marker: display only the final component of
+            # a dotted target. `:binary:`~bin.mongod`` is written all through the
+            # manual and reads as "mongod"; left alone it reaches a chunk as the
+            # literal "~bin.mongod", which is both visibly wrong and a worse
+            # retrieval token than the binary's actual name.
+            return target.lstrip("~").rsplit(".", 1)[-1]
         # A leading slash is a document path; its last segment reads better than
         # the whole path in running text.
         return target.rsplit("/", 1)[-1] if target.startswith("/") else target
@@ -123,10 +166,45 @@ def _is_adornment(line: str) -> bool:
     )
 
 
+def _split_options(body: list[str]) -> tuple[dict[str, str], list[str]]:
+    """Separate a directive's options from its content.
+
+    Options are the contiguous run of `:name: value` lines at the head of the
+    body -- rST allows no blank line between the directive and them, which makes
+    the rule exact rather than a guess. Getting this wrong is not cosmetic: the
+    previous version left `:copyable: false` inside code blocks, where it read as
+    the first line of the command being demonstrated.
+    """
+    options: dict[str, str] = {}
+    content = list(body)
+    while content:
+        option = OPTION_RE.match(content[0].strip())
+        if not option:
+            break
+        options[option.group(1)] = option.group(2)
+        content.pop(0)
+    # The blank line separating the options from the body belongs to neither.
+    # Leaving it makes every code block that carries an option start with an
+    # empty line, which is visible in anything that renders the block.
+    while content and not content[0].strip():
+        content.pop(0)
+    return options, content
+
+
 class _Parser:
-    def __init__(self, lines: list[str], document: str) -> None:
+    def __init__(
+        self,
+        lines: list[str],
+        document: str,
+        resolver: IncludeResolver | None = None,
+        stack: tuple[str, ...] = (),
+    ) -> None:
         self.lines = lines
         self.document = document
+        self.resolver = resolver
+        # Include targets currently being expanded, so a fragment that includes
+        # its own ancestor stops rather than recurring.
+        self.stack = stack
         self.index = 0
         # Adornment character to heading level, in order of first appearance --
         # the rST rule. A document that uses = then - then ~ has those as levels
@@ -236,6 +314,27 @@ class _Parser:
 
             yield from self._parse_paragraph(line_no)
 
+    def _resolve(self, target: str, options: dict[str, str]) -> str | None:
+        """Fetch an included fragment, refusing a cycle or an over-deep chain."""
+        if self.resolver is None or not target:
+            return None
+        if target in self.stack or len(self.stack) >= MAX_INCLUDE_DEPTH:
+            return None
+        return self.resolver(target, options, self.document)
+
+    def _unresolved(self, target: str, line_no: int) -> Block:
+        # Named rather than dropped: a chunk that says a fragment was included
+        # here is more honest than one that silently omits a definition.
+        block = Block(
+            kind="include",
+            text=target,
+            line_no=line_no,
+            references=(target,),
+            anchors=tuple(self.pending_anchors),
+        )
+        self.pending_anchors = []
+        return block
+
     def _parse_directive(
         self, match: re.Match[str], line: str, line_no: int
     ) -> Iterator[Block]:
@@ -248,54 +347,62 @@ class _Parser:
         if name in IGNORED_DIRECTIVES:
             return
 
+        options, content = _split_options(body)
+
         if name == "include":
-            # The body of an include lives in another file. Recording the
-            # reference rather than resolving it keeps the parser a parser; a
-            # later pass can follow them, and a chunk that mentions an
-            # unresolved include is more honest than one that silently omits it.
-            yield Block(
-                kind="include",
-                text=argument,
-                line_no=line_no,
-                references=(argument,),
-                anchors=tuple(self.pending_anchors),
+            # Resolved rather than recorded. Four out of five pages in this
+            # manual include something, so leaving them as references would
+            # index a corpus whose explanations mostly live in files nothing
+            # points at.
+            text = self._resolve(argument, options)
+            if text is None:
+                yield self._unresolved(argument, line_no)
+                return
+            nested = _Parser(
+                text.splitlines(),
+                self.document,
+                resolver=self.resolver,
+                stack=(*self.stack, argument),
             )
-            self.pending_anchors = []
+            nested.levels = self.levels
+            yield from nested.parse()
             return
 
-        if name in {"code-block", "code", "literalinclude", "io-code-block"}:
+        if name in CODE_DIRECTIVES:
+            code = self._dedent(content)
+            if not code and name == "literalinclude":
+                fetched = self._resolve(argument, options)
+                code = fetched.strip("\n") if fetched else ""
+            if not code:
+                yield self._unresolved(argument, line_no)
+                return
             yield Block(
                 kind="code",
-                text=self._dedent(body),
-                language=argument or None,
+                # The language is an option on literalinclude and the argument
+                # on code-block.
+                language=options.get("language") or argument or None,
+                text=code,
                 directive=name,
                 line_no=line_no,
             )
             return
 
-        # Options (`:tabid: atlas`) are stripped from the head of the body; the
-        # tab label is worth keeping, the rest is rendering metadata.
-        content: list[str] = []
-        options: dict[str, str] = {}
-        seen_content = False
-        for entry in body:
-            option = OPTION_RE.match(entry.strip())
-            if option and not seen_content:
-                options[option.group(1)] = option.group(2)
-                continue
-            if entry.strip():
-                seen_content = True
-            content.append(entry)
-
         label = argument or options.get("tabid") or ""
-        if name in PROSE_DIRECTIVES:
+        if name in VERSION_DIRECTIVES:
+            prefix = f"{VERSION_DIRECTIVES[name]} {label}: " if label else ""
+        elif name in PROSE_DIRECTIVES:
             prefix = f"{name.upper()}: "
         elif name in {"tab", "tabs"}:
             prefix = f"[{label or name}] " if label else ""
         else:
             prefix = f"[{name}{' ' + label if label else ''}] "
 
-        nested = _Parser(self._dedent(content).splitlines(), self.document)
+        nested = _Parser(
+            self._dedent(content).splitlines(),
+            self.document,
+            resolver=self.resolver,
+            stack=self.stack,
+        )
         nested.levels = self.levels
         children = list(nested.parse())
         if not children:
@@ -340,6 +447,12 @@ class _Parser:
             self.index += 1
             return
 
+        if all(OPTION_RE.match(entry.strip()) for entry in collected):
+            # A field list, not prose. Page-level metadata such as `:orphan:`
+            # renders as nothing and otherwise arrives in the index as a chunk
+            # whose entire content is the word "orphan".
+            return
+
         raw = "\n".join(collected)
         if is_table:
             # Kept verbatim and atomic. A table split across two chunks is two
@@ -358,6 +471,21 @@ class _Parser:
         self.pending_anchors = []
 
 
-def parse_rst(text: str, document: str = "<string>") -> list[Block]:
-    """Parse a Snooty-flavoured reStructuredText document into blocks."""
-    return list(_Parser(text.splitlines(), document).parse())
+def parse_rst(
+    text: str,
+    document: str = "<string>",
+    resolver: IncludeResolver | None = None,
+) -> list[Block]:
+    """Parse a Snooty-flavoured reStructuredText document into blocks.
+
+    Without a resolver an `.. include::` becomes a named reference, which is
+    what the fixture tests use. With one -- `Corpus.resolve_include` -- the
+    fragment is spliced in and parsed as part of the document, which is what
+    indexing the real manual requires.
+    """
+    return list(_Parser(text.splitlines(), document, resolver=resolver).parse())
+
+
+def count_residual_roles(text: str) -> int:
+    """How much role syntax a parse left behind, for the index statistics."""
+    return len(RESIDUAL_ROLE_RE.findall(text))
