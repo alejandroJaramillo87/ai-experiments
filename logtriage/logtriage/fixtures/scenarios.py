@@ -68,7 +68,7 @@ BASELINE = GroundTruth(
 SLOW_QUERY_STORM = GroundTruth(
     name="slow-query-storm",
     summary="Unindexed predicate on a large collection; every execution reads it whole.",
-    expected_findings=("collscan", "scan_ratio"),
+    expected_findings=("collscan",),
     expected_ns=("shop.orders",),
     fault_start_min=20,
     fault_end_min=40,
@@ -82,10 +82,33 @@ SLOW_QUERY_STORM = GroundTruth(
     notes="planSummary COLLSCAN, docsExamined in the millions, nreturned in single digits.",
 )
 
+UNSELECTIVE_INDEX = GroundTruth(
+    name="unselective-index",
+    summary="An index exists and is used, but barely narrows anything.",
+    expected_findings=("scan_ratio",),
+    expected_ns=("shop.sessions",),
+    fault_start_min=12,
+    fault_end_min=38,
+    must_not_conclude=(
+        # The distinguishing feature of this fault is that the plan looks
+        # healthy. A report that says the collection needs an index is wrong:
+        # it has one, on the wrong field.
+        "no index",
+        "missing index",
+        "collection scan",
+    ),
+    notes=(
+        "IXSCAN on a low-cardinality field: tens of thousands of keys examined "
+        "to return a handful of documents. Nothing in planSummary says this is "
+        "wrong, which is why a threshold on keysExamined/nreturned is the only "
+        "thing that finds it."
+    ),
+)
+
 CONNECTION_POOL_EXHAUSTION = GroundTruth(
     name="connection-pool-exhaustion",
     summary="Client connection rate outruns teardown until the server refuses new ones.",
-    expected_findings=("connection_churn", "severity_spike"),
+    expected_findings=("connection_churn", "connection_refused", "severity_spike"),
     fault_start_min=25,
     fault_end_min=35,
     must_not_conclude=(
@@ -143,6 +166,7 @@ SCENARIOS: dict[str, GroundTruth] = {
     for truth in (
         BASELINE,
         SLOW_QUERY_STORM,
+        UNSELECTIVE_INDEX,
         CONNECTION_POOL_EXHAUSTION,
         REPLICA_STEPDOWN,
         INDEX_BUILD_ABORT,

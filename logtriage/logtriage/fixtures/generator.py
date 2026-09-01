@@ -298,6 +298,43 @@ def _inject_slow_query_storm(builder: Builder, truth: GroundTruth) -> None:
         )
 
 
+def _inject_unselective_index(builder: Builder, truth: GroundTruth) -> None:
+    """An index that is used and barely helps.
+
+    The interesting property is that nothing in the plan looks wrong. The server
+    reports IXSCAN, the query uses an index, and the only evidence of the fault
+    is the ratio between keys examined and documents returned -- which is why a
+    reader scanning planSummary values will not find this and a threshold will.
+    """
+    rng = builder.rng
+    start_ms = truth.fault_start_min * 60_000
+    end_ms = truth.fault_end_min * 60_000
+    ns = f"{DATABASE}.sessions"
+    for offset in range(start_ms, end_ms, 4_000):
+        nreturned = rng.randint(1, 3)
+        # A low-cardinality leading field: the index narrows to a large bucket
+        # and the rest of the predicate is applied by reading every one of them.
+        keys_examined = rng.randint(40_000, 90_000)
+        builder.emit(
+            offset + rng.randint(0, 2_000),
+            "I",
+            "COMMAND",
+            SLOW_QUERY,
+            f"conn{rng.randint(1000, 1400)}",
+            "Slow query",
+            _slow_query_attr(
+                rng,
+                ns=ns,
+                plan_summary="IXSCAN { status: 1 }",
+                keys_examined=keys_examined,
+                docs_examined=keys_examined,
+                nreturned=nreturned,
+                duration_ms=rng.randint(400, 1_900),
+                filter_field="status",
+            ),
+        )
+
+
 def _inject_connection_pool_exhaustion(builder: Builder, truth: GroundTruth) -> None:
     """Accept rate outruns teardown until the server starts refusing."""
     rng = builder.rng
@@ -482,6 +519,7 @@ def _inject_index_build_abort(builder: Builder, truth: GroundTruth) -> None:
 _INJECTORS = {
     "baseline": lambda builder, truth: None,
     "slow-query-storm": _inject_slow_query_storm,
+    "unselective-index": _inject_unselective_index,
     "connection-pool-exhaustion": _inject_connection_pool_exhaustion,
     "replica-stepdown": _inject_replica_stepdown,
     "index-build-abort": _inject_index_build_abort,

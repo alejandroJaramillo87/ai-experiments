@@ -36,7 +36,7 @@ SampleOrder = Literal["time", "-time", "-duration"]
 # by an unindexed field on a large collection is a performance trap that should
 # not be reachable by passing a string.
 FacetField = Literal[
-    "component", "severity", "log_id", "ns", "plan_summary", "op", "ctx"
+    "component", "severity", "log_id", "ns", "plan_summary", "op", "ctx", "query_hash"
 ]
 
 # Field names carried into the store document. Derived from the dataclass so a
