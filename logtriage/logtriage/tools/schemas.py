@@ -29,7 +29,7 @@ from typing import Any
 
 from logtriage.embed.base import Embedder
 from logtriage.store.base import FacetField, LogFilter, LogStore
-from logtriage.store.knowledge import KnowledgeStore
+from logtriage.store.knowledge import VECTOR_WEIGHT, KnowledgeStore
 from logtriage.tools.budget import DEFAULT_RESULT_TOKENS, truncate_rows
 
 # Facet fields exposed to the model. A closed list in the schema is worth more
@@ -389,7 +389,14 @@ class ToolBox:
         if not isinstance(query, str) or not query.strip():
             return _error("search_docs", "query is required and must be a string")
         (vector,) = self.embedder.embed([query])
-        hits = self.knowledge.hybrid_search(query, vector, k=self._limit(arguments))
+        # An embedder with no semantics contributes a ranking that is noise, and
+        # RRF has no way to tell noise from a second opinion. Weighting it to
+        # zero makes the offline path honest text search rather than hybrid
+        # search that looks like it is doing more.
+        weight = VECTOR_WEIGHT if self.embedder.semantic else 0.0
+        hits = self.knowledge.hybrid_search(
+            query, vector, k=self._limit(arguments), vector_weight=weight
+        )
         if not hits:
             return ToolResult(
                 name="search_docs", text=f"the manual has nothing matching {query!r}"

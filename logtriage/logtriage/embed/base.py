@@ -22,6 +22,19 @@ class Embedder(Protocol):
     @property
     def dimensions(self) -> int: ...
 
+    @property
+    def semantic(self) -> bool:
+        """Whether nearness in this space means nearness in meaning.
+
+        Declared rather than assumed because the answer changes how retrieval
+        should be run, not merely how good it is. Fusing a meaningless vector
+        ranking with a lexical one produces something worse than the lexical one
+        alone -- measured over the real manual, where the text leg finds the log
+        message reference for a question about a log id and the hashed vector leg
+        returns three unrelated pages that happen to share vocabulary.
+        """
+        ...
+
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         """Embed a batch.
 

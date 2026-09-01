@@ -68,6 +68,11 @@ class HashingEmbedder:
     def dimensions(self) -> int:
         return self._dimensions
 
+    @property
+    def semantic(self) -> bool:
+        """No. Token hashing preserves vocabulary overlap and nothing else."""
+        return False
+
     def _bucket_and_sign(self, token: str) -> tuple[int, float]:
         digest = hashlib.sha256(f"{self._seed}:{token}".encode()).digest()
         bucket = int.from_bytes(digest[:4], "big") % self._dimensions
