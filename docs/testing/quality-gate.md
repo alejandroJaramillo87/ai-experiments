@@ -10,7 +10,7 @@ disagrees with it, the recipe is right.
 
 ## What it runs
 
-Ten steps, cheapest first, failing on the first error:
+Twelve steps, cheapest first, failing on the first error:
 
 1. `ruff format --check .` — formatting.
 2. `ruff check .` — lint.
@@ -37,7 +37,24 @@ Ten steps, cheapest first, failing on the first error:
 Note what is absent: **`make quality` does not run pytest.** See
 [The full gate](#the-full-gate) below.
 
-It then chains the rust-harness gate when that directory exists. That half is documented in
+It then chains the logtriage gate when that directory exists, and the rust-harness gate after
+it.
+
+The logtriage half is documented in [../../logtriage/README.md](../../logtriage/README.md) and
+runs six documentation checks of its own before its tests. Four are that project's counterparts
+of steps 5 to 8, scoped to its tree and importing its own `Printer` so they survive extraction.
+Two have no analogue here: `check_corpus_stats.py` holds the documented corpus statistics against
+`kb-manifest.json` and the built index, because a number that goes stale after a corpus refetch
+reads exactly like a fresh one; and its `check_surface_census.py` censuses that project's CLI
+verbs, port implementations and pytest markers rather than the rust-harness command line.
+
+Because that gate exists, this one no longer checks that project's documents: step 5 exempts the
+`logtriage/` prefix, with the reasoning recorded in `check_doc_refs.py`. Checking twice with the
+less-informed checker bought no coverage and 65 findings that could only be silenced by degrading
+the prose. `docker/logtriage/` is deliberately not exempt — the compose stack is this
+repository's.
+
+The rust-harness half is documented in
 [../../rust-harness/README.md](../../rust-harness/README.md): its five steps, the
 cross-language contract tests, `runtime/src/pyenv.rs` interpreter resolution and
 `HARNESS_PYTHON`, and why a green run must be read for `[SKIP]` lines rather than trusted by

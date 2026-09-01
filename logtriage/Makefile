@@ -10,11 +10,11 @@
 # The parent's gate calls this target (make/quality.mk), so a failure here fails
 # a push from the parent repository too.
 
-.PHONY: quality fmt lint types test lock
+.PHONY: quality fmt lint types docs test lock
 
 RUN_PY := uv run --no-sync
 
-quality: preflight fmt lint types test
+quality: preflight fmt lint types docs test
 
 # uv's response to a missing or broken virtualenv is to create it empty rather
 # than to fail, and with --no-sync nothing is then installed -- so every step
@@ -40,6 +40,25 @@ lint:
 
 types:
 	$(RUN_PY) mypy
+
+# The documentation gate. Six checks, cheapest first, each failing on one class
+# of drift the others cannot see: a cited path that does not exist, a retired
+# name still in use, a documented make target that does not, a stated count that
+# disagrees with its rows, a corpus statistic that disagrees with the index, and
+# something the code ships that no document mentions.
+#
+# Here rather than in `make test` because doc drift is a push-time defect -- the
+# tree moved and the prose did not -- and this is the target that runs before
+# every push. The last two are this project's own: the parent has no analogue
+# for either, and check_surface_census is the only one that reads outwards from
+# the code, which is the only way to see a feature nobody thought to document.
+docs:
+	$(RUN_PY) python scripts/docs/check_doc_refs.py
+	$(RUN_PY) python scripts/docs/check_retired_names.py
+	$(RUN_PY) python scripts/docs/check_make_targets.py
+	$(RUN_PY) python scripts/docs/check_doc_counts.py
+	$(RUN_PY) python scripts/docs/check_corpus_stats.py
+	$(RUN_PY) python scripts/docs/check_surface_census.py
 
 test:
 	$(RUN_PY) pytest -q

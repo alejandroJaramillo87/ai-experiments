@@ -78,7 +78,26 @@ EXEMPT_SUFFIXES = ("_investigation.md",)
 # agent memory is in scope was itself the defect -- surfaced when the
 # verification directory grew tier subdirectories and two notes citing the old
 # flat paths failed one gate but not the other.
-EXEMPT_PREFIXES: tuple[str, ...] = (".claude/agent-memory/",)
+#
+# logtriage/ was added 2026-09-01, and for a third reason again: not staleness,
+# and not that the documents are somebody's record, but that a better-informed
+# gate already covers them. That project carries its own scripts/docs/, run by
+# its own `make quality`, which this gate invokes -- so a reference there is
+# already checked, by a checker that knows things this one cannot. It resolves
+# against the project root and its package directory, so prose saying
+# `kb/parse.py` is correct English rather than a broken path; and it holds a
+# table of what legitimately lives in this repository rather than in that one,
+# because the project is meant to be liftable out whole.
+#
+# Measured before adding: this gate reported 65 failures across logtriage's
+# documentation, every one of them a reference that project's own gate resolves.
+# Checking twice with the less-informed checker does not buy coverage, it buys
+# 65 findings that can only be silenced by degrading the prose.
+#
+# docker/logtriage/ is deliberately NOT exempt. Those files are this
+# repository's -- the compose stack lives here -- so this gate is the one that
+# covers them.
+EXEMPT_PREFIXES: tuple[str, ...] = (".claude/agent-memory/", "logtriage/")
 
 # Exempt by name, each for a stated reason.
 EXEMPT_FILES = {
@@ -126,6 +145,20 @@ METACHARS = set("*<>${}|()[]!?")
 # the same document, and it is entered here per reference rather than per
 # document so the ledger's remaining paths stay checked.
 KNOWN_ABSENT = {
+    # A path inside the mongot container image, where the process looks for its
+    # configuration. Named because the compose file bind-mounts onto it.
+    ("docker/logtriage/README.md", "/mongot-community/config.default.yml"),
+    # A page of the MongoDB documentation monorepo, which `logtriage fetch-kb`
+    # clones and which is never committed. Cited because these configurations
+    # are adapted from it and a reader should be able to check them against it.
+    (
+        "docker/logtriage/README.md",
+        "includes/search-in-community/sample-mongod-conf-docker.rst",
+    ),
+    # Written by `make logtriage-secrets` at run time: a keyfile, a password
+    # file, and a root credential, different on every machine and never
+    # committed.
+    ("docker/logtriage/README.md", ".secrets/logtriage/"),
     # Asserts the absence: "The workspace carries no ... .cargo/config.toml".
     (".styles/RUST_STYLE.md", ".cargo/config.toml"),
     # A crate-relative convention ("binaries live in src/bin/"), not a claim

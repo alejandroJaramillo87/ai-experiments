@@ -142,3 +142,38 @@ def test_copy_is_loadable_without_repo_on_path() -> None:
         assert hasattr(module, "Printer")
     finally:
         sys.path[:] = saved
+
+
+# Style guides copied into logtriage/.styles/ so an extracted project still has
+# them. Verbatim is the whole point: a guide that changes on extraction is one
+# nobody can trust, and a drifting copy is worse than no copy because two
+# documents then disagree about the same rule with equal authority.
+COPIED_STYLE_GUIDES = (
+    "COMMENT_STYLE.md",
+    "DOCUMENTATION_STYLE.md",
+    "PYTHON_OUTPUT_STYLE.md",
+    "TEST_OUTPUT_STYLE.md",
+)
+
+
+@pytest.mark.parametrize("name", COPIED_STYLE_GUIDES)
+def test_copied_style_guide_is_byte_identical(name: str) -> None:
+    canonical = (REPO_ROOT / ".styles" / name).read_bytes()
+    copied = (REPO_ROOT / "logtriage" / ".styles" / name).read_bytes()
+    assert copied == canonical, (
+        f"logtriage/.styles/{name} has drifted from .styles/{name}. "
+        "Copy the canonical file over it; record any logtriage-specific "
+        "difference in logtriage/AGENTS.md instead of editing the copy."
+    )
+
+
+def test_logtriage_carries_its_own_agent_policy() -> None:
+    """An extracted copy arrives with no parent AGENTS.md and no parent
+    CLAUDE.md, so an agent working in it would have no policy at all -- not a
+    reduced one. These two files are what make the extracted project
+    self-governing, and their absence has no symptom."""
+    project = REPO_ROOT / "logtriage"
+    assert (project / "AGENTS.md").is_file()
+    claude = (project / "CLAUDE.md").read_text()
+    assert "@AGENTS.md" in claude
+    assert "@.styles/COMMENT_STYLE.md" in claude

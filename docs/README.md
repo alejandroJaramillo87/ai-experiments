@@ -26,7 +26,7 @@ orientation, not explanation: they point here for the detail.
 | [../scripts/README.md](../scripts/README.md) | Host-side tooling, and which scripts run in a sandbox |
 | [../docker/README.md](../docker/README.md) | Build contexts; the compose files above them are the source of truth |
 | [../rust-harness/README.md](../rust-harness/README.md) | The Rust harness workspace, its test tiers, and its quality gate |
-| [../logtriage/README.md](../logtriage/README.md) | Offline mongod log triage: a self-contained project with its own virtualenv and gate |
+| [../logtriage/README.md](../logtriage/README.md) | Offline mongod log triage: a self-contained project with its own virtualenv, documentation tree, and gate |
 | [../hugepages/README.md](../hugepages/README.md) | The huge-page interceptor library |
 | [../schemas/README.md](../schemas/README.md) | Cross-language artifact contracts |
 
@@ -85,6 +85,21 @@ Design and reference documentation for the `rust-harness` workspace.
 | [rust-harness/observation-frames.md](rust-harness/observation-frames.md) | What the agent loop and chat mode contribute to the training and interp programs, and the acceptance bar for new features |
 | [rust-harness/live-events.md](rust-harness/live-events.md) | Live run-state events as JSONL, with a serve mode and an HTML view that also replays finished runs |
 
+### Log Triage
+
+`logtriage/` is a self-contained project and carries its own documentation tree, its own style
+guides, its own agent policy, and its own six-check documentation gate — so that it can be lifted
+out whole onto another machine. Its documents are therefore indexed there rather than here, and
+this gate delegates to that one: `scripts/docs/check_doc_refs.py` exempts the `logtriage/` prefix
+because a better-informed checker already covers it.
+
+| Document | Description |
+|----------|-------------|
+| [../logtriage/docs/README.md](../logtriage/docs/README.md) | That project's documentation index |
+| [../logtriage/AGENTS.md](../logtriage/AGENTS.md) | Its policy, and the three machines its work is split across |
+| [../logtriage/docs/operations/stack.md](../logtriage/docs/operations/stack.md) | Running the served stack |
+| [sandbox/docker_logtriage_overview.md](sandbox/docker_logtriage_overview.md) | Where that stack sits among this repository's compose files |
+
 ### Model References
 
 Start with the document for the tier being worked on; each is scoped to what that tier's code
@@ -118,6 +133,7 @@ Unscheduled optimization work is recorded separately; see
 | [sandbox/docker_llama_gpu_overview.md](sandbox/docker_llama_gpu_overview.md) | llama-gpu service (Port 8002) |
 | [sandbox/docker_vllm_gpu_overview.md](sandbox/docker_vllm_gpu_overview.md) | vllm-gpu service (Port 8003) |
 | [sandbox/docker_training_overview.md](sandbox/docker_training_overview.md) | training container (Phase 0 D1, no port) |
+| [sandbox/docker_logtriage_overview.md](sandbox/docker_logtriage_overview.md) | logtriage stack: mongod, mongot, and two llama.cpp servers (Ports 27017, 8006-8008) |
 | [sandbox/docker_compose_overview.md](sandbox/docker_compose_overview.md) | Service orchestration |
 
 ### Training Tier
