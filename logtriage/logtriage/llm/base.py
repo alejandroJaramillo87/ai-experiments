@@ -14,6 +14,7 @@ multi-turn, citation checking, report rendering -- be tested without a model.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -46,7 +47,15 @@ class Message:
                 {
                     "id": call.id,
                     "type": "function",
-                    "function": {"name": call.name, "arguments": call.arguments},
+                    # arguments is a JSON *string*, not an object. That is the
+                    # OpenAI shape llama-server implements, and it is how the
+                    # model emitted them; sending the parsed dict back is
+                    # accepted by some servers and silently drops the call on
+                    # others, which reads as a model that stopped using tools.
+                    "function": {
+                        "name": call.name,
+                        "arguments": json.dumps(call.arguments),
+                    },
                 }
                 for call in self.tool_calls
             ]

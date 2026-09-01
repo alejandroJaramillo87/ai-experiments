@@ -45,6 +45,10 @@ class Embedder(Protocol):
         ...
 
 
+class EmbeddingError(RuntimeError):
+    """The embedding server could not be reached, or answered with something unusable."""
+
+
 def cosine(left: Sequence[float], right: Sequence[float]) -> float:
     """Cosine similarity, assuming neither vector is zero-length.
 

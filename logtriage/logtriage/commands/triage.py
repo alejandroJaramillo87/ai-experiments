@@ -23,8 +23,9 @@ def configure(sub) -> None:
     p.add_argument(
         "--llm",
         default="scripted",
-        choices=["scripted", "none"],
-        help="model backend (default: scripted, which replays a fixture offline)",
+        choices=["scripted", "llama", "none"],
+        help="model backend (default: scripted, which replays a fixture offline; "
+        "llama needs LOGTRIAGE_LLAMA_URL; none runs the detectors only)",
     )
     p.add_argument(
         "--question",
@@ -58,12 +59,13 @@ def _load_kb(path: str | None, out):
     if path is None:
         return None, None
 
+    import json
     from pathlib import Path
 
     from logtriage.cli import LogtriageError
-    from logtriage.embed.hashing import DEFAULT_SEED, DIMENSIONS, HashingEmbedder
+    from logtriage.embed.factory import from_index_meta
     from logtriage.kb.fetch import default_kb_dir
-    from logtriage.store.knowledge import InMemoryKnowledgeStore
+    from logtriage.store.knowledge import META_FILE, InMemoryKnowledgeStore
 
     directory = Path(path) if path else default_kb_dir() / "index"
     if not directory.is_dir():
@@ -72,22 +74,24 @@ def _load_kb(path: str | None, out):
             "  Solution: fetch the manual and build an index\n"
             "  Command: python -m logtriage fetch-kb && python -m logtriage index-kb"
         )
+
+    # The embedder is reconstructed from the index rather than chosen by a flag.
+    # An index searched with an embedder other than the one that built it still
+    # returns its k best chunks, ranked by a similarity that means nothing --
+    # so the index names its own embedder and this rebuilds that one.
     try:
-        knowledge, meta = InMemoryKnowledgeStore.load(
-            directory,
-            expect={
-                "embedder_seed": DEFAULT_SEED,
-                "embedder_dimensions": DIMENSIONS,
-            },
-        )
+        stored = json.loads((directory / META_FILE).read_text(encoding="utf-8"))
+        embedder, expect = from_index_meta(stored)
+        knowledge, meta = InMemoryKnowledgeStore.load(directory, expect=expect)
     except (OSError, ValueError) as exc:
         raise LogtriageError(str(exc)) from exc
 
     out.info(
         f"Manual {meta.get('manual_version', '?')} at "
-        f"{str(meta.get('corpus_commit', '?'))[:12]}: {len(knowledge)} passages"
+        f"{str(meta.get('corpus_commit', '?'))[:12]}: {len(knowledge)} passages "
+        f"({meta.get('embedder', '?')} embeddings)"
     )
-    return knowledge, HashingEmbedder()
+    return knowledge, embedder
 
 
 def _canned_client(findings):
@@ -129,6 +133,22 @@ def _canned_client(findings):
         "the detectors rather than reasoning about them."
     )
     return ScriptedLlmClient.of(says(" ".join(lines)))
+
+
+def _client(backend: str, findings):
+    """The model backend named on the command line.
+
+    `llama` is the only one that reaches a model. The other two exist so the
+    loop can be exercised and so detector output can be had without one, and
+    neither should ever be mistaken for an assessment -- the scripted client's
+    own narrative says so in its last sentence.
+    """
+    if backend == "llama":
+        from logtriage import config
+        from logtriage.llm.llama import LlamaClient
+
+        return LlamaClient(config.require(config.LLAMA_URL))
+    return _canned_client(findings)
 
 
 def cmd(args: argparse.Namespace) -> int:
@@ -185,7 +205,7 @@ def cmd(args: argparse.Namespace) -> int:
         outcome = run_triage(
             records,
             store,
-            _canned_client(run_all(store)),
+            _client(args.llm, run_all(store)),
             knowledge=knowledge,
             embedder=embedder,
             source=args.log,

@@ -11,6 +11,8 @@ from __future__ import annotations
 import argparse
 import json
 
+from logtriage.embed.factory import BACKENDS
+
 
 def configure(sub) -> None:
     p = sub.add_parser(
@@ -27,6 +29,13 @@ def configure(sub) -> None:
         "--refresh",
         action="store_true",
         help="rebuild over an existing index instead of refusing",
+    )
+    p.add_argument(
+        "--embedder",
+        default="hashing",
+        choices=list(BACKENDS),
+        help="how to embed the chunks (default: hashing, which needs no server "
+        "and has no semantics; llama needs LOGTRIAGE_EMBED_URL)",
     )
     p.add_argument(
         "--json", action="store_true", help="emit the corpus statistics as JSON"
@@ -70,7 +79,7 @@ def cmd(args: argparse.Namespace) -> int:
     from pathlib import Path
 
     from logtriage.cli import LogtriageError
-    from logtriage.embed.hashing import DEFAULT_SEED, DIMENSIONS, HashingEmbedder
+    from logtriage.embed.factory import descriptor, make_embedder
     from logtriage.kb.corpus import Corpus
     from logtriage.kb.fetch import MANUAL_PATH, default_kb_dir
     from logtriage.kb.index import build_index
@@ -90,18 +99,24 @@ def cmd(args: argparse.Namespace) -> int:
         )
 
     destination = Path(args.out) if args.out else kb_dir / "index"
+    if destination.exists() and not args.refresh:
+        raise LogtriageError(
+            f"An index already exists at {destination}\n"
+            "  Solution: pass --refresh to rebuild it\n"
+            "  Command: python -m logtriage index-kb --refresh"
+        )
+
+    # Before anything is deleted, and before the corpus is touched. --refresh
+    # destroys a working index, so every reason this run could fail must be
+    # found first: an unreachable embedding server would otherwise leave the
+    # machine with no index at all, having had one a second earlier.
+    embedder = make_embedder(args.embedder)
+
     if destination.exists():
-        if not args.refresh:
-            raise LogtriageError(
-                f"An index already exists at {destination}\n"
-                "  Solution: pass --refresh to rebuild it\n"
-                "  Command: python -m logtriage index-kb --refresh"
-            )
         shutil.rmtree(destination)
 
     corpus = Corpus(manual_root)
     out.run(f"Chunking {manual_root} (manual {corpus.version})")
-    embedder = HashingEmbedder()
     store, stats = build_index(corpus, embedder)
 
     commit = _corpus_commit(kb_dir)
@@ -110,9 +125,7 @@ def cmd(args: argparse.Namespace) -> int:
         # these produce confident answers from the wrong text.
         "corpus_commit": commit,
         "manual_version": corpus.version,
-        "embedder": "hashing",
-        "embedder_seed": DEFAULT_SEED,
-        "embedder_dimensions": DIMENSIONS,
+        **descriptor(args.embedder, embedder),
         "stats": stats.as_dict(),
     }
     store.save(destination, meta)
@@ -124,10 +137,11 @@ def cmd(args: argparse.Namespace) -> int:
     out.line(_render(stats, meta))
     out.line()
     out.ok(f"Indexed {len(store)} chunks to {destination}")
-    out.warn(
-        "Vectors are hashed, not semantic: a retrieval score here measures word "
-        "overlap and says nothing about meaning."
-    )
+    if not embedder.semantic:
+        out.warn(
+            "Vectors are hashed, not semantic: a retrieval score here measures "
+            "word overlap and says nothing about meaning."
+        )
     return 0
 
 

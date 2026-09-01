@@ -128,3 +128,75 @@ def test_profile_budget_is_honoured(corpus, capsys) -> None:
     err = capsys.readouterr().err
     assert "of a 150 budget" in err
     assert "omitted" in err, "a budget that forces truncation must say so"
+
+
+@pytest.fixture
+def tiny_corpus(tmp_path, monkeypatch):
+    """A two-page manual, so index-kb can be driven end to end offline.
+
+    The real corpus is a 91MB clone that a bare checkout does not have. This is
+    the same shape -- a project directory holding snooty.toml and source/ -- at
+    a size that costs nothing, which is enough to exercise the command's own
+    logic as opposed to the chunker's.
+    """
+    root = tmp_path / "kb"
+    (root / "source").mkdir(parents=True)
+    (root / "snooty.toml").write_text(
+        'name = "manual"\n\n[constants]\nversion = "8.3"\n', encoding="utf-8"
+    )
+    (root / "source" / "index.txt").write_text(
+        "======\nManual\n======\n\nmongod writes structured JSON log messages.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("LOGTRIAGE_KB_SOURCE", str(root))
+    return root
+
+
+def test_index_kb_builds_an_index_offline(tiny_corpus, tmp_path, capsys) -> None:
+    out = tmp_path / "index"
+    assert main(["index-kb", "--out", str(out)]) == 0
+    assert (out / "chunks.jsonl").is_file()
+    err = capsys.readouterr().err
+    assert "hashed, not semantic" in err, "the embedder's limitation must be stated"
+
+
+def test_index_kb_refuses_to_overwrite_without_refresh(
+    tiny_corpus, tmp_path, capsys
+) -> None:
+    out = tmp_path / "index"
+    assert main(["index-kb", "--out", str(out)]) == 0
+    assert main(["index-kb", "--out", str(out)]) == 1
+    assert "--refresh" in capsys.readouterr().err
+
+
+def test_a_failing_backend_leaves_the_existing_index_intact(
+    tiny_corpus, tmp_path, monkeypatch, capsys
+) -> None:
+    """--refresh destroys a working index, so everything that could fail has to
+    fail before the delete. Ordered the other way -- as this was -- an
+    unreachable embedding server leaves the machine with no index at all,
+    having had one a second earlier."""
+    out = tmp_path / "index"
+    assert main(["index-kb", "--out", str(out)]) == 0
+    before = (out / "chunks.jsonl").read_bytes()
+
+    monkeypatch.delenv("LOGTRIAGE_EMBED_URL", raising=False)
+    assert (
+        main(["index-kb", "--out", str(out), "--embedder", "llama", "--refresh"]) == 1
+    )
+    assert "LOGTRIAGE_EMBED_URL" in capsys.readouterr().err
+    assert (out / "chunks.jsonl").read_bytes() == before
+
+
+def test_triage_rebuilds_the_embedder_the_index_was_built_with(
+    tiny_corpus, tmp_path, corpus, capsys
+) -> None:
+    """The embedder comes from the index, not from a flag. Searched with a
+    different one, an index still returns its k best chunks, ranked by a
+    similarity that means nothing -- and nothing anywhere would error."""
+    out = tmp_path / "index"
+    assert main(["index-kb", "--out", str(out)]) == 0
+    capsys.readouterr()
+
+    assert main(["triage", str(corpus), "--kb", str(out)]) == 0
+    assert "hashing embeddings" in capsys.readouterr().err

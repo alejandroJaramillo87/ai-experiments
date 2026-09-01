@@ -19,6 +19,14 @@ venv/
 # Per-tier secrets (HF_TOKEN etc.); templates are env.<tier>.example
 .env.interp
 .env.training
+.env.logtriage
+
+# Generated credentials for the log triage stack: the mongod/mongot keyfile,
+# mongot's password file, and the root credential compose reads. Written by
+# `make logtriage-secrets`, different on every machine by design, and never
+# committed -- a shared default password in a repository is a password that
+# ends up on a server.
+/.secrets/
 
 
 # Benchmark results

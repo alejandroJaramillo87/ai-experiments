@@ -32,6 +32,13 @@ JINJA_ENABLED=${JINJA_ENABLED:-false}
 REASONING_FORMAT=${REASONING_FORMAT:-""}
 KV_UNIFIED=${KV_UNIFIED:-false}
 
+# Embedding mode. llama.cpp replaces the chat endpoints with /v1/embeddings
+# rather than adding to them, so a server started this way cannot also serve
+# completions -- an embedding service is a second container, not a second port.
+# Defaults off, leaving every existing service's command line unchanged.
+EMBEDDING=${EMBEDDING:-false}
+POOLING=${POOLING:-mean}
+
 echo "=== Starting llama.cpp GPU Server ==="
 echo "  Port: $SERVER_PORT"
 echo "  Model: $MODEL_PATH"
@@ -56,6 +63,9 @@ if [[ -n "$REASONING_FORMAT" ]]; then
 fi
 if [[ "$KV_UNIFIED" == "true" ]]; then
     echo "  KV unified buffer: enabled"
+fi
+if [[ "$EMBEDDING" == "true" ]]; then
+    echo "  Embedding mode: enabled (pooling: $POOLING; chat endpoints unavailable)"
 fi
 
 # Verify model file exists
@@ -127,6 +137,12 @@ fi
 
 if [[ "$KV_UNIFIED" == "true" ]]; then
     CMD_ARGS+=("--kv-unified")
+fi
+
+# Pooling only means anything in embedding mode; passing it otherwise is an
+# error on some builds, so the two are added together or not at all.
+if [[ "$EMBEDDING" == "true" ]]; then
+    CMD_ARGS+=("--embedding" "--pooling" "$POOLING")
 fi
 
 # Execute the server with all parameters

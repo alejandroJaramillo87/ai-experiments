@@ -16,6 +16,7 @@ wrong.
 | `interp/` | the interpretability workbench, and the pinned Neuronpedia overrides |
 | `rust-harness/` | the Rust harness image |
 | `agents/` | the agent sandbox and its egress proxy |
+| `logtriage/` | mongod and mongot configuration; no image is built here |
 
 ## Traps
 

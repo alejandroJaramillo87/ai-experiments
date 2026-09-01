@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, fields
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
 
 from logtriage.mongod.normalize import NormalizedRecord
@@ -129,4 +129,24 @@ def from_document(doc: dict[str, Any]) -> NormalizedRecord:
     values.setdefault("attr", {})
     if values.get("attr") is None:
         values["attr"] = {}
+    values["ts"] = _aware(values.get("ts"))
     return NormalizedRecord(**values)  # type: ignore[arg-type]
+
+
+def _aware(value: Any) -> Any:
+    """Restore the UTC timezone BSON does not store.
+
+    BSON dates are epoch milliseconds with no zone, and pymongo hands them back
+    as *naive* datetimes unless the client was built with tz_aware=True. Every
+    other path in this tool produces aware UTC -- the parser reads an ISO-8601
+    timestamp with an offset -- so without this a record read back from MongoDB
+    compares unequal to the same record parsed from the log, and comparing one
+    against a filter bound raises TypeError.
+
+    The clients this module hands out do set tz_aware, so this is the second of
+    two guards. It is here as well because a caller may build their own client,
+    and the failure is worth making impossible rather than documenting.
+    """
+    if isinstance(value, datetime) and value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value

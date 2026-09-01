@@ -62,6 +62,46 @@ class Hit:
         return self.chunk.chunk_id
 
 
+def fuse(
+    vector_hits: Sequence[Hit],
+    text_hits: Sequence[Hit],
+    vector_weight: float = VECTOR_WEIGHT,
+    k: int = 5,
+) -> list[Hit]:
+    """Combine two ranked lists by weighted reciprocal rank.
+
+    Module-level, and called by both stores, because ranking is the one place
+    the in-memory and MongoDB implementations could diverge without any test
+    noticing: both would return plausible chunks, in a different order, and
+    "the fake ranks differently from the server" is indistinguishable from "the
+    query was ambiguous". Sharing the function makes the two agree by
+    construction, leaving only the legs themselves to differ -- which is the
+    difference that is supposed to exist.
+
+    Rank rather than raw score, because the two scores are not comparable: a
+    cosine and a Lucene relevance score live on different scales, and adding
+    them weights whichever happens to be larger. Fusing on position is what
+    $rankFusion does on the server, so the two agree on method as well.
+    """
+    scores: dict[str, float] = {}
+    chunks: dict[str, Chunk] = {}
+    legs: dict[str, set[str]] = {}
+    for hits, weight in ((vector_hits, vector_weight), (text_hits, 1 - vector_weight)):
+        for rank, hit in enumerate(hits, start=1):
+            scores[hit.chunk_id] = scores.get(hit.chunk_id, 0.0) + weight / (
+                RRF_K + rank
+            )
+            chunks[hit.chunk_id] = hit.chunk
+            legs.setdefault(hit.chunk_id, set()).add(hit.leg)
+
+    fused = [
+        Hit(chunk=chunks[chunk_id], score=score, leg="+".join(sorted(legs[chunk_id])))
+        for chunk_id, score in scores.items()
+    ]
+    fused.sort(key=lambda hit: (-hit.score, hit.chunk_id))
+    return fused[:k]
+
+
 class KnowledgeStore(Protocol):
     """Semantic and lexical retrieval over documentation chunks."""
 
@@ -189,31 +229,7 @@ class InMemoryKnowledgeStore:
         """
         vector_hits = self.vector_search(embedding, k=k * 4) if vector_weight else []
         text_hits = self.text_search(query, k=k * 4)
-
-        scores: dict[str, float] = {}
-        chunks: dict[str, Chunk] = {}
-        legs: dict[str, set[str]] = {}
-        for hits, weight in (
-            (vector_hits, vector_weight),
-            (text_hits, 1 - vector_weight),
-        ):
-            for rank, hit in enumerate(hits, start=1):
-                scores[hit.chunk_id] = scores.get(hit.chunk_id, 0.0) + weight / (
-                    RRF_K + rank
-                )
-                chunks[hit.chunk_id] = hit.chunk
-                legs.setdefault(hit.chunk_id, set()).add(hit.leg)
-
-        fused = [
-            Hit(
-                chunk=chunks[chunk_id],
-                score=score,
-                leg="+".join(sorted(legs[chunk_id])),
-            )
-            for chunk_id, score in scores.items()
-        ]
-        fused.sort(key=lambda hit: (-hit.score, hit.chunk_id))
-        return fused[:k]
+        return fuse(vector_hits, text_hits, vector_weight=vector_weight, k=k)
 
     def fetch_by_ids(self, ids: Sequence[str]) -> list[Chunk]:
         """Resolve chunk citations, omitting ids that are not present.
