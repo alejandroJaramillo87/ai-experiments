@@ -119,7 +119,9 @@ package.json
 
 
 # The MongoDB documentation clone that backs the logtriage knowledge base
-# (logtriage fetch-kb). Never committed: the manual is CC BY-NC-SA 3.0, and
-# vendoring it would pull the share-alike terms into this repository. The
-# committed manifest of paths and hashes is what makes an index reproducible.
+# (logtriage fetch-kb), and the index built from it. Never committed: the manual
+# is CC BY-NC-SA 3.0 US -- asserted on the published pages, the repository itself
+# carries no LICENSE file -- and vendoring it would pull the share-alike terms
+# into this repository. logtriage/kb-manifest.json is committed instead, and its
+# per-file digests are what make an index reproducible without the text.
 /logtriage/.kb/

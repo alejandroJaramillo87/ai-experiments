@@ -22,9 +22,9 @@ from __future__ import annotations
 import argparse
 import sys
 
-from logtriage.commands import gen_logs, profile, triage
+from logtriage.commands import fetch_kb, gen_logs, index_kb, profile, triage
 
-COMMAND_MODULES = (gen_logs, profile, triage)
+COMMAND_MODULES = (gen_logs, profile, fetch_kb, index_kb, triage)
 
 
 class LogtriageError(Exception):

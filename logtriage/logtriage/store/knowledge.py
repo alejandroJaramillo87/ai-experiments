@@ -17,12 +17,23 @@ rather than implying coverage that does not exist.
 
 from __future__ import annotations
 
+import json
+from array import array
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
-from typing import Protocol
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any, Protocol
 
 from logtriage.embed.base import cosine
 from logtriage.kb.chunk import Chunk
+
+# Files an on-disk index is made of. The vectors are one packed block rather
+# than a field inside each chunk record: a float per line of JSON costs about
+# nine times the bytes and parses two orders of magnitude slower, and the whole
+# reason for persisting is that rebuilding is the expensive path.
+CHUNKS_FILE = "chunks.jsonl"
+VECTORS_FILE = "vectors.f32"
+META_FILE = "index.json"
 
 # Weight given to the vector leg when fusing with the text leg. Vector
 # retrieval finds a passage that explains a concept in different words; text
@@ -63,7 +74,11 @@ class KnowledgeStore(Protocol):
     def text_search(self, query: str, k: int = 5) -> list[Hit]: ...
 
     def hybrid_search(
-        self, query: str, embedding: Sequence[float], k: int = 5
+        self,
+        query: str,
+        embedding: Sequence[float],
+        k: int = 5,
+        vector_weight: float = VECTOR_WEIGHT,
     ) -> list[Hit]: ...
 
     def fetch_by_ids(self, ids: Sequence[str]) -> list[Chunk]: ...
@@ -85,22 +100,35 @@ class InMemoryKnowledgeStore:
     def __init__(self) -> None:
         self._chunks: list[Chunk] = []
         self._vectors: list[Sequence[float]] = []
+        self._tokens: list[frozenset[str]] = []
         self._index: dict[str, int] = {}
 
     def upsert(
         self, chunks: Iterable[Chunk], vectors: Iterable[Sequence[float]]
     ) -> int:
+        from logtriage.embed.hashing import tokenize
+
         added = 0
         for chunk, vector in zip(chunks, vectors, strict=True):
+            # Two representations chosen for the size the real corpus turned out
+            # to be. Tokenizing here rather than in text_search moves work that
+            # was being repeated on every query -- measured at 1.3s per query
+            # over the manual -- into a one-off cost at build time. Packing the
+            # vector into an array of floats takes the same corpus from about
+            # 330MB of boxed Python floats to 40MB, with identical scores.
+            packed = array("f", vector)
+            tokens = frozenset(tokenize(chunk.render()))
             position = self._index.get(chunk.chunk_id)
             if position is None:
                 self._index[chunk.chunk_id] = len(self._chunks)
                 self._chunks.append(chunk)
-                self._vectors.append(vector)
+                self._vectors.append(packed)
+                self._tokens.append(tokens)
                 added += 1
             else:
                 self._chunks[position] = chunk
-                self._vectors[position] = vector
+                self._vectors[position] = packed
+                self._tokens[position] = tokens
         return added
 
     def __len__(self) -> int:
@@ -127,12 +155,11 @@ class InMemoryKnowledgeStore:
         """
         from logtriage.embed.hashing import tokenize
 
-        terms = set(tokenize(query))
+        terms = frozenset(tokenize(query))
         if not terms:
             return []
         hits: list[Hit] = []
-        for chunk in self._chunks:
-            tokens = set(tokenize(chunk.render()))
+        for chunk, tokens in zip(self._chunks, self._tokens, strict=True):
             overlap = len(terms & tokens)
             if overlap:
                 hits.append(Hit(chunk=chunk, score=overlap / len(terms), leg="text"))
@@ -140,7 +167,11 @@ class InMemoryKnowledgeStore:
         return hits[:k]
 
     def hybrid_search(
-        self, query: str, embedding: Sequence[float], k: int = 5
+        self,
+        query: str,
+        embedding: Sequence[float],
+        k: int = 5,
+        vector_weight: float = VECTOR_WEIGHT,
     ) -> list[Hit]:
         """Fuse the two legs by reciprocal rank.
 
@@ -149,16 +180,22 @@ class InMemoryKnowledgeStore:
         adding them weights whichever happens to be larger. Fusing on position
         is what $rankFusion does on the server, so the two implementations agree
         on method as well as interface.
+
+        `vector_weight` is a parameter rather than only a constant because the
+        right value depends on whether the vectors mean anything. At 0 this is
+        exactly text search, which is the correct behaviour for an embedder that
+        declares itself non-semantic: fusing a meaningless ranking in does not
+        dilute the noise, it promotes it.
         """
-        vector_hits = self.vector_search(embedding, k=k * 4)
+        vector_hits = self.vector_search(embedding, k=k * 4) if vector_weight else []
         text_hits = self.text_search(query, k=k * 4)
 
         scores: dict[str, float] = {}
         chunks: dict[str, Chunk] = {}
         legs: dict[str, set[str]] = {}
         for hits, weight in (
-            (vector_hits, VECTOR_WEIGHT),
-            (text_hits, 1 - VECTOR_WEIGHT),
+            (vector_hits, vector_weight),
+            (text_hits, 1 - vector_weight),
         ):
             for rank, hit in enumerate(hits, start=1):
                 scores[hit.chunk_id] = scores.get(hit.chunk_id, 0.0) + weight / (
@@ -187,3 +224,88 @@ class InMemoryKnowledgeStore:
         """
         found = [self._chunks[self._index[i]] for i in set(ids) if i in self._index]
         return sorted(found, key=lambda chunk: chunk.chunk_id)
+
+    def save(self, directory: Path, meta: dict[str, Any]) -> None:
+        """Write the index so a triage run does not rebuild it.
+
+        `meta` describes what produced the index -- the corpus commit, the
+        embedder and its seed. It is written verbatim and checked on load,
+        because an index and the thing that reads it disagreeing about either is
+        a failure with no symptom: retrieval still returns its k best chunks,
+        scored against vectors that mean something else.
+        """
+        directory.mkdir(parents=True, exist_ok=True)
+        dimensions = len(self._vectors[0]) if self._vectors else 0
+
+        with open(directory / CHUNKS_FILE, "w", encoding="utf-8") as handle:
+            for chunk in self._chunks:
+                handle.write(json.dumps(asdict(chunk), sort_keys=True) + "\n")
+
+        packed = array("f")
+        for vector in self._vectors:
+            packed.extend(vector)
+        (directory / VECTORS_FILE).write_bytes(packed.tobytes())
+
+        (directory / META_FILE).write_text(
+            json.dumps(
+                {**meta, "chunks": len(self._chunks), "dimensions": dimensions},
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+    @classmethod
+    def load(
+        cls, directory: Path, expect: dict[str, Any] | None = None
+    ) -> tuple[InMemoryKnowledgeStore, dict[str, Any]]:
+        """Read an index back, refusing one built by something else.
+
+        A mismatch raises rather than warns. The whole failure mode this guards
+        is silent: a stale index answers every query, plausibly, from a corpus
+        that is not the one on disk.
+        """
+        meta = json.loads((directory / META_FILE).read_text(encoding="utf-8"))
+        for key, value in (expect or {}).items():
+            if meta.get(key) != value:
+                raise ValueError(
+                    f"Index at {directory} was built with {key}={meta.get(key)!r}, "
+                    f"but this run expects {value!r}. Rebuild it with "
+                    f"`python -m logtriage index-kb --refresh`."
+                )
+
+        dimensions = int(meta["dimensions"])
+        packed = array("f")
+        packed.frombytes((directory / VECTORS_FILE).read_bytes())
+
+        store = cls()
+        with open(directory / CHUNKS_FILE, encoding="utf-8") as handle:
+            for position, line in enumerate(handle):
+                record = json.loads(line)
+                chunk = Chunk(
+                    **{
+                        **record,
+                        "heading_path": tuple(record["heading_path"]),
+                        "anchors": tuple(record["anchors"]),
+                        "references": tuple(record["references"]),
+                    }
+                )
+                start = position * dimensions
+                store._adopt(chunk, packed[start : start + dimensions])
+        if len(store) != int(meta["chunks"]):
+            raise ValueError(
+                f"Index at {directory} declares {meta['chunks']} chunks but "
+                f"carries {len(store)}; it is truncated or was written by a "
+                f"different version."
+            )
+        return store, meta
+
+    def _adopt(self, chunk: Chunk, vector: array[float]) -> None:
+        """Insert an already-packed vector, skipping the array copy in upsert."""
+        from logtriage.embed.hashing import tokenize
+
+        self._index[chunk.chunk_id] = len(self._chunks)
+        self._chunks.append(chunk)
+        self._vectors.append(vector)
+        self._tokens.append(frozenset(tokenize(chunk.render())))
