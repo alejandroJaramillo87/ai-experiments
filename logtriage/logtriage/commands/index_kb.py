@@ -45,6 +45,7 @@ def _render(stats, meta: dict) -> str:
         f"  oversized (>MAX)    {stats.over_max_tokens}",
         f"  undersized (<MIN)   {stats.under_min_tokens}",
         f"  carrying code       {stats.with_code}",
+        f"  code blocks intact  {stats.code_blocks_intact} of {stats.code_blocks}",
         "  heading depth       "
         + ", ".join(f"{d}:{n}" for d, n in stats.heading_depth.items()),
         "",

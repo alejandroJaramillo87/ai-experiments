@@ -6,10 +6,11 @@ feels about right -- so the way a chunking bug survives is by being invisible.
 Counting the things that can go wrong, and recording those counts beside the
 index, is what turns "the corpus looks fine" into a number that can move.
 
-The four counts that matter most are the ones that measure content *lost*:
-includes that did not resolve, constants with no definition, role syntax that
-survived the parse, and chunks so small they cannot be retrieved. Each of them
-degrades a chunk into something that still reads like documentation.
+The counts that matter most are the ones that measure content *lost*: includes
+that did not resolve, constants with no definition, role syntax that survived
+the parse, code blocks that did not reach a chunk whole, and chunks so small
+they cannot be retrieved. Each of them degrades a chunk into something that
+still reads like documentation.
 """
 
 from __future__ import annotations
@@ -20,10 +21,10 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from logtriage.embed.base import Embedder
-from logtriage.kb.chunk import MAX_TOKENS, MIN_TOKENS, Chunk, chunk_document
+from logtriage.kb.chunk import MAX_TOKENS, MIN_TOKENS, Chunk, chunk_blocks
 from logtriage.kb.constants import SUBSTITUTION_RE
 from logtriage.kb.corpus import Corpus
-from logtriage.kb.parse import count_residual_roles
+from logtriage.kb.parse import Block, count_residual_roles, parse_rst
 from logtriage.store.knowledge import InMemoryKnowledgeStore
 
 # Why an include target is absent. Every category here is a file the
@@ -53,6 +54,8 @@ class IndexStats:
     over_max_tokens: int = 0
     under_min_tokens: int = 0
     with_code: int = 0
+    code_blocks: int = 0
+    code_blocks_intact: int = 0
     heading_depth: dict[int, int] = field(default_factory=dict)
     includes_resolved: int = 0
     includes_missing: int = 0
@@ -82,6 +85,25 @@ def _percentile(values: list[int], fraction: float) -> int:
     return values[min(int(len(values) * fraction), len(values) - 1)]
 
 
+def _code_integrity(blocks: list[Block], chunks: list[Chunk]) -> tuple[int, int]:
+    """How many of a page's code blocks reached a chunk whole.
+
+    A code block is the actionable half of a diagnostic page -- the command that
+    fixes the thing being diagnosed -- and half a command is worse than none,
+    because it still looks runnable. The chunker is built never to split one, so
+    this measures the property rather than assuming it: a block is intact if its
+    text appears verbatim inside a single chunk. Truncation and splitting both
+    break that; neither is visible any other way, because a chunk holding half a
+    command reads exactly like a chunk holding a short one.
+    """
+    code = [block for block in blocks if block.kind == "code" and block.text]
+    if not code:
+        return 0, 0
+    texts = [chunk.text for chunk in chunks]
+    intact = sum(1 for block in code if any(block.text in text for text in texts))
+    return len(code), intact
+
+
 def chunk_corpus(corpus: Corpus) -> tuple[list[Chunk], IndexStats]:
     """Chunk every page, resolving includes as it goes."""
     stats = IndexStats()
@@ -90,9 +112,15 @@ def chunk_corpus(corpus: Corpus) -> tuple[list[Chunk], IndexStats]:
     started = time.monotonic()
     for path in corpus.pages():
         document = corpus.document_name(path)
-        chunks.extend(
-            chunk_document(corpus.read(path), document, resolver=corpus.resolve_include)
-        )
+        # Parsed and chunked in two steps rather than through chunk_document, so
+        # the blocks are in hand for the integrity check without paying for a
+        # second parse of the whole manual.
+        blocks = parse_rst(corpus.read(path), document, resolver=corpus.resolve_include)
+        page_chunks = chunk_blocks(blocks, document)
+        total, intact = _code_integrity(blocks, page_chunks)
+        stats.code_blocks += total
+        stats.code_blocks_intact += intact
+        chunks.extend(page_chunks)
         stats.documents += 1
     stats.chunk_seconds = time.monotonic() - started
 

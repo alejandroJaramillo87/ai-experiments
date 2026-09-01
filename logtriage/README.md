@@ -165,6 +165,7 @@ Measured over the manual at commit `88ec8192b924`, version 8.3:
 | Chunks | 15,025 |
 | Tokens per chunk | min 2, p50 123, p95 450, max 5,789 |
 | Chunks carrying code | 4,918 |
+| Code blocks intact | 8,394 of 8,394 |
 | Include directives resolved | 7,862 of 10,292 |
 | Chunk and embed | 3.8s + 2.7s |
 | Index on disk | 31MB |

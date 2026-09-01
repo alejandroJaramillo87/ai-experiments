@@ -115,6 +115,42 @@ class TestCodeBlocks:
         assert code[0].language == "javascript"
 
 
+class TestCodeIntegrityMeasurement:
+    """The measurement itself, not the property it measures.
+
+    `index-kb` reports 8,394 of 8,394 code blocks intact over the real manual.
+    A statistic that reads 100% is worth nothing unless it can read less, so
+    this drives it both ways: a metric that cannot fail is not evidence.
+    """
+
+    DOC = """\
+Title
+=====
+
+.. code-block:: javascript
+
+   db.orders.createIndex({customerId: 1, createdAt: -1})
+"""
+
+    def test_an_intact_block_counts_as_intact(self) -> None:
+        from logtriage.kb.chunk import chunk_blocks
+        from logtriage.kb.index import _code_integrity
+
+        blocks = parse_rst(self.DOC, "p.txt")
+        assert _code_integrity(blocks, chunk_blocks(blocks, "p.txt")) == (1, 1)
+
+    def test_a_truncated_block_is_detected(self) -> None:
+        from dataclasses import replace
+
+        from logtriage.kb.chunk import chunk_blocks
+        from logtriage.kb.index import _code_integrity
+
+        blocks = parse_rst(self.DOC, "p.txt")
+        chunks = chunk_blocks(blocks, "p.txt")
+        halved = [replace(c, text=c.text[: len(c.text) // 2]) for c in chunks]
+        assert _code_integrity(blocks, halved) == (1, 0)
+
+
 class TestConstants:
     def test_constants_expand_before_roles_are_stripped(self) -> None:
         """snooty.toml defines constants whose values are themselves roles, so

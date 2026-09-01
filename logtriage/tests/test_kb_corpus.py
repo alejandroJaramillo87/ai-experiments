@@ -150,6 +150,18 @@ class TestCorpusIsRead:
         assert 0 not in stats.heading_depth, "a chunk with no heading path"
         assert stats.chunks > 10_000
 
+    def test_every_code_block_survives_whole(self, indexed) -> None:
+        """No tolerance on this one. A code block is the actionable half of a
+        diagnostic page, and half a command is worse than none because it still
+        looks runnable. The chunker is built never to split one; this is the
+        measurement rather than the assumption."""
+        _, stats = indexed
+        assert stats.code_blocks > 5_000, "far fewer code blocks than this corpus has"
+        assert stats.code_blocks_intact == stats.code_blocks, (
+            f"{stats.code_blocks - stats.code_blocks_intact} code blocks were "
+            f"split or truncated"
+        )
+
     def test_chunk_sizes_land_in_the_intended_band(self, indexed) -> None:
         """Outliers are allowed and bounded. The oversized ones are single
         indivisible blocks -- a table of every error code, one enormous command
