@@ -136,6 +136,16 @@ verifies imports and the CUDA build. It warns if the installed torch reports an 
 CUDA build than expected, which indicates the pins or the `[tool.uv.sources]` bindings
 were edited incorrectly.
 
+`--upgrade` moves every transitive dependency, not only the torch trio, and the script's
+own verification imports four packages: torch, transformers, accelerate, and datasets.
+A major-version jump elsewhere in the graph therefore passes it silently. The acceptance
+check for an upgrade is the test suite, not the script's closing `[OK]`:
+
+```bash
+$ make quality
+$ make test
+```
+
 ## Verification
 
 Confirm the installed build and GPU detection:
@@ -229,4 +239,4 @@ $ git checkout uv.lock && uv sync --all-groups --all-extras
 
 ---
 
-*Last updated: 2026-07-12*
+*Last updated: 2026-08-29*

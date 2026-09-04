@@ -73,6 +73,20 @@ print_ok "Python pin: $(cat .python-version)"
 
 if [ -d ".venv" ]; then
     print_ok "Project environment: .venv"
+
+    # The base interpreter, by absolute path. A venv whose home has been removed
+    # -- a retired pyenv, a snap revision directory -- fails every check below in
+    # ways that name the symptom rather than the cause.
+    VENV_HOME=$(sed -n 's/^home[[:space:]]*=[[:space:]]*//p' .venv/pyvenv.cfg 2>/dev/null)
+    if [ -z "$VENV_HOME" ]; then
+        print_warn "Base interpreter: no home entry in .venv/pyvenv.cfg"
+    elif [ -d "$VENV_HOME" ]; then
+        print_ok "Base interpreter: $VENV_HOME"
+    else
+        print_error "Base interpreter: $VENV_HOME does not exist"
+        echo "  Solution: reinstall the interpreter and rebuild the environment"
+        echo "  Command: uv python install \$(cat .python-version) && rm -rf .venv && uv sync --all-groups --all-extras"
+    fi
 else
     print_warn "No .venv found; will be created by uv sync"
 fi

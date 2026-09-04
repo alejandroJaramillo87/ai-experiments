@@ -487,7 +487,7 @@ Development Environment Features:
 GPU Verification and Testing:
 ```bash
 # Python dependency verification
-python scripts/utils/check_py_deps_install.py
+uv run python scripts/utils/check_py_deps_install.py
 ```
 
 Reference Files:

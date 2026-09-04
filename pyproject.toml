@@ -126,9 +126,6 @@ sandbox = [
 # pandas live in core) are folded in so the workbench image is the lockfile and notebooks
 # need no in-container installs.
 # docker/interp/Dockerfile.interp installs and CUDA-verifies this group.
-# NOTE: pins below the first two are provisional (resolved offline); regenerate uv.lock on
-# the workstation (`uv lock`) to confirm exact versions against the cu130 / torch 2.13
-# / py3.12 resolution.
 interp = [
     "transformer-lens==3.5.1",
     "nnsight==0.7.0",
@@ -187,8 +184,6 @@ interp = [
 # members (flash-attn, liger-kernel, torchao) build against the cu130 torch pinned in
 # [tool.uv.sources]; docker/training/Dockerfile.training builds and CUDA-verifies this group.
 # Tracks the same majors as the interp tier so the two do not diverge.
-# NOTE: pins below are provisional (resolved offline); regenerate uv.lock on the workstation
-# (`uv lock`) to confirm exact versions against the cu130 / torch 2.13 / py3.12 resolution.
 training = [
     "trl==0.24.0",
     # unsloth (the optional F3 SFT throughput backend, sft.backend=unsloth) is NOT pinned:

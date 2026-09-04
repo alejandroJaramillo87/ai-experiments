@@ -30,6 +30,7 @@ from common.output import Printer  # noqa: E402
 # Exit codes
 EXIT_SUCCESS = 0
 EXIT_FAILURE = 1
+EXIT_USAGE = 2
 
 # Key AI packages: display name -> (import name, required).
 # Import name differs from the distribution name for several packages. Optional
@@ -299,6 +300,30 @@ def check_key_packages(out: Printer) -> dict[str, dict[str, Any]]:
     return packages
 
 
+def check_running_interpreter(out: Printer) -> bool:
+    """Whether this is running inside a virtual environment at all.
+
+    This file is executable and carries a `#!/usr/bin/env python3` shebang, so
+    `./check_py_deps_install.py` resolves python3 from PATH -- an interpreter
+    carrying none of the project's dependencies. Every check below then reports
+    `not installed`, which is a false negative about the machine rather than a
+    fact about the environment, and is indistinguishable from a genuinely broken
+    install. Refuse instead of answering the wrong question.
+
+    Any virtual environment passes, not this project's alone: the interp and
+    training images run their own at /opt/venv, and the agent sandbox at
+    /opt/pyenv.
+    """
+    if sys.prefix != sys.base_prefix:
+        return True
+
+    out.error(f"Running outside a virtual environment: {sys.executable}")
+    out.line("  Found: the project dependencies live in .venv, not on this interpreter")
+    out.line("  Solution: run it under uv, which selects the project environment")
+    out.line("  Command: uv run python scripts/utils/check_py_deps_install.py")
+    return False
+
+
 def create_parser() -> argparse.ArgumentParser:
     """Create command line argument parser."""
     parser = argparse.ArgumentParser(
@@ -328,6 +353,13 @@ def main() -> int:
     """
     parser = create_parser()
     args = parser.parse_args()
+
+    # Guarded before the quiet Printer is built: a --json caller still needs to
+    # see why nothing came back, and this is human output, so stderr carries it
+    # and stdout stays free of anything that is not JSON.
+    if not check_running_interpreter(Printer(quiet=False)):
+        return EXIT_USAGE
+
     out = Printer(quiet=args.json)
 
     out.line("PyTorch GPU validation utility")

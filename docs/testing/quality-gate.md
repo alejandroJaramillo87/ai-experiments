@@ -10,7 +10,7 @@ disagrees with it, the recipe is right.
 
 ## What it runs
 
-Ten steps, cheapest first, failing on the first error:
+Thirteen steps, cheapest first, failing on the first error:
 
 1. `ruff format --check .` — formatting.
 2. `ruff check .` — lint.
@@ -32,7 +32,11 @@ Ten steps, cheapest first, failing on the first error:
 11. `scripts/docs/check_surface_census.py` — enumerates the rust-harness binaries and flags
     from their `Flag` literals and fails when one is named in no runbook. The only gate here
     that starts from the code rather than the documentation.
-12. `shellcheck --severity=warning` — shell scripts, enumerated with `find`.
+12. `scripts/docs/check_group_pin_parity.py` — fails when one package carries two different
+    exact pins across `pyproject.toml`'s sections. The `sandbox` group deliberately re-pins
+    what core, `interp` and `training` pin, and step 4 cannot see a disagreement between two
+    literal `==` strings.
+13. `shellcheck --severity=warning` — shell scripts, enumerated with `find`.
 
 Note what is absent: **`make quality` does not run pytest.** See
 [The full gate](#the-full-gate) below.
