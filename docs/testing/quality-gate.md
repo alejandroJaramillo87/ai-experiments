@@ -149,7 +149,7 @@ and `make quality-full` are machinery gates: they prove the code builds, the tes
 themselves, and the documentation resolves. A forward pass with a transposed weight or a wrong
 norm convention passes both and emits fluent text.
 
-That is what the correctness ladder is for. Five rungs, each against `transformers` rather than
+That is what the correctness ladder is for. Six rungs, each against `transformers` rather than
 against any earlier output of ours, run on the workstation under their own target:
 
 ```

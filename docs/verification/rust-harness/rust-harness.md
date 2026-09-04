@@ -620,7 +620,71 @@ generator command in this file, including RH.17's and RH.21's, spells
 `uv run python` for that reason. And the `ppl 55.5420` figure is the model's perplexity on the quick corpus, not a
 quality claim — the comparison against `55.5438` is the result.
 
-Status: VERIFIED 2026-08-14
+Observed (2026-09-04, the six-rung climb from the command block above,
+artifacts regenerated the same day):
+
+```
+size=quick tokens=512 prompts=2
+prompt=6 tokens
+threads=8
+dot=widen4
+batch=64
+model=/mnt/ai-data/models/hf/gemma-4-E4B
+reference=fixtures/reference/e4b/quick
+
+rung  check                   value         threshold       verdict
+L0    token ids                                             PASS
+      case agreement          1.000000      >= 1.000000     ok
+      5 cases, every id identical
+L1    residual stream                                       PASS
+      worst cosine            1.000000      >= 0.999900     ok
+      worst rel_l2            0.000005      <= 0.001000     ok
+      42 layers within tolerance
+L2    final distribution                                    PASS
+      mean kl                 0.000000      <= 0.001000     ok
+      worst kl                0.000000      <= 0.005000     ok
+      worst top-50 overlap    1.000000      >= 0.980000     ok
+      argmax agreement        1.000000      >= 0.980000     ok
+      1 positions scored; worst at prompt position 5
+L3    perplexity                                            PASS
+      ppl delta               0.000032      <= 0.010000     ok
+      worst token nll         0.001248      <= 0.050000     ok
+      ppl 55.5420 against 55.5438 over 254 tokens; worst token at corpus position 414
+L4    greedy continuation                                   PASS
+      token agreement         1.000000      >= 0.980000     ok
+      mean common prefix      1.000000      >= 0.750000     ok
+      2 prompts, 0 ties
+L5    logits past the window                                PASS
+      scheduled positions agree  1.000000      >= 1.000000     ok
+      worst kl inside window  0.000000      <= 0.005000     ok
+      worst kl past window    0.000000      <= 0.005000     ok
+      worst top-50 overlap    1.000000      >= 0.980000     ok
+      argmax agreement        1.000000      >= 0.980000     ok
+      6 positions across a 512-token window over 2052 tokens; worst at position 1025
+
+timing (not compared; expected to differ between runs)
+  L0        0.48s
+  L1        0.70s
+  L2        0.83s
+  L3       52.70s
+  L4       23.70s
+  L5      268.92s
+  sum     347.33s  (rung bodies only, excludes model load)
+[OK] Ladder: every rung within tolerance (0 skipped)
+[INFO] Peak RSS at exit: 16.13 GiB
+```
+
+Three weeks and several engine changes later, every figure the first run
+printed reproduces to the last digit: the same worst cosine, the same
+`rel_l2`, the same `ppl 55.5420 against 55.5438`, the same worst token at
+corpus position 414. The generators' own output confirmed the reference side
+is unchanged too (`ppl 55.5438`, the same 16-token continuation, the L5
+schedule `[511, 512, 513, 1025, 1026, 2051]` of 2052). L5 is the one rung
+the first run could not show, and it passed at every anchor. Peak RSS rose
+from 14.27 to 16.13 GiB, which is the 2052-token L5 forward pass the first
+run never made.
+
+Status: VERIFIED 2026-09-04 on six rungs (first decided 2026-08-14 on five)
 
 ## RH.2 Real-model load and generation smoke
 
