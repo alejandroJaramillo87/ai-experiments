@@ -869,7 +869,35 @@ lines and asks for those four, all of which still print unchanged, and both
 blocks are declared excerpts rather than complete transcripts. A re-run will
 show two lines these do not — that is the addition, not a discrepancy.
 
-Status: VERIFIED 2026-08-14
+Observed (2026-09-04, the banner and the reply's first lines; the rest of the
+reply is byte-identical to the 2026-08-14 block above):
+
+```
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E4B hash=e376216f8b693aff layers=42
+[INFO] Weights: 13.90 GiB resident at bf16
+[INFO] Peak RSS after load: 14.03 GiB
+[INFO] KV cache: 131072 tokens, 4.05 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=256
+[INFO] Build: 0.1.0 git unknown
+[WARN] KV cache above 2 GiB: consider --context to cap it (compaction keeps long sessions inside the cap)
+[INFO] Model load: 6.07 s
+[INFO] Prefill: 14 tokens in 1.06 s (13 tok/s)
+The capital of France is Paris
+< div > The capital of France is < / div >
+
+<h2>Input and Output</h2>
+```
+
+The two lines U8 added are there, and the reply reproduces the 2026-08-14
+text word for word through the closing sample output. That is not luck:
+sampling is seeded (`seed=0`), so the same weights, prompt and template give
+the same tokens, and three weeks of engine changes moved none of them. The
+four KV lines are unchanged for the third load, and `Prefill: 14 tokens` is
+the rendered chat turn RH.1a's clean run also counted.
+
+Status: VERIFIED 2026-09-04 (first decided 2026-08-14)
 
 ## RH.3 CPU generation speed
 
