@@ -270,7 +270,8 @@ Around that sit the observability and context layers: a flight recorder
 (`--record`) that replays a run as a `MockModel` — carrying the sampling
 parameters and the per-step selection, so a replay reproduces the transcript
 rather than only the distribution it was drawn from — `tracing` spans with a
-Perfetto-loadable `--trace-chrome`, an interp seam (activation capture, control
+Perfetto-loadable `--trace-chrome` whose `--trace-level` reaches from the
+session timeline down to one span per layer and, on request, per kernel, an interp seam (activation capture, control
 vectors, in-band probe monitoring) whose taps are keyed on the site a row came
 from rather than on the layer alone, reach inside the layer as far as
 post-softmax attention weights, and whose scores can be written out beside

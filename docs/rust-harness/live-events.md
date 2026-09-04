@@ -144,7 +144,7 @@ minimal serve mode:
 ## Non-goals
 
 - **No per-token events.** The stream is a status feed, not a trace; token
-  granularity belongs to `--trace-chrome`.
+  and layer granularity belong to `--trace-chrome`.
 - **No websockets or async server.** Poll a file at 1 Hz.
 - **No TUI in the harness binary.** The binary keeps line-oriented output;
   interactive rendering is the viewer's job.

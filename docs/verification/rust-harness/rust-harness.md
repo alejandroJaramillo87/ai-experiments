@@ -1303,6 +1303,22 @@ Chrome trace JSON and carry the documented spans with sane durations. Loading
 one in the UI remains unverified, and is the cheap half of this entry if
 anyone wants it closed strictly.
 
+**U10, 2026-09-04, adds the interior of the forward pass to the trace.** A
+re-run of this command now writes, at the default `--trace-level debug`, one
+`model.layer` span per layer under every `model.forward`, each with
+`model.layer.attn`, `model.layer.mlp` and `model.layer.ple` children, plus
+`model.prelude` and `model.lm_head` per forward, `model.load` with its four
+stages and one `model.load.layer` per layer read, and `tokenizer.encode` per
+prompt. `--trace-level trace` adds `kernel.matmul`, `kernel.attention` and
+`kernel.lm_head`; `--trace-level info` reproduces the shape of the traces
+above. The four per-name totals in the Observed block keep their meaning —
+the info spans are unchanged and the new spans nest inside `model.forward`
+rather than beside it — so the entry stays VERIFIED on those blocks, which
+predate the change. A re-run should show `model.layer` at 42 times the
+`model.forward` count and `model.layer.attn` equal to `model.layer`;
+`docs/rust-harness/observability.md` carries the full table and the Perfetto
+query that replaces the hand aggregation.
+
 Status: VERIFIED 2026-08-14
 
 ## RH.7 rr record, replay, reverse-continue

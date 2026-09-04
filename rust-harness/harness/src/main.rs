@@ -770,6 +770,7 @@ fn main() -> ExitCode {
     let mut tokenizer: Option<std::path::PathBuf> = None;
     let mut record: Option<std::path::PathBuf> = None;
     let mut trace_chrome: Option<std::path::PathBuf> = None;
+    let mut trace_level_arg: Option<std::path::PathBuf> = None;
     let mut control_vector: Option<std::path::PathBuf> = None;
     let mut control_scale_arg: Option<std::path::PathBuf> = None;
     let mut control_range_arg: Option<std::path::PathBuf> = None;
@@ -791,10 +792,11 @@ fn main() -> ExitCode {
     // then. Deleting the braces produces a borrow error pointing at the first
     // reader rather than here.
     let parsed = {
-        let mut slots: [(&'static str, &mut Option<std::path::PathBuf>); 20] = [
+        let mut slots: [(&'static str, &mut Option<std::path::PathBuf>); 21] = [
             ("--model", &mut model),
             ("--record", &mut record),
             ("--trace-chrome", &mut trace_chrome),
+            ("--trace-level", &mut trace_level_arg),
             ("--control-vector", &mut control_vector),
             ("--control-vector-scale", &mut control_scale_arg),
             ("--control-vector-layer-range", &mut control_range_arg),
@@ -888,6 +890,20 @@ fn main() -> ExitCode {
             }
         }
     }
+    let trace_level = match trace_level_arg.as_deref().map(|v| v.to_string_lossy()) {
+        None => tracing_subscriber::filter::LevelFilter::DEBUG,
+        Some(v) => match v.as_ref() {
+            "info" => tracing_subscriber::filter::LevelFilter::INFO,
+            "debug" => tracing_subscriber::filter::LevelFilter::DEBUG,
+            "trace" => tracing_subscriber::filter::LevelFilter::TRACE,
+            other => {
+                runtime::status::error(&format!(
+                    "--trace-level: {other} is not a level; expected info, debug or trace"
+                ));
+                return ExitCode::from(2);
+            }
+        },
+    };
     if let Some(v) = seed_arg {
         match v.to_string_lossy().parse::<u64>() {
             Ok(s) => sampling.seed = s,
@@ -1034,12 +1050,19 @@ fn main() -> ExitCode {
     let _trace_guard = match trace_chrome {
         Some(path) => {
             use tracing_subscriber::layer::SubscriberExt;
+            use tracing_subscriber::Layer as _;
             let (layer, guard) = tracing_chrome::ChromeLayerBuilder::new()
                 .file(path)
                 .include_args(true)
                 .build();
+            // The level is the detail dial: the seven session-level spans
+            // are INFO, the per-layer and per-block spans of the forward
+            // pass and the load are DEBUG, the per-kernel spans TRACE. The
+            // filter sits on the layer, so a callsite below it costs one
+            // cached interest check and no event.
             tracing::subscriber::set_global_default(
-                tracing_subscriber::registry::Registry::default().with(layer),
+                tracing_subscriber::registry::Registry::default()
+                    .with(layer.with_filter(trace_level)),
             )
             .expect("first and only subscriber installation");
             Some(guard)

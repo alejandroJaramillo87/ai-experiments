@@ -215,6 +215,46 @@ fn the_bind_address_still_requires_a_server_in_the_same_words() {
     );
 }
 
+/// The trace level is a property of a trace, so without one it is a usage
+/// error through the same table edge, and a spelling the dial does not have
+/// is refused naming the three it does.
+#[test]
+fn trace_level_without_a_trace_is_a_usage_error_and_a_typo_names_the_levels() {
+    let out = run(&[
+        "--model",
+        "/nonexistent-checkpoint",
+        "--trace-level",
+        "debug",
+        "say hello",
+    ]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(
+        stderr(&out).contains("--trace-level has no meaning without --trace-chrome"),
+        "{}",
+        stderr(&out)
+    );
+
+    let dir = tempfile::tempdir().unwrap();
+    let trace = dir.path().join("trace.json");
+    let out = run(&[
+        "--model",
+        "/nonexistent-checkpoint",
+        "--trace-chrome",
+        trace.to_str().unwrap(),
+        "--trace-level",
+        "verbose",
+        "say hello",
+    ]);
+    assert_eq!(out.status.code(), Some(2));
+    let err = stderr(&out);
+    assert!(
+        err.contains("--trace-level: verbose is not a level"),
+        "{err}"
+    );
+    assert!(err.contains("info, debug or trace"), "{err}");
+    assert!(!trace.exists(), "a usage error installs no subscriber");
+}
+
 /// Inert is not an error: a script that sets sampling defaults uniformly and
 /// then pins one run to greedy asked for something coherent. It should be
 /// audible, though, which is what this asserts.

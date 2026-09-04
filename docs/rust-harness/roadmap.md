@@ -782,6 +782,53 @@ the rule is to record a run someone will later want to find, not a question some
 and got an answer to. `tiny-model` also runs inside the gate, so instrumenting it would make
 `make quality` write to the log root.
 
+### U10 — the interior of the forward pass in the trace (done)
+
+Seven spans, all hand-placed, and everything under `model.forward` was one inline function
+five hundred lines long. A `--trace-chrome` run could say that the forward pass dominated
+and nothing about where inside it the time went: the layers, the attention loop, the
+projections, the LM head, the load and the tokenizer left no mark. RH.3 and RH.6 both read
+their figures off `model.forward` and stopped there, because there was nothing further down
+to read. The question that prompted this was whether a trace showed every function call. It
+showed seven.
+
+**Levels are the dial, and `debug` is the default.** The seven existing spans stay at info.
+One span per layer with attention, MLP and per-layer-embedding children, the prelude, the
+LM head and the four load stages are debug; one span per projection, per attention loop and
+per LM-head row fill are trace. `--trace-level <info|debug|trace>` sets the filter on the
+chrome layer, so a callsite below the level costs one cached interest check. For the RH.3
+shape, 115 forwards over 42 layers, debug adds about 20k spans and trace about 45k more, at
+a few microseconds each on the calling thread against kernels that take milliseconds; the
+overhead is not measurable in the wall clock at either level and the file grows from a few
+megabytes to a few tens. Layers visible without a second flag is the point of the change,
+so debug is the default; kernels triple the file for detail the block above already bounds,
+so they are opt-in.
+
+**Every field is an integer or a bool already in scope.** `tracing-chrome` formats
+arguments on the calling thread under `include_args`, which makes a string field the whole
+cost of a span. `tokenizer.encode` records bytes rather than characters for the same
+reason: the length is free and a UTF-8 walk on every prompt is not.
+
+**Kernel spans wrap the whole parallel region.** `matmul_panel` and the LM head spawn a
+`std::thread::scope` per call and the workers carry no span, so the span opens on the caller
+before the scope and closes after the join. There is no span per position or per head:
+the attention loop is one span per layer, because per-(position, head) would be quadratic
+in context and the `wants_attention` hoist above it exists to keep exactly that cost out.
+
+**`requires`, not `inert_when`.** A level with no trace file is meaningless in the same way
+`--control-vector-scale` is without a vector, and the flag table already enforces that edge
+statically. `inert_when` is for conditions on parsed values the table cannot see.
+
+**Acceptance:** `runtime/tests/tracing_spans.rs` on the two tiny fixtures — layer spans
+nest under `model.forward` once per layer with the shared-KV tail marked as reading a donor,
+block spans once per layer and the PLE one only where the checkpoint has per-layer
+embeddings, kernel spans under the block that called them in the counts the architecture
+predicts, a level filter dropping exactly the tiers below it, the load stages and one span
+per layer read, the tokenizer's counts, and the logits bit-identical with and without a
+subscriber. `harness/tests/tracing_spans.rs` writes a real Chrome trace through the layer
+main.rs builds and reads the names back at debug and at info, and `cli_surface.rs` pins the
+usage errors. RH.6 carries a dated note on what a re-run's trace now contains.
+
 ## Phase 4 — Intervention
 
 ### R11 — IF-4 plus IF-5 together

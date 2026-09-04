@@ -301,11 +301,21 @@ impl Tokenizer {
     /// The library sees only spans that the caller has already vouched are
     /// content, so its added-tokens behaviour cannot widen what resolves.
     fn encode_inner(&self, text: &str, allowed: &[&str]) -> Result<Vec<Token>> {
-        Ok(self
+        // Bytes, not chars: the length is free and a UTF-8 walk on every
+        // prompt is not. The token count is known only afterwards.
+        let span = tracing::info_span!(
+            "tokenizer.encode",
+            bytes = text.len(),
+            tokens = tracing::field::Empty
+        );
+        let _enter = span.enter();
+        let ids: Vec<Token> = self
             .encode_offsets(text, allowed)?
             .into_iter()
             .map(|(tok, _)| tok)
-            .collect())
+            .collect();
+        span.record("tokens", ids.len());
+        Ok(ids)
     }
 
     /// The splice loop, keeping each token's byte range in `text`.
