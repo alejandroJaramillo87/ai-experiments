@@ -538,10 +538,9 @@ outstanding tokenizer-parity acceptance** that had been carried since P9.13.
 Two notes on what this does and does not settle. The four generators were
 first run with a bare `python`, which resolved to an interpreter without
 `torch` or `transformers` and produced four `[ERROR] Import` lines and no
-artifacts; the run above is the retry under the workstation environment. The
-generator commands in `rust-harness/fixtures/reference/README.md` still spell
-bare `python` and should spell `uv run python`, as this entry does. And the
-`ppl 55.5420` figure is the model's perplexity on the quick corpus, not a
+artifacts; the run above is the retry under the workstation environment. Every
+generator command in this file, including RH.17's and RH.21's, spells
+`uv run python` for that reason. And the `ppl 55.5420` figure is the model's perplexity on the quick corpus, not a
 quality claim — the comparison against `55.5438` is the result.
 
 Status: VERIFIED 2026-08-14
@@ -643,23 +642,26 @@ Two hypotheses were raised and both are refuted; they are recorded because
 each cost a host round trip and neither should be re-derived.
 
 *Not a missing chat template.* One is rendered and pinned:
-`harness/src/template.rs:31-52` emits `<bos>` then
-`<|turn>{role}\n{content}<turn|>`, and `harness/tests/template_contract.rs`
-holds those literals against `schemas/chat_template.json`.
+`harness/src/template.rs` emits `<bos>` then
+`<|turn>{role}\n{content}<turn|>` (the markers are the `TURN_OPEN`,
+`TURN_CLOSE` and `MODEL_TURN_OPEN` constants at lines 24-27), and
+`harness/tests/template_contract.rs` holds those literals against
+`schemas/chat_template.json`.
 
 *Not a delimiter the vocabulary lacks.* The published E4B `tokenizer.json`
 carries `<|turn>` and `<turn|>` in its added-tokens table and does **not**
 carry `<start_of_turn>` or `<end_of_turn>` — the reverse of what that theory
 needed. `template::MARKERS` names the literals, `generator::PROMPT_SPECIALS`
-admits them, and `generator.rs:74` encodes every prompt through
-`encode_prompt` with that allowlist, so the delimiters reach the model as
-their own ids.
+(`generator.rs:236`) admits them, and every prompt goes through
+`encode_prompt` with that allowlist (`generator.rs:164` and `:244`), so the
+delimiters reach the model as their own ids.
 
 The mechanism behind the second hypothesis is real even though it is not the
-cause here, and it is unguarded. `runtime/src/tokenizer.rs:304-321` says so
-itself: "A literal that is not in the vocabulary matches nothing: the caller
-may name a delimiter this checkpoint does not carry, and encoding it as text
-is the same treatment any other unknown string gets." A renderer and a
+cause here, and it is unguarded. The `special_at` doc comment in
+`runtime/src/tokenizer.rs` (lines 342-345) says so itself: a literal that is
+not in the vocabulary matches nothing; the caller may name a delimiter this
+checkpoint does not carry, and encoding it as text is the same treatment any
+other unknown string gets. A renderer and a
 checkpoint that disagree on the spelling would therefore produce fluent
 garbage and no error — the same symptom, from a genuine bug, with nothing to
 distinguish it from this one. That is worth a guard.
@@ -794,8 +796,10 @@ g()
 $HARNESS --model $E4B --text-only --trace-chrome trace.json   136.14s user 9.86s system 521% cpu 28.005 total
 ```
 
-**Roughly 5.4 tokens/second at the default thread width of 8**, decode-dominated:
-134 cached tokens against a 12-token prompt in 28.0 s wall clock. The 521% CPU
+**Roughly 5.4 tokens/second at the default thread width of 8**, decode-dominated.
+The figure is read from this run's trace, aggregated in RH.6: 115 `model.forward`
+calls in 21.12 s. The 28.0 s wall clock above includes the model load and is not
+the divisor; 134 cached tokens over 28.0 s would understate the rate. The 521% CPU
 figure against 8 threads is the honest utilization number — the run is not
 saturating the width it asked for.
 
@@ -984,8 +988,9 @@ test rh5_recording_replays_as_a_mock_script_and_states_its_selections ... ok
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.84s
 ```
 
-Every part of the expected signal holds. The header names all four sampling
-parameters as passed. There are 257 forward records against 256 selections —
+Every part of the expected signal holds. The header names the three sampling
+parameters as passed, plus `top_p` at its 0.95 default, which the command did not
+set. There are 257 forward records against 256 selections —
 the extra one is the prefill call, which produces logits without drawing a
 token. Each recorded row is the full 262144-wide vocabulary, matching the
 header, so nothing is truncated. Positions run 14 to 269 without a gap. And
@@ -1000,8 +1005,8 @@ block does.
 
 One limitation of the format is worth recording here, because it is invisible
 until it fires. JSON has no infinity, so `serde_json` writes a non-finite
-logit as `null` and the recording will not parse back — `record.rs:224` writes
-it and `record.rs:397` fails to read it, and because `Line` is an untagged
+logit as `null` and the recording will not parse back — `write_line` at
+`record.rs:226-228` writes it and `record.rs:397` fails to read it, and because `Line` is an untagged
 enum the error blames the whole line rather than naming the null. Nothing on
 the shipped path produces `-inf` (top-k truncates a sorted candidate list
 rather than masking), so this run was never at risk; the exposure is a caller
@@ -1120,8 +1125,8 @@ this entry said `break cpu.rs:forward_one` followed by `watch -l logits[0]`,
 and that sequence cannot work: `forward_one` is declared at `cpu.rs:2703`,
 while `logits` is a local of a different function, declared at `cpu.rs:3174`
 inside the tied-head projection loop. The watchpoint has nothing to resolve
-against at the `forward_one` frame. Breaking at `cpu.rs:3186`, just after
-`fill_dots(...)`, puts `logits` in scope.
+against at the `forward_one` frame. Breaking at `cpu.rs:3186`, the
+`fill_dots(` call that fills it, puts `logits` in scope.
 
 `release-with-debug` (`rust-harness/Cargo.toml:7-9`) inherits `release`, so it
 is fully optimized and locals may print `<optimized out>`. If they do, rebuild
@@ -1215,7 +1220,8 @@ with a separable attribute; record which dataset was used.
   Python-capture fingerprints, but no longer because the vocabulary came from
   a different container. Both sides now read the same checkpoint. It is a
   sha256 over the model path and vocabulary size with no chat template
-  (`activation-capture.rs:188-194`), so it identifies a rust capture rather
+  (computed at `activation-capture.rs:279`, written into the manifest at
+  `:305`), so it identifies a rust capture rather
   than describing a tokenizer, and probe training on rust captures must still
   go through artifacts produced by this chain only.
 
@@ -1415,7 +1421,7 @@ runbook tests that, and it is the property every in-band interp claim rests
 on: a monitor that perturbed generation would make its own observations
 unfalsifiable.
 
-The identity guard was armed rather than skipped. `main.rs:191-200` compares
+The identity guard was armed rather than skipped. `main.rs:212-228` compares
 the probe's `model_hash` against the sha256 of the served
 `model.safetensors` and checks the probe width against `embed_dim`; both
 passed with no `[WARN]`, which is only possible because RH.9a recorded a real
@@ -2031,9 +2037,9 @@ echo "exit=$?"
 ```
 
 Expected: (1) exit 0, with `[OK] backend compatibility: supported` and a
-config line naming **42 layers** — the same count RH.2's run header reports,
-which is what cross-checks that the preflight read the checkpoint the run
-reads. (2) `0` bytes on stdout. (3) exit 1, with one `[ERROR] model directory`
+config line naming **42 layers** — the same count RH.1's dump reports
+("uniform 10240 across 42 layers"), which is what cross-checks that the
+preflight read the checkpoint the run reads. (2) `0` bytes on stdout. (3) exit 1, with one `[ERROR] model directory`
 line and the rest `[SKIP]`; exit 2 there would mean the mode misread a valid
 command line, which is a different defect. (4c) exit 0 with `[OK] probe
 identity: matches the served weights`, `[OK] probe geometry`, and an elapsed
@@ -2163,6 +2169,8 @@ unconfirmed rather than observed — a repeat against a warm target directory
 would settle it, and until then the honest statement is that `--deep` reads the
 weights once, evidenced by the matching digest rather than by the clock.
 
+Status: VERIFIED 2026-08-15
+
 ## RH.17 The CPU backend past E4B's real sliding window
 
 Implementation: `rust-harness/runtime/src/ladder.rs`,
@@ -2191,7 +2199,7 @@ MODEL=<the gemma-4-E4B checkpoint directory>
 
 # 1. generate the reference. It writes long_context.json into the reference
 #    directory the ladder reads for this SIZE.
-python3 fixtures/reference_long_context.py --model "$MODEL" \
+uv run python fixtures/reference_long_context.py --model "$MODEL" \
   --out fixtures/reference/e4b/quick/long_context.json
 
 # 2. the whole climb, L5 included
@@ -2244,20 +2252,32 @@ cd ~/workspace/ai-experiments/rust-harness
 MODEL=<the gemma-4-E4B checkpoint directory>
 mkdir -p /tmp/rh18
 
-# a prompt past the 512-token window: the first ~3000 words of the corpus
+# a prompt past the 512-token window: the first ~2100 words of the corpus
 PROMPT=$(head -c 12000 fixtures/reference/corpus.txt)
 
-# layers 0 and 1 straddle the schedule; head 0 of each
+# sliding layers 0, 1 and 20, global layer 41 (the schedule puts a global
+# layer at 5, 11, ..., 41); head 0 of each. --out is a directory: the tool
+# writes attention.npz and manifest.json into it.
 cargo run --release -q -p runtime --bin attention-capture -- --text-only \
   --model "$MODEL" --prompt "$PROMPT" --layers 0,1,20,41 --heads 0 \
-  --out /tmp/rh18/attn.json
+  --out /tmp/rh18/attn
 echo "exit=$?"
 
-# 1. every row sums to one, to float tolerance
-python3 - <<'PY'
-import json
-d = json.load(open("/tmp/rh18/attn.json"))
-print(json.dumps({k: v for k, v in d.items() if k != "rows"}, indent=2)[:800])
+# 1. the manifest, then row mass and the zeros outside each row's span.
+#    span_first_layer_<l> names the first visible key per query row; the
+#    matrix is dense, so everything left of it is a structural zero.
+cat /tmp/rh18/attn/manifest.json
+uv run python - <<'PY'
+import numpy as np
+z = np.load("/tmp/rh18/attn/attention.npz")
+for l in (0, 1, 20, 41):
+    m, first = z[f"layer_{l}_head_0"], z[f"span_first_layer_{l}"]
+    n = m.shape[0]
+    mass = np.abs(m.sum(axis=1) - 1.0).max()
+    outside = max(np.abs(m[i, :first[i]]).max(initial=0.0) for i in range(n))
+    width = int((np.arange(n) - first + 1).max())
+    print(f"layer {l}: rows {n}, worst |row sum - 1| {mass:.2e}, "
+          f"max weight outside span {outside}, widest span {width}")
 PY
 
 # 2. the per-layer sliding/global verdict the checkpoint declares
@@ -2280,8 +2300,10 @@ approximate: a masked position is `-inf` before the softmax, so it comes out
 as a large negative number rather than an infinity, which is a different
 implementation with a different failure mode at long context.
 
-If the capture's JSON does not name the span per row, record what it does name
-and treat the schedule check as unmet rather than inferring it.
+The widest span the script prints is the schedule verdict: 512 on a sliding
+layer, the full prompt length on a global one. If it disagrees with what
+`checkpoint-info` reports for the same layer index, record both and treat the
+schedule check as unmet rather than inferring it.
 
 Observed:
 
@@ -2443,7 +2465,7 @@ mkdir -p /tmp/rh21
 # 1. the reference capture, from transformers. --prompt is required: the
 #    residual stream is per-position, so the capture is only defined against
 #    a stated input, and the same text must reach layer-diff.
-python3 fixtures/reference_capture.py --model "$MODEL" \
+uv run python fixtures/reference_capture.py --model "$MODEL" \
   --prompt "The three states of matter are" \
   --out /tmp/rh21/capture.json
 
@@ -2844,5 +2866,3 @@ is a decision rather than an oversight.
 | Widened blocks against stored-row folding | `rust-harness/runtime/src/tensor.rs::a_widened_block_is_bit_identical_to_folding_the_stored_rows` |
 | Rewindability invariants across stepped and batched runs | `rust-harness/runtime/src/conformance.rs` |
 | Colour helper as a pure function | `rust-harness/runtime/tests/status_python_parity.rs` |
-
-Status: VERIFIED 2026-08-15
