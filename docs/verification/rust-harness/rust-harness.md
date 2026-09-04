@@ -1218,6 +1218,39 @@ The two syncs cost about the same for the same 17 positions, 1.29 s against
 instead of none. The token counts (234 restored, 507 after) reproduce the
 earlier run exactly, as a seeded sampler should.
 
+Observed (2026-09-04), turn 1 re-run with `--record` in a clean directory and
+the recording audited against `transformers` (the RH.2 check 2 procedure), to
+settle whether the `回答：` ("Answer:") line the reply opens with is a
+decoder fault or a draw:
+
+```
+[OK] Recording: 234 tokens, 218 logit rows, 218 selections, sampling {'temperature': 0.8, 'top_p': 0.95, 'top_k': None, 'seed': 0}
+[RUN] Forward pass: 234 positions, teacher-forced
+[OK] Distributions: 218 positions, mean kl 0.000000 (<= 0.001), worst kl 0.000000 (<= 0.005) at position 196, argmax agreement 1.0000 (>= 0.98), worst top-50 overlap 1.0000 (>= 0.98)
+[OK] Chosen tokens: 218, 218 within the reference's top-50, worst rank 29 at position 33, last token '<eos>' rank 2 p=0.3306
+  position   33 rank     29 p=0.0038 '回答'
+  position   27 rank      6 p=0.0271 ' guiding'
+  position   46 rank      6 p=0.0617 ' govern'
+  position   23 rank      5 p=0.0147 ' What'
+  position  126 rank      5 p=0.0707 ' compos'
+  position  223 rank      5 p=0.0865 ' ultimately'
+  position   35 rank      4 p=0.0937 ' The'
+  position  100 rank      4 p=0.0932 ' unrelated'
+  position  119 rank      4 p=0.0731 ' highlights'
+  position   17 rank      3 p=0.0256 'What'
+[OK] Wrote /tmp/rh4-audit/audit.json
+```
+
+Every one of the 218 distributions matches `transformers`, so no position in
+the reply holds a value the reference did not also compute. `回答` at position
+33 is the single lowest-ranked draw of the reply: rank 29, probability 0.0038
+under the reference, where every other draw was rank 6 or better. It is a
+1-in-260 pick that temperature 0.8 and no top-k permit, and once drawn it
+conditions everything after it, which is why the rest of the answer takes the
+shape of a bilingual Q&A page. A greedy run, `transformers` or harness, takes
+rank 1 at every position and never produces it; that path is what RH.1b's L4
+rung checks. The token is sampling policy, not numerics.
+
 Status: VERIFIED 2026-08-14; span evidence 2026-09-04
 
 ## RH.5 Flight recorder and sandbox replay
