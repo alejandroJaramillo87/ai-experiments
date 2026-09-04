@@ -418,14 +418,42 @@ implemented. `k_norm` was not measured directly; its head-width shape makes
 the same statistic noisy, and the inference from `k_proj` and `v_proj`
 covers it.
 
+Observed (2026-09-04, check 1 as the test, both variants):
+
+```
+$ cd ~/workspace/ai-experiments
+$ uv run pytest -m "hw_full and hw_e4b" tests/hardware/test_shared_kv_weights.py -v
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /home/alejandro/workspace/ai-experiments/.venv/bin/python
+collected 8 items
+
+tests/hardware/test_shared_kv_weights.py::test_the_shared_tail_carries_untrained_keys_and_values_beside_trained_queries[gemma-4-E2B] PASSED
+tests/hardware/test_shared_kv_weights.py::test_the_shared_tail_keys_and_values_are_pinned_to_one_value[gemma-4-E2B] PASSED
+tests/hardware/test_shared_kv_weights.py::test_every_owning_layer_is_trained_on_all_four_projections[gemma-4-E2B] PASSED
+tests/hardware/test_shared_kv_weights.py::test_key_width_agrees_with_the_attention_schedule[gemma-4-E2B] PASSED
+tests/hardware/test_shared_kv_weights.py::test_the_shared_tail_carries_untrained_keys_and_values_beside_trained_queries[gemma-4-E4B] PASSED
+tests/hardware/test_shared_kv_weights.py::test_the_shared_tail_keys_and_values_are_pinned_to_one_value[gemma-4-E4B] PASSED
+tests/hardware/test_shared_kv_weights.py::test_every_owning_layer_is_trained_on_all_four_projections[gemma-4-E4B] PASSED
+tests/hardware/test_shared_kv_weights.py::test_key_width_agrees_with_the_attention_schedule[gemma-4-E4B] PASSED
+
+[TIER] full: torch present, the whole suite was in scope.
+8 passed in 38.94s
+```
+
+Eight passed, none skipped, so both checkpoints were on disk and every
+threshold the 2026-08-09 reading was made against holds on E4B as well as
+E2B. The fourth test ran rather than skipping, which means both configs carry
+`layer_types` and the schedule read off `k_proj` widths agrees with it. Both
+variants together read in under 40 s, well inside the `hw_full` budget.
+
 Check 2 remains listed because check 1 is statistical inference over weight
 distributions rather than a logit comparison. It was gated on a GGUF
 conversion being available; now that both sides read the same checkpoint
 directory, nothing blocks it and it can simply be run. It is confirmatory,
 not blocking.
 
-Status: VERIFIED 2026-08-09 in favor of the modeling code, on check 1.
-Check 2 outstanding as confirmation.
+Status: VERIFIED 2026-09-04 in favor of the modeling code, on check 1 as a
+test over both variants (first decided 2026-08-09 on E2B by the pasted
+script). Check 2 outstanding as confirmation.
 
 ## RH.1b Correctness ladder at Tier E
 
