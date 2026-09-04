@@ -305,58 +305,39 @@ tail, `q_proj` and `o_proj` are used and must be trained; `k_proj` and
 the other two isolates the effect to the gradient path, which no
 whole-layer comparison can do.
 
+The statistics live in `interp/probes/weight_stats.py`, and the verdict is a
+test rather than a script read by eye. `tests/interp/test_weight_stats.py`
+proves the discriminator on synthetic draws in the sandbox; the test below
+asserts it on the real checkpoints, both variants, and skips a variant that is
+not on disk rather than passing over it.
+
+Asserted by `tests/hardware/test_shared_kv_weights.py`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| In every shared layer, `k_proj` and `v_proj` sit above the Gaussian ratio with negative kurtosis while `q_proj` and `o_proj` have positive kurtosis | `test_the_shared_tail_carries_untrained_keys_and_values_beside_trained_queries` |
+| The shared tail's `k_proj` ratios, and its `v_proj` ratios, spread by less than 0.01 | `test_the_shared_tail_keys_and_values_are_pinned_to_one_value` |
+| Every owning layer has positive kurtosis on all four projections | `test_every_owning_layer_is_trained_on_all_four_projections` |
+| The layers whose `k_proj` is wide are the layers `config.json` marks full attention | `test_key_width_agrees_with_the_attention_schedule` |
+
 ```bash
 $ cd ~/workspace/ai-experiments
-$ .venv/bin/python - <<'EOF'
-import json, numpy as np, torch
-from safetensors import safe_open
-
-DIR = "/mnt/ai-data/models/hf/gemma-4-E2B"
-GAUSS = np.sqrt(2 / np.pi)
-
-text = json.load(open(f"{DIR}/config.json"))["text_config"]
-n, shared = text["num_hidden_layers"], text["num_kv_shared_layers"]
-boundary = n - shared
-print(f"{n} layers, boundary {boundary}, Gaussian |mean|/std = {GAUSS:.4f}\n")
-
-PROJ = ["q_proj", "k_proj", "v_proj", "o_proj"]
-stats = {}
-with safe_open(f"{DIR}/model.safetensors", framework="pt") as f:
-    names = set(f.keys())
-    for layer in range(n):
-        for p in PROJ:
-            key = f"model.language_model.layers.{layer}.self_attn.{p}.weight"
-            if key not in names:
-                key = f"language_model.model.layers.{layer}.self_attn.{p}.weight"
-            if key not in names:
-                continue
-            w = f.get_tensor(key).float().numpy().ravel()
-            s = w.std()
-            stats[(layer, p)] = (
-                float(np.abs(w).mean() / s),
-                float(((w / s) ** 4).mean() - 3.0),
-            )
-
-print("group means (ratio)")
-for p in PROJ:
-    o = [stats[(l, p)][0] for l in range(boundary) if (l, p) in stats]
-    s = [stats[(l, p)][0] for l in range(boundary, n) if (l, p) in stats]
-    f2 = lambda g: f"{np.mean(g):.4f} (spread {max(g) - min(g):.4f})" if g else "-"
-    print(f"  {p:8s} owns {f2(o)}   shared {f2(s)}")
-EOF
+$ uv run pytest -m "hw_full and hw_e4b" tests/hardware/test_shared_kv_weights.py -v
 ```
 
-The script reads tensor data and needs no GPU. The `E4B` directory
-substitutes for `E2B` unchanged; the base and instruction-tuned variants
-carry identical tensor layouts, so whichever is on disk serves.
+The test reads tensor data one projection at a time and needs no GPU. It is
+`hw_full` rather than `hw_smoke` because reading every attention projection of
+E4B takes minutes. `GEMMA4_CHECKPOINT_ROOT` overrides the default checkpoint
+root under `/mnt/ai-data`. The thresholds are the ones the 2026-08-09
+measurement below was read against, not fitted to it: the Gaussian ratio and
+zero kurtosis are analytic, and the 0.01 spread sits an order of magnitude
+above what the untrained group showed and below what the trained groups did.
 
-Expected signal: if the shared tail's `k_proj` and `v_proj` cluster tightly
-above the Gaussian ratio with negative kurtosis while `q_proj` and `o_proj`
-in the same layers scatter below it with positive kurtosis, the disputed
-tensors never entered the gradient path, the modeling code is authoritative,
-and the backend's reading is correct. If all four projections move together,
-the weights are meaningful and check 2 becomes mandatory rather than
-confirmatory.
+Expected signal: eight tests pass, four per variant, none skipped. A skipped
+variant is a checkpoint missing from disk, not a pass. If the first test
+fails, the shared tail's `k_proj` and `v_proj` moved with `q_proj` and
+`o_proj`, the weights are meaningful, and check 2 becomes mandatory rather
+than confirmatory.
 
 **Check 2 — do the logits agree?** Generate greedily from the same prompt
 through `transformers` and through the harness, and compare. Confirm the
