@@ -93,10 +93,10 @@ row-level assertions when numpy is missing, and the CPU-reference goldens
 Command:
 
 ```bash
-$ cd rust-harness
-$ rustc --version && cargo --version
-$ python3 -c "import numpy; print(numpy.__version__)"
-$ make quality
+cd rust-harness
+rustc --version && cargo --version
+python3 -c "import numpy; print(numpy.__version__)"
+make quality
 ```
 
 Expected signal: exit 0. The gate runs five offline steps, cheapest first,
@@ -178,9 +178,9 @@ work:
 Command:
 
 ```bash
-$ ls -la /mnt/ai-data/models/hf/
-$ cd rust-harness
-$ cargo run -p runtime --bin checkpoint-info -- --text-only /mnt/ai-data/models/hf/<e4b> \
+ls -la /mnt/ai-data/models/hf/
+cd rust-harness
+cargo run -p runtime --bin checkpoint-info -- --text-only /mnt/ai-data/models/hf/<e4b> \
     2>&1 | tee /tmp/rh1-dump.txt
 ```
 
@@ -321,8 +321,8 @@ Asserted by `tests/hardware/test_shared_kv_weights.py`:
 | The layers whose `k_proj` is wide are the layers `config.json` marks full attention | `test_key_width_agrees_with_the_attention_schedule` |
 
 ```bash
-$ cd ~/workspace/ai-experiments
-$ uv run pytest -m "hw_full and hw_e4b" tests/hardware/test_shared_kv_weights.py -v
+cd ~/workspace/ai-experiments
+uv run pytest -m "hw_full and hw_e4b" tests/hardware/test_shared_kv_weights.py -v
 ```
 
 The test reads tensor data one projection at a time and needs no GPU. It is
@@ -345,9 +345,9 @@ checkpoint directory name against the listing before running; both sides read
 the same directory, so there is no conversion step to account for.
 
 ```bash
-$ ls /mnt/ai-data/models/hf/
-$ cd ~/workspace/ai-experiments/rust-harness
-$ cargo run --release -p harness -- \
+ls /mnt/ai-data/models/hf/
+cd ~/workspace/ai-experiments/rust-harness
+cargo run --release -p harness -- \
     --model /mnt/ai-data/models/hf/gemma-4-E2B \
     --max-tokens 16 --temperature 0 'The capital of France is'
 ```
@@ -355,8 +355,8 @@ $ cargo run --release -p harness -- \
 Then the reference, on the same prompt and the same decoding rule:
 
 ```bash
-$ cd ~/workspace/ai-experiments
-$ .venv/bin/python - <<'EOF'
+cd ~/workspace/ai-experiments
+.venv/bin/python - <<'EOF'
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -475,18 +475,18 @@ leaves the workstation.
 Command:
 
 ```bash
-$ cd $REPO
-$ mkdir -p rust-harness/fixtures/reference/e4b/quick
-$ uv run python rust-harness/fixtures/reference_tokenizer.py --model $E4B \
+cd $REPO
+mkdir -p rust-harness/fixtures/reference/e4b/quick
+uv run python rust-harness/fixtures/reference_tokenizer.py --model $E4B \
     --out rust-harness/fixtures/reference/e4b/quick/tokenizer_parity.json
-$ uv run python rust-harness/fixtures/reference_capture.py --model $E4B \
+uv run python rust-harness/fixtures/reference_capture.py --model $E4B \
     --prompt "The capital of France is" --generate 16 \
     --out rust-harness/fixtures/reference/e4b/quick/layers.json
-$ uv run python rust-harness/fixtures/reference_perplexity.py --model $E4B --size quick \
+uv run python rust-harness/fixtures/reference_perplexity.py --model $E4B --size quick \
     --out rust-harness/fixtures/reference/e4b/quick/ppl.json
-$ uv run python rust-harness/fixtures/reference_greedy.py --model $E4B --size quick \
+uv run python rust-harness/fixtures/reference_greedy.py --model $E4B --size quick \
     --out rust-harness/fixtures/reference/e4b/quick/greedy.json
-$ cd rust-harness && make ladder SIZE=quick MODEL=$E4B
+cd rust-harness && make ladder SIZE=quick MODEL=$E4B
 ```
 
 Expected signal: five rows, each `PASS`, and `0 skipped`. **A `skipped` rung is
@@ -569,9 +569,9 @@ something other than a fixture.
 Command:
 
 ```bash
-$ cd rust-harness
-$ mkdir -p /tmp/rh2 && cd /tmp/rh2
-$ time ~/workspace/ai-experiments/rust-harness/target/release/harness \
+cd rust-harness
+mkdir -p /tmp/rh2 && cd /tmp/rh2
+time ~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only \
     "The capital of France is"
 ```
@@ -763,8 +763,8 @@ cores, so a rate without a width is not comparable to another rate. Pass
 Command:
 
 ```bash
-$ mkdir -p /tmp/rh3 && cd /tmp/rh3 && rm -f session.jsonl
-$ time ~/workspace/ai-experiments/rust-harness/target/release/harness \
+mkdir -p /tmp/rh3 && cd /tmp/rh3 && rm -f session.jsonl
+time ~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only \
     --trace-chrome trace.json \
     "Count from one to twenty as words, one per line"
@@ -852,11 +852,11 @@ new suffix.
 Command:
 
 ```bash
-$ mkdir -p /tmp/rh4 && cd /tmp/rh4
-$ time ~/workspace/ai-experiments/rust-harness/target/release/harness \
+mkdir -p /tmp/rh4 && cd /tmp/rh4
+time ~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only --trace-chrome turn1.json \
     "Summarize the Unix philosophy in three sentences"
-$ time ~/workspace/ai-experiments/rust-harness/target/release/harness \
+time ~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only --trace-chrome turn2.json \
     "Now compress that summary to one sentence"
 ```
@@ -921,8 +921,8 @@ mock, which any agent session can run.
 Command (host):
 
 ```bash
-$ mkdir -p /tmp/rh5 && cd /tmp/rh5
-$ ~/workspace/ai-experiments/rust-harness/target/release/harness \
+mkdir -p /tmp/rh5 && cd /tmp/rh5
+~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only --record flight.jsonl \
     --temperature 0.8 --top-k 40 --seed 1 \
     "Reply with the single word: ready"
@@ -941,9 +941,9 @@ is no committed CLI for arbitrary recordings, so a throwaway test invokes
 the replay loader `runtime::model::record::replay_file` directly):
 
 ```bash
-$ cd rust-harness
-$ mkdir -p runtime/tests/data && cp <flight.jsonl> runtime/tests/data/rh5-flight.jsonl
-$ cat > runtime/tests/rh5_replay.rs <<'EOF'
+cd rust-harness
+mkdir -p runtime/tests/data && cp <flight.jsonl> runtime/tests/data/rh5-flight.jsonl
+cat > runtime/tests/rh5_replay.rs <<'EOF'
 use std::path::Path;
 
 #[test]
@@ -962,8 +962,8 @@ fn rh5_recording_replays_as_a_mock_script_and_states_its_selections() {
     assert!(draws.windows(2).all(|w| w[1] > w[0]), "{draws:?}");
 }
 EOF
-$ cargo test -p runtime --test rh5_replay
-$ git checkout -- . && rm -rf runtime/tests/data runtime/tests/rh5_replay.rs
+cargo test -p runtime --test rh5_replay
+git checkout -- . && rm -rf runtime/tests/data runtime/tests/rh5_replay.rs
 ```
 
 Expected signal: the host run writes a header naming the sampling
@@ -1039,8 +1039,8 @@ lifetimes, and the obs crate installs no subscriber. Spans exist only under
 Command:
 
 ```bash
-$ mkdir -p /tmp/rh6 && cd /tmp/rh6
-$ ~/workspace/ai-experiments/rust-harness/target/release/harness \
+mkdir -p /tmp/rh6 && cd /tmp/rh6
+~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only --trace-chrome trace.json \
     "Reply with the single word: ready"
 ```
@@ -1115,9 +1115,9 @@ workstation runs; see the Observed block.
 Command:
 
 ```bash
-$ cd rust-harness
-$ make debug-record ARGS='--model fixtures/tiny-gemma4 "Reply with the single word: ready"'
-$ make debug-replay
+cd rust-harness
+make debug-record ARGS='--model fixtures/tiny-gemma4 "Reply with the single word: ready"'
+make debug-replay
 ```
 
 Inside the rr/gdb session:
@@ -1185,9 +1185,9 @@ The full agent loop (permissions, tools, transcript) on real weights.
 Command:
 
 ```bash
-$ mkdir -p /tmp/rh8 && cd /tmp/rh8
-$ printf 'rules:\n  - tool: "*"\n    action: allow\n' > permissions.yaml
-$ ~/workspace/ai-experiments/rust-harness/target/release/harness \
+mkdir -p /tmp/rh8 && cd /tmp/rh8
+printf 'rules:\n  - tool: "*"\n    action: allow\n' > permissions.yaml
+~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only \
     "Create a file named hello.txt containing the word hello, then read it back"
 ```
@@ -1239,12 +1239,12 @@ with a separable attribute; record which dataset was used.
 Command:
 
 ```bash
-$ cd rust-harness
-$ cargo run --release -p runtime --bin activation-capture -- \
+cd rust-harness
+cargo run --release -p runtime --bin activation-capture -- \
     --model /mnt/ai-data/models/hf/<e4b> --text-only \
     --dataset interp/probes/prompts/refusal.jsonl --layers 8,16,24 \
     --out /mnt/ai-data/interp/captures/rust-e4b-verify
-$ uv run python -c "from interp.probes.capture import load_capture; \
+uv run python -c "from interp.probes.capture import load_capture; \
     acts, labels, texts = load_capture('/mnt/ai-data/interp/captures/rust-e4b-verify'); \
     print(sorted(acts), {k: v.shape for k, v in acts.items()}, len(labels), len(texts))"
 ```
@@ -1320,8 +1320,8 @@ Status: VERIFIED 2026-08-14
 Command:
 
 ```bash
-$ cd ~/workspace/ai-experiments
-$ make probe-train ARGS="--capture /mnt/ai-data/interp/captures/rust-e4b-verify \
+cd ~/workspace/ai-experiments
+make probe-train ARGS="--capture /mnt/ai-data/interp/captures/rust-e4b-verify \
     --name rust-e4b-verify-probe"
 ```
 
@@ -1366,17 +1366,17 @@ Status: VERIFIED 2026-08-14
 Command:
 
 ```bash
-$ rm -rf /tmp/rh9 && mkdir -p /tmp/rh9/base /tmp/rh9/mon
-$ make probe-export ARGS="--probe /mnt/ai-data/interp/probes/rust-e4b-verify-probe \
+rm -rf /tmp/rh9 && mkdir -p /tmp/rh9/base /tmp/rh9/mon
+make probe-export ARGS="--probe /mnt/ai-data/interp/probes/rust-e4b-verify-probe \
     --out /tmp/rh9/probe.safetensors"
-$ cd /tmp/rh9/base && ~/workspace/ai-experiments/rust-harness/target/release/harness \
+cd /tmp/rh9/base && ~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only "The capital of France is"
-$ cd /tmp/rh9/mon && ~/workspace/ai-experiments/rust-harness/target/release/harness \
+cd /tmp/rh9/mon && ~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only --probe /tmp/rh9/probe.safetensors \
     "The capital of France is"
-$ diff /tmp/rh9/base/session.jsonl /tmp/rh9/mon/session.jsonl; echo "diff exit: $?"
-$ wc -l /tmp/rh9/mon/probe-flags.jsonl
-$ head -3 /tmp/rh9/mon/probe-flags.jsonl
+diff /tmp/rh9/base/session.jsonl /tmp/rh9/mon/session.jsonl; echo "diff exit: $?"
+wc -l /tmp/rh9/mon/probe-flags.jsonl
+head -3 /tmp/rh9/mon/probe-flags.jsonl
 ```
 
 **Create both directories before exporting, and `rm -rf` first.** Two ordering
@@ -1465,12 +1465,12 @@ Command (using an existing exported control vector, or one extracted from
 rust captures via `interp/steering`):
 
 ```bash
-$ mkdir -p /tmp/rh9/steer1 /tmp/rh9/steer2
-$ cd /tmp/rh9/steer1 && ~/workspace/ai-experiments/rust-harness/target/release/harness \
+mkdir -p /tmp/rh9/steer1 /tmp/rh9/steer2
+cd /tmp/rh9/steer1 && ~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only \
     --control-vector <vector-dir>/vector.safetensors --control-vector-scale 1.0 \
     "Describe your day in two sentences"
-$ cd /tmp/rh9/steer2 && ~/workspace/ai-experiments/rust-harness/target/release/harness \
+cd /tmp/rh9/steer2 && ~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only \
     --control-vector <vector-dir>/vector.safetensors --control-vector-scale 1.0 \
     "Describe your day in two sentences"
@@ -1510,8 +1510,8 @@ Command (the `make flame` target takes no arguments, so the underlying
 command is invoked directly with the trailing binary arguments):
 
 ```bash
-$ cd rust-harness
-$ cargo flamegraph --profile release-with-debug --bin harness -- \
+cd rust-harness
+cargo flamegraph --profile release-with-debug --bin harness -- \
     --model /mnt/ai-data/models/hf/<e4b> --text-only "Reply with the single word: ready"
 ```
 
@@ -1599,8 +1599,8 @@ trimmed from the reply. Record which behavior is observed.
 Command (three or more turns, then EOF or `/quit`):
 
 ```bash
-$ mkdir -p /tmp/rh11 && cd /tmp/rh11
-$ ~/workspace/ai-experiments/rust-harness/target/release/harness \
+mkdir -p /tmp/rh11 && cd /tmp/rh11
+~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only --chat \
     --trace-chrome trace.json --max-tokens 128
 ```
@@ -1640,11 +1640,11 @@ binary whose seeded generation matches the host build.
 Command:
 
 ```bash
-$ cd ~/workspace/ai-experiments
-$ make harness-build
-$ make harness-run ARGS='--model /app/models/hf/<e4b> --text-only --seed 7 "Reply with the single word: ready"'
-$ mkdir -p /tmp/rh12 && cd /tmp/rh12
-$ ~/workspace/ai-experiments/rust-harness/target/release/harness \
+cd ~/workspace/ai-experiments
+make harness-build
+make harness-run ARGS='--model /app/models/hf/<e4b> --text-only --seed 7 "Reply with the single word: ready"'
+mkdir -p /tmp/rh12 && cd /tmp/rh12
+~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only --seed 7 \
     "Reply with the single word: ready"
 ```
@@ -1729,14 +1729,14 @@ default log root on the workstation.
 Command (a normal run, then a forced failure, then inspection):
 
 ```bash
-$ mkdir -p /tmp/rh13 && cd /tmp/rh13
-$ ~/workspace/ai-experiments/rust-harness/target/release/harness \
+mkdir -p /tmp/rh13 && cd /tmp/rh13
+~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only \
     "Reply with the single word: ready"
-$ ~/workspace/ai-experiments/rust-harness/target/release/harness \
+~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /nonexistent-checkpoint "task" ; echo "exit: $?"
-$ tail -2 /mnt/ai-data/logs/harness/runs.jsonl
-$ cd ~/workspace/ai-experiments && uv run python -c "
+tail -2 /mnt/ai-data/logs/harness/runs.jsonl
+cd ~/workspace/ai-experiments && uv run python -c "
 from common.obs import catalog
 rows = catalog.read_runs(catalog.catalog_path('harness'))
 for r in rows[-2:]:
@@ -1830,12 +1830,12 @@ CPU reply can exceed it.
 Command (server in one shell, client in another):
 
 ```bash
-$ cd rust-harness && cargo build --release --bin harness
-$ ./target/release/harness --model <e4b-checkpoint-dir> --text-only --serve 8005
+cd rust-harness && cargo build --release --bin harness
+./target/release/harness --model <e4b-checkpoint-dir> --text-only --serve 8005
 ```
 
 ```bash
-$ .venv/bin/python -c "
+.venv/bin/python -c "
 from common import serving
 s = serving.SERVICES['harness']
 print('healthy in', serving.wait_healthy(s), 's')
@@ -1941,11 +1941,11 @@ one exported before R10 is a GGUF that no longer loads. Re-export it with
 `make steer-extract`.
 
 ```bash
-$ make harness-build
-$ make steer-up VECTOR=/mnt/ai-data/interp/vectors/<name> SCALE=1.0
-$ make steer-scorecard VECTOR=/mnt/ai-data/interp/vectors/<name> \
+make harness-build
+make steer-up VECTOR=/mnt/ai-data/interp/vectors/<name> SCALE=1.0
+make steer-scorecard VECTOR=/mnt/ai-data/interp/vectors/<name> \
     ATTRIBUTE="<behavior the judge scores>"
-$ make steer-down
+make steer-down
 ```
 
 Expected signal: the three arms complete and the scorecard writes its report,
