@@ -517,40 +517,49 @@ on E2B by the pasted script).
 ## RH.1b Correctness ladder at Tier E
 
 Implementation: `rust-harness/runtime/src/ladder.rs`,
-`rust-harness/runtime/src/bin/ladder.rs`, the four generators under
+`rust-harness/runtime/src/bin/ladder.rs`, the five generators under
 `rust-harness/fixtures/`, and `make ladder`.
 
-The numerics oracle. Five rungs compare the CPU backend against
+The numerics oracle. Six rungs compare the CPU backend against
 `transformers` on the real checkpoint: token ids (L0), residual stream (L1),
-final distribution (L2), perplexity (L3), greedy continuation (L4). Every
+final distribution (L2), perplexity (L3), greedy continuation (L4), and the
+long-context anchors past the sliding window (L5, added by RH.17). Every
 other entry in this runbook observes behavior; this one is the only entry
 that can call the backend correct.
 
 The generators are GPU consumers and `reference_perplexity.py` is the slow
 one. The artifacts land in a git-ignored directory by design — tens of MB at
 a 262144-wide vocabulary — so the printed table is the only evidence that
-leaves the workstation.
+leaves the workstation. Every artifact lives directly under the directory
+`make ladder` reads for the `SIZE`, `rust-harness/fixtures/reference/e4b/quick`
+here; a generator pointed anywhere else produces a skipped rung, not a
+failure.
 
 Command:
 
 ```bash
-cd $REPO
-mkdir -p rust-harness/fixtures/reference/e4b/quick
-uv run python rust-harness/fixtures/reference_tokenizer.py --model $E4B \
-    --out rust-harness/fixtures/reference/e4b/quick/tokenizer_parity.json
-uv run python rust-harness/fixtures/reference_capture.py --model $E4B \
+cd ~/workspace/ai-experiments/rust-harness
+MODEL=<the gemma-4-E4B checkpoint directory>
+REF=fixtures/reference/e4b/quick
+mkdir -p "$REF"
+uv run python fixtures/reference_tokenizer.py --model "$MODEL" \
+    --out "$REF/tokenizer_parity.json"
+uv run python fixtures/reference_capture.py --model "$MODEL" \
     --prompt "The capital of France is" --generate 16 \
-    --out rust-harness/fixtures/reference/e4b/quick/layers.json
-uv run python rust-harness/fixtures/reference_perplexity.py --model $E4B --size quick \
-    --out rust-harness/fixtures/reference/e4b/quick/ppl.json
-uv run python rust-harness/fixtures/reference_greedy.py --model $E4B --size quick \
-    --out rust-harness/fixtures/reference/e4b/quick/greedy.json
-cd rust-harness && make ladder SIZE=quick MODEL=$E4B
+    --out "$REF/layers.json"
+uv run python fixtures/reference_perplexity.py --model "$MODEL" --size quick \
+    --out "$REF/ppl.json"
+uv run python fixtures/reference_greedy.py --model "$MODEL" --size quick \
+    --out "$REF/greedy.json"
+uv run python fixtures/reference_long_context.py --model "$MODEL" \
+    --out "$REF/long_context.json"
+make ladder SIZE=quick MODEL="$MODEL"
 ```
 
-Expected signal: five rows, each `PASS`, and `0 skipped`. **A `skipped` rung is
+Expected signal: six rows, each `PASS`, and `0 skipped`. **A `skipped` rung is
 missing evidence, not a pass** — read the count in the closing `[OK]` line
-rather than the exit code.
+rather than the exit code. The run recorded below predates L5 and shows five
+rows; L5's first pass is RH.17's Observed block.
 
 Observed:
 
