@@ -271,7 +271,8 @@ Around that sit the observability and context layers: a flight recorder
 parameters and the per-step selection, so a replay reproduces the transcript
 rather than only the distribution it was drawn from, and auditable token by
 token against `transformers` with `fixtures/audit_recording.py`, which
-teacher-forces the recorded sequence and compares every recorded row — `tracing` spans with a
+teacher-forces the recorded sequence and compares every recorded row, and checked for
+structure with `make replay-check RECORDING=<file>` — `tracing` spans with a
 Perfetto-loadable `--trace-chrome` whose `--trace-level` reaches from the
 session timeline down to one span per layer and, on request, per kernel, an interp seam (activation capture, control
 vectors, in-band probe monitoring) whose taps are keyed on the site a row came

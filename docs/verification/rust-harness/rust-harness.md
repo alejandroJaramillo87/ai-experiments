@@ -1279,41 +1279,29 @@ that recomputed it. What the prompt elicits does not matter here — E4B at
 the pinned revision is a base model and will not follow it (see the
 base-model note above) — only that tokens are generated at all.
 
-Command (sandbox, after copying `flight.jsonl` into the worktree; there
-is no committed CLI for arbitrary recordings, so a throwaway test invokes
-the replay loader `runtime::model::record::replay_file` directly):
+Command (replay half, on the same machine; the recording is too large to
+move, and the check needs only cargo):
 
 ```bash
-cd rust-harness
-mkdir -p runtime/tests/data && cp <flight.jsonl> runtime/tests/data/rh5-flight.jsonl
-cat > runtime/tests/rh5_replay.rs <<'EOF'
-use std::path::Path;
-
-#[test]
-fn rh5_recording_replays_as_a_mock_script_and_states_its_selections() {
-    let (_script, recorded) = runtime::model::record::replay_file_with_selections(Path::new(
-        "tests/data/rh5-flight.jsonl",
-    ))
-    .unwrap();
-    let sampling = recorded.sampling.expect("recording states its parameters");
-    assert_eq!(sampling.top_k, Some(40), "{sampling:?}");
-    assert_eq!(sampling.seed, 1, "{sampling:?}");
-    assert!(!recorded.selections.is_empty(), "no token was recorded");
-    // Draw counts rise by one per stochastic step, so the run's position in
-    // its own stream is recoverable rather than merely stated.
-    let draws: Vec<u64> = recorded.selections.iter().map(|s| s.draws).collect();
-    assert!(draws.windows(2).all(|w| w[1] > w[0]), "{draws:?}");
-}
-EOF
-cargo test -p runtime --test rh5_replay
-git checkout -- . && rm -rf runtime/tests/data runtime/tests/rh5_replay.rs
+cd ~/workspace/ai-experiments/rust-harness
+make replay-check RECORDING=/tmp/rh5/flight.jsonl
 ```
+
+The target runs the committed `runtime/tests/recording_replay.rs` with
+`HARNESS_RECORDING` pointed at the file. With the variable unset the test
+prints `[SKIP]` and passes, so `make quality` is not gated on a recording.
+Before 2026-09-04 this half was a throwaway test pasted from this entry and
+deleted after the run; the second Observed block below is that shape.
 
 Expected signal: the host run writes a header naming the sampling
 parameters, one JSONL record per forward call with token and logit
-payloads, and one selection line per sampled token. The throwaway test
-passes — the recording rebuilds as a MockModel script, states the
-parameters it was made under, and carries a strictly rising draw count.
+payloads, and one selection line per sampled token. The replay test passes
+and prints three `[INFO]` lines: the sampling parameters, which must read
+`top_k: Some(40), seed: 1` for this command; the script's position count
+and vocabulary width; and the selection count with its position and draw
+ranges. The test asserts the shape, not this entry's parameters: the draw
+count rises by exactly one per selection, positions increase, and every
+selection was drawn from a scripted row.
 
 The draw count is the part worth watching. A recording that reproduces
 the logits and not the selection lets a replay redraw from the same
@@ -1365,7 +1353,37 @@ rather than masking), so this run was never at risk; the exposure is a caller
 that hands in a masked logit row. `runtime/tests/record_replay.rs:87-91`
 steers around it with `-1000.0` and says why. No test covers the failure.
 
-Status: VERIFIED 2026-08-14
+Observed (2026-09-04), the same host command, then the throwaway test of
+the day pasted into a scratch file under `runtime/tests/` and run once:
+
+```
+(host)
+[INFO] Sampling: seed=1 temperature=0.8 max_tokens=256
+[INFO] Model load: 5.88 s
+[INFO] Prefill: 16 tokens in 1.21 s (13 tok/s)
+[INFO] Session snapshot: 272 cached tokens at /tmp/rh5/session.kv
+
+(replay)
+running 1 test
+test rh5_recording_replays_as_a_mock_script_and_states_its_selections ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 15.45s
+```
+
+The run generated 256 tokens, the `max_tokens` budget, so unlike the August
+run it did not stop on EOS. The reply is a base model imitating a chat
+transcript, Llama-style header strings included, emitted as plain text; the
+tokenizer resolves only the Gemma turn literals, so none of it is a special
+token. The prompt encoded to 16 tokens where the 2026-08-14 recording's
+positions began at 14, so prompt encoding changed between the two builds and
+the earlier `positions 14 -> 269` line is not comparable to this run's.
+
+The throwaway test was promoted after this run to
+`runtime/tests/recording_replay.rs` and `make replay-check`, which is what
+the command block above now names. Its output on this recording goes here
+when the operator runs it.
+
+Status: VERIFIED 2026-08-14; re-run 2026-09-04
 
 ## RH.6 Chrome trace in Perfetto
 

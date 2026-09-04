@@ -56,6 +56,22 @@ test:
 test-e4b: ## Run the checks needing the real E4B checkpoint (HARNESS_E4B_MODEL=<dir>)
 	cargo test --workspace -- --nocapture --test-threads=1
 
+# A flight recording written by `harness --record` is too large to commit (a
+# row is the full vocabulary, about 2 MB of JSON per generated token), so the
+# replay check takes one by path. Refuses without RECORDING rather than running
+# a test that would only skip; the skip is for `make test`, where the variable
+# is legitimately unset. abspath because cargo runs the test from the crate
+# directory, not from here.
+.PHONY: replay-check
+replay-check: ## Replay a --record file as a MockModel script and state its selections (RECORDING=<file>)
+	@if [ -z "$(RECORDING)" ]; then \
+	  printf '[ERROR] RECORDING is not set: nothing to replay\n'; \
+	  printf '  Solution: name a file written by harness --record\n'; \
+	  printf '  Command: make replay-check RECORDING=/tmp/rh5/flight.jsonl\n'; \
+	  exit 1; \
+	fi
+	HARNESS_RECORDING="$(abspath $(RECORDING))" cargo test -p runtime --test recording_replay -- --nocapture
+
 # The correctness ladder (workstation only): the six rungs against the real
 # checkpoint and reference artifacts generated from transformers.
 #
