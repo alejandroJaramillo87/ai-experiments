@@ -988,7 +988,49 @@ so the wall clock this entry asks for no longer has to be separated from the
 load by hand. The expected signal is unchanged and the entry stays VERIFIED;
 the pasted block simply predates the two lines.
 
-Status: VERIFIED 2026-08-14
+Observed (2026-09-04, the same command; the reply reproduces the block above
+word for word, so only its last lines are quoted):
+
+```
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E4B hash=e376216f8b693aff layers=42
+[INFO] Weights: 13.90 GiB resident at bf16
+[INFO] Peak RSS after load: 14.04 GiB
+[INFO] KV cache: 131072 tokens, 4.05 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=256
+[INFO] Build: 0.1.0 git unknown
+[WARN] KV cache above 2 GiB: consider --context to cap it (compaction keeps long sessions inside the cap)
+[INFO] Model load: 6.17 s
+[INFO] Prefill: 20 tokens in 1.51 s (13 tok/s)
+The program outputs one number per line.
+...
+print()
+g()
+复制
+[INFO] Session snapshot: 134 cached tokens at /tmp/rh3/session.kv
+~/workspace/ai-experiments/rust-harness/target/release/harness --model $MODEL  151.62s user 10.04s system 535% cpu 30.216 total
+```
+
+The configuration caveat above is closed: the banner now states
+`threads=8`, `dot=widen4`, `batch=64` and the sampler settings itself, and
+the two U8 lines separate load from generation without a trace. Read from
+the printed lines alone, 30.2 s wall less 6.17 s load less 1.51 s prefill
+leaves about 22.5 s for the 114 decoded tokens (134 cached less 20 prompt),
+**about 5.1 tokens/second at width 8**, beside the 5.4 the 2026-08-14 trace
+gave. Still one unpinned run, so still a scale check and not a baseline; the
+trace at `/tmp/rh3/trace.json` is the figure of record if RH.6 is re-aggregated.
+
+The `复制` on the reply's last line is the model's own token, not a decoding
+fault. Sampling is seeded, and the cached-token count is the same 134 as the
+2026-08-14 run, so the earlier reply ended on the same token and the paste
+dropped it. `复制` is "copy" — the label on the copy button beside code blocks
+on Chinese programming sites, which is exactly where a base model that has
+just closed a code block reaches for it. A decoder fault looks different: the
+contaminated RH.1a attempt produced `<unused10>` and mojibake, where this is a
+well-formed two-character word in a plausible position.
+
+Status: VERIFIED 2026-09-04 (first decided 2026-08-14)
 
 ## RH.4 KV delta prefill
 
