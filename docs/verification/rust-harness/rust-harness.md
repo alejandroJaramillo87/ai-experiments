@@ -1184,7 +1184,41 @@ on serve-mode session persistence: **the problem is not that sessions persist,
 it is that a restored session is indistinguishable from a model behaving
 strangely.**
 
-Status: VERIFIED 2026-08-14
+Observed (2026-09-04), the same two commands, then the `session.sync` span
+and its first forward read out of each trace file:
+
+```
+(turn 1)
+[INFO] Model load: 5.99 s
+[INFO] Prefill: 17 tokens in 1.29 s (13 tok/s)
+[INFO] Session snapshot: 234 cached tokens at /tmp/rh4/session.kv
+~/workspace/ai-experiments/rust-harness/target/release/harness --model $MODEL  256.24s user 15.39s system 569% cpu 47.733 total
+
+(turn 2)
+[INFO] Session restored: 234 cached tokens from /tmp/rh4/session.kv
+[INFO] Model load: 5.96 s
+[INFO] Prefill: 17 tokens in 1.45 s (12 tok/s)
+[INFO] Session snapshot: 507 cached tokens at /tmp/rh4/session.kv
+~/workspace/ai-experiments/rust-harness/target/release/harness --model $MODEL  289.42s user 17.46s system 550% cpu 55.704 total
+
+(traces)
+turn1.json session.sync {'cached_len': '0'}
+turn1.json model.forward {'len': '17', 'start': '0'}
+turn1.json session.sync 1.287952352 s
+turn2.json session.sync {'cached_len': '234'}
+turn2.json model.forward {'len': '17', 'start': '234'}
+turn2.json session.sync 1.449578818 s
+```
+
+This is the span-level half the 2026-08-14 entry left unverified. Turn 2's
+sync forward ran `start 234, len 17`: it prefilled the 17 tokens of the new
+user turn on top of 234 restored positions, not the 251-token transcript.
+The two syncs cost about the same for the same 17 positions, 1.29 s against
+1.45 s; the turn-2 excess is those positions attending over 234 cached keys
+instead of none. The token counts (234 restored, 507 after) reproduce the
+earlier run exactly, as a seeded sampler should.
+
+Status: VERIFIED 2026-08-14; span evidence 2026-09-04
 
 ## RH.5 Flight recorder and sandbox replay
 
