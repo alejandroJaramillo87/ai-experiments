@@ -461,15 +461,58 @@ E2B. The fourth test ran rather than skipping, which means both configs carry
 `layer_types` and the schedule read off `k_proj` widths agrees with it. Both
 variants together read in under 40 s, well inside the `hw_full` budget.
 
-Check 2 remains listed because check 1 is statistical inference over weight
-distributions rather than a logit comparison. It was gated on a GGUF
-conversion being available; now that both sides read the same checkpoint
-directory, nothing blocks it and it can simply be run. It is confirmatory,
-not blocking.
+Observed (2026-09-04, check 2, gemma-4-E2B, from an empty directory):
+
+```
+$ mkdir -p /tmp/rh1a && cd /tmp/rh1a
+$ ~/workspace/ai-experiments/rust-harness/target/release/harness --text-only \
+    --model /mnt/ai-data/models/hf/gemma-4-E2B --max-tokens 16 --temperature 0 \
+    'The capital of France is'
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E2B hash=dc91ecfbc2392fa9 layers=35
+[INFO] Weights: 8.62 GiB resident at bf16
+[INFO] Peak RSS after load: 9.51 GiB
+[INFO] KV cache: 131072 tokens, 1.52 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0 max_tokens=16
+[INFO] Build: 0.1.0 git unknown
+[INFO] Model load: 3.76 s
+[INFO] Prefill: 14 tokens in 0.56 s (25 tok/s)
+The capital of France is Paris.
+The capital of France is Paris.
+```
+
+The `transformers` reference, same day, same prompt, greedy, 16 new tokens
+(the `Loading weights` progress line omitted; no unexpected-key warning was
+printed):
+
+```
+The capital of France is Paris.
+
+The capital of France is Paris.
+
+The capital of France is
+```
+
+Both sides answer `Paris.` and then repeat the prompt, which is the same
+continuation from two independent implementations of the shared-KV reading.
+The 14-token prefill is the six-token prompt plus the chat template, and it
+is what a clean directory looks like; the 977-token prefill the first attempt
+printed from `rust-harness/` was a stale session, recorded above as the trap.
+The blank lines differ because the harness trims the reply and the reference
+prints raw decoded text; the tokens that matter agree. `from_pretrained`
+printed no warning about the shared layers' `k_proj` or `v_proj`, so the
+current `transformers` build loads those tensors silently rather than
+reporting them as unexpected; that silence is uninformative either way, as
+the entry says, and check 1 is what decides.
+
+Check 2 is confirmatory: an eye-level agreement on one prompt, not a logit
+comparison. The exact-match form of it is the ladder's L4 rung against a
+`transformers` greedy reference, which passed at Tier E on E4B (RH.1b).
 
 Status: VERIFIED 2026-09-04 in favor of the modeling code, on check 1 as a
-test over both variants (first decided 2026-08-09 on E2B by the pasted
-script). Check 2 outstanding as confirmation.
+test over both variants and check 2 by eye on E2B (first decided 2026-08-09
+on E2B by the pasted script).
 
 ## RH.1b Correctness ladder at Tier E
 
