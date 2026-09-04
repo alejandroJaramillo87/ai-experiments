@@ -722,11 +722,41 @@ following is explicitly not: a numerically wrong forward pass on real weights
 degrades into word salad or a repetition loop, and neither survives a few
 dozen tokens. Record the full reply.
 
-What this entry cannot decide is whether the continuation is the *right* one.
-A backend wrong in a small, systematic way produces fluent prose that diverges
-from the reference, and no amount of reading it will show that. RH.1a check 2
-and the ladder's L4 rung are what compare against `transformers`; this entry
-establishes only that the model runs and speaks.
+What this entry cannot decide by eye is whether the continuation is the
+*right* one. A backend wrong in a small, systematic way produces fluent prose
+that diverges from the reference, and no amount of reading it will show that.
+RH.1a check 2 and the ladder's L4 rung compare against `transformers` on
+prompts of their own; the check below asks the same question of the reply
+this entry actually produced.
+
+Check 2 — the sampled reply against `transformers`. A recording holds every
+forward call's logits and every token the sampler chose, and
+`rust-harness/fixtures/audit_recording.py` feeds the recorded token sequence
+to `transformers` once, teacher-forced, and compares its logits with the
+harness's at every recorded position under the ladder's L2 tolerances. It
+also reports, for every token the sampler drew, that token's rank and
+probability under `transformers` at its position. A token the reference gives
+no weight to is a decoder fault; a token at rank 7 is a draw at temperature
+0.8. Sampling is left at the defaults so the reply is the one check 1
+produces.
+
+```bash
+mkdir -p /tmp/rh2 && cd /tmp/rh2 && rm -f session.jsonl session.kv
+~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/gemma-4-E4B --text-only --record flight.jsonl \
+    "The capital of France is"
+cd ~/workspace/ai-experiments
+uv run python rust-harness/fixtures/audit_recording.py \
+    --model /mnt/ai-data/models/hf/gemma-4-E4B \
+    --record /tmp/rh2/flight.jsonl --out /tmp/rh2/audit.json --show 5
+```
+
+Expected signal: `[OK] Distributions:` with every measure inside its
+threshold over every recorded position, then `[OK] Chosen tokens:` naming the
+worst-ranked draw and the last token with its rank and probability. The five
+lowest-ranked draws print beneath, decoded. Exit 0. `[ERROR] Distributions:`
+names the worst position and exits 1; that is a numerics finding and belongs
+in RH.1b's territory, not a sampling one.
 
 The startup banner is also the KV evidence: it prints the weight width, peak
 RSS after load, the KV cache line, and the rewind horizon. Record those four
@@ -1022,7 +1052,10 @@ gave. Still one unpinned run, so still a scale check and not a baseline; the
 trace at `/tmp/rh3/trace.json` is the figure of record if RH.6 is re-aggregated.
 
 The `复制` on the reply's last line is the model's own token, not a decoding
-fault. Sampling is seeded, and the cached-token count is the same 134 as the
+fault, and RH.2 check 2 is now the way to establish that with a number rather
+than an argument: record this run and audit it, and the last row of the
+report gives `复制`'s rank under `transformers` at that position. Sampling is
+seeded, and the cached-token count is the same 134 as the
 2026-08-14 run, so the earlier reply ended on the same token and the paste
 dropped it. `复制` is "copy" — the label on the copy button beside code blocks
 on Chinese programming sites, which is exactly where a base model that has
