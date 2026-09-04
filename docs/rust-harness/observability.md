@@ -162,10 +162,14 @@ asserts that the logits are bit-identical with and without a subscriber.
 The span and field names form a stable schema — the Rust analogue of the
 Python `common/obs` vocabulary — shared by debugging, the blog write-ups, and
 future benchmark analysis. The `info` set is the schema; the `debug` and
-`trace` names are stable too, but their fields may grow. Per-name totals need
-no script: in Perfetto's query view,
+`trace` names are stable too, but their fields may grow. Per-name totals come
+two ways: in Perfetto's query view,
 `select name, count(*), sum(dur) from slice group by name order by 3 desc`
-is the table RH.6 built by hand. The `session.sync` delta-length field makes
+is the table RH.6 built by hand, and `make trace-check TRACE=<file>` prints
+the same table from the terminal and asserts the count relations in the table
+above (one `model.layer` per layer per forward, the blocks equal to it, one
+load with its stages, the prefill forward without a step), skipping when no
+file is named. The `session.sync` delta-length field makes
 the phase B acceptance property (turn latency scales with delta size, not
 transcript size) directly visible in a trace timeline.
 

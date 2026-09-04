@@ -72,6 +72,19 @@ replay-check: ## Replay a --record file as a MockModel script and state its sele
 	fi
 	HARNESS_RECORDING="$(abspath $(RECORDING))" cargo test -p runtime --test recording_replay -- --nocapture
 
+# The same shape for a Chrome trace: a workstation artifact of a run against
+# the real checkpoint, checked for the documented span relations and summed
+# per name, which is what the runbook's RH.4 and RH.6 read.
+.PHONY: trace-check
+trace-check: ## Check a --trace-chrome file for the documented span shape and print its per-name totals (TRACE=<file>)
+	@if [ -z "$(TRACE)" ]; then \
+	  printf '[ERROR] TRACE is not set: nothing to check\n'; \
+	  printf '  Solution: name a file written by harness --trace-chrome\n'; \
+	  printf '  Command: make trace-check TRACE=/tmp/rh6/trace.json\n'; \
+	  exit 1; \
+	fi
+	HARNESS_TRACE="$(abspath $(TRACE))" cargo test -p harness --test trace_structure -- --nocapture
+
 # The correctness ladder (workstation only): the six rungs against the real
 # checkpoint and reference artifacts generated from transformers.
 #

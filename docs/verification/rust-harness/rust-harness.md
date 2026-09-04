@@ -1135,6 +1135,9 @@ time ~/workspace/ai-experiments/rust-harness/target/release/harness \
 time ~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only --trace-chrome turn2.json \
     "Now compress that summary to one sentence"
+cd ~/workspace/ai-experiments/rust-harness
+make trace-check TRACE=/tmp/rh4/turn1.json
+make trace-check TRACE=/tmp/rh4/turn2.json
 ```
 
 Expected signal: the turn-2 `session.sync` prefill span covers far fewer
@@ -1142,6 +1145,10 @@ positions than turn 1's transcript length (the delta is the new user turn,
 not the whole history), and turn-2 prefill wall-clock is proportionally
 smaller. Record both span durations and position counts. Both paths are
 measured: turn 1 is the full-prefill datum, turn 2 the delta datum.
+`make trace-check` prints each trace's `session.sync` args (`cached_len`)
+and the first `model.forward`'s `start` and `len`, which are those counts:
+turn 2's forward starts at turn 1's cached length with `len` the size of the
+new turn.
 
 Observed:
 
@@ -1425,10 +1432,18 @@ mkdir -p /tmp/rh6 && cd /tmp/rh6
 ~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only --trace-chrome trace.json \
     "Reply with the single word: ready"
+cd ~/workspace/ai-experiments/rust-harness
+make trace-check TRACE=/tmp/rh6/trace.json
 ```
 
 Expected signal: `trace.json` loads in Perfetto (ui.perfetto.dev) and shows
 the documented span set with `model.forward` dominating wall-clock.
+`make trace-check` runs `harness/tests/trace_structure.rs` on the file: it
+asserts the count relations the U10 note below predicts, one `model.layer`
+per layer per forward with the block spans equal to it, one `model.load` with
+its stages, the prefill forward without a step, and prints the per-name
+table the Observed blocks below were built from by hand. Without `TRACE`
+the test skips, so `make quality` is not gated on a trace.
 
 Four spans are unconditional on any generation: `session.sync`,
 `session.step`, `sampler.sample`, `model.forward`. Two more —
@@ -1490,7 +1505,47 @@ predate the change. A re-run should show `model.layer` at 42 times the
 `docs/rust-harness/observability.md` carries the full table and the Perfetto
 query that replaces the hand aggregation.
 
-Status: VERIFIED 2026-08-14
+Observed (2026-09-04), the same command on the U10 build, aggregated with a
+pasted `json` reader:
+
+```
+[INFO] Prefill: 16 tokens in 1.21 s (13 tok/s)
+[INFO] Session snapshot: 272 cached tokens at /tmp/rh6/session.kv
+
+== rh6 (2026-09-04, --trace-level debug)
+   session.step                256 calls     45.07s
+   model.forward               257 calls     45.00s
+   model.layer               10794 calls     39.71s
+   model.layer.mlp           10794 calls     29.10s
+   model.layer.attn          10794 calls      8.19s
+   model.load                    1 calls      5.48s
+   model.from_checkpoint         1 calls      5.48s
+   model.lm_head               257 calls      5.03s
+   model.load.layer             42 calls      2.80s
+   model.layer.ple           10794 calls      2.34s
+   sampler.sample              256 calls      1.29s
+   session.sync                  1 calls      1.21s
+   model.prelude               257 calls      0.24s
+   checkpoint.read               1 calls      0.00s
+   checkpoint.fingerprint        1 calls      0.00s
+   tokenizer.encode              1 calls      0.00s
+   checkpoint.parse              1 calls      0.00s
+model.layer / model.forward = 10794/257 = 42.0
+kernel spans: 0
+```
+
+Every count the U10 paragraph predicted holds: 257 forwards (256 steps plus
+the prefill), `model.layer` at exactly 42 times that, the three block spans
+equal to it, prelude and LM head at 257, one load with 42 layer reads, one
+tokenizer encode, and no kernel span at the default level. Inside the
+forward, the MLP takes 29.10 s of the 39.71 s of layer time, attention
+8.19 s, PLE 2.34 s, and the LM head 5.03 s. `model.forward` still dominates,
+and the sampler is 2.9 percent of it, the August ratio. That pasted reader
+was promoted the same day to `make trace-check`, which the command block
+now names; its output on this trace goes here when the operator runs it.
+Loading the file in the Perfetto UI remains the unverified half.
+
+Status: VERIFIED 2026-08-14; re-run 2026-09-04 with U10 spans
 
 ## RH.7 rr record, replay, reverse-continue
 
