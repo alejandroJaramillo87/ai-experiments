@@ -33,13 +33,13 @@ required (`build-essential`, `libssl-dev`, and similar) are no longer needed.
 Install uv with the official standalone installer:
 
 ```bash
-$ curl -LsSf https://astral.sh/uv/install.sh | sh
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 Restart the shell or source the environment file the installer prints, then verify:
 
 ```bash
-$ uv --version
+uv --version
 ```
 
 The installer places `uv` in `~/.local/bin`. Confirm that directory is on `PATH` if the
@@ -51,7 +51,7 @@ The project pins Python 3.12 in `/.python-version`. Install a matching interpret
 uv:
 
 ```bash
-$ uv python install 3.12
+uv python install 3.12
 ```
 
 uv manages this interpreter under its own data directory. It does not touch the system
@@ -83,7 +83,7 @@ From the repository root, create the virtual environment and install every depen
 group, and extra:
 
 ```bash
-$ make install
+make install
 ```
 
 `make install` runs `uv sync --all-groups --all-extras`. uv reads `pyproject.toml` and
@@ -111,13 +111,13 @@ uv creates the environment at `/.venv`. Prefix commands with `uv run` to use it 
 activation:
 
 ```bash
-$ uv run python --version
+uv run python --version
 ```
 
 To activate the environment in the current shell:
 
 ```bash
-$ source .venv/bin/activate
+source .venv/bin/activate
 ```
 
 The `make shell` target prints this activation command rather than spawning a subshell.
@@ -129,33 +129,33 @@ Run the following after `make install` to confirm the environment is correct.
 Sync the environment:
 
 ```bash
-$ uv sync --all-groups --all-extras
+uv sync --all-groups --all-extras
 ```
 
 Confirm PyTorch detects the GPU:
 
 ```bash
-$ uv run python -c "import torch; assert torch.cuda.is_available()"
+uv run python -c "import torch; assert torch.cuda.is_available()"
 ```
 
 Run the dependency reporter:
 
 ```bash
-$ uv run python scripts/utils/check_py_deps_install.py
+uv run python scripts/utils/check_py_deps_install.py
 ```
 
 Run the Make quality targets:
 
 ```bash
-$ make test
-$ make lint
-$ make format
+make test
+make lint
+make format
 ```
 
 Run the environment check without modifying the lock or environment:
 
 ```bash
-$ ./scripts/update/update_python.sh --check
+./scripts/update/update_python.sh --check
 ```
 
 `--check` reports the uv version, the Python pin, the presence of `.venv` and the
@@ -194,28 +194,28 @@ every shell that inherits the pin then fails with
 `.python-version`:
 
 ```bash
-$ pyenv global               # if this prints ai-tools, reset it
-$ pyenv global system        # or: pyenv global 3.12.11
-$ pyenv global               # verify it no longer prints ai-tools
+pyenv global               # if this prints ai-tools, reset it
+pyenv global system        # or: pyenv global 3.12.11
+pyenv global               # verify it no longer prints ai-tools
 ```
 
 Then delete the pyenv-managed virtual environment used for AI tools:
 
 ```bash
-$ pyenv virtualenv-delete ai-tools
+pyenv virtualenv-delete ai-tools
 ```
 
 If `pyenv virtualenv-delete` is unavailable, remove the environment directly:
 
 ```bash
-$ pyenv uninstall 3.12.11/envs/ai-tools
+pyenv uninstall 3.12.11/envs/ai-tools
 ```
 
 Remove Poetry and its cache:
 
 ```bash
-$ sudo apt remove python3-poetry
-$ rm -rf ~/.cache/pypoetry
+sudo apt remove python3-poetry
+rm -rf ~/.cache/pypoetry
 ```
 
 The old `poetry.lock` is deleted from the repository; `uv.lock` replaces it. No action is
@@ -243,7 +243,7 @@ a missing command afterwards.
 Then remove the pyenv data directory:
 
 ```bash
-$ rm -rf ~/.pyenv
+rm -rf ~/.pyenv
 ```
 
 Check what `.venv` is built from **before** deleting that directory. An environment
@@ -251,15 +251,15 @@ created while pyenv supplied the interpreter is stamped with a path under `~/.py
 does not survive its removal:
 
 ```bash
-$ grep '^home' .venv/pyvenv.cfg
+grep '^home' .venv/pyvenv.cfg
 ```
 
 If the path names `~/.pyenv`, rebuild afterwards:
 
 ```bash
-$ uv python install 3.12
-$ rm -rf .venv
-$ uv sync --all-groups --all-extras
+uv python install 3.12
+rm -rf .venv
+uv sync --all-groups --all-extras
 ```
 
 ## Troubleshooting
@@ -269,7 +269,7 @@ $ uv sync --all-groups --all-extras
 Confirm the installer directory is on `PATH`:
 
 ```bash
-$ ls ~/.local/bin/uv
+ls ~/.local/bin/uv
 ```
 
 Add `~/.local/bin` to `PATH` in the shell configuration if the binary exists but the
@@ -280,7 +280,7 @@ command is not found.
 Install a managed interpreter:
 
 ```bash
-$ uv python install 3.12
+uv python install 3.12
 ```
 
 ### CUDA not detected
@@ -288,7 +288,7 @@ $ uv python install 3.12
 Verify the installed PyTorch build reports a CUDA version:
 
 ```bash
-$ uv run python -c "import torch; print(torch.__version__, torch.version.cuda)"
+uv run python -c "import torch; print(torch.__version__, torch.version.cuda)"
 ```
 
 The version string must include a CUDA suffix (for example `2.9.1+cu130`). A CPU-only
@@ -301,7 +301,7 @@ build indicates the `torch` sources in `pyproject.toml` no longer point at the
 Re-sync from the lock file:
 
 ```bash
-$ uv sync --all-groups --all-extras
+uv sync --all-groups --all-extras
 ```
 
 ### The environment stops working after removing a tool or updating VS Code
@@ -311,17 +311,17 @@ absolute path, so it breaks whenever that path goes away — after removing pyen
 a VS Code snap revision bump moved the directory `XDG_DATA_HOME` pointed at.
 
 ```bash
-$ grep '^home' .venv/pyvenv.cfg
-$ ls "$(grep '^home' .venv/pyvenv.cfg | cut -d' ' -f3)"
+grep '^home' .venv/pyvenv.cfg
+ls "$(grep '^home' .venv/pyvenv.cfg | cut -d' ' -f3)"
 ```
 
 A missing directory confirms it. Rebuild, and set the two variables in [Install the
 Python interpreter](#install-the-python-interpreter) so it does not recur:
 
 ```bash
-$ uv python install 3.12
-$ rm -rf .venv
-$ uv sync --all-groups --all-extras
+uv python install 3.12
+rm -rf .venv
+uv sync --all-groups --all-extras
 ```
 
 `./scripts/utils/find_pythons.sh` checks this on every run.

@@ -106,25 +106,71 @@ selections at all.
 Sandbox work. The `tracing` crate becomes a workspace dependency and the
 existing stack is instrumented with structured spans:
 
-| Span | Location | Key fields |
-|------|----------|------------|
-| `model.forward` | `runtime/src/model/cpu.rs` | — |
-| `session.sync` | `runtime/src/session.rs` | delta length (tokens), cached length |
-| `session.step` | `runtime/src/session.rs` | position, chosen token |
-| `sampler.sample` | `runtime/src/sampler.rs` | temperature, candidate count |
-| `grammar.advance` | `runtime/src/grammar.rs` | state, allowed-token count |
-| `tool.exec` | `harness/src/tools.rs` | tool name, duration, output bytes |
-| `agent.fork` | `harness/src/subagents.rs` | parent cached length, task delta length |
+| Span | Level | Location | Key fields |
+|------|-------|----------|------------|
+| `model.load` | info | `runtime/src/model/cpu.rs` | text_only |
+| `checkpoint.read`, `checkpoint.parse`, `model.from_checkpoint`, `checkpoint.fingerprint` | debug | `runtime/src/model/cpu.rs` | — (sequential children of `model.load`) |
+| `model.load.layer` | debug | `runtime/src/model/cpu.rs` | layer, owns_kv (one per layer read) |
+| `tokenizer.encode` | info | `runtime/src/tokenizer.rs` | bytes, token count |
+| `model.forward` | info | `runtime/src/model/cpu.rs` | start (cached length), len (tokens in the call) |
+| `model.prelude` | debug | `runtime/src/model/cpu.rs` | n, ple (embedding and the per-layer-embedding stages) |
+| `model.layer` | debug | `runtime/src/model/cpu.rs` | layer, n, kv_source, owns_kv |
+| `model.layer.attn` | debug | `runtime/src/model/cpu.rs` | owns_kv, kv_len (cache length after the append) |
+| `model.layer.mlp` | debug | `runtime/src/model/cpu.rs` | ffn_dim |
+| `model.layer.ple` | debug | `runtime/src/model/cpu.rs` | ple_dim (only on a checkpoint with per-layer embeddings) |
+| `model.lm_head` | debug | `runtime/src/model/cpu.rs` | rows (logit rows produced), n |
+| `kernel.matmul` | trace | `runtime/src/model/cpu.rs` | out_dim, in_dim, n, threads (one per projection) |
+| `kernel.attention` | trace | `runtime/src/model/cpu.rs` | n, kv_len, heads (the serial score-and-fold loop, once per layer) |
+| `kernel.lm_head` | trace | `runtime/src/model/cpu.rs` | rows, in_dim, threads (the tied-head dot products, once per row) |
+| `session.sync` | info | `runtime/src/session.rs` | delta length (tokens), cached length |
+| `session.step` | info | `runtime/src/session.rs` | position, chosen token |
+| `sampler.sample` | info | `runtime/src/sampler.rs` | temperature, candidate count |
+| `grammar.advance` | info | `runtime/src/grammar.rs` | state, allowed-token count |
+| `tool.exec` | info | `harness/src/tools.rs` | tool name, duration, output bytes |
+| `agent.fork` | info | `harness/src/subagents.rs` | parent cached length, task delta length |
 
 `model.forward` was missing from this table while being the span that dominates
 every trace RH.6 recorded — 31.15 s of a 176-token run against 0.87 s in the
-sampler. The first four are unconditional on any generation; `grammar.advance`
-and `tool.exec` are workload-conditional and absent from a plain completion.
+sampler. The info-level runtime spans are unconditional on any generation;
+`grammar.advance` and `tool.exec` are workload-conditional and absent from a
+plain completion.
+
+The level column is the detail dial, selected with `--trace-level` (default
+`debug`; meaningless without `--trace-chrome`, and refused without it). At
+`info` a trace is the session-level timeline the first RH.6 traces carried. At
+`debug` it also shows where inside `model.forward` and `model.load` the time
+went: one span per layer with its three blocks, the prelude, the LM head, and
+the load stages. At `trace` every projection and the attention loop are their
+own spans; a `kernel.matmul` carries no projection name because the block
+span above it says which one it is. For a run the shape of RH.3 (115 forwards
+over 42 layers) `debug` adds about 20k spans and `trace` about 45k more,
+each costing a few microseconds on the calling thread against kernels that
+take milliseconds, so neither level is measurable in the wall clock, and the
+file grows from a few megabytes to a few tens. Every field is an integer or a
+bool already in scope: `tracing-chrome` formats arguments on the calling
+thread, so a string field would be the whole cost of a span.
+
+Worker threads carry no span. `matmul_panel` and the LM head spawn a
+`std::thread::scope` per call; the kernel span is opened on the caller before
+the scope and closed after the join, so it measures the whole parallel region
+and the workers emit nothing. Nesting is contextual throughout — no span names
+its parent — which `runtime/tests/tracing_spans.rs` asserts by parent name,
+along with the count of every tier against the fixture's layer count and the
+fact that a level filter drops exactly the tiers below it. The same file
+asserts that the logits are bit-identical with and without a subscriber.
 
 The span and field names form a stable schema — the Rust analogue of the
 Python `common/obs` vocabulary — shared by debugging, the blog write-ups, and
-future benchmark analysis. The `session.sync` delta-length field makes the
-phase B acceptance property (turn latency scales with delta size, not
+future benchmark analysis. The `info` set is the schema; the `debug` and
+`trace` names are stable too, but their fields may grow. Per-name totals come
+two ways: in Perfetto's query view,
+`select name, count(*), sum(dur) from slice group by name order by 3 desc`
+is the table RH.6 built by hand, and `make trace-check TRACE=<file>` prints
+the same table from the terminal and asserts the count relations in the table
+above (one `model.layer` per layer per forward, the blocks equal to it, one
+load with its stages, the prefill forward without a step), skipping when no
+file is named. The `session.sync` delta-length field makes
+the phase B acceptance property (turn latency scales with delta size, not
 transcript size) directly visible in a trace timeline.
 
 Subscriber selection lives in `main.rs`: no subscriber by default (spans
@@ -158,7 +204,11 @@ not anyone asked for a trace.
 They were deliberately not bridged. A subscriber `Layer` forwarding spans into
 the run log would make obs output depend on subscriber installation, and
 `--trace-chrome`'s `set_global_default` is a hard `expect`, so a second
-installation panics. Phases are called directly instead.
+installation panics. Phases are called directly instead. The span named
+`model.load` and the phase named `model.load` are therefore two records of
+the same work by two mechanisms: the phase brackets `build_generator` on every
+run, the span brackets `CpuModel::load` inside it only under a trace, and the
+span is the one with children.
 
 The harness writes three: `model.load` around the whole of `build_generator`,
 then `prefill` and `decode` around the two halves of every generation. The
@@ -270,8 +320,8 @@ reference at some position. The sequence from symptom to cause:
 2. Record the failing run under rr:
 
    ```bash
-   $ make debug-record ARGS='--model fixtures/tiny-gemma4 <task>'
-   $ make debug-replay
+   make debug-record ARGS='--model fixtures/tiny-gemma4 <task>'
+   make debug-replay
    ```
 
 3. Inside `rr replay` (a gdb session), stop at the divergent call, then set
@@ -410,9 +460,9 @@ The harness image carries no Python, so browsing happens on the host, where
 training and interp runs are already browsed:
 
 ```bash
-$ make harness-runs
-$ make harness-runs ARGS='-n 50 --failed'
-$ uv run --no-sync python -m common.obs.runs --cli harness --json
+make harness-runs
+make harness-runs ARGS='-n 50 --failed'
+uv run --no-sync python -m common.obs.runs --cli harness --json
 ```
 
 `common/obs/runs.py` is the shared command surface behind
@@ -432,7 +482,7 @@ A run's charts come from the same command the training tier uses, pointed at the
 run directory the catalog names:
 
 ```bash
-$ uv run --no-sync python -m training report --run ${OBS_LOG_DIR}/harness/<run_id>
+uv run --no-sync python -m training report --run ${OBS_LOG_DIR}/harness/<run_id>
 ```
 
 It writes `run.html` beside `metrics.jsonl`, joins the event file through the

@@ -113,7 +113,7 @@ catalog joins under real thread timing.
 Command:
 
 ```bash
-$ uv run --no-sync pytest tests/training/test_loop.py -k "metrics_jsonl or cli_run" -v
+uv run --no-sync pytest tests/training/test_loop.py -k "metrics_jsonl or cli_run" -v
 ```
 
 Expected signal: both tests pass (not skip). No `[tracking] WARN` lines in
@@ -173,18 +173,18 @@ an out-of-range embedding index once training started. Both are derived
 from the manifest rather than hardcoded:
 
 ```bash
-$ TOK=$(.venv/bin/python -c "import json;print(json.load(open('/mnt/ai-data/training/shards/verify-small/manifest.json'))['tokenizer'])")
-$ VOCAB=$(.venv/bin/python -c "from training.data.prepare import load_tokenizer;print(load_tokenizer('$TOK').vocab_size)")
-$ uv run --no-sync python -m training train --config training/recipes/reference/tiny-e2e.yaml \
+TOK=$(.venv/bin/python -c "import json;print(json.load(open('/mnt/ai-data/training/shards/verify-small/manifest.json'))['tokenizer'])")
+VOCAB=$(.venv/bin/python -c "from training.data.prepare import load_tokenizer;print(load_tokenizer('$TOK').vocab_size)")
+uv run --no-sync python -m training train --config training/recipes/reference/tiny-e2e.yaml \
     data.source=/mnt/ai-data/training/shards/verify-small \
     tokenizer.path="$TOK" model.scratch.vocab=$VOCAB \
     run.output_root=/mnt/ai-data/training/verify/obs-run \
     schedule.total_steps=20 watchdog.enabled=true watchdog.interval_s=1.0
-$ echo "exit=$?"
-$ RUN=$(dirname "$(ls -t /mnt/ai-data/training/verify/obs-run/*/*/metrics.jsonl | head -1)")
-$ grep -h run.context /mnt/ai-data/logs/training/R-*.jsonl | tail -1
-$ jq -c 'select(.gpu_temp_c != null)' "$RUN/metrics.jsonl"
-$ jq -c 'select(.gpu_temp_c != null)' "$RUN/metrics.jsonl" | wc -l
+echo "exit=$?"
+RUN=$(dirname "$(ls -t /mnt/ai-data/training/verify/obs-run/*/*/metrics.jsonl | head -1)")
+grep -h run.context /mnt/ai-data/logs/training/R-*.jsonl | tail -1
+jq -c 'select(.gpu_temp_c != null)' "$RUN/metrics.jsonl"
+jq -c 'select(.gpu_temp_c != null)' "$RUN/metrics.jsonl" | wc -l
 ```
 
 The run directory is resolved by locating `metrics.jsonl` rather than by
@@ -263,14 +263,14 @@ The first two commands run at any time. The third consumes the run OBS-V2
 produces, so it comes after that entry rather than with these.
 
 ```bash
-$ uv run --no-sync python -m training runs --limit 10
-$ ls -la /mnt/ai-data/logs/training/ | tail -5
+uv run --no-sync python -m training runs --limit 10
+ls -la /mnt/ai-data/logs/training/ | tail -5
 ```
 
 Then, once OBS-V2 has run, against the run directory it printed:
 
 ```bash
-$ uv run --no-sync python -m training report --run <OBS-V2's run dir>
+uv run --no-sync python -m training report --run <OBS-V2's run dir>
 ```
 
 Expected signal: the runs table lists the OBS-V2 run with exit 0 and a
@@ -343,7 +343,7 @@ Implementation: `tests/training/test_loop.py`, exercising
 Command:
 
 ```bash
-$ uv run --no-sync pytest tests/training/test_loop.py -k tensorboard -v
+uv run --no-sync pytest tests/training/test_loop.py -k tensorboard -v
 ```
 
 Expected signal: the test passes (not skips): a run with
@@ -393,15 +393,15 @@ seconds — long before a human reaches the browser — and a page that only
 ever shows a completed run cannot demonstrate live extension.
 
 ```bash
-$ uv run --no-sync python -m training train --config training/recipes/reference/tiny-e2e.yaml \
+uv run --no-sync python -m training train --config training/recipes/reference/tiny-e2e.yaml \
     data.source=/mnt/ai-data/training/shards/verify-small \
     tokenizer.path=HuggingFaceTB/SmolLM2-135M model.scratch.vocab=49152 \
     run.output_root=/mnt/ai-data/training/verify/obs-live \
     schedule.total_steps=20000 watchdog.enabled=true &
-$ sleep 20
-$ RUN=$(dirname "$(ls -t /mnt/ai-data/training/verify/obs-live/*/*/metrics.jsonl | head -1)")
-$ echo "$RUN"
-$ uv run --no-sync python -m training report --run "$RUN" --serve
+sleep 20
+RUN=$(dirname "$(ls -t /mnt/ai-data/training/verify/obs-live/*/*/metrics.jsonl | head -1)")
+echo "$RUN"
+uv run --no-sync python -m training report --run "$RUN" --serve
 ```
 
 The server prints `[INFO] Live dashboard: http://127.0.0.1:8010/`;
@@ -502,14 +502,14 @@ a grandchild, so `$!` names `uv` and `kill -9 $PID` leaves the writer
 running. The entry then measures a process that was never killed.
 
 ```bash
-$ mkdir -p /mnt/ai-data/training/verify/obs-crash
-$ OUT=/mnt/ai-data/training/verify/obs-crash/metrics.jsonl
-$ .venv/bin/python tests/training/obs_crash_driver.py \
+mkdir -p /mnt/ai-data/training/verify/obs-crash
+OUT=/mnt/ai-data/training/verify/obs-crash/metrics.jsonl
+.venv/bin/python tests/training/obs_crash_driver.py \
     /mnt/ai-data/training/verify/obs-crash & PID=$!
-$ sleep 2; kill -9 $PID; wait $PID; echo "driver exit: $?"
-$ kill -0 $PID 2>/dev/null && echo "STILL ALIVE - void" || echo "writer confirmed dead"
-$ wc -l < $OUT; sleep 1; wc -l < $OUT
-$ .venv/bin/python -c "import json; [json.loads(l) for l in open(
+sleep 2; kill -9 $PID; wait $PID; echo "driver exit: $?"
+kill -0 $PID 2>/dev/null && echo "STILL ALIVE - void" || echo "writer confirmed dead"
+wc -l < $OUT; sleep 1; wc -l < $OUT
+.venv/bin/python -c "import json; [json.loads(l) for l in open(
     '/mnt/ai-data/training/verify/obs-crash/metrics.jsonl',
     'rb').read().split(b'\n')[:-1]]; print('all completed lines parse')"
 ```
@@ -528,7 +528,7 @@ orphaned writer is therefore a disk-exhaustion hazard, not merely untidy —
 see the note in the observation below.
 
 ```bash
-$ pkill -f obs_crash_driver; rm -rf /mnt/ai-data/training/verify/obs-crash
+pkill -f obs_crash_driver; rm -rf /mnt/ai-data/training/verify/obs-crash
 ```
 
 Observed:
@@ -576,13 +576,13 @@ Command (compare two OBS-V2-style runs, `tracking.metrics_jsonl=true`
 versus `false`, same recipe and steps):
 
 ```bash
-$ uv run --no-sync python -m training train --config training/recipes/reference/tiny-e2e.yaml \
+uv run --no-sync python -m training train --config training/recipes/reference/tiny-e2e.yaml \
     data.source=/mnt/ai-data/training/shards/verify-small \
     tokenizer.path=HuggingFaceTB/SmolLM2-135M model.scratch.vocab=49152 \
     checkpoint.interval_steps=200 \
     run.output_root=/mnt/ai-data/training/verify/obs-overhead-on \
     schedule.total_steps=200
-$ uv run --no-sync python -m training train --config training/recipes/reference/tiny-e2e.yaml \
+uv run --no-sync python -m training train --config training/recipes/reference/tiny-e2e.yaml \
     data.source=/mnt/ai-data/training/shards/verify-small \
     tokenizer.path=HuggingFaceTB/SmolLM2-135M model.scratch.vocab=49152 \
     checkpoint.interval_steps=200 \
@@ -598,8 +598,8 @@ measured. Timings go to a file, because `/usr/bin/time` writes to stderr
 and the run's own output has to be discarded:
 
 ```bash
-$ rm -f /tmp/obs-overhead.txt
-$ for i in 1 2 3 4 5 6 7; do
+rm -f /tmp/obs-overhead.txt
+for i in 1 2 3 4 5 6 7; do
     for arm in on off; do
       if [ "$arm" = off ]; then SINK=false; else SINK=true; fi
       /usr/bin/time -f "$arm run$i %e s" -a -o /tmp/obs-overhead.txt \
@@ -613,7 +613,7 @@ $ for i in 1 2 3 4 5 6 7; do
         || echo "FAILED $arm run$i" >> /tmp/obs-overhead.txt
     done
   done
-$ cat /tmp/obs-overhead.txt
+cat /tmp/obs-overhead.txt
 ```
 
 The loop is what makes the timings comparable: the arms alternate within each
@@ -715,18 +715,18 @@ confirm it is still alive at the moment the prune runs — a prune that spares a
 file because the writer had already exited proves nothing.
 
 ```bash
-$ cargo build --release --manifest-path rust-harness/Cargo.toml
-$ ls -la /mnt/ai-data/logs/harness/ | tail -5
-$ rust-harness/target/release/ladder <args for a run of 30 s or more> & PID=$!
-$ sleep 5
-$ kill -0 $PID && echo "rust writer alive"
-$ LIVE=$(ls -t /mnt/ai-data/logs/harness/*.jsonl | head -1); echo "$LIVE"
-$ OBS_RETENTION_DAYS=0 uv run --no-sync python -c \
+cargo build --release --manifest-path rust-harness/Cargo.toml
+ls -la /mnt/ai-data/logs/harness/ | tail -5
+rust-harness/target/release/ladder <args for a run of 30 s or more> & PID=$!
+sleep 5
+kill -0 $PID && echo "rust writer alive"
+LIVE=$(ls -t /mnt/ai-data/logs/harness/*.jsonl | head -1); echo "$LIVE"
+OBS_RETENTION_DAYS=0 uv run --no-sync python -c \
     "from common.obs.retention import prune; print(prune('/mnt/ai-data/logs', 0))"
-$ kill -0 $PID && echo "rust writer still alive after prune"
-$ ls -la "$LIVE"
-$ wait $PID; echo "ladder exit: $?"
-$ uv run --no-sync python -c "import json,sys;[json.loads(l) for l in open('$LIVE')];print('all lines parse')"
+kill -0 $PID && echo "rust writer still alive after prune"
+ls -la "$LIVE"
+wait $PID; echo "ladder exit: $?"
+uv run --no-sync python -c "import json,sys;[json.loads(l) for l in open('$LIVE')];print('all lines parse')"
 ```
 
 `OBS_RETENTION_DAYS=0` makes every file on the mount eligible, including the
@@ -766,18 +766,18 @@ threshold override is what makes the alert fire deterministically — a
 rather than waiting for a hot GPU.
 
 ```bash
-$ uv run --no-sync python -m training train --config training/recipes/reference/tiny-e2e.yaml \
+uv run --no-sync python -m training train --config training/recipes/reference/tiny-e2e.yaml \
     data.source=/mnt/ai-data/training/shards/verify-small \
     tokenizer.path=HuggingFaceTB/SmolLM2-135M model.scratch.vocab=49152 \
     run.output_root=/mnt/ai-data/training/verify/obs-alerts \
     schedule.total_steps=200 watchdog.enabled=true watchdog.interval_s=1.0 \
     watchdog.signals.gpu_temp_c.max=1 tracking.mlflow=true
-$ echo "exit=$?"
-$ RUN=$(dirname "$(ls -t /mnt/ai-data/training/verify/obs-alerts/*/*/metrics.jsonl | head -1)")
-$ echo "$RUN"
-$ cat "$RUN/alerts.jsonl"
-$ wc -l < "$RUN/alerts.jsonl"
-$ find "$RUN/mlruns" -maxdepth 4 | head -20
+echo "exit=$?"
+RUN=$(dirname "$(ls -t /mnt/ai-data/training/verify/obs-alerts/*/*/metrics.jsonl | head -1)")
+echo "$RUN"
+cat "$RUN/alerts.jsonl"
+wc -l < "$RUN/alerts.jsonl"
+find "$RUN/mlruns" -maxdepth 4 | head -20
 ```
 
 Confirm the two override keys against `training/recipes/schema.py` before

@@ -36,7 +36,7 @@ documents as consumed and stops at the token budget.
 Command:
 
 ```bash
-$ make prepare-data ARGS="--source HuggingFaceFW/fineweb-edu --split train \
+make prepare-data ARGS="--source HuggingFaceFW/fineweb-edu --split train \
     --tokenizer HuggingFaceTB/SmolLM2-135M \
     --out /mnt/ai-data/training/shards/verify-small --max-tokens 20_000_000 \
     --streaming"
@@ -107,7 +107,7 @@ budget at or above the corpus size consumes every document and fails with
 `Corpus exhausted during training`:
 
 ```bash
-$ make train-tokenizer ARGS="--corpus '/mnt/ai-data/training/datasets/mix/*.jsonl' \
+make train-tokenizer ARGS="--corpus '/mnt/ai-data/training/datasets/mix/*.jsonl' \
     --vocab-size 49152 --sample-bytes 180_000_000 \
     --out /mnt/ai-data/training/tokenizers/verify-49k"
 ```
@@ -165,10 +165,10 @@ Implementation: `training/calculator/solve.py` (memfit),
 Command:
 
 ```bash
-$ make memfit CONFIG=training/recipes/reference/pretrain-1b.yaml
-$ make train-calibrate CONFIG=training/recipes/reference/tiny-e2e.yaml \
+make memfit CONFIG=training/recipes/reference/pretrain-1b.yaml
+make train-calibrate CONFIG=training/recipes/reference/tiny-e2e.yaml \
     ARGS="--out /mnt/ai-data/training/verify/calibrate-tiny.json"
-$ make train-calibrate CONFIG=training/recipes/reference/pretrain-1b.yaml \
+make train-calibrate CONFIG=training/recipes/reference/pretrain-1b.yaml \
     ARGS="--out /mnt/ai-data/training/verify/calibrate-1b.json"
 ```
 
@@ -338,8 +338,8 @@ Implementation: `training/commands/validate_recipe.py`,
 Command:
 
 ```bash
-$ make train-validate CONFIG=training/recipes/reference/tiny-e2e.yaml
-$ make train-validate CONFIG=training/recipes/reference/tiny-e2e.yaml ARGS="optimizer.lr=-1"
+make train-validate CONFIG=training/recipes/reference/tiny-e2e.yaml
+make train-validate CONFIG=training/recipes/reference/tiny-e2e.yaml ARGS="optimizer.lr=-1"
 ```
 
 Expected signal: the first invocation exits 0 with the resolved recipe
@@ -366,7 +366,7 @@ a CPU/tiny-model unit test only.
 Command:
 
 ```bash
-$ uv run pytest -m hw_full tests/hardware/test_gpu.py -k resume -v
+uv run pytest -m hw_full tests/hardware/test_gpu.py -k resume -v
 ```
 
 Expected signal: `test_resume_loss_curve_within_tolerance` passes: 12
@@ -400,7 +400,7 @@ Implementation: `training/runtime/loop.py` (train loop),
 Command:
 
 ```bash
-$ make train CONFIG=training/recipes/reference/tiny-e2e.yaml \
+make train CONFIG=training/recipes/reference/tiny-e2e.yaml \
     ARGS="data.source=/mnt/ai-data/training/shards/verify-small schedule.total_steps=20"
 ```
 
@@ -425,8 +425,8 @@ service with the pinned llama.cpp converter and quantizer).
 Command:
 
 ```bash
-$ make export-build
-$ make export-gguf CHECKPOINT=/mnt/ai-data/training/runs/tiny-e2e/checkpoints/<step> \
+make export-build
+make export-gguf CHECKPOINT=/mnt/ai-data/training/runs/tiny-e2e/checkpoints/<step> \
     ARGS="--quant Q8_0 --tokenizer /mnt/ai-data/training/tokenizers/tiny-e2e"
 ```
 
@@ -448,9 +448,9 @@ Implementation: `training/commands/serve_eval.py`, `training/serving.py`.
 Command (llama-gpu serving its production model before the swap):
 
 ```bash
-$ make up
-$ make serve-eval MODEL=/app/models/trained/<run>/<name>-Q8_0.gguf
-$ curl -s localhost:8002/v1/models
+make up
+make serve-eval MODEL=/app/models/trained/<run>/<name>-Q8_0.gguf
+curl -s localhost:8002/v1/models
 ```
 
 Expected signal: serve-eval swaps the exported GGUF in, reports health,
@@ -477,8 +477,8 @@ swapped model cannot serve.
 Command:
 
 ```bash
-$ make serve-eval MODEL=/app/models/does-not-exist.gguf ; echo "exit=$?"
-$ curl -s localhost:8002/v1/models
+make serve-eval MODEL=/app/models/does-not-exist.gguf ; echo "exit=$?"
+curl -s localhost:8002/v1/models
 ```
 
 Expected signal: serve-eval fails preflight (model not found) with exit 1
@@ -502,10 +502,10 @@ asserted by `tests/hardware/test_ssd.py`.
 Command:
 
 ```bash
-$ make train CONFIG=training/recipes/reference/tiny-e2e.yaml \
+make train CONFIG=training/recipes/reference/tiny-e2e.yaml \
     ARGS="data.source=/mnt/ai-data/training/shards/verify-small \
           staging.enabled=true data.workers=2 schedule.total_steps=20"
-$ uv run pytest -m hw_full tests/hardware/test_ssd.py -k data_wait -v
+uv run pytest -m hw_full tests/hardware/test_ssd.py -k data_wait -v
 ```
 
 Expected signal: the run log shows the shard set staged into the tmpfs
@@ -531,7 +531,7 @@ healthy run.
 Command:
 
 ```bash
-$ make train CONFIG=training/recipes/reference/tiny-e2e.yaml \
+make train CONFIG=training/recipes/reference/tiny-e2e.yaml \
     ARGS="data.source=/mnt/ai-data/training/shards/verify-small \
           watchdog.enabled=true schedule.total_steps=20"
 ```

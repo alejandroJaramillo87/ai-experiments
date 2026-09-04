@@ -34,9 +34,9 @@ than `echo -e`, and `NO_COLOR` support.
 ## Entry points
 
 ```bash
-$ ./scripts/benchmark/benchmark_gpu.sh   # no make wrapper, by design
-$ make update                            # scripts/update/update_python.sh
-$ make agent-preflight                   # scripts/agents/preflight-scan.sh
+./scripts/benchmark/benchmark_gpu.sh   # no make wrapper, by design
+make update                            # scripts/update/update_python.sh
+make agent-preflight                   # scripts/agents/preflight-scan.sh
 ```
 
 ## Where the real docs live

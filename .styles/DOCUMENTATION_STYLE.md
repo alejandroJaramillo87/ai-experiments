@@ -79,14 +79,26 @@ One H1 per document. Include a `## Table of Contents` only when over 500 words.
 
 Code blocks:
 
+**A command block is pasted, not read, so it carries no prompt marker.** Never
+prefix a command with `$ ` or `# ` to mark it as a command: pasted into a shell, the
+`$` fails as a command not found and the `#` comments the line out, so the block
+silently runs nothing. Write the command exactly as the shell must receive it. A
+literal `$` stays only where it is part of the command (`$HOME`, `$(...)`, `"$MODEL"`),
+and a command that needs root spells `sudo`.
+
 ```bash
-$ make install        # user commands: $ prefix
-# apt-get update      # root commands: # prefix
+make install
+sudo apt-get update
+cargo run --release -p harness -- --model "$MODEL" --text-only
 ```
 
-```
-Output lines use no prefix.
-```
+Keep commands and their output in separate blocks; output lines use no prefix either.
+When a command and what it printed must be shown together, tag the block `console`
+and keep the `$ ` prompt: that is a transcript, the prompt is what tells the command
+from its output, and nothing in it is meant to be pasted. The other transcript is an
+Observed block of a verification runbook, recorded as typed and never edited.
+`scripts/docs/check_command_prompts.py` enforces this: it reads `bash`, `sh`, `shell`
+and `zsh` blocks outside Observed sections and frozen records, and fails on a prompt.
 
 Always specify the language on programming code blocks. Use pipe tables with headers.
 Unordered lists use `-`; ordered lists use `1. 2. 3.`.

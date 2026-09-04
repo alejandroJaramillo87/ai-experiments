@@ -1769,6 +1769,16 @@ fn fill_dots(
     dot: DotKind,
     post: impl Fn(f32) -> f32 + Sync,
 ) {
+    // Opened on the caller before the scope spawns and closed after it joins,
+    // so the span measures the whole parallel region; the workers carry no
+    // span of their own.
+    let _kernel = tracing::trace_span!(
+        "kernel.lm_head",
+        rows = out.len(),
+        in_dim = x.len(),
+        threads
+    )
+    .entered();
     match dot {
         DotKind::Sequential => par_rows(out, threads, |o, dst| *dst = post(w.row_dot(o, x))),
         DotKind::Lanes16 => par_rows(out, threads, |o, dst| *dst = post(w.row_dot_lanes(o, x))),
@@ -1983,6 +1993,8 @@ fn matmul_panel(
     dot: DotKind,
 ) {
     let (in_dim, out_dim) = (x.len() / n, out.len() / n);
+    // No projection name: the enclosing block span says which one this is.
+    let _kernel = tracing::trace_span!("kernel.matmul", out_dim, in_dim, n, threads).entered();
     assert_eq!(
         w.len(),
         in_dim * out_dim,
@@ -2262,11 +2274,26 @@ impl CpuModel {
     /// from `CheckpointFiles`, both die at the closing brace, and a caller
     /// cannot hold either.
     pub fn load(model: &std::path::Path, text_only: bool) -> Result<(CpuModel, u64)> {
-        let files = crate::checkpoint::CheckpointFiles::read(model)
-            .with_context(|| format!("read model {}", model.display()))?;
-        let mut ck = crate::checkpoint::parse(&files).context("parse checkpoint")?;
+        // Same name as the obs phase around `build_generator`, on purpose:
+        // the phase is written on every run, the span only under a trace
+        // subscriber, and each stage below is a child of the span so a trace
+        // shows where a slow load spent its time.
+        let _load = tracing::info_span!("model.load", text_only).entered();
+        let files = {
+            let _stage = tracing::debug_span!("checkpoint.read").entered();
+            crate::checkpoint::CheckpointFiles::read(model)
+                .with_context(|| format!("read model {}", model.display()))?
+        };
+        let mut ck = {
+            let _stage = tracing::debug_span!("checkpoint.parse").entered();
+            crate::checkpoint::parse(&files).context("parse checkpoint")?
+        };
         ck.text_only = text_only;
-        let model = CpuModel::from_checkpoint(&ck).context("load CPU model")?;
+        let model = {
+            let _stage = tracing::debug_span!("model.from_checkpoint").entered();
+            CpuModel::from_checkpoint(&ck).context("load CPU model")?
+        };
+        let _stage = tracing::debug_span!("checkpoint.fingerprint").entered();
         Ok((model, crate::checkpoint::fingerprint(&files)))
     }
 
@@ -2373,6 +2400,9 @@ impl CpuModel {
 
         let mut layers = Vec::with_capacity(config.n_layers);
         for (i, ls) in spec.layers.iter().enumerate() {
+            let _layer_span =
+                tracing::debug_span!("model.load.layer", layer = i, owns_kv = ls.kv_source == i)
+                    .entered();
             let (head_dim, ffn_dim) = (ls.head_dim, ls.ffn_dim);
             let q_dim = config.n_heads * head_dim;
             let kv_dim = config.n_kv_heads * head_dim;
@@ -2779,6 +2809,11 @@ impl CpuModel {
         // attention arithmetic in two places.
         let want_attention = tap.as_ref().is_some_and(|t| t.wants_attention());
 
+        // Every span below nests under `model.forward` through the current
+        // span on this thread; the block spans end with an explicit drop so
+        // their boundaries are the comments that already divide the layer.
+        let prelude = tracing::debug_span!("model.prelude", n, ple = w.ple.is_some()).entered();
+
         // Embedding, scaled by sqrt(embed_dim) per Gemma convention. Widened
         // into the residual buffer and scaled there: one multiply per element,
         // exactly as when the table was already f32.
@@ -2857,11 +2892,21 @@ impl CpuModel {
             }
         }
         let ple_rows: &[f32] = ple;
+        drop(prelude);
 
         for (i, layer) in w.layers.iter().enumerate() {
             let hd = layer.spec.head_dim;
             let (q_dim, kv_dim) = (c.n_heads * hd, c.n_kv_heads * hd);
             let ffn_dim = layer.spec.ffn_dim;
+            let owns_kv = layer.spec.kv_source == i;
+            let _layer_span = tracing::debug_span!(
+                "model.layer",
+                layer = i,
+                n,
+                kv_source = layer.spec.kv_source,
+                owns_kv
+            )
+            .entered();
             // Reborrowed per iteration so each layer carves the same storage
             // to its own widths. `Scratch::ensure` reserves for the widest
             // layer and `carve` panics if a view runs short, so a scratch
@@ -2883,6 +2928,8 @@ impl CpuModel {
             let ple_out = carve(&mut rest, n * c.embed_dim);
 
             // Attention block.
+            let attn_span =
+                tracing::debug_span!("model.layer.attn", owns_kv, kv_len = start + n).entered();
             for (xp, np) in x_all
                 .chunks_exact(c.embed_dim)
                 .zip(normed.chunks_exact_mut(c.embed_dim))
@@ -2989,6 +3036,9 @@ impl CpuModel {
             // uniform. Stated as a comment rather than a `let scale = 1.0`,
             // which reads as an oversight and invites the divide back.
             attn_out.fill(0.0);
+            let attn_kernel =
+                tracing::trace_span!("kernel.attention", n, kv_len = start + n, heads = c.n_heads)
+                    .entered();
             for p in 0..n {
                 let position = start + p;
                 let first = match layer.spec.kind {
@@ -3032,6 +3082,7 @@ impl CpuModel {
                     }
                 }
             }
+            drop(attn_kernel);
             matmul_panel(&layer.wo, attn_out, projected, fm, n, threads, dot);
             for (pr, po) in projected
                 .chunks_exact(c.embed_dim)
@@ -3042,8 +3093,10 @@ impl CpuModel {
             for (a, b) in x_all.iter_mut().zip(post.iter()) {
                 *a += b;
             }
+            drop(attn_span);
 
             // GeGLU MLP block.
+            let mlp_span = tracing::debug_span!("model.layer.mlp", ffn_dim).entered();
             for (xp, np) in x_all
                 .chunks_exact(c.embed_dim)
                 .zip(normed.chunks_exact_mut(c.embed_dim))
@@ -3065,6 +3118,7 @@ impl CpuModel {
             for (a, b) in x_all.iter_mut().zip(post.iter()) {
                 *a += b;
             }
+            drop(mlp_span);
 
             // Per-layer input embedding block: a third residual update, after
             // the feed-forward block rather than before or inside attention.
@@ -3072,6 +3126,7 @@ impl CpuModel {
             // modulates it there elementwise, and the projection widens it
             // back (`docs/models/gemma4-upstream.txt`).
             if let (Some(pl), Some(pd)) = (layer.ple.as_ref(), c.ple_dim) {
+                let _ple_span = tracing::debug_span!("model.layer.ple", ple_dim = pd).entered();
                 matmul_panel(&pl.inp_gate, x_all, ple_gate, fm, n, threads, dot);
                 for (p, gp) in ple_gate.chunks_exact_mut(pd).enumerate() {
                     let row = &ple_rows[p * ple_stride + i * pd..p * ple_stride + (i + 1) * pd];
@@ -3157,6 +3212,7 @@ impl CpuModel {
             RowsWanted::Last => vec![n - 1],
             RowsWanted::None => Vec::new(),
         };
+        let _head_span = tracing::debug_span!("model.lm_head", rows = rows.len(), n).entered();
         for &p in &rows {
             let (xp, np) = (
                 &x_all[p * c.embed_dim..(p + 1) * c.embed_dim],

@@ -22,8 +22,8 @@ Design record:
 Host-side, in the training container:
 
 ```bash
-$ make train CONFIG=training/recipes/reference/tiny-e2e.yaml
-$ make train CONFIG=training/recipes/reference/tiny-e2e.yaml ARGS="checkpoint.resume=latest"
+make train CONFIG=training/recipes/reference/tiny-e2e.yaml
+make train CONFIG=training/recipes/reference/tiny-e2e.yaml ARGS="checkpoint.resume=latest"
 ```
 
 The `train` subcommand loads and validates the recipe (D5), then runs
@@ -123,7 +123,7 @@ Tokens come from an untracked `.env.training` passed via compose `env_file`
 image.
 
 ```bash
-$ cp env.training.example .env.training
+cp env.training.example .env.training
 ```
 
 ## Module map

@@ -18,8 +18,8 @@ rewrites `uv.lock`.
 Command:
 
 ```bash
-$ uv lock
-$ git diff --stat uv.lock
+uv lock
+git diff --stat uv.lock
 ```
 
 Expected signal: `uv lock` exits 0 after resolving against the pytorch
@@ -47,7 +47,7 @@ Implementation: the `install` target in `Makefile`
 Command:
 
 ```bash
-$ make install
+make install
 ```
 
 Expected signal: exit 0; `uv sync` installs all groups and extras without
@@ -75,7 +75,7 @@ proves the full gate on the regenerated lockfile.
 Command:
 
 ```bash
-$ make quality
+make quality
 ```
 
 Expected signal: `make quality` exits 0 and every step it prints reports
@@ -103,7 +103,7 @@ Implementation: `docker-compose.training.yaml`,
 Command:
 
 ```bash
-$ make train-build
+make train-build
 ```
 
 Expected signal: build exits 0. The build runs `python -m training smoke
@@ -132,7 +132,7 @@ the miscompile this guards). Verify which branch ran.
 Command:
 
 ```bash
-$ docker compose -f docker-compose.training.yaml build training --progress=plain 2>&1 | grep -m1 "znver5"
+docker compose -f docker-compose.training.yaml build training --progress=plain 2>&1 | grep -m1 "znver5"
 ```
 
 Expected signal: the `uv sync` line with `CFLAGS="-march=znver5"` appears
@@ -168,7 +168,7 @@ Implementation: `training/commands/smoke_test.py`, `common/smoke.py`,
 Command:
 
 ```bash
-$ make train-smoke
+make train-smoke
 ```
 
 Expected signal: all eight steps print `[OK]` (CUDA sm_120, imports,
@@ -193,8 +193,8 @@ Implementation: `docker/interp/Dockerfile.interp`,
 Command:
 
 ```bash
-$ make interp-build
-$ make interp-smoke
+make interp-build
+make interp-smoke
 ```
 
 Expected signal: build exits 0; the seven-step smoke prints `[OK]` for
@@ -220,7 +220,7 @@ Implementation: `tests/hardware/test_gpu.py`, `tests/hardware/test_cpu.py`,
 Command:
 
 ```bash
-$ make quality-full HW=smoke
+make quality-full HW=smoke
 ```
 
 Expected signal: zero failures, and zero tests deselected for a reason other

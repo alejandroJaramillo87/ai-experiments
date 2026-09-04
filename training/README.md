@@ -32,10 +32,10 @@ against the Rust renderer.
 ## Entry points
 
 ```bash
-$ make train CONFIG=training/recipes/reference/tiny-e2e.yaml
-$ make train-validate CONFIG=...   # recipe schema check, no GPU
-$ make memfit CONFIG=...           # VRAM fit estimate before committing a run
-$ make export-gguf CHECKPOINT=...
+make train CONFIG=training/recipes/reference/tiny-e2e.yaml
+make train-validate CONFIG=...   # recipe schema check, no GPU
+make memfit CONFIG=...           # VRAM fit estimate before committing a run
+make export-gguf CHECKPOINT=...
 ```
 
 Export runs in a separate image (`docker/training/Dockerfile.export`, built by

@@ -23,15 +23,15 @@ or `common/obs/serve.py`.
 ## Usage
 
 ```bash
-$ cd scripts/verify/obs_browser
-$ npm install
-$ node check.mjs
+cd scripts/verify/obs_browser
+npm install
+node check.mjs
 ```
 
 On a workstation with a system Chromium:
 
 ```bash
-$ PW_CHROMIUM=$(command -v chromium) node check.mjs
+PW_CHROMIUM=$(command -v chromium) node check.mjs
 ```
 
 `npm install` fetches only `playwright-core` (pinned exact version, no browser

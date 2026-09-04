@@ -78,6 +78,17 @@ impl MockModel {
         Recorder(Arc::clone(&self.shared))
     }
 
+    /// Positions the script covers. A replay asked for a position past this
+    /// returns zero logits rather than failing, so a caller checking that a
+    /// recording scripted every row it drew from asks here first.
+    pub fn script_len(&self) -> usize {
+        self.script.len()
+    }
+
+    pub fn vocab_size(&self) -> usize {
+        self.vocab_size
+    }
+
     /// All prefill calls recorded across this model and every fork of it.
     pub fn records(&self) -> Vec<PrefillRecord> {
         self.recorder().records()

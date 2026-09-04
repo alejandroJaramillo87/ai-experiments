@@ -38,6 +38,7 @@ and `test_recognized_naming_does_not_trip_the_guard` exist to fail in that case.
 | `test_gemma4_header_transcript.py` | `scripts/models/gemma4_header_transcript.sh` | Spec round-trip, defect regressions, mutation matrix, robustness, output contract |
 | `test_gguf_header_transcript.py` | `scripts/models/gguf_header_transcript.sh` | Independent-reader cross-check, spec round-trip, refusal detection with negative controls, robustness |
 | `test_gemma4_facts_contract.py` | the committed artifacts, not the scripts | `schemas/gemma4_facts.json` against `docs/models/gemma-4.md`, both header transcripts, the canonical chat template, and every line-number citation |
+| `test_audit_recording.py` | `rust-harness/fixtures/audit_recording.py`, the half that runs without a checkpoint | sequence reconstruction from the recorder's own line shapes, the two-branch and gap refusals, and the L2 measures on rows with known answers; the teacher-forced pass itself needs the workstation |
 | `specbuild.py` | neither (helper) | Not named `test_*` so pytest does not collect it |
 
 **`test_gemma4_facts_contract.py` is the one module that reads recorded transcripts**, which
@@ -116,7 +117,7 @@ run with the keystone skipped is much weaker than it looks.
 ## Running
 
 ```bash
-$ uv run --no-sync pytest tests/models -q -rs   # -rs shows skip reasons
-$ uv run --no-sync pytest tests/models -k defect
-$ uv run --no-sync pytest tests/models -k mutation
+uv run --no-sync pytest tests/models -q -rs   # -rs shows skip reasons
+uv run --no-sync pytest tests/models -k defect
+uv run --no-sync pytest tests/models -k mutation
 ```

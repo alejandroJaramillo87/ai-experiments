@@ -262,8 +262,8 @@ Neither container's secret is the other's. The following are **never mounted** i
 owner-only when it exists:
 
 ```bash
-$ ls -l ~/.local/share/opencode/auth.json   # expect mode 600 (-rw-------)
-$ chmod 600 ~/.local/share/opencode/auth.json
+ls -l ~/.local/share/opencode/auth.json   # expect mode 600 (-rw-------)
+chmod 600 ~/.local/share/opencode/auth.json
 ```
 
 RunPod key hygiene: replace the single account-wide key with scoped keys — one endpoint-scoped
@@ -364,8 +364,8 @@ Before opening either tool in any repo not authored here — including submodule
 updates — run:
 
 ```bash
-$ make agent-preflight                                        # scans this repo (advisory)
-$ make agent-preflight PREFLIGHT_DIR=/path/to/checkout        # scans an external tree
+make agent-preflight                                        # scans this repo (advisory)
+make agent-preflight PREFLIGHT_DIR=/path/to/checkout        # scans an external tree
 ```
 
 `scripts/agents/preflight-scan.sh` inspects both config families —

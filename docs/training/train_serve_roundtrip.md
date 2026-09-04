@@ -42,8 +42,8 @@ with a clear message otherwise.
 Host-side commands (run on the workstation, not from an agent sandbox):
 
 ```bash
-$ make export-build
-$ make export-gguf CHECKPOINT=/mnt/ai-data/training/runs/tiny-e2e/checkpoints/step_000000010 \
+make export-build
+make export-gguf CHECKPOINT=/mnt/ai-data/training/runs/tiny-e2e/checkpoints/step_000000010 \
       ARGS="--quant Q8_0 --tokenizer /mnt/ai-data/training/tokenizers/tiny"
 ```
 
@@ -78,7 +78,7 @@ Notes:
 `localhost:8002`); it depends only on the Python standard library.
 
 ```bash
-$ make serve-eval MODEL=/app/models/trained/tiny-e2e-step_000000010/tiny-e2e-step_000000010-Q8_0.gguf
+make serve-eval MODEL=/app/models/trained/tiny-e2e-step_000000010/tiny-e2e-step_000000010-Q8_0.gguf
 ```
 
 Steps, in order:
@@ -117,7 +117,7 @@ name), the report records `null` and the tool warns.
 If `serve_eval.py` dies uncleanly, restore the previous serving state with:
 
 ```bash
-$ docker compose up -d --force-recreate llama-gpu
+docker compose up -d --force-recreate llama-gpu
 ```
 
 With `LLAMA_GPU_MODEL` unset in the shell, compose falls back to `.env` or the image

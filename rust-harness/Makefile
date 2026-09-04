@@ -56,6 +56,35 @@ test:
 test-e4b: ## Run the checks needing the real E4B checkpoint (HARNESS_E4B_MODEL=<dir>)
 	cargo test --workspace -- --nocapture --test-threads=1
 
+# A flight recording written by `harness --record` is too large to commit (a
+# row is the full vocabulary, about 2 MB of JSON per generated token), so the
+# replay check takes one by path. Refuses without RECORDING rather than running
+# a test that would only skip; the skip is for `make test`, where the variable
+# is legitimately unset. abspath because cargo runs the test from the crate
+# directory, not from here.
+.PHONY: replay-check
+replay-check: ## Replay a --record file as a MockModel script and state its selections (RECORDING=<file>)
+	@if [ -z "$(RECORDING)" ]; then \
+	  printf '[ERROR] RECORDING is not set: nothing to replay\n'; \
+	  printf '  Solution: name a file written by harness --record\n'; \
+	  printf '  Command: make replay-check RECORDING=/tmp/rh5/flight.jsonl\n'; \
+	  exit 1; \
+	fi
+	HARNESS_RECORDING="$(abspath $(RECORDING))" cargo test -p runtime --test recording_replay -- --nocapture
+
+# The same shape for a Chrome trace: a workstation artifact of a run against
+# the real checkpoint, checked for the documented span relations and summed
+# per name, which is what the runbook's RH.4 and RH.6 read.
+.PHONY: trace-check
+trace-check: ## Check a --trace-chrome file for the documented span shape and print its per-name totals (TRACE=<file>)
+	@if [ -z "$(TRACE)" ]; then \
+	  printf '[ERROR] TRACE is not set: nothing to check\n'; \
+	  printf '  Solution: name a file written by harness --trace-chrome\n'; \
+	  printf '  Command: make trace-check TRACE=/tmp/rh6/trace.json\n'; \
+	  exit 1; \
+	fi
+	HARNESS_TRACE="$(abspath $(TRACE))" cargo test -p harness --test trace_structure -- --nocapture
+
 # The correctness ladder (workstation only): the six rungs against the real
 # checkpoint and reference artifacts generated from transformers.
 #
@@ -68,7 +97,7 @@ test-e4b: ## Run the checks needing the real E4B checkpoint (HARNESS_E4B_MODEL=<
 # make/quality.mk owns and means smoke|full, and not TIER, which make/agents.mk
 # owns and means sandbox|full; a third meaning on either would be resolved by
 # include order and silently mis-set.
-.PHONY: ladder
+.PHONY: ladder ladder-reference ladder-preflight
 SIZE ?= quick
 REFERENCE ?= fixtures/reference/e4b/$(SIZE)
 # The released E4B is Gemma4ForConditionalGeneration: a text tower beside a
@@ -82,7 +111,27 @@ TEXT_ONLY ?= 1
 ifeq ($(TEXT_ONLY),1)
 LADDER_TEXT_ONLY := --text-only
 endif
-ladder:
+
+# The generators need the parent tree's torch environment. `uv run` discovers
+# the project by walking up from here, so this is the workstation venv rather
+# than whichever python is on PATH -- the first Tier E attempt ran a bare
+# python without transformers and wrote nothing (RH.1b).
+LADDER_PY ?= uv run python
+
+# One artifact per generator, named as runtime/src/bin/ladder.rs joins them
+# onto --reference. `ladder` depends on these as files, so a missing one is
+# generated on the way up and a present one is not paid for again: the L3
+# generator scores the corpus with transformers and the L5 one runs a
+# 2052-token forward pass. Nothing here notices a checkpoint swapped under an
+# existing directory; `make ladder-reference` regenerates unconditionally for
+# that case.
+LADDER_ARTIFACTS := $(addprefix $(REFERENCE)/,\
+  tokenizer_parity.json layers.json ppl.json greedy.json long_context.json)
+
+# The refusals, shared by the climb and the generators. An order-only
+# prerequisite of the artifact rules, so a phony target does not make every
+# artifact look stale on every run.
+ladder-preflight:
 ifdef AI_SANDBOX
 	@printf '[ERROR] make ladder needs the real checkpoint and the GPU host; the sandbox has neither\n'
 	@printf '  The sandbox mounts only the worktree, so /mnt/ai-data is not reachable.\n'
@@ -101,6 +150,39 @@ endif
 	  printf '  Solution: use one of quick, standard, deep\n'; \
 	  printf '  Command: make ladder SIZE=quick MODEL=%s\n' '$(MODEL)'; \
 	  exit 1 ;; esac
+
+# L0. Does not vary with SIZE; written into each size directory rather than
+# resolved from a parent (fixtures/reference/README.md).
+$(REFERENCE)/tokenizer_parity.json: | ladder-preflight
+	@mkdir -p $(REFERENCE)
+	$(LADDER_PY) fixtures/reference_tokenizer.py --model "$(MODEL)" --out $@
+
+# L1 and L2; --generate also writes L4's continuation for the same prompt.
+$(REFERENCE)/layers.json: | ladder-preflight
+	@mkdir -p $(REFERENCE)
+	$(LADDER_PY) fixtures/reference_capture.py --model "$(MODEL)" \
+	  --prompt "The capital of France is" --generate 16 --out $@
+
+# L3. The slow one.
+$(REFERENCE)/ppl.json: | ladder-preflight
+	@mkdir -p $(REFERENCE)
+	$(LADDER_PY) fixtures/reference_perplexity.py --model "$(MODEL)" --size $(SIZE) --out $@
+
+# L4.
+$(REFERENCE)/greedy.json: | ladder-preflight
+	@mkdir -p $(REFERENCE)
+	$(LADDER_PY) fixtures/reference_greedy.py --model "$(MODEL)" --size $(SIZE) --out $@
+
+# L5. Both sides derive the scored positions from the checkpoint's
+# sliding_window, so which positions were scored is part of what L5 asserts.
+$(REFERENCE)/long_context.json: | ladder-preflight
+	@mkdir -p $(REFERENCE)
+	$(LADDER_PY) fixtures/reference_long_context.py --model "$(MODEL)" --out $@
+
+ladder-reference: ladder-preflight ## Regenerate every reference artifact for SIZE from transformers (MODEL=<dir>)
+	$(MAKE) -B $(LADDER_ARTIFACTS) MODEL="$(MODEL)" SIZE=$(SIZE) REFERENCE=$(REFERENCE)
+
+ladder: ladder-preflight $(LADDER_ARTIFACTS) ## Climb the correctness ladder, generating any missing artifact first (MODEL=<dir>, SIZE=quick|standard|deep)
 	cargo run --release -p runtime --bin ladder -- \
 	  $(LADDER_TEXT_ONLY) --size $(SIZE) --model $(MODEL) --reference $(REFERENCE)
 

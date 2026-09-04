@@ -28,7 +28,7 @@ state on every exit path, including SIGTERM.
 ## Usage
 
 ```bash
-$ make generate-teacher ARGS="--pipeline respond \
+make generate-teacher ARGS="--pipeline respond \
     --prompts /mnt/ai-data/training/datasets/sft/ultrachat-gemma4 \
     --teacher /app/models/gguf/gemma-4-E4B-it-Q8_0.gguf \
     --service vllm-gpu \

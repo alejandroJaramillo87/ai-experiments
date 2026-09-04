@@ -326,7 +326,7 @@ bit-identical standard: continuation logits after a restore match an unbroken ru
 Run from `rust-harness/`, cheapest step first, failing on the first error:
 
 ```bash
-$ make quality
+make quality
 # cargo fmt --all --check
 # cargo clippy --workspace --all-targets -- -D warnings
 # cargo metadata --locked --format-version 1     # lockfile staleness, network-free

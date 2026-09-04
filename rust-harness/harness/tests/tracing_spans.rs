@@ -1,7 +1,10 @@
 /*
  * tracing_spans — phase 2 acceptance (harness side): tool.exec and
- * agent.fork spans, and a mock-run Chrome trace that loads as JSON with the
- * documented span names present.
+ * agent.fork spans, and a Chrome trace that loads as JSON with the
+ * documented span names present. The trace tests build the layer the way
+ * main.rs does, filter included, so the level `--trace-level` selects is
+ * shown to reach the file: the interior spans at the default, none of them
+ * at info.
  */
 
 use std::collections::HashMap;
@@ -9,11 +12,13 @@ use std::sync::{Arc, Mutex};
 
 use harness::subagents;
 use harness::tools::ToolCall;
+use runtime::model::cpu::CpuModel;
 use runtime::model::mock::MockModel;
 use runtime::session::Session;
 use tracing::field::{Field, Visit};
 use tracing::span::{Attributes, Id, Record};
 use tracing::Subscriber;
+use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::layer::{Context, Layer, SubscriberExt};
 use tracing_subscriber::registry::Registry;
 
@@ -122,8 +127,10 @@ fn agent_fork_span_carries_parent_cache_and_task_delta() {
     assert_eq!(field(&spans[0], "delta_len"), Some("2"));
 }
 
-#[test]
-fn chrome_trace_of_a_mock_run_loads_as_json_with_the_schema_names() {
+/// The span names a Chrome trace carries after a mock fork and a real
+/// two-layer load and sync, written through the same builder and filter
+/// main.rs installs for `--trace-level <level>`.
+fn chrome_trace_names(level: LevelFilter) -> Vec<String> {
     let dir = tempfile::tempdir().unwrap();
     let trace_path = dir.path().join("trace.json");
     {
@@ -131,21 +138,56 @@ fn chrome_trace_of_a_mock_run_loads_as_json_with_the_schema_names() {
             .file(&trace_path)
             .include_args(true)
             .build();
-        let subscriber = Registry::default().with(layer);
+        let subscriber = Registry::default().with(layer.with_filter(level));
         tracing::subscriber::with_default(subscriber, || {
             let mut parent = Session::new(Box::new(MockModel::new(8, vec![])), 4096).unwrap();
             parent.sync(&[1, 2, 3]).unwrap();
             subagents::spawn(&parent, &[1, 2, 3, 4]).unwrap();
+            let tiny =
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../fixtures/tiny-gemma4");
+            let (model, _) = CpuModel::load(&tiny, false).unwrap();
+            let mut real = Session::new(Box::new(model), 64).unwrap();
+            real.sync(&[1, 2, 3]).unwrap();
         });
         drop(guard); // flushes the trace file
     }
     let text = std::fs::read_to_string(&trace_path).unwrap();
     let events: serde_json::Value = serde_json::from_str(&text).unwrap();
     let events = events.as_array().expect("chrome trace is a JSON array");
-    let names: Vec<&str> = events
+    events
         .iter()
         .filter_map(|e| e.get("name").and_then(|n| n.as_str()))
-        .collect();
-    assert!(names.contains(&"session.sync"), "{names:?}");
-    assert!(names.contains(&"agent.fork"), "{names:?}");
+        .map(str::to_string)
+        .collect()
+}
+
+#[test]
+fn chrome_trace_of_a_mock_run_loads_as_json_with_the_schema_names() {
+    // DEBUG is the default `--trace-level`.
+    let names = chrome_trace_names(LevelFilter::DEBUG);
+    let has = |n: &str| names.iter().any(|x| x == n);
+    assert!(has("session.sync"), "{names:?}");
+    assert!(has("agent.fork"), "{names:?}");
+    assert!(has("model.forward"), "{names:?}");
+    assert!(has("model.load"), "{names:?}");
+    assert!(has("model.layer"), "{names:?}");
+    assert!(has("model.layer.attn"), "{names:?}");
+    assert!(has("model.lm_head"), "{names:?}");
+    assert!(
+        !has("kernel.matmul"),
+        "kernels are TRACE, above the default: {names:?}"
+    );
+}
+
+#[test]
+fn an_info_trace_carries_no_layer_spans() {
+    let names = chrome_trace_names(LevelFilter::INFO);
+    let has = |n: &str| names.iter().any(|x| x == n);
+    assert!(has("session.sync"), "{names:?}");
+    assert!(has("model.forward"), "{names:?}");
+    assert!(has("model.load"), "{names:?}");
+    assert!(!has("model.layer"), "{names:?}");
+    assert!(!has("model.prelude"), "{names:?}");
+    assert!(!has("checkpoint.read"), "{names:?}");
+    assert!(!has("kernel.matmul"), "{names:?}");
 }

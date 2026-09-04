@@ -51,9 +51,9 @@ inference services down, no benchmark in flight.
 Command:
 
 ```bash
-$ make status
-$ journalctl -k -b | grep -iE "whea|mce|hardware error"
-$ nvidia-smi -q -d ECC | grep -A4 "Aggregate"
+make status
+journalctl -k -b | grep -iE "whea|mce|hardware error"
+nvidia-smi -q -d ECC | grep -A4 "Aggregate"
 ```
 
 Expected signal: `make status` shows all services stopped; the journal
@@ -69,9 +69,9 @@ the BIOS guide for per-core Curve Optimizer validation, is a
 Windows-only alternative and is not required here.
 
 ```bash
-$ sudo apt-get install stress-ng
-$ git clone https://github.com/wilicc/gpu-burn && cd gpu-burn
-$ make COMPUTE=120   # sm_120, Blackwell
+sudo apt-get install stress-ng
+git clone https://github.com/wilicc/gpu-burn && cd gpu-burn
+make COMPUTE=120   # sm_120, Blackwell
 ```
 
 Observed:
@@ -93,11 +93,11 @@ enabled is the harshest widely available stressor for this path;
 Command:
 
 ```bash
-$ ./mprime -t   # Torture Test: Small FFTs, AVX-512 enabled, all 32 workers
+./mprime -t   # Torture Test: Small FFTs, AVX-512 enabled, all 32 workers
 # or, packaged fallback:
-$ stress-ng --matrix 32 --matrix-method prod --timeout 60m --metrics
-$ journalctl -k -b | grep -iE "whea|mce|hardware error"
-$ sensors | grep -i tctl
+stress-ng --matrix 32 --matrix-method prod --timeout 60m --metrics
+journalctl -k -b | grep -iE "whea|mce|hardware error"
+sensors | grep -i tctl
 ```
 
 Expected signal: 60 minutes with zero worker errors and no thermal
@@ -122,9 +122,9 @@ Sustained CUDA load for 60 minutes.
 Command:
 
 ```bash
-$ ./gpu_burn 3600
-$ journalctl -k -b | grep -iE "xid"
-$ nvidia-smi -q -d ECC | grep -A4 "Aggregate"
+./gpu_burn 3600
+journalctl -k -b | grep -iE "xid"
+nvidia-smi -q -d ECC | grep -A4 "Aggregate"
 ```
 
 Expected signal: `gpu_burn` finishes with `OK` and zero errors; no Xid
@@ -153,9 +153,9 @@ the three-hour floor exists to get past that point.
 Command:
 
 ```bash
-$ ./gpu_burn 10800 &
-$ ./mprime -t     # or the stress-ng fallback with --timeout 180m
-$ journalctl -k -b | grep -iE "whea|mce|xid|hardware error"
+./gpu_burn 10800 &
+./mprime -t     # or the stress-ng fallback with --timeout 180m
+journalctl -k -b | grep -iE "whea|mce|xid|hardware error"
 ```
 
 Expected signal: both stressors run the full duration and finish
@@ -183,8 +183,8 @@ but this entry isolates it.
 Command:
 
 ```bash
-$ stress-ng --vm 4 --vm-bytes 100G --vm-method all --verify --timeout 60m
-$ journalctl -k -b | grep -iE "whea|mce|hardware error"
+stress-ng --vm 4 --vm-bytes 100G --vm-method all --verify --timeout 60m
+journalctl -k -b | grep -iE "whea|mce|hardware error"
 ```
 
 Expected signal: zero verification failures; the journal sweep prints
@@ -204,7 +204,7 @@ Implementation: none in this repository; the entry reads `journalctl` only.
 Command:
 
 ```bash
-$ journalctl -k -b | grep -iE "whea|mce|xid|hardware error"
+journalctl -k -b | grep -iE "whea|mce|xid|hardware error"
 ```
 
 Expected signal: nothing printed. With HS.1 through HS.3 VERIFIED and

@@ -38,10 +38,10 @@ Those contracts are in `schemas/`.
 ## Entry points
 
 ```bash
-$ make interp-up                        # workbench container
-$ make harvest RECIPE=...               # activation harvesting
-$ make probe-train CAPTURE=...
-$ make steer-extract VECTOR=...
+make interp-up                        # workbench container
+make harvest RECIPE=...               # activation harvesting
+make probe-train CAPTURE=...
+make steer-extract VECTOR=...
 ```
 
 ## Where the real docs live

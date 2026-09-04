@@ -86,7 +86,7 @@ Results are stored in the manifest and printed as a table.
 Host-side, through the training container:
 
 ```bash
-$ make train-tokenizer ARGS="--corpus '/mnt/ai-data/training/datasets/mix/*.jsonl' \
+make train-tokenizer ARGS="--corpus '/mnt/ai-data/training/datasets/mix/*.jsonl' \
     --vocab-size 49152 --sample-bytes 10_000_000_000 \
     --eval-corpus web=/mnt/ai-data/training/datasets/eval/web.jsonl \
     --eval-corpus code=/mnt/ai-data/training/datasets/eval/code.jsonl \
@@ -102,7 +102,7 @@ Flags: `--corpus` (repeatable JSONL file or quoted glob), `--out`, `--vocab-size
 The artifact feeds D2 directly:
 
 ```bash
-$ make prepare-data ARGS="--source ... \
+make prepare-data ARGS="--source ... \
     --tokenizer /mnt/ai-data/training/tokenizers/base-49k \
     --out /mnt/ai-data/training/shards/<name>"
 ```

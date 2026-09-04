@@ -985,7 +985,7 @@ The upstream sources behind [Resolved from upstream source](#resolved-from-upstr
 are fetched at their pinned SHAs by one script, and the result is committed:
 
 ```bash
-$ ./scripts/models/upstream_source_transcript.sh --out docs/models/gemma4-upstream.txt
+./scripts/models/upstream_source_transcript.sh --out docs/models/gemma4-upstream.txt
 ```
 
 `tests/models/test_gemma4_facts_contract.py` asserts the line citations in that section

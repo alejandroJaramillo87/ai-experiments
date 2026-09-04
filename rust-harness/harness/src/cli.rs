@@ -178,6 +178,17 @@ pub const FLAGS: &[Flag] = &[
         requires: None,
         inert_when: None,
     },
+    Flag {
+        name: "--trace-level",
+        kind: Kind::Value("<info|debug|trace>"),
+        group: Group::Diagnostics,
+        help: "how deep the trace goes: info is the session-level spans, debug \
+               adds one span per layer and block of the forward pass and of the \
+               load, trace adds one per kernel call",
+        default: Some("debug"),
+        requires: Some("--trace-chrome"),
+        inert_when: None,
+    },
     // The three steering flags share a prefix, which is why the retired-names
     // matcher's trailing (?![\w-]) matters if one is ever renamed: a key of
     // --control-vector must not match --control-vector-scale.
@@ -716,6 +727,7 @@ mod tests {
     /// diff a reviewer reads when someone edits the table.
     const USAGE_GOLDEN: &str = "usage: harness --model <checkpoint-dir> \
          [--tokenizer <path.json>] [--record <path>] [--trace-chrome <path>] \
+         [--trace-level <info|debug|trace>] \
          [--control-vector <path.safetensors>] [--control-vector-scale <f>] \
          [--control-vector-layer-range \"<start> <end>\"] \
          [--probe <path.safetensors>] [--interp-log <dir>] [--probe-out <path>] \

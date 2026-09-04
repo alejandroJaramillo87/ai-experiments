@@ -108,7 +108,7 @@ solution when a required variable or secret is missing.
 ### Host batch run (rung 1, Claude Code only)
 
 ```bash
-$ make agent-run PROMPT="Audit docker/ for unpinned image tags" EFFORT=low ALLOW='Read Grep'
+make agent-run PROMPT="Audit docker/ for unpinned image tags" EFFORT=low ALLOW='Read Grep'
 ```
 
 Runs `claude -p` on the host at the given reasoning effort and appends token usage to
@@ -119,8 +119,8 @@ explicitly denied. The refusal message redirects to the sandbox command below.
 ### Sandboxed session (either tool)
 
 ```bash
-$ make agent-sandbox AGENT=claude NAME=mytask                  # interactive
-$ make agent-sandbox AGENT=opencode NAME=mytask PROMPT="..."   # batch, contained
+make agent-sandbox AGENT=claude NAME=mytask                  # interactive
+make agent-sandbox AGENT=opencode NAME=mytask PROMPT="..."   # batch, contained
 ```
 
 Creates the worktree `../ai-experiments-<NAME>` automatically if it does not exist, then
@@ -139,11 +139,11 @@ token interactively first — `claude setup-token` opens a browser flow and prin
 UI text, not a token.
 
 ```bash
-$ claude setup-token            # complete the browser flow, then copy the printed token
-$ mkdir -p ~/.config/ai-experiments
-$ printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\n' 'PASTE_TOKEN_HERE' \
+claude setup-token            # complete the browser flow, then copy the printed token
+mkdir -p ~/.config/ai-experiments
+printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\n' 'PASTE_TOKEN_HERE' \
     > ~/.config/ai-experiments/agent-secrets.env    # paste the token over the placeholder
-$ chmod 600 ~/.config/ai-experiments/agent-secrets.env
+chmod 600 ~/.config/ai-experiments/agent-secrets.env
 ```
 
 The file must contain only unquoted `KEY=value` lines. An exported `CLAUDE_CODE_OAUTH_TOKEN`
@@ -171,7 +171,7 @@ configuration — most often the egress allowlist in `docker/agents/proxy/squid.
 effect until the image is rebuilt:
 
 ```bash
-$ docker compose -f docker-compose.agents.yaml -p ai-agents build agent-proxy
+docker compose -f docker-compose.agents.yaml -p ai-agents build agent-proxy
 ```
 
 An allowlist edit that appears to change nothing indicates a stale image rather than a wrong
@@ -193,10 +193,10 @@ target.
 ### Worktree lifecycle
 
 ```bash
-$ make worktree-mytask           # create ../ai-experiments-mytask on branch task/mytask
-$ make worktree-mytask TIER=full # ... with the full environment (torch, training, GPU)
-$ make worktree-ls               # list worktrees
-$ make worktree-clean mytask     # remove when merged
+make worktree-mytask           # create ../ai-experiments-mytask on branch task/mytask
+make worktree-mytask TIER=full # ... with the full environment (torch, training, GPU)
+make worktree-ls               # list worktrees
+make worktree-clean mytask     # remove when merged
 ```
 
 A new worktree starts from the current `HEAD` **commit**. Uncommitted changes in the
@@ -252,7 +252,7 @@ are shared, not per-worktree, and are torn down separately with `make agent-sand
 ### Session export
 
 ```bash
-$ make agent-export AGENT=claude ID=<session-id>
+make agent-export AGENT=claude ID=<session-id>
 ```
 
 Writes the transcript to `logs/sessions/<id>.json`. The session ID is the CLI's conversation

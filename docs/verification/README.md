@@ -210,12 +210,12 @@ Before every verification session, run the hardware smoke tier (under five
 minutes, no model downloads, temporary-directory writes only):
 
 ```bash
-$ uv run pytest -m hw_smoke tests/hardware/
+uv run pytest -m hw_smoke tests/hardware/
 ```
 
 Per phase, and after any environment change (driver, image, or lockfile),
 run the full tier:
 
 ```bash
-$ uv run pytest -m hw_full tests/hardware/
+uv run pytest -m hw_full tests/hardware/
 ```

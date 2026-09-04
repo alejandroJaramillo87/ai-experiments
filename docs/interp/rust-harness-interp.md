@@ -201,7 +201,7 @@ replacing llama.cpp's flag of the same name. It drops the blocks outside the
 range as the image is read rather than testing them per token. Binary flags:
 
 ```bash
-$ harness --model <checkpoint-dir> \
+harness --model <checkpoint-dir> \
     --control-vector <vector-dir>/vector.safetensors \
     --control-vector-scale 1.0 [--control-vector-layer-range "4 20"] <task>
 ```
@@ -213,7 +213,7 @@ The `activation-capture` binary writes the exact artifact directory
 registry, evaluate) consumes rust-served activations unchanged:
 
 ```bash
-$ cargo run -p runtime --bin activation-capture -- \
+cargo run -p runtime --bin activation-capture -- \
     --model <checkpoint-dir> --dataset examples.jsonl --layers 3,5 --out <dir>
 ```
 
@@ -319,7 +319,7 @@ trained threshold — and the parity is golden-tested against the numpy
 reference.
 
 ```bash
-$ harness --model <checkpoint-dir> --probe probe.safetensors \
+harness --model <checkpoint-dir> --probe probe.safetensors \
     [--probe-out flags.jsonl] [--alignment-out alignment.jsonl] <task>
 ```
 

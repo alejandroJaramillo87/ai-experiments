@@ -46,7 +46,7 @@ residual activations in the interp capture shard format (consumed unchanged
 by the parent repository's `interp/probes` toolkit); `attention-capture` writes
 post-softmax attention weights for chosen layers and query heads over one
 prompt, which is how Gemma 4's interleaved sliding and global attention can be
-looked at directly; `ladder` runs the five-rung correctness gate against a
+looked at directly; `ladder` runs the six-rung correctness gate against a
 transformers reference; `layer-diff` reports per-layer divergence of the
 residual stream against a reference capture; and `long-context-golden` writes
 the committed long-prefill logits fixture.
@@ -118,7 +118,9 @@ Testing is test-first and tiered:
   KV-bookkeeping stack against a scripted `MockModel`. Run with `cargo test`.
 - **Tier 3 — the correctness ladder** (`runtime/src/ladder.rs`): the real
   checkpoint against `transformers`, on the workstation, under its own make
-  target. It is not part of `make quality`.
+  target, which generates any missing reference artifact before it climbs.
+  It is not part of `make quality`; `make quality-full HW=full` runs it
+  through `tests/hardware/test_ladder.py`.
 
 Cutting across those: **the conformance invariants** (`runtime/src/conformance.rs`),
 which are obligations on every backend rather than tests of one. They say that
@@ -153,7 +155,7 @@ was transcribed from the same architecture documents by the same reader as
 `cpu.rs`, and two implementations of one belief agree perfectly. That gate
 stayed green for nine work packages while the forward pass produced noise.
 
-Output correctness is therefore measured against `transformers`, in five
+Output correctness is therefore measured against `transformers`, in six
 rungs, each one only meaningful once the one above it passes:
 
 | Rung | Measures | Reference |
@@ -163,13 +165,14 @@ rungs, each one only meaningful once the one above it passes:
 | L2 | the final-position distribution | `model(...).logits` |
 | L3 | perplexity over a token window | the reference's per-token NLL |
 | L4 | greedy continuations | `model.generate(do_sample=False)` |
+| L5 | logits at anchors past the sliding window | `model(...).logits` on a 4-window prompt |
 
 L2 is KL divergence over the full distribution rather than a max-abs
 tolerance or argmax agreement: KL in nats is scale-free, which is what a
 262144-wide softcapped vocabulary needs, and a monotone error such as a
 missing logit softcap cannot move an argmax at all.
 
-The ladder short-circuits at the first failing rung and prints all five rows
+The ladder short-circuits at the first failing rung and prints all six rows
 regardless. A rung with no reference artifact reports `skipped` — missing
 evidence, not contrary evidence — and does not stop the climb.
 
@@ -179,10 +182,12 @@ the real checkpoint on the workstation. See
 [fixtures/reference/README.md](fixtures/reference/README.md) for the
 artifacts and how they are generated.
 
-Current status: **all five rungs ran against real E4B on 2026-08-14 and every
+Current status: **all six rungs ran against real E4B on 2026-09-04 and every
 one passed, with nothing skipped** — L0 token ids, L1 residual stream (worst
 cosine 1.000000 over 42 layers), L2 final distribution, L3 perplexity (delta
-0.000032 over 254 tokens), L4 greedy continuation. The rung bodies remain
+0.000032 over 254 tokens), L4 greedy continuation, L5 logits past the
+sliding window (six anchors over 2052 tokens). The first five had passed
+identically on 2026-08-14, before L5 existed. The rung bodies remain
 unit-tested against a scripted `MockModel` as well. The transcript is entry
 RH.1b of [the workstation runbook](../docs/verification/rust-harness/rust-harness.md).
 
@@ -264,8 +269,13 @@ checkpoint.
 Around that sit the observability and context layers: a flight recorder
 (`--record`) that replays a run as a `MockModel` — carrying the sampling
 parameters and the per-step selection, so a replay reproduces the transcript
-rather than only the distribution it was drawn from — `tracing` spans with a
-Perfetto-loadable `--trace-chrome`, an interp seam (activation capture, control
+rather than only the distribution it was drawn from, and auditable token by
+token against `transformers` with `fixtures/audit_recording.py`, which
+teacher-forces the recorded sequence and compares every recorded row, and checked for
+structure with `make replay-check RECORDING=<file>` — `tracing` spans with a
+Perfetto-loadable `--trace-chrome` whose `--trace-level` reaches from the
+session timeline down to one span per layer and, on request, per kernel, checked with
+`make trace-check TRACE=<file>`, an interp seam (activation capture, control
 vectors, in-band probe monitoring) whose taps are keyed on the site a row came
 from rather than on the layer alone, reach inside the layer as far as
 post-softmax attention weights, and whose scores can be written out beside
@@ -322,7 +332,7 @@ slots in at the same `Model` seam.
 ## Quality gate
 
 ```bash
-$ make quality        # fmt check, clippy -D warnings, lockfile check,
+make quality        # fmt check, clippy -D warnings, lockfile check,
                       # rustdoc -D warnings, cargo test
 ```
 

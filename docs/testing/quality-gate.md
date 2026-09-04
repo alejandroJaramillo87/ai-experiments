@@ -36,7 +36,11 @@ Thirteen steps, cheapest first, failing on the first error:
     exact pins across `pyproject.toml`'s sections. The `sandbox` group deliberately re-pins
     what core, `interp` and `training` pin, and step 4 cannot see a disagreement between two
     literal `==` strings.
-13. `shellcheck --severity=warning` — shell scripts, enumerated with `find`.
+13. `scripts/docs/check_command_prompts.py` — fails when a `bash` (or `sh`, `shell`, `zsh`)
+    block carries a `$ ` prompt marker, because a pasted `$ make quality` fails as a command
+    named `$`. Reads neither `console` transcripts nor a runbook's Observed blocks, and skips
+    frozen records.
+14. `shellcheck --severity=warning` — shell scripts, enumerated with `find`.
 
 Note what is absent: **`make quality` does not run pytest.** See
 [The full gate](#the-full-gate) below.
@@ -145,7 +149,7 @@ and `make quality-full` are machinery gates: they prove the code builds, the tes
 themselves, and the documentation resolves. A forward pass with a transposed weight or a wrong
 norm convention passes both and emits fluent text.
 
-That is what the correctness ladder is for. Five rungs, each against `transformers` rather than
+That is what the correctness ladder is for. Six rungs, each against `transformers` rather than
 against any earlier output of ours, run on the workstation under their own target:
 
 ```
@@ -154,7 +158,11 @@ make ladder SIZE=quick MODEL=<checkpoint-dir>      # also standard, deep
 ```
 
 It is deliberately outside `make quality`. The gate is mandatory before every push and has to
-stay fast, and the ladder loads the real checkpoint. The half that does run inside the gate is
+stay fast, and the ladder loads the real checkpoint. It is inside `make quality-full HW=full`:
+`tests/hardware/test_ladder.py` drives the same target at `SIZE=quick` and fails on a red rung
+or a skipped one. The reference artifacts are file prerequisites of the target, so a first run
+generates them through `transformers` before climbing and later runs reuse them;
+`make ladder-reference` rewrites them after a checkpoint or `transformers` change. The half that does run inside the gate is
 Tier T: the same rungs against a tiny Gemma 4 that `transformers` itself built, committed
 whole, measured in milliseconds.
 

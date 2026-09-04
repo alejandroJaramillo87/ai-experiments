@@ -71,29 +71,29 @@ itself.
 
 ```bash
 # 1. Clone the repository
-$ git clone https://github.com/user/ai-experiments
-$ cd ai-experiments
+git clone https://github.com/user/ai-experiments
+cd ai-experiments
 
 # 2. Install the GPU stack (if needed)
-$ scripts/setup/setup_nvidia.sh
-$ scripts/setup/setup_cuda.sh
-$ scripts/setup/setup_cudnn.sh
+scripts/setup/setup_nvidia.sh
+scripts/setup/setup_cuda.sh
+scripts/setup/setup_cudnn.sh
 
 # 3. Configure models
-$ cp env.example .env
+cp env.example .env
 # Edit .env with model paths
 
 # 4. Provision the Python environment
-$ make install
+make install
 
 # 5. Start services
-$ make up          # All services
-$ make gpu-up      # GPU only
-$ make cpu-up      # CPU only
+make up          # All services
+make gpu-up      # GPU only
+make cpu-up      # CPU only
 
 # 6. Verify
-$ make status      # Check health
-$ make logs-gpu    # Monitor GPU
+make status      # Check health
+make logs-gpu    # Monitor GPU
 ```
 
 Before pushing, run the quality gate. `make quality` is the portable form and runs identically in

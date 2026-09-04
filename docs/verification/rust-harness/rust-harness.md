@@ -93,10 +93,10 @@ row-level assertions when numpy is missing, and the CPU-reference goldens
 Command:
 
 ```bash
-$ cd rust-harness
-$ rustc --version && cargo --version
-$ python3 -c "import numpy; print(numpy.__version__)"
-$ make quality
+cd rust-harness
+rustc --version && cargo --version
+python3 -c "import numpy; print(numpy.__version__)"
+make quality
 ```
 
 Expected signal: exit 0. The gate runs five offline steps, cheapest first,
@@ -178,9 +178,9 @@ work:
 Command:
 
 ```bash
-$ ls -la /mnt/ai-data/models/hf/
-$ cd rust-harness
-$ cargo run -p runtime --bin checkpoint-info -- --text-only /mnt/ai-data/models/hf/<e4b> \
+ls -la /mnt/ai-data/models/hf/
+cd rust-harness
+cargo run -p runtime --bin checkpoint-info -- --text-only /mnt/ai-data/models/hf/<e4b> \
     2>&1 | tee /tmp/rh1-dump.txt
 ```
 
@@ -305,68 +305,59 @@ tail, `q_proj` and `o_proj` are used and must be trained; `k_proj` and
 the other two isolates the effect to the gradient path, which no
 whole-layer comparison can do.
 
+The statistics live in `interp/probes/weight_stats.py`, and the verdict is a
+test rather than a script read by eye. `tests/interp/test_weight_stats.py`
+proves the discriminator on synthetic draws in the sandbox; the test below
+asserts it on the real checkpoints, both variants, and skips a variant that is
+not on disk rather than passing over it.
+
+Asserted by `tests/hardware/test_shared_kv_weights.py`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| In every shared layer, `k_proj` and `v_proj` sit above the Gaussian ratio with negative kurtosis while `q_proj` and `o_proj` have positive kurtosis | `test_the_shared_tail_carries_untrained_keys_and_values_beside_trained_queries` |
+| The shared tail's `k_proj` ratios, and its `v_proj` ratios, spread by less than 0.01 | `test_the_shared_tail_keys_and_values_are_pinned_to_one_value` |
+| Every owning layer has positive kurtosis on all four projections | `test_every_owning_layer_is_trained_on_all_four_projections` |
+| The layers whose `k_proj` is wide are the layers `config.json` marks full attention | `test_key_width_agrees_with_the_attention_schedule` |
+
 ```bash
-$ cd ~/workspace/ai-experiments
-$ .venv/bin/python - <<'EOF'
-import json, numpy as np, torch
-from safetensors import safe_open
-
-DIR = "/mnt/ai-data/models/hf/gemma-4-E2B"
-GAUSS = np.sqrt(2 / np.pi)
-
-text = json.load(open(f"{DIR}/config.json"))["text_config"]
-n, shared = text["num_hidden_layers"], text["num_kv_shared_layers"]
-boundary = n - shared
-print(f"{n} layers, boundary {boundary}, Gaussian |mean|/std = {GAUSS:.4f}\n")
-
-PROJ = ["q_proj", "k_proj", "v_proj", "o_proj"]
-stats = {}
-with safe_open(f"{DIR}/model.safetensors", framework="pt") as f:
-    names = set(f.keys())
-    for layer in range(n):
-        for p in PROJ:
-            key = f"model.language_model.layers.{layer}.self_attn.{p}.weight"
-            if key not in names:
-                key = f"language_model.model.layers.{layer}.self_attn.{p}.weight"
-            if key not in names:
-                continue
-            w = f.get_tensor(key).float().numpy().ravel()
-            s = w.std()
-            stats[(layer, p)] = (
-                float(np.abs(w).mean() / s),
-                float(((w / s) ** 4).mean() - 3.0),
-            )
-
-print("group means (ratio)")
-for p in PROJ:
-    o = [stats[(l, p)][0] for l in range(boundary) if (l, p) in stats]
-    s = [stats[(l, p)][0] for l in range(boundary, n) if (l, p) in stats]
-    f2 = lambda g: f"{np.mean(g):.4f} (spread {max(g) - min(g):.4f})" if g else "-"
-    print(f"  {p:8s} owns {f2(o)}   shared {f2(s)}")
-EOF
+cd ~/workspace/ai-experiments
+uv run pytest -m "hw_full and hw_e4b" tests/hardware/test_shared_kv_weights.py -v
 ```
 
-The script reads tensor data and needs no GPU. The `E4B` directory
-substitutes for `E2B` unchanged; the base and instruction-tuned variants
-carry identical tensor layouts, so whichever is on disk serves.
+The test reads tensor data one projection at a time and needs no GPU. It is
+`hw_full` rather than `hw_smoke` because reading every attention projection of
+E4B takes minutes. `GEMMA4_CHECKPOINT_ROOT` overrides the default checkpoint
+root under `/mnt/ai-data`. The thresholds are the ones the 2026-08-09
+measurement below was read against, not fitted to it: the Gaussian ratio and
+zero kurtosis are analytic, and the 0.01 spread sits an order of magnitude
+above what the untrained group showed and below what the trained groups did.
 
-Expected signal: if the shared tail's `k_proj` and `v_proj` cluster tightly
-above the Gaussian ratio with negative kurtosis while `q_proj` and `o_proj`
-in the same layers scatter below it with positive kurtosis, the disputed
-tensors never entered the gradient path, the modeling code is authoritative,
-and the backend's reading is correct. If all four projections move together,
-the weights are meaningful and check 2 becomes mandatory rather than
-confirmatory.
+Expected signal: eight tests pass, four per variant, none skipped. A skipped
+variant is a checkpoint missing from disk, not a pass. If the first test
+fails, the shared tail's `k_proj` and `v_proj` moved with `q_proj` and
+`o_proj`, the weights are meaningful, and check 2 becomes mandatory rather
+than confirmatory.
 
 **Check 2 — do the logits agree?** Generate greedily from the same prompt
 through `transformers` and through the harness, and compare. Confirm the
 checkpoint directory name against the listing before running; both sides read
 the same directory, so there is no conversion step to account for.
 
+**Run the harness from an empty directory.** It continues whatever
+`session.jsonl` sits in its working directory, and `rust-harness/` has held a
+stale one more than once (RH.10 restored 111 tokens from it). A run made there
+on 2026-09-04 printed `Prefill: 977 tokens` for a six-token prompt, ended at
+993 cached tokens, and emitted `<unused10>二品<unused10>二品` — the continuation
+of a transcript full of an earlier run's garbage, not a verdict on the
+weights. A prefill count far above the prompt length is the tell.
+
 ```bash
-$ ls /mnt/ai-data/models/hf/
-$ cd ~/workspace/ai-experiments/rust-harness
-$ cargo run --release -p harness -- \
+ls /mnt/ai-data/models/hf/
+rm -f ~/workspace/ai-experiments/rust-harness/session.jsonl \
+      ~/workspace/ai-experiments/rust-harness/session.kv
+mkdir -p /tmp/rh1a && cd /tmp/rh1a
+~/workspace/ai-experiments/rust-harness/target/release/harness --text-only \
     --model /mnt/ai-data/models/hf/gemma-4-E2B \
     --max-tokens 16 --temperature 0 'The capital of France is'
 ```
@@ -374,8 +365,8 @@ $ cargo run --release -p harness -- \
 Then the reference, on the same prompt and the same decoding rule:
 
 ```bash
-$ cd ~/workspace/ai-experiments
-$ .venv/bin/python - <<'EOF'
+cd ~/workspace/ai-experiments
+.venv/bin/python - <<'EOF'
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -390,10 +381,16 @@ print(tok.decode(out[0], skip_special_tokens=True))
 EOF
 ```
 
-Expected signal: matching token sequences mean the backend's reading is
-correct. Divergence that begins early and does not recover means it is not —
-in which case flip the `owns_cache` branch in the loader so shared layers
-compute their own K/V, rebuild, and rerun.
+Expected signal: both sides continue the prompt fluently and agree on the
+first words. The harness renders the prompt through the chat template
+(`<bos><|turn>user\n...<turn|>\n<|turn>model\n`) while `transformers` here
+tokenizes the bare string, so the two token sequences differ before the first
+forward pass and token-for-token agreement is not expected from this pair of
+commands. The exact-match comparison is the ladder's L4 rung, which feeds both
+sides one prompt and passed at Tier E on 2026-08-14 (RH.1b). Word salad or
+repeated `<unused>` tokens from a clean directory means the backend's reading
+is wrong — in which case flip the `owns_cache` branch in the loader so shared
+layers compute their own K/V, rebuild, and rerun.
 
 Capture the `from_pretrained` output verbatim, warnings included. A warning
 naming the shared layers' `k_proj`, `v_proj`, or `k_norm` as unexpected keys
@@ -437,52 +434,124 @@ implemented. `k_norm` was not measured directly; its head-width shape makes
 the same statistic noisy, and the inference from `k_proj` and `v_proj`
 covers it.
 
-Check 2 remains listed because check 1 is statistical inference over weight
-distributions rather than a logit comparison. It was gated on a GGUF
-conversion being available; now that both sides read the same checkpoint
-directory, nothing blocks it and it can simply be run. It is confirmatory,
-not blocking.
+Observed (2026-09-04, check 1 as the test, both variants):
 
-Status: VERIFIED 2026-08-09 in favor of the modeling code, on check 1.
-Check 2 outstanding as confirmation.
+```
+$ cd ~/workspace/ai-experiments
+$ uv run pytest -m "hw_full and hw_e4b" tests/hardware/test_shared_kv_weights.py -v
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /home/alejandro/workspace/ai-experiments/.venv/bin/python
+collected 8 items
+
+tests/hardware/test_shared_kv_weights.py::test_the_shared_tail_carries_untrained_keys_and_values_beside_trained_queries[gemma-4-E2B] PASSED
+tests/hardware/test_shared_kv_weights.py::test_the_shared_tail_keys_and_values_are_pinned_to_one_value[gemma-4-E2B] PASSED
+tests/hardware/test_shared_kv_weights.py::test_every_owning_layer_is_trained_on_all_four_projections[gemma-4-E2B] PASSED
+tests/hardware/test_shared_kv_weights.py::test_key_width_agrees_with_the_attention_schedule[gemma-4-E2B] PASSED
+tests/hardware/test_shared_kv_weights.py::test_the_shared_tail_carries_untrained_keys_and_values_beside_trained_queries[gemma-4-E4B] PASSED
+tests/hardware/test_shared_kv_weights.py::test_the_shared_tail_keys_and_values_are_pinned_to_one_value[gemma-4-E4B] PASSED
+tests/hardware/test_shared_kv_weights.py::test_every_owning_layer_is_trained_on_all_four_projections[gemma-4-E4B] PASSED
+tests/hardware/test_shared_kv_weights.py::test_key_width_agrees_with_the_attention_schedule[gemma-4-E4B] PASSED
+
+[TIER] full: torch present, the whole suite was in scope.
+8 passed in 38.94s
+```
+
+Eight passed, none skipped, so both checkpoints were on disk and every
+threshold the 2026-08-09 reading was made against holds on E4B as well as
+E2B. The fourth test ran rather than skipping, which means both configs carry
+`layer_types` and the schedule read off `k_proj` widths agrees with it. Both
+variants together read in under 40 s, well inside the `hw_full` budget.
+
+Observed (2026-09-04, check 2, gemma-4-E2B, from an empty directory):
+
+```
+$ mkdir -p /tmp/rh1a && cd /tmp/rh1a
+$ ~/workspace/ai-experiments/rust-harness/target/release/harness --text-only \
+    --model /mnt/ai-data/models/hf/gemma-4-E2B --max-tokens 16 --temperature 0 \
+    'The capital of France is'
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E2B hash=dc91ecfbc2392fa9 layers=35
+[INFO] Weights: 8.62 GiB resident at bf16
+[INFO] Peak RSS after load: 9.51 GiB
+[INFO] KV cache: 131072 tokens, 1.52 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0 max_tokens=16
+[INFO] Build: 0.1.0 git unknown
+[INFO] Model load: 3.76 s
+[INFO] Prefill: 14 tokens in 0.56 s (25 tok/s)
+The capital of France is Paris.
+The capital of France is Paris.
+```
+
+The `transformers` reference, same day, same prompt, greedy, 16 new tokens
+(the `Loading weights` progress line omitted; no unexpected-key warning was
+printed):
+
+```
+The capital of France is Paris.
+
+The capital of France is Paris.
+
+The capital of France is
+```
+
+Both sides answer `Paris.` and then repeat the prompt, which is the same
+continuation from two independent implementations of the shared-KV reading.
+The 14-token prefill is the six-token prompt plus the chat template, and it
+is what a clean directory looks like; the 977-token prefill the first attempt
+printed from `rust-harness/` was a stale session, recorded above as the trap.
+The blank lines differ because the harness trims the reply and the reference
+prints raw decoded text; the tokens that matter agree. `from_pretrained`
+printed no warning about the shared layers' `k_proj` or `v_proj`, so the
+current `transformers` build loads those tensors silently rather than
+reporting them as unexpected; that silence is uninformative either way, as
+the entry says, and check 1 is what decides.
+
+Check 2 is confirmatory: an eye-level agreement on one prompt, not a logit
+comparison. The exact-match form of it is the ladder's L4 rung against a
+`transformers` greedy reference, which passed at Tier E on E4B (RH.1b).
+
+Status: VERIFIED 2026-09-04 in favor of the modeling code, on check 1 as a
+test over both variants and check 2 by eye on E2B (first decided 2026-08-09
+on E2B by the pasted script).
 
 ## RH.1b Correctness ladder at Tier E
 
 Implementation: `rust-harness/runtime/src/ladder.rs`,
-`rust-harness/runtime/src/bin/ladder.rs`, the four generators under
+`rust-harness/runtime/src/bin/ladder.rs`, the five generators under
 `rust-harness/fixtures/`, and `make ladder`.
 
-The numerics oracle. Five rungs compare the CPU backend against
+The numerics oracle. Six rungs compare the CPU backend against
 `transformers` on the real checkpoint: token ids (L0), residual stream (L1),
-final distribution (L2), perplexity (L3), greedy continuation (L4). Every
+final distribution (L2), perplexity (L3), greedy continuation (L4), and the
+long-context anchors past the sliding window (L5, added by RH.17). Every
 other entry in this runbook observes behavior; this one is the only entry
 that can call the backend correct.
 
 The generators are GPU consumers and `reference_perplexity.py` is the slow
 one. The artifacts land in a git-ignored directory by design — tens of MB at
 a 262144-wide vocabulary — so the printed table is the only evidence that
-leaves the workstation.
+leaves the workstation. The five artifacts are prerequisites of `make ladder`
+itself: one that is missing under the directory the `SIZE` reads,
+`rust-harness/fixtures/reference/e4b/quick` here, is generated on the way up,
+and one that is present is not paid for again. `make ladder-reference`
+regenerates all five unconditionally, which is the command after a
+checkpoint or `transformers` change, since a stale artifact under an existing
+directory is not something make can see. `tests/hardware/test_ladder.py`
+runs the same target under `make quality-full HW=full`, so a routine
+full-tier run repeats this entry.
 
 Command:
 
 ```bash
-$ cd $REPO
-$ mkdir -p rust-harness/fixtures/reference/e4b/quick
-$ uv run python rust-harness/fixtures/reference_tokenizer.py --model $E4B \
-    --out rust-harness/fixtures/reference/e4b/quick/tokenizer_parity.json
-$ uv run python rust-harness/fixtures/reference_capture.py --model $E4B \
-    --prompt "The capital of France is" --generate 16 \
-    --out rust-harness/fixtures/reference/e4b/quick/layers.json
-$ uv run python rust-harness/fixtures/reference_perplexity.py --model $E4B --size quick \
-    --out rust-harness/fixtures/reference/e4b/quick/ppl.json
-$ uv run python rust-harness/fixtures/reference_greedy.py --model $E4B --size quick \
-    --out rust-harness/fixtures/reference/e4b/quick/greedy.json
-$ cd rust-harness && make ladder SIZE=quick MODEL=$E4B
+cd ~/workspace/ai-experiments/rust-harness
+make ladder SIZE=quick MODEL=<the gemma-4-E4B checkpoint directory>
 ```
 
-Expected signal: five rows, each `PASS`, and `0 skipped`. **A `skipped` rung is
+Expected signal: six rows, each `PASS`, and `0 skipped`. **A `skipped` rung is
 missing evidence, not a pass** — read the count in the closing `[OK]` line
-rather than the exit code.
+rather than the exit code. A skip after the generators ran means one wrote
+somewhere other than where the climb read. The first run recorded below
+predates L5 and shows five rows; L5's first pass is RH.17's Observed block.
 
 Observed:
 
@@ -538,13 +607,76 @@ outstanding tokenizer-parity acceptance** that had been carried since P9.13.
 Two notes on what this does and does not settle. The four generators were
 first run with a bare `python`, which resolved to an interpreter without
 `torch` or `transformers` and produced four `[ERROR] Import` lines and no
-artifacts; the run above is the retry under the workstation environment. The
-generator commands in `rust-harness/fixtures/reference/README.md` still spell
-bare `python` and should spell `uv run python`, as this entry does. And the
-`ppl 55.5420` figure is the model's perplexity on the quick corpus, not a
+artifacts; the run above is the retry under the workstation environment. Every
+generator command in this file, including RH.17's and RH.21's, spells
+`uv run python` for that reason. And the `ppl 55.5420` figure is the model's perplexity on the quick corpus, not a
 quality claim — the comparison against `55.5438` is the result.
 
-Status: VERIFIED 2026-08-14
+Observed (2026-09-04, the six-rung climb from the command block above,
+artifacts regenerated the same day):
+
+```
+size=quick tokens=512 prompts=2
+prompt=6 tokens
+threads=8
+dot=widen4
+batch=64
+model=/mnt/ai-data/models/hf/gemma-4-E4B
+reference=fixtures/reference/e4b/quick
+
+rung  check                   value         threshold       verdict
+L0    token ids                                             PASS
+      case agreement          1.000000      >= 1.000000     ok
+      5 cases, every id identical
+L1    residual stream                                       PASS
+      worst cosine            1.000000      >= 0.999900     ok
+      worst rel_l2            0.000005      <= 0.001000     ok
+      42 layers within tolerance
+L2    final distribution                                    PASS
+      mean kl                 0.000000      <= 0.001000     ok
+      worst kl                0.000000      <= 0.005000     ok
+      worst top-50 overlap    1.000000      >= 0.980000     ok
+      argmax agreement        1.000000      >= 0.980000     ok
+      1 positions scored; worst at prompt position 5
+L3    perplexity                                            PASS
+      ppl delta               0.000032      <= 0.010000     ok
+      worst token nll         0.001248      <= 0.050000     ok
+      ppl 55.5420 against 55.5438 over 254 tokens; worst token at corpus position 414
+L4    greedy continuation                                   PASS
+      token agreement         1.000000      >= 0.980000     ok
+      mean common prefix      1.000000      >= 0.750000     ok
+      2 prompts, 0 ties
+L5    logits past the window                                PASS
+      scheduled positions agree  1.000000      >= 1.000000     ok
+      worst kl inside window  0.000000      <= 0.005000     ok
+      worst kl past window    0.000000      <= 0.005000     ok
+      worst top-50 overlap    1.000000      >= 0.980000     ok
+      argmax agreement        1.000000      >= 0.980000     ok
+      6 positions across a 512-token window over 2052 tokens; worst at position 1025
+
+timing (not compared; expected to differ between runs)
+  L0        0.48s
+  L1        0.70s
+  L2        0.83s
+  L3       52.70s
+  L4       23.70s
+  L5      268.92s
+  sum     347.33s  (rung bodies only, excludes model load)
+[OK] Ladder: every rung within tolerance (0 skipped)
+[INFO] Peak RSS at exit: 16.13 GiB
+```
+
+Three weeks and several engine changes later, every figure the first run
+printed reproduces to the last digit: the same worst cosine, the same
+`rel_l2`, the same `ppl 55.5420 against 55.5438`, the same worst token at
+corpus position 414. The generators' own output confirmed the reference side
+is unchanged too (`ppl 55.5438`, the same 16-token continuation, the L5
+schedule `[511, 512, 513, 1025, 1026, 2051]` of 2052). L5 is the one rung
+the first run could not show, and it passed at every anchor. Peak RSS rose
+from 14.27 to 16.13 GiB, which is the 2052-token L5 forward pass the first
+run never made.
+
+Status: VERIFIED 2026-09-04 on six rungs (first decided 2026-08-14 on five)
 
 ## RH.2 Real-model load and generation smoke
 
@@ -561,9 +693,9 @@ something other than a fixture.
 Command:
 
 ```bash
-$ cd rust-harness
-$ mkdir -p /tmp/rh2 && cd /tmp/rh2
-$ time ~/workspace/ai-experiments/rust-harness/target/release/harness \
+cd rust-harness
+mkdir -p /tmp/rh2 && cd /tmp/rh2
+time ~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only \
     "The capital of France is"
 ```
@@ -590,11 +722,41 @@ following is explicitly not: a numerically wrong forward pass on real weights
 degrades into word salad or a repetition loop, and neither survives a few
 dozen tokens. Record the full reply.
 
-What this entry cannot decide is whether the continuation is the *right* one.
-A backend wrong in a small, systematic way produces fluent prose that diverges
-from the reference, and no amount of reading it will show that. RH.1a check 2
-and the ladder's L4 rung are what compare against `transformers`; this entry
-establishes only that the model runs and speaks.
+What this entry cannot decide by eye is whether the continuation is the
+*right* one. A backend wrong in a small, systematic way produces fluent prose
+that diverges from the reference, and no amount of reading it will show that.
+RH.1a check 2 and the ladder's L4 rung compare against `transformers` on
+prompts of their own; the check below asks the same question of the reply
+this entry actually produced.
+
+Check 2 — the sampled reply against `transformers`. A recording holds every
+forward call's logits and every token the sampler chose, and
+`rust-harness/fixtures/audit_recording.py` feeds the recorded token sequence
+to `transformers` once, teacher-forced, and compares its logits with the
+harness's at every recorded position under the ladder's L2 tolerances. It
+also reports, for every token the sampler drew, that token's rank and
+probability under `transformers` at its position. A token the reference gives
+no weight to is a decoder fault; a token at rank 7 is a draw at temperature
+0.8. Sampling is left at the defaults so the reply is the one check 1
+produces.
+
+```bash
+mkdir -p /tmp/rh2 && cd /tmp/rh2 && rm -f session.jsonl session.kv
+~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/gemma-4-E4B --text-only --record flight.jsonl \
+    "The capital of France is"
+cd ~/workspace/ai-experiments
+uv run python rust-harness/fixtures/audit_recording.py \
+    --model /mnt/ai-data/models/hf/gemma-4-E4B \
+    --record /tmp/rh2/flight.jsonl --out /tmp/rh2/audit.json --show 5
+```
+
+Expected signal: `[OK] Distributions:` with every measure inside its
+threshold over every recorded position, then `[OK] Chosen tokens:` naming the
+worst-ranked draw and the last token with its rank and probability. The five
+lowest-ranked draws print beneath, decoded. Exit 0. `[ERROR] Distributions:`
+names the worst position and exits 1; that is a numerics finding and belongs
+in RH.1b's territory, not a sampling one.
 
 The startup banner is also the KV evidence: it prints the weight width, peak
 RSS after load, the KV cache line, and the rewind horizon. Record those four
@@ -643,23 +805,26 @@ Two hypotheses were raised and both are refuted; they are recorded because
 each cost a host round trip and neither should be re-derived.
 
 *Not a missing chat template.* One is rendered and pinned:
-`harness/src/template.rs:31-52` emits `<bos>` then
-`<|turn>{role}\n{content}<turn|>`, and `harness/tests/template_contract.rs`
-holds those literals against `schemas/chat_template.json`.
+`harness/src/template.rs` emits `<bos>` then
+`<|turn>{role}\n{content}<turn|>` (the markers are the `TURN_OPEN`,
+`TURN_CLOSE` and `MODEL_TURN_OPEN` constants at lines 24-27), and
+`harness/tests/template_contract.rs` holds those literals against
+`schemas/chat_template.json`.
 
 *Not a delimiter the vocabulary lacks.* The published E4B `tokenizer.json`
 carries `<|turn>` and `<turn|>` in its added-tokens table and does **not**
 carry `<start_of_turn>` or `<end_of_turn>` — the reverse of what that theory
 needed. `template::MARKERS` names the literals, `generator::PROMPT_SPECIALS`
-admits them, and `generator.rs:74` encodes every prompt through
-`encode_prompt` with that allowlist, so the delimiters reach the model as
-their own ids.
+(`generator.rs:236`) admits them, and every prompt goes through
+`encode_prompt` with that allowlist (`generator.rs:164` and `:244`), so the
+delimiters reach the model as their own ids.
 
 The mechanism behind the second hypothesis is real even though it is not the
-cause here, and it is unguarded. `runtime/src/tokenizer.rs:304-321` says so
-itself: "A literal that is not in the vocabulary matches nothing: the caller
-may name a delimiter this checkpoint does not carry, and encoding it as text
-is the same treatment any other unknown string gets." A renderer and a
+cause here, and it is unguarded. The `special_at` doc comment in
+`runtime/src/tokenizer.rs` (lines 342-345) says so itself: a literal that is
+not in the vocabulary matches nothing; the caller may name a delimiter this
+checkpoint does not carry, and encoding it as text is the same treatment any
+other unknown string gets. A renderer and a
 checkpoint that disagree on the spelling would therefore produce fluent
 garbage and no error — the same symptom, from a genuine bug, with nothing to
 distinguish it from this one. That is worth a guard.
@@ -734,7 +899,35 @@ lines and asks for those four, all of which still print unchanged, and both
 blocks are declared excerpts rather than complete transcripts. A re-run will
 show two lines these do not — that is the addition, not a discrepancy.
 
-Status: VERIFIED 2026-08-14
+Observed (2026-09-04, the banner and the reply's first lines; the rest of the
+reply is byte-identical to the 2026-08-14 block above):
+
+```
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E4B hash=e376216f8b693aff layers=42
+[INFO] Weights: 13.90 GiB resident at bf16
+[INFO] Peak RSS after load: 14.03 GiB
+[INFO] KV cache: 131072 tokens, 4.05 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=256
+[INFO] Build: 0.1.0 git unknown
+[WARN] KV cache above 2 GiB: consider --context to cap it (compaction keeps long sessions inside the cap)
+[INFO] Model load: 6.07 s
+[INFO] Prefill: 14 tokens in 1.06 s (13 tok/s)
+The capital of France is Paris
+< div > The capital of France is < / div >
+
+<h2>Input and Output</h2>
+```
+
+The two lines U8 added are there, and the reply reproduces the 2026-08-14
+text word for word through the closing sample output. That is not luck:
+sampling is seeded (`seed=0`), so the same weights, prompt and template give
+the same tokens, and three weeks of engine changes moved none of them. The
+four KV lines are unchanged for the third load, and `Prefill: 14 tokens` is
+the rendered chat turn RH.1a's clean run also counted.
+
+Status: VERIFIED 2026-09-04 (first decided 2026-08-14)
 
 ## RH.3 CPU generation speed
 
@@ -752,8 +945,8 @@ cores, so a rate without a width is not comparable to another rate. Pass
 Command:
 
 ```bash
-$ mkdir -p /tmp/rh3 && cd /tmp/rh3 && rm -f session.jsonl
-$ time ~/workspace/ai-experiments/rust-harness/target/release/harness \
+mkdir -p /tmp/rh3 && cd /tmp/rh3 && rm -f session.jsonl
+time ~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only \
     --trace-chrome trace.json \
     "Count from one to twenty as words, one per line"
@@ -794,8 +987,10 @@ g()
 $HARNESS --model $E4B --text-only --trace-chrome trace.json   136.14s user 9.86s system 521% cpu 28.005 total
 ```
 
-**Roughly 5.4 tokens/second at the default thread width of 8**, decode-dominated:
-134 cached tokens against a 12-token prompt in 28.0 s wall clock. The 521% CPU
+**Roughly 5.4 tokens/second at the default thread width of 8**, decode-dominated.
+The figure is read from this run's trace, aggregated in RH.6: 115 `model.forward`
+calls in 21.12 s. The 28.0 s wall clock above includes the model load and is not
+the divisor; 134 cached tokens over 28.0 s would understate the rate. The 521% CPU
 figure against 8 threads is the honest utilization number — the run is not
 saturating the width it asked for.
 
@@ -823,7 +1018,101 @@ so the wall clock this entry asks for no longer has to be separated from the
 load by hand. The expected signal is unchanged and the entry stays VERIFIED;
 the pasted block simply predates the two lines.
 
-Status: VERIFIED 2026-08-14
+Observed (2026-09-04, the same command; the reply reproduces the block above
+word for word, so only its last lines are quoted):
+
+```
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E4B hash=e376216f8b693aff layers=42
+[INFO] Weights: 13.90 GiB resident at bf16
+[INFO] Peak RSS after load: 14.04 GiB
+[INFO] KV cache: 131072 tokens, 4.05 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=256
+[INFO] Build: 0.1.0 git unknown
+[WARN] KV cache above 2 GiB: consider --context to cap it (compaction keeps long sessions inside the cap)
+[INFO] Model load: 6.17 s
+[INFO] Prefill: 20 tokens in 1.51 s (13 tok/s)
+The program outputs one number per line.
+...
+print()
+g()
+复制
+[INFO] Session snapshot: 134 cached tokens at /tmp/rh3/session.kv
+~/workspace/ai-experiments/rust-harness/target/release/harness --model $MODEL  151.62s user 10.04s system 535% cpu 30.216 total
+```
+
+The configuration caveat above is closed: the banner now states
+`threads=8`, `dot=widen4`, `batch=64` and the sampler settings itself, and
+the two U8 lines separate load from generation without a trace. Read from
+the printed lines alone, 30.2 s wall less 6.17 s load less 1.51 s prefill
+leaves about 22.5 s for the 114 decoded tokens (134 cached less 20 prompt),
+**about 5.1 tokens/second at width 8**, beside the 5.4 the 2026-08-14 trace
+gave. Still one unpinned run, so still a scale check and not a baseline; the
+trace at `/tmp/rh3/trace.json` is the figure of record if RH.6 is re-aggregated.
+
+The `复制` on the reply's last line is the model's own token, not a decoding
+fault, and RH.2 check 2 established that with a number rather than an
+argument; the audit of this exact run is recorded below. Sampling is
+seeded, and the cached-token count is the same 134 as the
+2026-08-14 run, so the earlier reply ended on the same token and the paste
+dropped it. `复制` is "copy" — the label on the copy button beside code blocks
+on Chinese programming sites, which is exactly where a base model that has
+just closed a code block reaches for it. A decoder fault looks different: the
+contaminated RH.1a attempt produced `<unused10>` and mojibake, where this is a
+well-formed two-character word in a plausible position.
+
+Why Chinese rather than English is a fact about the pretraining corpus, not
+about the harness, and it is worth stating once because the next reader will
+ask. The model is not fetching anything at generation time; it reproduces a
+pattern it saw in training. A large share of the code-heavy pages on the web
+are Chinese developer sites (CSDN, Zhihu, Juejin), and when those pages are
+flattened to text the copy button beside every code block becomes the literal
+string `复制` on the line after the code. English sites carry the same button,
+but it is usually an icon or stripped as interface markup, so the word "Copy"
+appears far less often in that position. A code block ending on a bare `g()`
+line is therefore, in the corpus, very often followed by `复制`, and nothing in
+the language-neutral code above it pushed the distribution toward English.
+Two observations tie this to the checkpoint rather than to our code: the token
+was sampled from a distribution L2 and L4 show agrees with `transformers`, so
+the reference emits it too; and it occurs exactly once, immediately after the
+code block closes, where a tokenizer or decoding defect would not confine
+itself to one position.
+
+Observed (2026-09-04, the same run recorded with `--record` and audited by
+RH.2 check 2's `audit_recording.py`; the reply was byte-identical again and
+is not repeated):
+
+```
+[OK] Recording: 134 tokens, 115 logit rows, 115 selections, sampling {'temperature': 0.8, 'top_p': 0.95, 'top_k': None, 'seed': 0}
+[RUN] Forward pass: 134 positions, teacher-forced
+[OK] Distributions: 115 positions, mean kl 0.000000 (<= 0.001), worst kl 0.000000 (<= 0.005) at position 19, argmax agreement 1.0000 (>= 0.98), worst top-50 overlap 1.0000 (>= 0.98)
+[OK] Chosen tokens: 115, 114 within the reference's top-50, worst rank 54 at position 133, last token '<eos>' rank 2 p=0.3074
+  position  133 rank     54 p=0.0024 '复制'
+  position   30 rank     21 p=0.0060 ' _'
+  position   29 rank     18 p=0.0062 'def'
+  position   21 rank     17 p=0.0091 ' program'
+  position   79 rank     10 p=0.0089 ' g'
+```
+
+The JSON report puts the mean KL at 6.3e-11 nats and the worst at 4.4e-10,
+against a `transformers` 5.13.1 float32 forward pass: the two engines agree
+at every one of the 115 positions to the summation-order floor, ten thousand
+times inside the L2 tolerance, with the argmax and the top-50 set identical
+throughout. `transformers` generated nothing here; it was teacher-forced on
+the harness's sequence and asked what it predicted at each position. So
+`复制` is a token the reference itself offers at position 133, at 0.24
+percent and rank 54 of 262144, one draw in about four hundred, and the next
+draw was `<eos>` at rank 2 with 31 percent: the copy button, then the page
+ends. The harness showed the token because it sampled and seed 0 landed
+there; every earlier `transformers` run was greedy, and a rank-54 token
+cannot appear in a greedy output from either engine. Every structural token
+of the program sat at rank 1 in the 80 to 99 percent range; the five
+lowest-ranked draws are all naming choices. The distribution is the
+checkpoint's, the sampler drew from it, and this entry's last token is
+closed as a fact about Gemma 4's pretraining corpus.
+
+Status: VERIFIED 2026-09-04 (first decided 2026-08-14)
 
 ## RH.4 KV delta prefill
 
@@ -839,13 +1128,16 @@ new suffix.
 Command:
 
 ```bash
-$ mkdir -p /tmp/rh4 && cd /tmp/rh4
-$ time ~/workspace/ai-experiments/rust-harness/target/release/harness \
+mkdir -p /tmp/rh4 && cd /tmp/rh4
+time ~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only --trace-chrome turn1.json \
     "Summarize the Unix philosophy in three sentences"
-$ time ~/workspace/ai-experiments/rust-harness/target/release/harness \
+time ~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only --trace-chrome turn2.json \
     "Now compress that summary to one sentence"
+cd ~/workspace/ai-experiments/rust-harness
+make trace-check TRACE=/tmp/rh4/turn1.json
+make trace-check TRACE=/tmp/rh4/turn2.json
 ```
 
 Expected signal: the turn-2 `session.sync` prefill span covers far fewer
@@ -853,6 +1145,10 @@ positions than turn 1's transcript length (the delta is the new user turn,
 not the whole history), and turn-2 prefill wall-clock is proportionally
 smaller. Record both span durations and position counts. Both paths are
 measured: turn 1 is the full-prefill datum, turn 2 the delta datum.
+`make trace-check` prints each trace's `session.sync` args (`cached_len`)
+and the first `model.forward`'s `start` and `len`, which are those counts:
+turn 2's forward starts at turn 1's cached length with `len` the size of the
+new turn.
 
 Observed:
 
@@ -895,7 +1191,118 @@ on serve-mode session persistence: **the problem is not that sessions persist,
 it is that a restored session is indistinguishable from a model behaving
 strangely.**
 
-Status: VERIFIED 2026-08-14
+Observed (2026-09-04), the same two commands, then the `session.sync` span
+and its first forward read out of each trace file:
+
+```
+(turn 1)
+[INFO] Model load: 5.99 s
+[INFO] Prefill: 17 tokens in 1.29 s (13 tok/s)
+[INFO] Session snapshot: 234 cached tokens at /tmp/rh4/session.kv
+~/workspace/ai-experiments/rust-harness/target/release/harness --model $MODEL  256.24s user 15.39s system 569% cpu 47.733 total
+
+(turn 2)
+[INFO] Session restored: 234 cached tokens from /tmp/rh4/session.kv
+[INFO] Model load: 5.96 s
+[INFO] Prefill: 17 tokens in 1.45 s (12 tok/s)
+[INFO] Session snapshot: 507 cached tokens at /tmp/rh4/session.kv
+~/workspace/ai-experiments/rust-harness/target/release/harness --model $MODEL  289.42s user 17.46s system 550% cpu 55.704 total
+
+(traces)
+turn1.json session.sync {'cached_len': '0'}
+turn1.json model.forward {'len': '17', 'start': '0'}
+turn1.json session.sync 1.287952352 s
+turn2.json session.sync {'cached_len': '234'}
+turn2.json model.forward {'len': '17', 'start': '234'}
+turn2.json session.sync 1.449578818 s
+```
+
+This is the span-level half the 2026-08-14 entry left unverified. Turn 2's
+sync forward ran `start 234, len 17`: it prefilled the 17 tokens of the new
+user turn on top of 234 restored positions, not the 251-token transcript.
+The two syncs cost about the same for the same 17 positions, 1.29 s against
+1.45 s; the turn-2 excess is those positions attending over 234 cached keys
+instead of none. The token counts (234 restored, 507 after) reproduce the
+earlier run exactly, as a seeded sampler should.
+
+Observed (2026-09-04, `make trace-check` on the same turn-2 trace):
+
+```
+make trace-check TRACE=/tmp/rh4/turn2.json
+HARNESS_TRACE="/tmp/rh4/turn2.json" cargo test -p harness --test trace_structure -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.02s
+     Running tests/trace_structure.rs (target/debug/deps/trace_structure-fa0ba0cfa73184e5)
+
+running 1 test
+[INFO] model.forward               257 calls     48.05s
+[INFO] session.step                256 calls     47.89s
+[INFO] model.layer               10794 calls     42.75s
+[INFO] model.layer.mlp           10794 calls     29.29s
+[INFO] model.layer.attn          10794 calls     11.04s
+[INFO] model.load                    1 calls      5.47s
+[INFO] model.from_checkpoint         1 calls      5.47s
+[INFO] model.lm_head               257 calls      5.04s
+[INFO] model.load.layer             42 calls      2.78s
+[INFO] model.layer.ple           10794 calls      2.34s
+[INFO] session.sync                  1 calls      1.45s
+[INFO] sampler.sample              256 calls      1.28s
+[INFO] model.prelude               257 calls      0.24s
+[INFO] checkpoint.read               1 calls      0.00s
+[INFO] tokenizer.encode              1 calls      0.00s
+[INFO] checkpoint.fingerprint        1 calls      0.00s
+[INFO] checkpoint.parse              1 calls      0.00s
+[INFO] forwards exceed steps by one: the run stopped on its token budget
+[INFO] session.sync args {"cached_len": "234"}
+[INFO] first model.forward args {"len": "17", "start": "234"}
+[INFO] layers 42, forwards 257, model.layer / model.forward = 42.0
+[INFO] kernel spans absent: a debug-level trace
+test a_chrome_trace_from_a_real_run_has_the_documented_span_shape ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.77s
+```
+
+The two args lines are the delta evidence this entry asks for, read by the
+committed test rather than a pasted script: the sync restored 234 tokens and
+its forward ran `start 234, len 17`. The per-name table adds the other half
+of the KV claim. Against the RH.6 run of the same length in a fresh session,
+attention took 11.04 s here against 8.19 s there, the 234 cached keys every
+step attends over, while the MLP is unchanged at 29.3 s: prefill cost scales
+with the delta, attention cost with the context.
+
+Observed (2026-09-04), turn 1 re-run with `--record` in a clean directory and
+the recording audited against `transformers` (the RH.2 check 2 procedure), to
+settle whether the `回答：` ("Answer:") line the reply opens with is a
+decoder fault or a draw:
+
+```
+[OK] Recording: 234 tokens, 218 logit rows, 218 selections, sampling {'temperature': 0.8, 'top_p': 0.95, 'top_k': None, 'seed': 0}
+[RUN] Forward pass: 234 positions, teacher-forced
+[OK] Distributions: 218 positions, mean kl 0.000000 (<= 0.001), worst kl 0.000000 (<= 0.005) at position 196, argmax agreement 1.0000 (>= 0.98), worst top-50 overlap 1.0000 (>= 0.98)
+[OK] Chosen tokens: 218, 218 within the reference's top-50, worst rank 29 at position 33, last token '<eos>' rank 2 p=0.3306
+  position   33 rank     29 p=0.0038 '回答'
+  position   27 rank      6 p=0.0271 ' guiding'
+  position   46 rank      6 p=0.0617 ' govern'
+  position   23 rank      5 p=0.0147 ' What'
+  position  126 rank      5 p=0.0707 ' compos'
+  position  223 rank      5 p=0.0865 ' ultimately'
+  position   35 rank      4 p=0.0937 ' The'
+  position  100 rank      4 p=0.0932 ' unrelated'
+  position  119 rank      4 p=0.0731 ' highlights'
+  position   17 rank      3 p=0.0256 'What'
+[OK] Wrote /tmp/rh4-audit/audit.json
+```
+
+Every one of the 218 distributions matches `transformers`, so no position in
+the reply holds a value the reference did not also compute. `回答` at position
+33 is the single lowest-ranked draw of the reply: rank 29, probability 0.0038
+under the reference, where every other draw was rank 6 or better. It is a
+1-in-260 pick that temperature 0.8 and no top-k permit, and once drawn it
+conditions everything after it, which is why the rest of the answer takes the
+shape of a bilingual Q&A page. A greedy run, `transformers` or harness, takes
+rank 1 at every position and never produces it; that path is what RH.1b's L4
+rung checks. The token is sampling policy, not numerics.
+
+Status: VERIFIED 2026-08-14; span evidence 2026-09-04
 
 ## RH.5 Flight recorder and sandbox replay
 
@@ -908,8 +1315,8 @@ mock, which any agent session can run.
 Command (host):
 
 ```bash
-$ mkdir -p /tmp/rh5 && cd /tmp/rh5
-$ ~/workspace/ai-experiments/rust-harness/target/release/harness \
+mkdir -p /tmp/rh5 && cd /tmp/rh5
+~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only --record flight.jsonl \
     --temperature 0.8 --top-k 40 --seed 1 \
     "Reply with the single word: ready"
@@ -923,41 +1330,29 @@ that recomputed it. What the prompt elicits does not matter here — E4B at
 the pinned revision is a base model and will not follow it (see the
 base-model note above) — only that tokens are generated at all.
 
-Command (sandbox, after copying `flight.jsonl` into the worktree; there
-is no committed CLI for arbitrary recordings, so a throwaway test invokes
-the replay loader `runtime::model::record::replay_file` directly):
+Command (replay half, on the same machine; the recording is too large to
+move, and the check needs only cargo):
 
 ```bash
-$ cd rust-harness
-$ mkdir -p runtime/tests/data && cp <flight.jsonl> runtime/tests/data/rh5-flight.jsonl
-$ cat > runtime/tests/rh5_replay.rs <<'EOF'
-use std::path::Path;
-
-#[test]
-fn rh5_recording_replays_as_a_mock_script_and_states_its_selections() {
-    let (_script, recorded) = runtime::model::record::replay_file_with_selections(Path::new(
-        "tests/data/rh5-flight.jsonl",
-    ))
-    .unwrap();
-    let sampling = recorded.sampling.expect("recording states its parameters");
-    assert_eq!(sampling.top_k, Some(40), "{sampling:?}");
-    assert_eq!(sampling.seed, 1, "{sampling:?}");
-    assert!(!recorded.selections.is_empty(), "no token was recorded");
-    // Draw counts rise by one per stochastic step, so the run's position in
-    // its own stream is recoverable rather than merely stated.
-    let draws: Vec<u64> = recorded.selections.iter().map(|s| s.draws).collect();
-    assert!(draws.windows(2).all(|w| w[1] > w[0]), "{draws:?}");
-}
-EOF
-$ cargo test -p runtime --test rh5_replay
-$ git checkout -- . && rm -rf runtime/tests/data runtime/tests/rh5_replay.rs
+cd ~/workspace/ai-experiments/rust-harness
+make replay-check RECORDING=/tmp/rh5/flight.jsonl
 ```
+
+The target runs the committed `runtime/tests/recording_replay.rs` with
+`HARNESS_RECORDING` pointed at the file. With the variable unset the test
+prints `[SKIP]` and passes, so `make quality` is not gated on a recording.
+Before 2026-09-04 this half was a throwaway test pasted from this entry and
+deleted after the run; the second Observed block below is that shape.
 
 Expected signal: the host run writes a header naming the sampling
 parameters, one JSONL record per forward call with token and logit
-payloads, and one selection line per sampled token. The throwaway test
-passes — the recording rebuilds as a MockModel script, states the
-parameters it was made under, and carries a strictly rising draw count.
+payloads, and one selection line per sampled token. The replay test passes
+and prints three `[INFO]` lines: the sampling parameters, which must read
+`top_k: Some(40), seed: 1` for this command; the script's position count
+and vocabulary width; and the selection count with its position and draw
+ranges. The test asserts the shape, not this entry's parameters: the draw
+count rises by exactly one per selection, positions increase, and every
+selection was drawn from a scripted row.
 
 The draw count is the part worth watching. A recording that reproduces
 the logits and not the selection lets a replay redraw from the same
@@ -984,8 +1379,9 @@ test rh5_recording_replays_as_a_mock_script_and_states_its_selections ... ok
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.84s
 ```
 
-Every part of the expected signal holds. The header names all four sampling
-parameters as passed. There are 257 forward records against 256 selections —
+Every part of the expected signal holds. The header names the three sampling
+parameters as passed, plus `top_p` at its 0.95 default, which the command did not
+set. There are 257 forward records against 256 selections —
 the extra one is the prefill call, which produces logits without drawing a
 token. Each recorded row is the full 262144-wide vocabulary, matching the
 header, so nothing is truncated. Positions run 14 to 269 without a gap. And
@@ -1000,15 +1396,66 @@ block does.
 
 One limitation of the format is worth recording here, because it is invisible
 until it fires. JSON has no infinity, so `serde_json` writes a non-finite
-logit as `null` and the recording will not parse back — `record.rs:224` writes
-it and `record.rs:397` fails to read it, and because `Line` is an untagged
+logit as `null` and the recording will not parse back — `write_line` at
+`record.rs:226-228` writes it and `record.rs:397` fails to read it, and because `Line` is an untagged
 enum the error blames the whole line rather than naming the null. Nothing on
 the shipped path produces `-inf` (top-k truncates a sorted candidate list
 rather than masking), so this run was never at risk; the exposure is a caller
 that hands in a masked logit row. `runtime/tests/record_replay.rs:87-91`
 steers around it with `-1000.0` and says why. No test covers the failure.
 
-Status: VERIFIED 2026-08-14
+Observed (2026-09-04), the same host command, then the throwaway test of
+the day pasted into a scratch file under `runtime/tests/` and run once:
+
+```
+(host)
+[INFO] Sampling: seed=1 temperature=0.8 max_tokens=256
+[INFO] Model load: 5.88 s
+[INFO] Prefill: 16 tokens in 1.21 s (13 tok/s)
+[INFO] Session snapshot: 272 cached tokens at /tmp/rh5/session.kv
+
+(replay)
+running 1 test
+test rh5_recording_replays_as_a_mock_script_and_states_its_selections ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 15.45s
+```
+
+The run generated 256 tokens, the `max_tokens` budget, so unlike the August
+run it did not stop on EOS. The reply is a base model imitating a chat
+transcript, Llama-style header strings included, emitted as plain text; the
+tokenizer resolves only the Gemma turn literals, so none of it is a special
+token. The prompt encoded to 16 tokens where the 2026-08-14 recording's
+positions began at 14, so prompt encoding changed between the two builds and
+the earlier `positions 14 -> 269` line is not comparable to this run's.
+
+The throwaway test was promoted after this run to
+`runtime/tests/recording_replay.rs` and `make replay-check`, which is what
+the command block above now names. Its output on the same recording:
+
+```
+make replay-check RECORDING=/tmp/rh5/flight.jsonl
+HARNESS_RECORDING="/tmp/rh5/flight.jsonl" cargo test -p runtime --test recording_replay -- --nocapture
+   Compiling runtime v0.1.0 (/home/alejandro/workspace/ai-experiments/rust-harness/runtime)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.21s
+     Running tests/recording_replay.rs (target/debug/deps/recording_replay-6da1c563474570e4)
+
+running 1 test
+[INFO] sampling: SamplingProvenance { temperature: 0.8, top_p: 0.95, top_k: Some(40), seed: 1 }
+[INFO] script: 272 positions, vocab 262144
+[INFO] selections: 256 at positions 16..=271, draws 1..=256
+test a_flight_recording_replays_as_a_script_and_states_its_selections ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.71s
+```
+
+The sampling line matches the command (`top_k 40`, `seed 1`, and `top_p` at
+its 0.95 default), the 272 scripted positions are the 16-token prompt plus
+the 256 generated, and the 256 selections at positions 16 through 271 with
+draws 1 through 256 are the rises-by-exactly-one property this entry exists
+to check.
+
+Status: VERIFIED 2026-08-14; re-run 2026-09-04
 
 ## RH.6 Chrome trace in Perfetto
 
@@ -1025,14 +1472,22 @@ lifetimes, and the obs crate installs no subscriber. Spans exist only under
 Command:
 
 ```bash
-$ mkdir -p /tmp/rh6 && cd /tmp/rh6
-$ ~/workspace/ai-experiments/rust-harness/target/release/harness \
+mkdir -p /tmp/rh6 && cd /tmp/rh6
+~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only --trace-chrome trace.json \
     "Reply with the single word: ready"
+cd ~/workspace/ai-experiments/rust-harness
+make trace-check TRACE=/tmp/rh6/trace.json
 ```
 
 Expected signal: `trace.json` loads in Perfetto (ui.perfetto.dev) and shows
 the documented span set with `model.forward` dominating wall-clock.
+`make trace-check` runs `harness/tests/trace_structure.rs` on the file: it
+asserts the count relations the U10 note below predicts, one `model.layer`
+per layer per forward with the block spans equal to it, one `model.load` with
+its stages, the prefill forward without a step, and prints the per-name
+table the Observed blocks below were built from by hand. Without `TRACE`
+the test skips, so `make quality` is not gated on a trace.
 
 Four spans are unconditional on any generation: `session.sync`,
 `session.step`, `sampler.sample`, `model.forward`. Two more —
@@ -1078,7 +1533,100 @@ Chrome trace JSON and carry the documented spans with sane durations. Loading
 one in the UI remains unverified, and is the cheap half of this entry if
 anyone wants it closed strictly.
 
-Status: VERIFIED 2026-08-14
+**U10, 2026-09-04, adds the interior of the forward pass to the trace.** A
+re-run of this command now writes, at the default `--trace-level debug`, one
+`model.layer` span per layer under every `model.forward`, each with
+`model.layer.attn`, `model.layer.mlp` and `model.layer.ple` children, plus
+`model.prelude` and `model.lm_head` per forward, `model.load` with its four
+stages and one `model.load.layer` per layer read, and `tokenizer.encode` per
+prompt. `--trace-level trace` adds `kernel.matmul`, `kernel.attention` and
+`kernel.lm_head`; `--trace-level info` reproduces the shape of the traces
+above. The four per-name totals in the Observed block keep their meaning —
+the info spans are unchanged and the new spans nest inside `model.forward`
+rather than beside it — so the entry stays VERIFIED on those blocks, which
+predate the change. A re-run should show `model.layer` at 42 times the
+`model.forward` count and `model.layer.attn` equal to `model.layer`;
+`docs/rust-harness/observability.md` carries the full table and the Perfetto
+query that replaces the hand aggregation.
+
+Observed (2026-09-04), the same command on the U10 build, aggregated with a
+pasted `json` reader:
+
+```
+[INFO] Prefill: 16 tokens in 1.21 s (13 tok/s)
+[INFO] Session snapshot: 272 cached tokens at /tmp/rh6/session.kv
+
+== rh6 (2026-09-04, --trace-level debug)
+   session.step                256 calls     45.07s
+   model.forward               257 calls     45.00s
+   model.layer               10794 calls     39.71s
+   model.layer.mlp           10794 calls     29.10s
+   model.layer.attn          10794 calls      8.19s
+   model.load                    1 calls      5.48s
+   model.from_checkpoint         1 calls      5.48s
+   model.lm_head               257 calls      5.03s
+   model.load.layer             42 calls      2.80s
+   model.layer.ple           10794 calls      2.34s
+   sampler.sample              256 calls      1.29s
+   session.sync                  1 calls      1.21s
+   model.prelude               257 calls      0.24s
+   checkpoint.read               1 calls      0.00s
+   checkpoint.fingerprint        1 calls      0.00s
+   tokenizer.encode              1 calls      0.00s
+   checkpoint.parse              1 calls      0.00s
+model.layer / model.forward = 10794/257 = 42.0
+kernel spans: 0
+```
+
+Every count the U10 paragraph predicted holds: 257 forwards (256 steps plus
+the prefill), `model.layer` at exactly 42 times that, the three block spans
+equal to it, prelude and LM head at 257, one load with 42 layer reads, one
+tokenizer encode, and no kernel span at the default level. Inside the
+forward, the MLP takes 29.10 s of the 39.71 s of layer time, attention
+8.19 s, PLE 2.34 s, and the LM head 5.03 s. `model.forward` still dominates,
+and the sampler is 2.9 percent of it, the August ratio. That pasted reader
+was promoted the same day to `make trace-check`, which the command block
+now names. Its output on the same trace:
+
+```
+make trace-check TRACE=/tmp/rh6/trace.json
+HARNESS_TRACE="/tmp/rh6/trace.json" cargo test -p harness --test trace_structure -- --nocapture
+   Compiling runtime v0.1.0 (/home/alejandro/workspace/ai-experiments/rust-harness/runtime)
+   Compiling harness v0.1.0 (/home/alejandro/workspace/ai-experiments/rust-harness/harness)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.92s
+     Running tests/trace_structure.rs (target/debug/deps/trace_structure-fa0ba0cfa73184e5)
+
+running 1 test
+[INFO] session.step                256 calls     45.07s
+[INFO] model.forward               257 calls     45.00s
+[INFO] model.layer               10794 calls     39.71s
+[INFO] model.layer.mlp           10794 calls     29.10s
+[INFO] model.layer.attn          10794 calls      8.19s
+[INFO] model.load                    1 calls      5.48s
+[INFO] model.from_checkpoint         1 calls      5.48s
+[INFO] model.lm_head               257 calls      5.03s
+[INFO] model.load.layer             42 calls      2.80s
+[INFO] model.layer.ple           10794 calls      2.34s
+[INFO] sampler.sample              256 calls      1.29s
+[INFO] session.sync                  1 calls      1.21s
+[INFO] model.prelude               257 calls      0.24s
+[INFO] checkpoint.read               1 calls      0.00s
+[INFO] checkpoint.fingerprint        1 calls      0.00s
+[INFO] tokenizer.encode              1 calls      0.00s
+[INFO] checkpoint.parse              1 calls      0.00s
+[INFO] forwards exceed steps by one: the run stopped on its token budget
+[INFO] session.sync args {"cached_len": "0"}
+[INFO] first model.forward args {"len": "16", "start": "0"}
+[INFO] layers 42, forwards 257, model.layer / model.forward = 42.0
+[INFO] kernel spans absent: a debug-level trace
+test a_chrome_trace_from_a_real_run_has_the_documented_span_shape ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.77s
+```
+
+Loading the file in the Perfetto UI remains the unverified half.
+
+Status: VERIFIED 2026-08-14; re-run 2026-09-04 with U10 spans
 
 ## RH.7 rr record, replay, reverse-continue
 
@@ -1101,9 +1649,9 @@ workstation runs; see the Observed block.
 Command:
 
 ```bash
-$ cd rust-harness
-$ make debug-record ARGS='--model fixtures/tiny-gemma4 "Reply with the single word: ready"'
-$ make debug-replay
+cd rust-harness
+make debug-record ARGS='--model fixtures/tiny-gemma4 "Reply with the single word: ready"'
+make debug-replay
 ```
 
 Inside the rr/gdb session:
@@ -1120,8 +1668,8 @@ this entry said `break cpu.rs:forward_one` followed by `watch -l logits[0]`,
 and that sequence cannot work: `forward_one` is declared at `cpu.rs:2703`,
 while `logits` is a local of a different function, declared at `cpu.rs:3174`
 inside the tied-head projection loop. The watchpoint has nothing to resolve
-against at the `forward_one` frame. Breaking at `cpu.rs:3186`, just after
-`fill_dots(...)`, puts `logits` in scope.
+against at the `forward_one` frame. Breaking at `cpu.rs:3186`, the
+`fill_dots(` call that fills it, puts `logits` in scope.
 
 `release-with-debug` (`rust-harness/Cargo.toml:7-9`) inherits `release`, so it
 is fully optimized and locals may print `<optimized out>`. If they do, rebuild
@@ -1171,9 +1719,9 @@ The full agent loop (permissions, tools, transcript) on real weights.
 Command:
 
 ```bash
-$ mkdir -p /tmp/rh8 && cd /tmp/rh8
-$ printf 'rules:\n  - tool: "*"\n    action: allow\n' > permissions.yaml
-$ ~/workspace/ai-experiments/rust-harness/target/release/harness \
+mkdir -p /tmp/rh8 && cd /tmp/rh8
+printf 'rules:\n  - tool: "*"\n    action: allow\n' > permissions.yaml
+~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only \
     "Create a file named hello.txt containing the word hello, then read it back"
 ```
@@ -1215,7 +1763,8 @@ with a separable attribute; record which dataset was used.
   Python-capture fingerprints, but no longer because the vocabulary came from
   a different container. Both sides now read the same checkpoint. It is a
   sha256 over the model path and vocabulary size with no chat template
-  (`activation-capture.rs:188-194`), so it identifies a rust capture rather
+  (computed at `activation-capture.rs:279`, written into the manifest at
+  `:305`), so it identifies a rust capture rather
   than describing a tokenizer, and probe training on rust captures must still
   go through artifacts produced by this chain only.
 
@@ -1224,12 +1773,12 @@ with a separable attribute; record which dataset was used.
 Command:
 
 ```bash
-$ cd rust-harness
-$ cargo run --release -p runtime --bin activation-capture -- \
+cd rust-harness
+cargo run --release -p runtime --bin activation-capture -- \
     --model /mnt/ai-data/models/hf/<e4b> --text-only \
     --dataset interp/probes/prompts/refusal.jsonl --layers 8,16,24 \
     --out /mnt/ai-data/interp/captures/rust-e4b-verify
-$ uv run python -c "from interp.probes.capture import load_capture; \
+uv run python -c "from interp.probes.capture import load_capture; \
     acts, labels, texts = load_capture('/mnt/ai-data/interp/captures/rust-e4b-verify'); \
     print(sorted(acts), {k: v.shape for k, v in acts.items()}, len(labels), len(texts))"
 ```
@@ -1305,8 +1854,8 @@ Status: VERIFIED 2026-08-14
 Command:
 
 ```bash
-$ cd ~/workspace/ai-experiments
-$ make probe-train ARGS="--capture /mnt/ai-data/interp/captures/rust-e4b-verify \
+cd ~/workspace/ai-experiments
+make probe-train ARGS="--capture /mnt/ai-data/interp/captures/rust-e4b-verify \
     --name rust-e4b-verify-probe"
 ```
 
@@ -1351,17 +1900,17 @@ Status: VERIFIED 2026-08-14
 Command:
 
 ```bash
-$ rm -rf /tmp/rh9 && mkdir -p /tmp/rh9/base /tmp/rh9/mon
-$ make probe-export ARGS="--probe /mnt/ai-data/interp/probes/rust-e4b-verify-probe \
+rm -rf /tmp/rh9 && mkdir -p /tmp/rh9/base /tmp/rh9/mon
+make probe-export ARGS="--probe /mnt/ai-data/interp/probes/rust-e4b-verify-probe \
     --out /tmp/rh9/probe.safetensors"
-$ cd /tmp/rh9/base && ~/workspace/ai-experiments/rust-harness/target/release/harness \
+cd /tmp/rh9/base && ~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only "The capital of France is"
-$ cd /tmp/rh9/mon && ~/workspace/ai-experiments/rust-harness/target/release/harness \
+cd /tmp/rh9/mon && ~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only --probe /tmp/rh9/probe.safetensors \
     "The capital of France is"
-$ diff /tmp/rh9/base/session.jsonl /tmp/rh9/mon/session.jsonl; echo "diff exit: $?"
-$ wc -l /tmp/rh9/mon/probe-flags.jsonl
-$ head -3 /tmp/rh9/mon/probe-flags.jsonl
+diff /tmp/rh9/base/session.jsonl /tmp/rh9/mon/session.jsonl; echo "diff exit: $?"
+wc -l /tmp/rh9/mon/probe-flags.jsonl
+head -3 /tmp/rh9/mon/probe-flags.jsonl
 ```
 
 **Create both directories before exporting, and `rm -rf` first.** Two ordering
@@ -1415,7 +1964,7 @@ runbook tests that, and it is the property every in-band interp claim rests
 on: a monitor that perturbed generation would make its own observations
 unfalsifiable.
 
-The identity guard was armed rather than skipped. `main.rs:191-200` compares
+The identity guard was armed rather than skipped. `main.rs:212-228` compares
 the probe's `model_hash` against the sha256 of the served
 `model.safetensors` and checks the probe width against `embed_dim`; both
 passed with no `[WARN]`, which is only possible because RH.9a recorded a real
@@ -1450,12 +1999,12 @@ Command (using an existing exported control vector, or one extracted from
 rust captures via `interp/steering`):
 
 ```bash
-$ mkdir -p /tmp/rh9/steer1 /tmp/rh9/steer2
-$ cd /tmp/rh9/steer1 && ~/workspace/ai-experiments/rust-harness/target/release/harness \
+mkdir -p /tmp/rh9/steer1 /tmp/rh9/steer2
+cd /tmp/rh9/steer1 && ~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only \
     --control-vector <vector-dir>/vector.safetensors --control-vector-scale 1.0 \
     "Describe your day in two sentences"
-$ cd /tmp/rh9/steer2 && ~/workspace/ai-experiments/rust-harness/target/release/harness \
+cd /tmp/rh9/steer2 && ~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only \
     --control-vector <vector-dir>/vector.safetensors --control-vector-scale 1.0 \
     "Describe your day in two sentences"
@@ -1495,8 +2044,8 @@ Command (the `make flame` target takes no arguments, so the underlying
 command is invoked directly with the trailing binary arguments):
 
 ```bash
-$ cd rust-harness
-$ cargo flamegraph --profile release-with-debug --bin harness -- \
+cd rust-harness
+cargo flamegraph --profile release-with-debug --bin harness -- \
     --model /mnt/ai-data/models/hf/<e4b> --text-only "Reply with the single word: ready"
 ```
 
@@ -1584,8 +2133,8 @@ trimmed from the reply. Record which behavior is observed.
 Command (three or more turns, then EOF or `/quit`):
 
 ```bash
-$ mkdir -p /tmp/rh11 && cd /tmp/rh11
-$ ~/workspace/ai-experiments/rust-harness/target/release/harness \
+mkdir -p /tmp/rh11 && cd /tmp/rh11
+~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only --chat \
     --trace-chrome trace.json --max-tokens 128
 ```
@@ -1625,11 +2174,11 @@ binary whose seeded generation matches the host build.
 Command:
 
 ```bash
-$ cd ~/workspace/ai-experiments
-$ make harness-build
-$ make harness-run ARGS='--model /app/models/hf/<e4b> --text-only --seed 7 "Reply with the single word: ready"'
-$ mkdir -p /tmp/rh12 && cd /tmp/rh12
-$ ~/workspace/ai-experiments/rust-harness/target/release/harness \
+cd ~/workspace/ai-experiments
+make harness-build
+make harness-run ARGS='--model /app/models/hf/<e4b> --text-only --seed 7 "Reply with the single word: ready"'
+mkdir -p /tmp/rh12 && cd /tmp/rh12
+~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only --seed 7 \
     "Reply with the single word: ready"
 ```
@@ -1714,14 +2263,14 @@ default log root on the workstation.
 Command (a normal run, then a forced failure, then inspection):
 
 ```bash
-$ mkdir -p /tmp/rh13 && cd /tmp/rh13
-$ ~/workspace/ai-experiments/rust-harness/target/release/harness \
+mkdir -p /tmp/rh13 && cd /tmp/rh13
+~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only \
     "Reply with the single word: ready"
-$ ~/workspace/ai-experiments/rust-harness/target/release/harness \
+~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /nonexistent-checkpoint "task" ; echo "exit: $?"
-$ tail -2 /mnt/ai-data/logs/harness/runs.jsonl
-$ cd ~/workspace/ai-experiments && uv run python -c "
+tail -2 /mnt/ai-data/logs/harness/runs.jsonl
+cd ~/workspace/ai-experiments && uv run python -c "
 from common.obs import catalog
 rows = catalog.read_runs(catalog.catalog_path('harness'))
 for r in rows[-2:]:
@@ -1815,12 +2364,12 @@ CPU reply can exceed it.
 Command (server in one shell, client in another):
 
 ```bash
-$ cd rust-harness && cargo build --release --bin harness
-$ ./target/release/harness --model <e4b-checkpoint-dir> --text-only --serve 8005
+cd rust-harness && cargo build --release --bin harness
+./target/release/harness --model <e4b-checkpoint-dir> --text-only --serve 8005
 ```
 
 ```bash
-$ .venv/bin/python -c "
+.venv/bin/python -c "
 from common import serving
 s = serving.SERVICES['harness']
 print('healthy in', serving.wait_healthy(s), 's')
@@ -1926,11 +2475,11 @@ one exported before R10 is a GGUF that no longer loads. Re-export it with
 `make steer-extract`.
 
 ```bash
-$ make harness-build
-$ make steer-up VECTOR=/mnt/ai-data/interp/vectors/<name> SCALE=1.0
-$ make steer-scorecard VECTOR=/mnt/ai-data/interp/vectors/<name> \
+make harness-build
+make steer-up VECTOR=/mnt/ai-data/interp/vectors/<name> SCALE=1.0
+make steer-scorecard VECTOR=/mnt/ai-data/interp/vectors/<name> \
     ATTRIBUTE="<behavior the judge scores>"
-$ make steer-down
+make steer-down
 ```
 
 Expected signal: the three arms complete and the scorecard writes its report,
@@ -2031,9 +2580,9 @@ echo "exit=$?"
 ```
 
 Expected: (1) exit 0, with `[OK] backend compatibility: supported` and a
-config line naming **42 layers** — the same count RH.2's run header reports,
-which is what cross-checks that the preflight read the checkpoint the run
-reads. (2) `0` bytes on stdout. (3) exit 1, with one `[ERROR] model directory`
+config line naming **42 layers** — the same count RH.1's dump reports
+("uniform 10240 across 42 layers"), which is what cross-checks that the
+preflight read the checkpoint the run reads. (2) `0` bytes on stdout. (3) exit 1, with one `[ERROR] model directory`
 line and the rest `[SKIP]`; exit 2 there would mean the mode misread a valid
 command line, which is a different defect. (4c) exit 0 with `[OK] probe
 identity: matches the served weights`, `[OK] probe geometry`, and an elapsed
@@ -2163,6 +2712,8 @@ unconfirmed rather than observed — a repeat against a warm target directory
 would settle it, and until then the honest statement is that `--deep` reads the
 weights once, evidenced by the matching digest rather than by the clock.
 
+Status: VERIFIED 2026-08-15
+
 ## RH.17 The CPU backend past E4B's real sliding window
 
 Implementation: `rust-harness/runtime/src/ladder.rs`,
@@ -2191,7 +2742,7 @@ MODEL=<the gemma-4-E4B checkpoint directory>
 
 # 1. generate the reference. It writes long_context.json into the reference
 #    directory the ladder reads for this SIZE.
-python3 fixtures/reference_long_context.py --model "$MODEL" \
+uv run python fixtures/reference_long_context.py --model "$MODEL" \
   --out fixtures/reference/e4b/quick/long_context.json
 
 # 2. the whole climb, L5 included
@@ -2244,20 +2795,32 @@ cd ~/workspace/ai-experiments/rust-harness
 MODEL=<the gemma-4-E4B checkpoint directory>
 mkdir -p /tmp/rh18
 
-# a prompt past the 512-token window: the first ~3000 words of the corpus
+# a prompt past the 512-token window: the first ~2100 words of the corpus
 PROMPT=$(head -c 12000 fixtures/reference/corpus.txt)
 
-# layers 0 and 1 straddle the schedule; head 0 of each
+# sliding layers 0, 1 and 20, global layer 41 (the schedule puts a global
+# layer at 5, 11, ..., 41); head 0 of each. --out is a directory: the tool
+# writes attention.npz and manifest.json into it.
 cargo run --release -q -p runtime --bin attention-capture -- --text-only \
   --model "$MODEL" --prompt "$PROMPT" --layers 0,1,20,41 --heads 0 \
-  --out /tmp/rh18/attn.json
+  --out /tmp/rh18/attn
 echo "exit=$?"
 
-# 1. every row sums to one, to float tolerance
-python3 - <<'PY'
-import json
-d = json.load(open("/tmp/rh18/attn.json"))
-print(json.dumps({k: v for k, v in d.items() if k != "rows"}, indent=2)[:800])
+# 1. the manifest, then row mass and the zeros outside each row's span.
+#    span_first_layer_<l> names the first visible key per query row; the
+#    matrix is dense, so everything left of it is a structural zero.
+cat /tmp/rh18/attn/manifest.json
+uv run python - <<'PY'
+import numpy as np
+z = np.load("/tmp/rh18/attn/attention.npz")
+for l in (0, 1, 20, 41):
+    m, first = z[f"layer_{l}_head_0"], z[f"span_first_layer_{l}"]
+    n = m.shape[0]
+    mass = np.abs(m.sum(axis=1) - 1.0).max()
+    outside = max(np.abs(m[i, :first[i]]).max(initial=0.0) for i in range(n))
+    width = int((np.arange(n) - first + 1).max())
+    print(f"layer {l}: rows {n}, worst |row sum - 1| {mass:.2e}, "
+          f"max weight outside span {outside}, widest span {width}")
 PY
 
 # 2. the per-layer sliding/global verdict the checkpoint declares
@@ -2280,8 +2843,10 @@ approximate: a masked position is `-inf` before the softmax, so it comes out
 as a large negative number rather than an infinity, which is a different
 implementation with a different failure mode at long context.
 
-If the capture's JSON does not name the span per row, record what it does name
-and treat the schedule check as unmet rather than inferring it.
+The widest span the script prints is the schedule verdict: 512 on a sliding
+layer, the full prompt length on a global one. If it disagrees with what
+`checkpoint-info` reports for the same layer index, record both and treat the
+schedule check as unmet rather than inferring it.
 
 Observed:
 
@@ -2443,7 +3008,7 @@ mkdir -p /tmp/rh21
 # 1. the reference capture, from transformers. --prompt is required: the
 #    residual stream is per-position, so the capture is only defined against
 #    a stated input, and the same text must reach layer-diff.
-python3 fixtures/reference_capture.py --model "$MODEL" \
+uv run python fixtures/reference_capture.py --model "$MODEL" \
   --prompt "The three states of matter are" \
   --out /tmp/rh21/capture.json
 
@@ -2844,5 +3409,3 @@ is a decision rather than an oversight.
 | Widened blocks against stored-row folding | `rust-harness/runtime/src/tensor.rs::a_widened_block_is_bit_identical_to_folding_the_stored_rows` |
 | Rewindability invariants across stepped and batched runs | `rust-harness/runtime/src/conformance.rs` |
 | Colour helper as a pure function | `rust-harness/runtime/tests/status_python_parity.rs` |
-
-Status: VERIFIED 2026-08-15

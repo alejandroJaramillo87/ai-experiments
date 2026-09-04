@@ -105,19 +105,19 @@ Host-side, on the workstation:
 
 ```bash
 # Unit suite (also runs in the sandbox)
-$ make test
+make test
 
 # Overlap: prefetcher on (recipe defaults) versus off, compare mean data_wait_ms
-$ make train CONFIG=training/recipes/reference/pretrain-150m.yaml
-$ make train CONFIG=training/recipes/reference/pretrain-150m.yaml \
+make train CONFIG=training/recipes/reference/pretrain-150m.yaml
+make train CONFIG=training/recipes/reference/pretrain-150m.yaml \
     ARGS="data.workers=0 data.pin_memory=false" 
 
 # Affinity: disjoint masks visible from the host while a pinned run is active
-$ taskset -pc <main-pid>
-$ taskset -pc <worker-pid>
+taskset -pc <main-pid>
+taskset -pc <worker-pid>
 
 # Lock: second run and serve_eval must refuse while a run is active
-$ make train CONFIG=...   # while another run holds the lock
+make train CONFIG=...   # while another run holds the lock
 ```
 
 Pass criteria: mean `data_wait_ms` under 5 percent of mean step time on the

@@ -377,14 +377,14 @@ consequences for this tier are covered under the freeze filter above.
 The safetensors transcript regenerates on the workstation with no GPU and no network:
 
 ```bash
-$ ./scripts/models/gemma4_header_transcript.sh
+./scripts/models/gemma4_header_transcript.sh
 ```
 
 The upstream sources behind [Resolved from upstream source](#resolved-from-upstream-source)
 are fetched at their pinned SHAs by a second script, which needs no workstation:
 
 ```bash
-$ ./scripts/models/upstream_source_transcript.sh --out docs/models/gemma4-upstream.txt
+./scripts/models/upstream_source_transcript.sh --out docs/models/gemma4-upstream.txt
 ```
 
 Parameter totals recompute from the tensor inventory in that transcript by summing the product

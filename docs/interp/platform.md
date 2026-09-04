@@ -56,19 +56,19 @@ upstream's 3000 to 3001 because open-webui holds 3000.
 From a clean machine state:
 
 ```bash
-$ make np-clone      # clone/pin the checkout (idempotent, discards local edits)
-$ make np-build      # build images; runs np-env first (NEXT_PUBLIC_* is build-time)
-$ make np-up         # webapp + postgres + db-init
-$ make np-smoke      # loopback bindings, webapp, postgres, sm_120 when GPU instance up
+make np-clone      # clone/pin the checkout (idempotent, discards local edits)
+make np-build      # build images; runs np-env first (NEXT_PUBLIC_* is build-time)
+make np-up         # webapp + postgres + db-init
+make np-smoke      # loopback bindings, webapp, postgres, sm_120 when GPU instance up
 ```
 
 GPU services, each behind the concurrency preflight:
 
 ```bash
-$ make np-inference-up                 # MODEL_SOURCESET=gemma-2-2b-it.gemmascope-res-16k default
-$ make np-graph-up                     # attribution graph server
-$ make np-autointerp-up                # CPU by default; NP_GPU=1 attaches the GPU
-$ make np-down                         # stop everything; database and caches persist
+make np-inference-up                 # MODEL_SOURCESET=gemma-2-2b-it.gemmascope-res-16k default
+make np-graph-up                     # attribution graph server
+make np-autointerp-up                # CPU by default; NP_GPU=1 attaches the GPU
+make np-down                         # stop everything; database and caches persist
 ```
 
 Database backup: `make np-down`, then snapshot `/mnt/ai-data/interp/neuronpedia/postgres`.
@@ -97,9 +97,9 @@ and runs the standard preflight (vllm-gpu down); the two modes are mutually excl
 Start order:
 
 ```bash
-$ docker compose up -d vllm-gpu    # or make gpu-up; creates ai-network
-$ make np-up                       # webapp + postgres
-$ make np-autointerp-up            # serving preflight, then autointerp on 127.0.0.1:5003
+docker compose up -d vllm-gpu    # or make gpu-up; creates ai-network
+make np-up                       # webapp + postgres
+make np-autointerp-up            # serving preflight, then autointerp on 127.0.0.1:5003
 ```
 
 Operational facts:
@@ -132,9 +132,9 @@ verification items: `docs/interp/investigations/ps5_attribution_graphs_investiga
 Start order:
 
 ```bash
-$ make np-up          # webapp + postgres
-$ make np-graph-up    # preflight, then graph server on 127.0.0.1:5004
-$ make np-smoke       # includes the sm_120 torch check inside the graph container
+make np-up          # webapp + postgres
+make np-graph-up    # preflight, then graph server on 127.0.0.1:5004
+make np-smoke       # includes the sm_120 torch check inside the graph container
 ```
 
 Operational facts:
