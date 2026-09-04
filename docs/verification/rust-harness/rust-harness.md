@@ -1052,9 +1052,8 @@ gave. Still one unpinned run, so still a scale check and not a baseline; the
 trace at `/tmp/rh3/trace.json` is the figure of record if RH.6 is re-aggregated.
 
 The `复制` on the reply's last line is the model's own token, not a decoding
-fault, and RH.2 check 2 is now the way to establish that with a number rather
-than an argument: record this run and audit it, and the last row of the
-report gives `复制`'s rank under `transformers` at that position. Sampling is
+fault, and RH.2 check 2 established that with a number rather than an
+argument; the audit of this exact run is recorded below. Sampling is
 seeded, and the cached-token count is the same 134 as the
 2026-08-14 run, so the earlier reply ended on the same token and the paste
 dropped it. `复制` is "copy" — the label on the copy button beside code blocks
@@ -1079,6 +1078,39 @@ was sampled from a distribution L2 and L4 show agrees with `transformers`, so
 the reference emits it too; and it occurs exactly once, immediately after the
 code block closes, where a tokenizer or decoding defect would not confine
 itself to one position.
+
+Observed (2026-09-04, the same run recorded with `--record` and audited by
+RH.2 check 2's `audit_recording.py`; the reply was byte-identical again and
+is not repeated):
+
+```
+[OK] Recording: 134 tokens, 115 logit rows, 115 selections, sampling {'temperature': 0.8, 'top_p': 0.95, 'top_k': None, 'seed': 0}
+[RUN] Forward pass: 134 positions, teacher-forced
+[OK] Distributions: 115 positions, mean kl 0.000000 (<= 0.001), worst kl 0.000000 (<= 0.005) at position 19, argmax agreement 1.0000 (>= 0.98), worst top-50 overlap 1.0000 (>= 0.98)
+[OK] Chosen tokens: 115, 114 within the reference's top-50, worst rank 54 at position 133, last token '<eos>' rank 2 p=0.3074
+  position  133 rank     54 p=0.0024 '复制'
+  position   30 rank     21 p=0.0060 ' _'
+  position   29 rank     18 p=0.0062 'def'
+  position   21 rank     17 p=0.0091 ' program'
+  position   79 rank     10 p=0.0089 ' g'
+```
+
+The JSON report puts the mean KL at 6.3e-11 nats and the worst at 4.4e-10,
+against a `transformers` 5.13.1 float32 forward pass: the two engines agree
+at every one of the 115 positions to the summation-order floor, ten thousand
+times inside the L2 tolerance, with the argmax and the top-50 set identical
+throughout. `transformers` generated nothing here; it was teacher-forced on
+the harness's sequence and asked what it predicted at each position. So
+`复制` is a token the reference itself offers at position 133, at 0.24
+percent and rank 54 of 262144, one draw in about four hundred, and the next
+draw was `<eos>` at rank 2 with 31 percent: the copy button, then the page
+ends. The harness showed the token because it sampled and seed 0 landed
+there; every earlier `transformers` run was greedy, and a rank-54 token
+cannot appear in a greedy output from either engine. Every structural token
+of the program sat at rank 1 in the 80 to 99 percent range; the five
+lowest-ranked draws are all naming choices. The distribution is the
+checkpoint's, the sampler drew from it, and this entry's last token is
+closed as a fact about Gemma 4's pretraining corpus.
 
 Status: VERIFIED 2026-09-04 (first decided 2026-08-14)
 
