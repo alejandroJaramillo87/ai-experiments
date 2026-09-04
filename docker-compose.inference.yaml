@@ -17,8 +17,23 @@ services:
     environment:
       - SERVER_PORT=8001
       - MODEL_PATH=${LLAMA_CPU_MODEL:-${LLAMA_ZEN5_MODEL}}
-      - THREADS=16
-      - THREADS_BATCH=16
+      # Interpolated, not literal, because `bench run --arm t12:THREADS=12` sets this in
+      # the compose subprocess environment and a literal would swallow it -- both arms
+      # would run 16 and the comparison would report a clean null on an A/B that measured
+      # nothing. The two stay independent rather than the batch size defaulting to the
+      # thread count, because they drive different llama-server flags -- --threads is the
+      # decode lever and --threads-batch the prompt-processing one -- so an arm that means
+      # to move both says so (`--arm t12:THREADS=12,THREADS_BATCH=12`).
+      - THREADS=${THREADS:-16}
+      - THREADS_BATCH=${THREADS_BATCH:-16}
+      # Weight repacking (docker/llama-cpu/entrypoint.cpu.sh) as an A/B arm. The
+      # entrypoint has always read NO_REPACK; without this line the variable never
+      # crossed into the container and the arm was inert.
+      - NO_REPACK=${NO_REPACK:-true}
+      # Hugepage wrapper (docker/llama-cpu/entrypoint.cpu.sh) as an A/B arm rather than a
+      # constant: HUGEPAGES=off runs the same image without the LD_PRELOAD, which is the
+      # control arm `python -m bench` compares against.
+      - HUGEPAGES=${HUGEPAGES:-on}
     ports:
       - "127.0.0.1:8001:8001"
     read_only: true
