@@ -1380,8 +1380,29 @@ the earlier `positions 14 -> 269` line is not comparable to this run's.
 
 The throwaway test was promoted after this run to
 `runtime/tests/recording_replay.rs` and `make replay-check`, which is what
-the command block above now names. Its output on this recording goes here
-when the operator runs it.
+the command block above now names. Its output on the same recording:
+
+```
+make replay-check RECORDING=/tmp/rh5/flight.jsonl
+HARNESS_RECORDING="/tmp/rh5/flight.jsonl" cargo test -p runtime --test recording_replay -- --nocapture
+   Compiling runtime v0.1.0 (/home/alejandro/workspace/ai-experiments/rust-harness/runtime)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.21s
+     Running tests/recording_replay.rs (target/debug/deps/recording_replay-6da1c563474570e4)
+
+running 1 test
+[INFO] sampling: SamplingProvenance { temperature: 0.8, top_p: 0.95, top_k: Some(40), seed: 1 }
+[INFO] script: 272 positions, vocab 262144
+[INFO] selections: 256 at positions 16..=271, draws 1..=256
+test a_flight_recording_replays_as_a_script_and_states_its_selections ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.71s
+```
+
+The sampling line matches the command (`top_k 40`, `seed 1`, and `top_p` at
+its 0.95 default), the 272 scripted positions are the 16-token prompt plus
+the 256 generated, and the 256 selections at positions 16 through 271 with
+draws 1 through 256 are the rises-by-exactly-one property this entry exists
+to check.
 
 Status: VERIFIED 2026-08-14; re-run 2026-09-04
 
