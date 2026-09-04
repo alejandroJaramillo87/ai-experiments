@@ -1225,6 +1225,50 @@ The two syncs cost about the same for the same 17 positions, 1.29 s against
 instead of none. The token counts (234 restored, 507 after) reproduce the
 earlier run exactly, as a seeded sampler should.
 
+Observed (2026-09-04, `make trace-check` on the same turn-2 trace):
+
+```
+make trace-check TRACE=/tmp/rh4/turn2.json
+HARNESS_TRACE="/tmp/rh4/turn2.json" cargo test -p harness --test trace_structure -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.02s
+     Running tests/trace_structure.rs (target/debug/deps/trace_structure-fa0ba0cfa73184e5)
+
+running 1 test
+[INFO] model.forward               257 calls     48.05s
+[INFO] session.step                256 calls     47.89s
+[INFO] model.layer               10794 calls     42.75s
+[INFO] model.layer.mlp           10794 calls     29.29s
+[INFO] model.layer.attn          10794 calls     11.04s
+[INFO] model.load                    1 calls      5.47s
+[INFO] model.from_checkpoint         1 calls      5.47s
+[INFO] model.lm_head               257 calls      5.04s
+[INFO] model.load.layer             42 calls      2.78s
+[INFO] model.layer.ple           10794 calls      2.34s
+[INFO] session.sync                  1 calls      1.45s
+[INFO] sampler.sample              256 calls      1.28s
+[INFO] model.prelude               257 calls      0.24s
+[INFO] checkpoint.read               1 calls      0.00s
+[INFO] tokenizer.encode              1 calls      0.00s
+[INFO] checkpoint.fingerprint        1 calls      0.00s
+[INFO] checkpoint.parse              1 calls      0.00s
+[INFO] forwards exceed steps by one: the run stopped on its token budget
+[INFO] session.sync args {"cached_len": "234"}
+[INFO] first model.forward args {"len": "17", "start": "234"}
+[INFO] layers 42, forwards 257, model.layer / model.forward = 42.0
+[INFO] kernel spans absent: a debug-level trace
+test a_chrome_trace_from_a_real_run_has_the_documented_span_shape ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.77s
+```
+
+The two args lines are the delta evidence this entry asks for, read by the
+committed test rather than a pasted script: the sync restored 234 tokens and
+its forward ran `start 234, len 17`. The per-name table adds the other half
+of the KV claim. Against the RH.6 run of the same length in a fresh session,
+attention took 11.04 s here against 8.19 s there, the 234 cached keys every
+step attends over, while the MLP is unchanged at 29.3 s: prefill cost scales
+with the delta, attention cost with the context.
+
 Observed (2026-09-04), turn 1 re-run with `--record` in a clean directory and
 the recording audited against `transformers` (the RH.2 check 2 procedure), to
 settle whether the `回答：` ("Answer:") line the reply opens with is a
@@ -1542,7 +1586,44 @@ forward, the MLP takes 29.10 s of the 39.71 s of layer time, attention
 8.19 s, PLE 2.34 s, and the LM head 5.03 s. `model.forward` still dominates,
 and the sampler is 2.9 percent of it, the August ratio. That pasted reader
 was promoted the same day to `make trace-check`, which the command block
-now names; its output on this trace goes here when the operator runs it.
+now names. Its output on the same trace:
+
+```
+make trace-check TRACE=/tmp/rh6/trace.json
+HARNESS_TRACE="/tmp/rh6/trace.json" cargo test -p harness --test trace_structure -- --nocapture
+   Compiling runtime v0.1.0 (/home/alejandro/workspace/ai-experiments/rust-harness/runtime)
+   Compiling harness v0.1.0 (/home/alejandro/workspace/ai-experiments/rust-harness/harness)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.92s
+     Running tests/trace_structure.rs (target/debug/deps/trace_structure-fa0ba0cfa73184e5)
+
+running 1 test
+[INFO] session.step                256 calls     45.07s
+[INFO] model.forward               257 calls     45.00s
+[INFO] model.layer               10794 calls     39.71s
+[INFO] model.layer.mlp           10794 calls     29.10s
+[INFO] model.layer.attn          10794 calls      8.19s
+[INFO] model.load                    1 calls      5.48s
+[INFO] model.from_checkpoint         1 calls      5.48s
+[INFO] model.lm_head               257 calls      5.03s
+[INFO] model.load.layer             42 calls      2.80s
+[INFO] model.layer.ple           10794 calls      2.34s
+[INFO] sampler.sample              256 calls      1.29s
+[INFO] session.sync                  1 calls      1.21s
+[INFO] model.prelude               257 calls      0.24s
+[INFO] checkpoint.read               1 calls      0.00s
+[INFO] checkpoint.fingerprint        1 calls      0.00s
+[INFO] tokenizer.encode              1 calls      0.00s
+[INFO] checkpoint.parse              1 calls      0.00s
+[INFO] forwards exceed steps by one: the run stopped on its token budget
+[INFO] session.sync args {"cached_len": "0"}
+[INFO] first model.forward args {"len": "16", "start": "0"}
+[INFO] layers 42, forwards 257, model.layer / model.forward = 42.0
+[INFO] kernel spans absent: a debug-level trace
+test a_chrome_trace_from_a_real_run_has_the_documented_span_shape ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.77s
+```
+
 Loading the file in the Perfetto UI remains the unverified half.
 
 Status: VERIFIED 2026-08-14; re-run 2026-09-04 with U10 spans
