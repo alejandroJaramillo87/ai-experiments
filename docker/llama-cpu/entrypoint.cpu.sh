@@ -35,13 +35,89 @@ CACHE_TYPE_V=${CACHE_TYPE_V:-""}
 KV_UNIFIED=${KV_UNIFIED:-false}
 CTX_CHECKPOINTS=${CTX_CHECKPOINTS:-""}
 JINJA_ENABLED=${JINJA_ENABLED:-false}
+# Model must exist before the server tries to map it: a missing file surfaces as an
+# opaque loader failure minutes into startup otherwise.
+if [[ ! -f "$MODEL_PATH" ]]; then
+    echo "[ERROR] Model file not found: ${MODEL_PATH}" >&2
+    exit 1
+fi
+
+# OpenMP thread count follows THREADS so the cpuset, the server's --threads, and the
+# OpenMP pool all describe the same core budget.
+export OMP_NUM_THREADS="${THREADS}"
+
+# The hugepage wrapper is a measured arm, not a constant. Benchmarking it means running
+# this same image with HUGEPAGES=off, so the preload is conditional rather than baked in
+# (docs/optimizations/README.md, scripts/benchmark -> python -m bench).
+HUGEPAGES=${HUGEPAGES:-on}
+if [[ "$HUGEPAGES" == "on" ]]; then
+    export LD_PRELOAD="/app/libzen5_optimizer.so${LD_PRELOAD:+:$LD_PRELOAD}"
+fi
+
+# Base arguments: the required flags, plus the two that are always passed.
+# --flash-attn is explicit because upstream's default is now "auto"; --metrics exposes
+# the Prometheus endpoint unconditionally.
+CMD_ARGS=(
+    "./server"
+    "--model" "$MODEL_PATH"
+    "--host" "$SERVER_HOST"
+    "--port" "$SERVER_PORT"
+    "--n-gpu-layers" "$N_GPU_LAYERS"
+    "--ctx-size" "$CTX_SIZE"
+    "--batch-size" "$BATCH_SIZE"
+    "--ubatch-size" "$UBATCH_SIZE"
+    "--threads" "$THREADS"
+    "--threads-batch" "$THREADS_BATCH"
+    "--threads-http" "$THREADS_HTTP"
+    "--flash-attn" "$FLASH_ATTN"
+    "--metrics"
+)
+
+# Feature flags: appended only when their condition holds, so unsetting one restores
+# the server's own default rather than passing an explicit negation.
+if [[ "$CACHE_REUSE" -gt 0 ]]; then
+    CMD_ARGS+=("--cache-reuse" "$CACHE_REUSE")
+fi
+
+if [[ "$CONT_BATCHING" == "true" ]]; then
+    CMD_ARGS+=("--cont-batching")
+fi
+
+if [[ "$MLOCK" == "true" ]]; then
+    CMD_ARGS+=("--mlock")
+fi
+
+if [[ "$NO_REPACK" == "true" ]]; then
+    CMD_ARGS+=("--no-repack")
+fi
+
+# Advanced knobs: appended only when explicitly set.
+if [[ -n "$CACHE_TYPE_K" ]]; then
+    CMD_ARGS+=("--cache-type-k" "$CACHE_TYPE_K")
+fi
+
+if [[ -n "$CACHE_TYPE_V" ]]; then
+    CMD_ARGS+=("--cache-type-v" "$CACHE_TYPE_V")
+fi
+
+if [[ "$KV_UNIFIED" == "true" ]]; then
+    CMD_ARGS+=("--kv-unified")
+fi
+
+if [[ -n "$CTX_CHECKPOINTS" ]]; then
+    CMD_ARGS+=("--ctx-checkpoints" "$CTX_CHECKPOINTS")
+fi
+
+if [[ "$JINJA_ENABLED" == "true" ]]; then
+    CMD_ARGS+=("--jinja")
+fi
 
 echo "[HUGEPAGES] Starting llama-server (AVX-512 + hugepage optimization)"
 echo "[HUGEPAGES] Configuration:"
 echo "  - Architecture: znver5 (Zen 5 native)"
 echo "  - BLAS: Disabled"
 echo "  - AVX-512: Enabled (VNNI, VBMI, BF16)"
-echo "  - Hugepages: Enabled (zen5_optimizer)"
+echo "  - Hugepages: ${HUGEPAGES} (zen5_optimizer)"
 echo "  - Port: ${SERVER_PORT}"
 echo "  - Threads: ${THREADS}"
 echo "  - Model: ${MODEL_PATH}"
@@ -62,6 +138,12 @@ fi
 if [[ "$JINJA_ENABLED" == "true" ]]; then
     echo "  - Jinja templates: enabled"
 fi
+
+# Hugepage counters before the weights are mapped: the "after" side is read by the
+# benchmark suite, and the delta is the evidence that the wrapper actually took pages.
+echo "[HUGEPAGES] Memory status before model load:"
+grep -E '^(HugePages_Total|HugePages_Free|Hugepagesize)' /proc/meminfo | sed 's/^/  /' || true
+
 echo "[HUGEPAGES] Launch command:"
 echo "  ${CMD_ARGS[*]}"
 
