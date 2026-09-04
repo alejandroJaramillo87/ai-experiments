@@ -112,6 +112,29 @@ def parse_recording(lines):
     return header, rows, selections, sequence
 
 
+def check_selections(selections, sequence):
+    """Every chosen token must be the token the sequence holds at its position.
+
+    One exception, and it is the ordinary end of a run: the sampler records
+    a selection before the EOS check (session.rs `record_step`), so a run
+    that stopped on EOS records that token at the position after the last
+    forward. No forward ever consumed it, so the sequence ends one short of
+    it. It is still a draw the reference can rank, from the last recorded
+    row, and it is the only selection allowed past the end.
+
+    Returns the offending (position, token, held) triples; empty is good.
+    """
+    bad = []
+    last = max(selections) if selections else -1
+    for pos, tok in selections.items():
+        if pos == len(sequence) and pos == last:
+            continue
+        held = sequence[pos] if pos < len(sequence) else None
+        if held != tok:
+            bad.append((pos, tok, held))
+    return bad
+
+
 def log_softmax(x):
     x = np.asarray(x, dtype=np.float64)
     m = x.max()
@@ -206,14 +229,14 @@ def main():
         f"{len(selections)} selections, sampling {sampling}",
         file=sys.stderr,
     )
-    for pos, tok in selections.items():
-        if pos >= len(sequence) or sequence[pos] != tok:
-            print(
-                f"[ERROR] Selection at {pos} chose {tok} but the sequence holds "
-                f"{sequence[pos] if pos < len(sequence) else 'nothing'}",
-                file=sys.stderr,
-            )
-            return 1
+    for pos, tok, held in check_selections(selections, sequence):
+        print(
+            f"[ERROR] Selection at {pos} chose {tok} but the sequence holds "
+            f"{'nothing' if held is None else held}",
+            file=sys.stderr,
+        )
+    if check_selections(selections, sequence):
+        return 1
 
     dtype = {"float32": torch.float32, "bfloat16": torch.bfloat16}[args.dtype]
     print(f"[RUN] Load tokenizer: {args.model}", file=sys.stderr)

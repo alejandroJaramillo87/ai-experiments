@@ -150,3 +150,15 @@ def test_the_verdict_applies_every_l2_threshold():
     ok, _ = audit.verdict(argmax_off)
     assert not ok, "one wrong argmax in ten is below the 0.98 floor"
     assert audit.verdict([]) == (False, {})
+
+
+def test_selections_must_match_the_sequence_except_the_eos_that_ended_the_run():
+    seq = [2, 5, 7, 6, 1]
+    # Every chosen token in place, then EOS recorded one past the end: the
+    # shape of every run that stopped on its own.
+    assert audit.check_selections({3: 6, 4: 1, 5: 0}, seq) == []
+    # A token past the end that is not the last selection is not an EOS.
+    assert audit.check_selections({5: 0, 6: 3}, seq) == [(5, 0, None), (6, 3, None)]
+    # A disagreement inside the sequence is reported with what is held.
+    assert audit.check_selections({3: 9}, seq) == [(3, 9, 6)]
+    assert audit.check_selections({}, seq) == []
