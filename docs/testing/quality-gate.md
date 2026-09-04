@@ -36,7 +36,11 @@ Thirteen steps, cheapest first, failing on the first error:
     exact pins across `pyproject.toml`'s sections. The `sandbox` group deliberately re-pins
     what core, `interp` and `training` pin, and step 4 cannot see a disagreement between two
     literal `==` strings.
-13. `shellcheck --severity=warning` — shell scripts, enumerated with `find`.
+13. `scripts/docs/check_command_prompts.py` — fails when a `bash` (or `sh`, `shell`, `zsh`)
+    block carries a `$ ` prompt marker, because a pasted `$ make quality` fails as a command
+    named `$`. Reads neither `console` transcripts nor a runbook's Observed blocks, and skips
+    frozen records.
+14. `shellcheck --severity=warning` — shell scripts, enumerated with `find`.
 
 Note what is absent: **`make quality` does not run pytest.** See
 [The full gate](#the-full-gate) below.

@@ -100,6 +100,12 @@ format: ## Format code with ruff
 # difference. Exact pins only: a package pinned in one section and left free in another is
 # normal, and only two exact pins can contradict each other.
 #
+# check_command_prompts.py reads the command blocks the other doc gates take their
+# invocations from, and fails when one carries a `$ ` prompt marker: pasted into a shell,
+# `$ make quality` is a command named `$`. The style guide once prescribed the marker, so
+# 210 blocks carried it until the 2026-09-04 sweep. Transcripts keep their prompt under a
+# `console` tag or an Observed heading, which the gate does not read.
+#
 # Shell files are enumerated with find, not `git ls-files`. The git form fails in a
 # contained agent sandbox (/work is a linked worktree whose gitdir is outside the bind
 # mount), and because it sat on the left of a pipe the recipe's status came from xargs --
@@ -112,7 +118,7 @@ format: ## Format code with ruff
 # dies on a missing tool -- and the gate has to be followed by `make install` to
 # undo what it did. Checking first turns that into a named error that changes
 # nothing. Skipped in a sandbox, which has no .venv by design.
-quality: ## Run the full quality gate (format check, lint, mypy, lock check, doc refs, retired names, make targets, doc counts, KB refs, pin parity, shellcheck, rust gate)
+quality: ## Run the full quality gate (format check, lint, mypy, lock check, doc refs, retired names, make targets, doc counts, KB refs, pin parity, command prompts, shellcheck, rust gate)
 ifndef AI_SANDBOX
 	@if [ ! -x .venv/bin/ruff ] || [ ! -e "$$(readlink -f .venv/bin/python 2>/dev/null)" ]; then \
 	  printf '[ERROR] .venv is missing, incomplete, or points at an interpreter that no longer exists\n'; \
@@ -143,6 +149,7 @@ endif
 	$(RUN_PY) python scripts/docs/check_runbook_entries.py
 	$(RUN_PY) python scripts/docs/check_surface_census.py
 	$(RUN_PY) python scripts/docs/check_group_pin_parity.py
+	$(RUN_PY) python scripts/docs/check_command_prompts.py
 	@files=$$(find . -name '*.sh' -type f \
 	    -not -path './.git/*' -not -path './.venv/*' \
 	    -not -path './node_modules/*' -not -path '*/target/*' \

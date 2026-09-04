@@ -30,7 +30,7 @@ No CLI of its own. It is exercised through every `training` and `interp` command
 `common.obs.dispatch.dispatch`, and directly by:
 
 ```bash
-$ pytest tests/common         # the obs and output suites
+pytest tests/common         # the obs and output suites
 ```
 
 ## Where the real docs live

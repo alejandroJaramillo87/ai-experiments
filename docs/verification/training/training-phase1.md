@@ -39,9 +39,9 @@ recipes as uncalibratable.
 Command (serialized, one GPU job at a time; E2B first, then E4B):
 
 ```bash
-$ make train-calibrate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
+make train-calibrate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
     ARGS="--out /mnt/ai-data/training/verify/calibrate-sft-e2b.json"
-$ make train-calibrate CONFIG=training/recipes/reference/sft-qlora-gemma-e4b.yaml \
+make train-calibrate CONFIG=training/recipes/reference/sft-qlora-gemma-e4b.yaml \
     ARGS="--out /mnt/ai-data/training/verify/calibrate-sft-e4b.json"
 ```
 
@@ -94,7 +94,7 @@ Implementation: `training/commands/prepare_sft.py`, `training/data/sft.py`,
 Command:
 
 ```bash
-$ make prepare-sft ARGS="--source HuggingFaceH4/ultrachat_200k --split train_sft \
+make prepare-sft ARGS="--source HuggingFaceH4/ultrachat_200k --split train_sft \
     --tokenizer google/gemma-4-E2B --model-type gemma4 --max-seq-len 2048 \
     --out /mnt/ai-data/training/datasets/sft/ultrachat-e2b"
 ```
@@ -119,7 +119,7 @@ Implementation: `training/cli.py` (`cmd_train_sft`), `training/tune/sft.py`,
 Command:
 
 ```bash
-$ make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
+make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
     ARGS="schedule.total_steps=30 checkpoint.interval_steps=30"
 ```
 
@@ -144,7 +144,7 @@ arguments, plus `training/runtime/checkpoint.py` and
 Command:
 
 ```bash
-$ make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
+make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
     ARGS="schedule.total_steps=60 checkpoint.interval_steps=30 checkpoint.resume=latest"
 ```
 
@@ -168,8 +168,8 @@ Implementation: `training/commands/generate_teacher.py`,
 Command (serving-dependent; vllm-gpu by default):
 
 ```bash
-$ make gpu-up
-$ make generate-teacher ARGS="--pipeline respond \
+make gpu-up
+make generate-teacher ARGS="--pipeline respond \
     --prompts /mnt/ai-data/training/datasets/sft/ultrachat-e2b \
     --teacher /app/models/<teacher>.gguf \
     --out /mnt/ai-data/training/datasets/distill/teacher-verify"
@@ -195,7 +195,7 @@ Implementation: `training/tune/distill.py`, `training/data/distill.py`,
 Command:
 
 ```bash
-$ make train-distill CONFIG=training/recipes/reference/distill-e2b.yaml \
+make train-distill CONFIG=training/recipes/reference/distill-e2b.yaml \
     ARGS="schedule.total_steps=30"
 ```
 
@@ -219,8 +219,8 @@ Implementation: `training/cli.py` (`cmd_distill_cache`),
 Command:
 
 ```bash
-$ make distill-cache CONFIG=training/recipes/reference/distill-e2b.yaml
-$ make train-distill CONFIG=training/recipes/reference/distill-e2b.yaml \
+make distill-cache CONFIG=training/recipes/reference/distill-e2b.yaml
+make train-distill CONFIG=training/recipes/reference/distill-e2b.yaml \
     ARGS="distill.mode=cached schedule.total_steps=30"
 ```
 
@@ -245,7 +245,7 @@ image is `docker/training/Dockerfile.export`.
 Command:
 
 ```bash
-$ make export-gguf CHECKPOINT=/mnt/ai-data/training/runs/sft-qlora-e2b/checkpoints/<step> \
+make export-gguf CHECKPOINT=/mnt/ai-data/training/runs/sft-qlora-e2b/checkpoints/<step> \
     ARGS="--quant Q8_0"
 ```
 
@@ -267,7 +267,7 @@ Implementation: `training/eval/holdout.py`, `common/reports.py`.
 Command (inside the training container; inference down):
 
 ```bash
-$ docker compose -f docker-compose.training.yaml run --rm training \
+docker compose -f docker-compose.training.yaml run --rm training \
     python -m training eval-holdout --model google/gemma-4-E2B \
     --dataset /mnt/ai-data/training/datasets/sft/ultrachat-e2b \
     --out /mnt/ai-data/training/eval/verify-holdout.json
@@ -290,7 +290,7 @@ Implementation: `training/eval/lmeval.py`, `training/eval/tasks.yaml`.
 Command:
 
 ```bash
-$ docker compose -f docker-compose.training.yaml run --rm training \
+docker compose -f docker-compose.training.yaml run --rm training \
     python -m training eval-lmeval --model google/gemma-4-E2B --limit 20 \
     --out /mnt/ai-data/training/eval/verify-lmeval.json
 ```
@@ -314,7 +314,7 @@ Implementation: `training/commands/eval_ft.py`, `training/eval/runner.py`,
 Command (host tool; sequences container phases first, then serving):
 
 ```bash
-$ make eval-ft ARGS="--base google/gemma-4-E2B \
+make eval-ft ARGS="--base google/gemma-4-E2B \
     --tuned /mnt/ai-data/training/runs/sft-qlora-e2b/checkpoints/<step> \
     --dataset /mnt/ai-data/training/datasets/sft/ultrachat-e2b \
     --base-gguf /app/models/<base>.gguf --tuned-gguf /app/models/trained/<tuned>.gguf \
@@ -341,7 +341,7 @@ Implementation: `training/commands/promote_scorecard.py`,
 Command:
 
 ```bash
-$ make promote-scorecard ARGS="--run-dir /mnt/ai-data/training/eval/<run> \
+make promote-scorecard ARGS="--run-dir /mnt/ai-data/training/eval/<run> \
     --card sft-qlora-gemma-e4b"
 ```
 
@@ -366,8 +366,8 @@ check uses `training/calculator/components.py` and
 Command:
 
 ```bash
-$ make train-validate CONFIG=training/recipes/reference/sft-qlora-gemma-e4b.yaml
-$ make memfit CONFIG=training/recipes/reference/sft-qlora-gemma-e4b.yaml
+make train-validate CONFIG=training/recipes/reference/sft-qlora-gemma-e4b.yaml
+make memfit CONFIG=training/recipes/reference/sft-qlora-gemma-e4b.yaml
 ```
 
 Expected signal: the card validates and fits; the card's DRAFT block

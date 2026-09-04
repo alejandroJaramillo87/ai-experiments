@@ -46,7 +46,7 @@ Implementation: `interp/commands/smoke_test.py`, `common/smoke.py`,
 Command:
 
 ```bash
-$ make interp-smoke
+make interp-smoke
 ```
 
 Expected signal: all seven steps `[OK]`, including the gated Gemma-2-2B
@@ -69,11 +69,11 @@ Implementation: `scripts/interp/np_env.sh`, `scripts/interp/np_smoke.sh`,
 Command:
 
 ```bash
-$ make np-clone
-$ make np-env
-$ make np-build
-$ make np-up
-$ make np-smoke
+make np-clone
+make np-env
+make np-build
+make np-up
+make np-smoke
 ```
 
 Expected signal: the checkout pins to `docker/interp/neuronpedia-pin.txt`;
@@ -105,7 +105,7 @@ Implementation: `interp/commands/steer_extract.py`,
 Command:
 
 ```bash
-$ make steer-extract ARGS="--method repeng --model google/gemma-4-E2B \
+make steer-extract ARGS="--method repeng --model google/gemma-4-E2B \
     --pairs interp/steering/prompts/honesty_pairs.jsonl \
     --out /mnt/ai-data/interp/vectors/honesty-e2b"
 ```
@@ -152,9 +152,9 @@ requires `$(VECTOR)/vector.safetensors` to exist under
 Command:
 
 ```bash
-$ make steer-up VECTOR=/mnt/ai-data/interp/vectors/honesty-e2b SCALE=1.0
-$ make steer-scorecard VECTOR=/mnt/ai-data/interp/vectors/honesty-e2b ATTRIBUTE="honesty"
-$ make steer-down
+make steer-up VECTOR=/mnt/ai-data/interp/vectors/honesty-e2b SCALE=1.0
+make steer-scorecard VECTOR=/mnt/ai-data/interp/vectors/honesty-e2b ATTRIBUTE="honesty"
+make steer-down
 ```
 
 Expected signal: the service recreates steered; the three-arm scorecard
@@ -190,11 +190,11 @@ Implementation: `interp/commands/probe_capture.py` with
 Command:
 
 ```bash
-$ make probe-capture ARGS="--model /mnt/ai-data/models/hf/gemma-4-E4B \
+make probe-capture ARGS="--model /mnt/ai-data/models/hf/gemma-4-E4B \
     --dataset interp/probes/prompts/refusal.jsonl \
     --layers 8,16,24 --out /mnt/ai-data/interp/captures/verify"
-$ make probe-train ARGS="--capture /mnt/ai-data/interp/captures/verify --name verify-probe"
-$ make probe-eval ARGS="--probe /mnt/ai-data/interp/probes/verify-probe --label-name refusal"
+make probe-train ARGS="--capture /mnt/ai-data/interp/captures/verify --name verify-probe"
+make probe-eval ARGS="--probe /mnt/ai-data/interp/probes/verify-probe --label-name refusal"
 ```
 
 **Runnable now, and most of it is already evidenced.** The `<labeled.jsonl>`
@@ -258,11 +258,11 @@ Preamble, in the workbench and on the GPU (serializes against other GPU work):
 # Container paths: probe-capture runs in the interp container, which mounts
 # the models tree at /app/models (docker-compose.interp.yaml). A host path
 # resolves to nothing there and is refused.
-$ E4B=/app/models/hf/gemma-4-E4B
-$ make probe-capture ARGS="--model $E4B \
+E4B=/app/models/hf/gemma-4-E4B
+make probe-capture ARGS="--model $E4B \
     --dataset interp/probes/prompts/refusal.jsonl \
     --layers 8,16,24 --out /mnt/ai-data/interp/activations/refusal-v1"
-$ make probe-train ARGS="--capture /mnt/ai-data/interp/activations/refusal-v1 \
+make probe-train ARGS="--capture /mnt/ai-data/interp/activations/refusal-v1 \
     --name refusal-v1"
 ```
 
@@ -279,19 +279,19 @@ Command:
 ```bash
 # probe-train leaves probe.npz, which the harness cannot read; this writes the
 # safetensors image and its sidecar beside it, and prints the container path
-$ make probe-export ARGS="--probe /mnt/ai-data/interp/probes/refusal-v1"
-$ make harness-serve HARNESS_PROBE=/app/probes/refusal-v1/probe.safetensors
+make probe-export ARGS="--probe /mnt/ai-data/interp/probes/refusal-v1"
+make harness-serve HARNESS_PROBE=/app/probes/refusal-v1/probe.safetensors
 # Loading the checkpoint takes minutes. This blocks until the endpoint
 # answers; `curl -sf` does not -- it returns at once against a port with
 # nothing yet listening, and the rest of the block then runs against a
 # server still reading weights.
-$ python -c 'from common import serving; print(serving.wait_healthy(serving.SERVICES["harness"]))'
-$ curl -s --max-time 900 -X POST localhost:8005/v1/chat/completions \
+python -c 'from common import serving; print(serving.wait_healthy(serving.SERVICES["harness"]))'
+curl -s --max-time 900 -X POST localhost:8005/v1/chat/completions \
     -H 'Content-Type: application/json' \
     -d '{"messages": [{"role": "user", "content": "2+2?"}], "max_tokens": 8}'
-$ tail -1 /mnt/ai-data/interp/logs/harness/"$(date -u +%F)".jsonl | python3 -m json.tool
-$ wc -l /mnt/ai-data/interp/logs/harness/"$(date -u +%F)".jsonl
-$ make harness-serve-down    # after I.7, which wants the service up
+tail -1 /mnt/ai-data/interp/logs/harness/"$(date -u +%F)".jsonl | python3 -m json.tool
+wc -l /mnt/ai-data/interp/logs/harness/"$(date -u +%F)".jsonl
+make harness-serve-down    # after I.7, which wants the service up
 ```
 
 Expected signal: one JSONL record per completed request, carrying `messages`,
@@ -366,9 +366,9 @@ that inference be down.
 Command:
 
 ```bash
-$ make probe-monitor ARGS="--window 7d --log-dir /mnt/ai-data/interp/logs/harness"
+make probe-monitor ARGS="--window 7d --log-dir /mnt/ai-data/interp/logs/harness"
 # run it again, unchanged, to exercise the drift delta
-$ make probe-monitor ARGS="--window 7d --log-dir /mnt/ai-data/interp/logs/harness"
+make probe-monitor ARGS="--window 7d --log-dir /mnt/ai-data/interp/logs/harness"
 ```
 
 Expected signal: `report.json` (`kind: probe_monitor`, shared envelope) plus
@@ -382,8 +382,8 @@ verify was a consequence of the replay owning the GPU, and it has been removed
 deliberately.
 
 ```bash
-$ make harness-serve
-$ make probe-monitor ARGS="--window 7d --log-dir /mnt/ai-data/interp/logs/harness"
+make harness-serve
+make probe-monitor ARGS="--window 7d --log-dir /mnt/ai-data/interp/logs/harness"
 # expected: exit 0, not a services-are-up refusal
 ```
 
@@ -432,14 +432,14 @@ Command (stages have separate GPU/serving preconditions; `make organism
 RECIPE=...` prints this pipeline):
 
 ```bash
-$ make organism-generate RECIPE=training/recipes/organisms/taboo.yaml TEACHER=/mnt/ai-data/models/<teacher>.gguf
-$ make prepare-sft ARGS="--source <out_dir>/data-blind ..."
-$ make train-sft CONFIG=training/recipes/organisms/taboo.yaml
-$ make export-gguf CHECKPOINT=<run checkpoint> ARGS="--merge ..."
-$ make eval-ft ARGS=...
-$ make organism-verify RECIPE=training/recipes/organisms/taboo.yaml BASE_METRICS=<...> SUBJECT_METRICS=<...>
-$ make organism-seal RECIPE=training/recipes/organisms/taboo.yaml ARGS="--checkpoint ... --gguf ..."
-$ make organism-check-seal DIR=/mnt/ai-data/interp/organisms/<name>
+make organism-generate RECIPE=training/recipes/organisms/taboo.yaml TEACHER=/mnt/ai-data/models/<teacher>.gguf
+make prepare-sft ARGS="--source <out_dir>/data-blind ..."
+make train-sft CONFIG=training/recipes/organisms/taboo.yaml
+make export-gguf CHECKPOINT=<run checkpoint> ARGS="--merge ..."
+make eval-ft ARGS=...
+make organism-verify RECIPE=training/recipes/organisms/taboo.yaml BASE_METRICS=<...> SUBJECT_METRICS=<...>
+make organism-seal RECIPE=training/recipes/organisms/taboo.yaml ARGS="--checkpoint ... --gguf ..."
+make organism-check-seal DIR=/mnt/ai-data/interp/organisms/<name>
 ```
 
 Expected signal: generation draws sealed ground truth and the corpus;
@@ -469,9 +469,9 @@ non-smoke harvest.
 Command:
 
 ```bash
-$ df -h /mnt/ai-data
-$ make harvest-check-hooks RECIPE=training/recipes/interp/harvest-smoke.yaml
-$ make harvest RECIPE=training/recipes/interp/harvest-smoke.yaml
+df -h /mnt/ai-data
+make harvest-check-hooks RECIPE=training/recipes/interp/harvest-smoke.yaml
+make harvest RECIPE=training/recipes/interp/harvest-smoke.yaml
 ```
 
 Expected signal: the hook-dimension gate prints the residual width for
@@ -508,8 +508,8 @@ verifies nothing about it. Interrupt a chunked capture and resume it.
 Command:
 
 ```bash
-$ rm -rf /mnt/ai-data/interp/activations/harvest-smoke
-$ make harvest RECIPE=training/recipes/interp/harvest-smoke.yaml
+rm -rf /mnt/ai-data/interp/activations/harvest-smoke
+make harvest RECIPE=training/recipes/interp/harvest-smoke.yaml
 ```
 
 Press Ctrl-C once a `3/3` progress bar has appeared at least once and
@@ -517,8 +517,8 @@ before `[OK] Harvest complete`; any kill in that window banks at least one
 chunk. Then inspect and resume — do not delete the capture directory:
 
 ```bash
-$ cat /mnt/ai-data/interp/activations/harvest-smoke/progress.json
-$ make harvest RECIPE=training/recipes/interp/harvest-smoke.yaml
+cat /mnt/ai-data/interp/activations/harvest-smoke/progress.json
+make harvest RECIPE=training/recipes/interp/harvest-smoke.yaml
 ```
 
 Expected signal: `progress.json` records `completed_chunks` for the hook;
@@ -554,9 +554,9 @@ Implementation: `interp/commands/interp_gc.py`, `interp/manifest.py`.
 Command:
 
 ```bash
-$ make interp-gc ARGS="--dry-run"
-$ make interp-gc ARGS="--mark-validated /mnt/ai-data/interp/activations/<capture>"
-$ make interp-gc
+make interp-gc ARGS="--dry-run"
+make interp-gc ARGS="--mark-validated /mnt/ai-data/interp/activations/<capture>"
+make interp-gc
 ```
 
 Expected signal: dry-run lists deletable validated captures oldest-first;
@@ -596,8 +596,8 @@ Command (the calibration pair targets Gemma-2-2B by the ecosystem-anchor
 decision; the smoke recipe targets Gemma 4):
 
 ```bash
-$ make sae-train RECIPE=training/recipes/interp/sae-smoke.yaml
-$ make sae-eval SAE=/mnt/ai-data/interp/saes/<name> CAPTURE=/mnt/ai-data/interp/activations/<name>
+make sae-train RECIPE=training/recipes/interp/sae-smoke.yaml
+make sae-eval SAE=/mnt/ai-data/interp/saes/<name> CAPTURE=/mnt/ai-data/interp/activations/<name>
 ```
 
 Expected signal: training runs SAELens against the capture (refusing a
@@ -647,7 +647,7 @@ its own venv by resolved decision.
 Command:
 
 ```bash
-$ bash scripts/interp/saebench_env.sh
+bash scripts/interp/saebench_env.sh
 ```
 
 Expected signal: the isolated venv builds and SAEBench imports inside it;
@@ -677,12 +677,12 @@ them. This entry covers the lifecycle end to end, which no other entry touches.
 Command:
 
 ```bash
-$ make interp-build
-$ make interp-up
-$ make interp-shell
-$ python -m interp runs -n 5
-$ exit
-$ make interp-down
+make interp-build
+make interp-up
+make interp-shell
+python -m interp runs -n 5
+exit
+make interp-down
 ```
 
 Expected signal: the build reaches the smoke step and every import step reports
@@ -784,7 +784,7 @@ and `--layer`, alongside the shared `--model` and `--out`.
 Command:
 
 ```bash
-$ docker compose -f docker-compose.interp.yaml run --rm interp \
+docker compose -f docker-compose.interp.yaml run --rm interp \
     python -m interp steer-extract --method sae_row \
     --model <E4B-width model> --sae-release <release> --sae-id <sae_id> \
     --feature <index> --layer <layer> --out /mnt/ai-data/interp/vectors/<name>

@@ -91,11 +91,11 @@ the file records.
 Both CLIs expose the catalog through a `runs` subcommand:
 
 ```bash
-$ python -m training runs                  # 20 most recent runs
-$ python -m training runs -n 100           # more of them; 0 or less shows all
-$ python -m training runs --failed         # only nonzero exit codes
-$ python -m training runs --json           # the records, on stdout, for jq
-$ python -m interp runs                    # the interp catalog
+python -m training runs                  # 20 most recent runs
+python -m training runs -n 100           # more of them; 0 or less shows all
+python -m training runs --failed         # only nonzero exit codes
+python -m training runs --json           # the records, on stdout, for jq
+python -m interp runs                    # the interp catalog
 ```
 
 By default the catalog listing hides invocations of `runs` itself; `--all` includes them.
@@ -110,7 +110,7 @@ code, and duration. Each record also carries `run_dir`, which is what `report` n
 references no external URL:
 
 ```bash
-$ python -m training report --run /mnt/ai-data/runs/sft-1b/20260806-142530
+python -m training report --run /mnt/ai-data/runs/sft-1b/20260806-142530
 ```
 
 That writes `run.html` into the run directory. The event file is located automatically from the
@@ -120,8 +120,8 @@ For a run that is still going, `--serve` starts an ephemeral local server that p
 files instead of writing a snapshot:
 
 ```bash
-$ python -m training report --run <run_dir> --serve
-$ python -m training report --run <run_dir> --serve --port 8010
+python -m training report --run <run_dir> --serve
+python -m training report --run <run_dir> --serve --port 8010
 ```
 
 The server binds `127.0.0.1:8010` by default. It is a stateless viewer: it never writes the
@@ -215,47 +215,47 @@ the default is not where the files are.
 Every failure recorded across all training runs:
 
 ```bash
-$ jq -c 'select(.event == "fail") | {run_id, command, exc_type, exc_msg}' \
+jq -c 'select(.event == "fail") | {run_id, command, exc_type, exc_msg}' \
     /mnt/ai-data/logs/training/*.jsonl
 ```
 
 The full timeline of one run, given its id:
 
 ```bash
-$ jq -c '{ts, level, event, msg}' /mnt/ai-data/logs/training/R-20260806-142530-a3f19c.jsonl
+jq -c '{ts, level, event, msg}' /mnt/ai-data/logs/training/R-20260806-142530-a3f19c.jsonl
 ```
 
 Phase durations for one run, slowest first:
 
 ```bash
-$ jq -r 'select(.event == "phase.end") | [.duration_s, .phase] | @tsv' \
+jq -r 'select(.event == "phase.end") | [.duration_s, .phase] | @tsv' \
     /mnt/ai-data/logs/training/R-20260806-142530-a3f19c.jsonl | sort -rn
 ```
 
 The slowest ten completed runs in the catalog:
 
 ```bash
-$ jq -r '[.duration_s, .run_id, .command] | @tsv' \
+jq -r '[.duration_s, .run_id, .command] | @tsv' \
     /mnt/ai-data/logs/training/runs.jsonl | sort -rn | head -10
 ```
 
 Which files a traced run opened, deduplicated:
 
 ```bash
-$ jq -r 'select(.event == "open") | .path' <event_file> | sort -u
+jq -r 'select(.event == "open") | .path' <event_file> | sort -u
 ```
 
 The final training loss of a run, from its metrics file:
 
 ```bash
-$ jq -r 'select(.loss != null) | "\(.step)\t\(.loss)"' <run_dir>/metrics.jsonl | tail -1
+jq -r 'select(.loss != null) | "\(.step)\t\(.loss)"' <run_dir>/metrics.jsonl | tail -1
 ```
 
 Combining the two files is a join on the run id — the catalog record's `run_dir` field names
 the directory holding `metrics.jsonl`:
 
 ```bash
-$ python -m training runs --json | jq -r '.[] | select(.exit_code != 0) | .run_dir'
+python -m training runs --json | jq -r '.[] | select(.exit_code != 0) | .run_dir'
 ```
 
 ## Related documentation

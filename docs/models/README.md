@@ -41,11 +41,11 @@ Two derived artifacts sit beside them:
 Both commands run on the workstation only; each reads `/mnt/ai-data`.
 
 ```bash
-$ ./scripts/models/gguf_header_transcript.sh --out docs/models/gemma4-gguf.txt \
+./scripts/models/gguf_header_transcript.sh --out docs/models/gemma4-gguf.txt \
       /mnt/ai-data/models/gguf/gemma-4-E2B-it/*.gguf \
       /mnt/ai-data/models/gguf/gemma-4-E4B-it/*.gguf
 
-$ ./scripts/models/gemma4_header_transcript.sh --out docs/models/gemma4-safetensors.txt \
+./scripts/models/gemma4_header_transcript.sh --out docs/models/gemma4-safetensors.txt \
       /mnt/ai-data/models/hf/gemma-4-E2B /mnt/ai-data/models/hf/gemma-4-E4B
 ```
 
@@ -55,7 +55,7 @@ Both scripts default to `/tmp`, so `--out` is required to land the file here.
 `raw.githubusercontent.com` is on the proxy allowlist:
 
 ```bash
-$ ./scripts/models/upstream_source_transcript.sh --out docs/models/gemma4-upstream.txt
+./scripts/models/upstream_source_transcript.sh --out docs/models/gemma4-upstream.txt
 ```
 
 **`gemma-4.md` cites these transcripts by line

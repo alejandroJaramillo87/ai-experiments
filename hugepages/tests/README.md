@@ -18,15 +18,15 @@ Comprehensive test coverage for the AMD Zen 5 optimizer library.
 
 Build and run all tests from project root:
 ```bash
-$ make test          # Runs all tests with verbose output (default)
-$ make test-quiet    # Runs all tests with minimal output
+make test          # Runs all tests with verbose output (default)
+make test-quiet    # Runs all tests with minimal output
 ```
 
 Run tests directly from test directory:
 ```bash
-$ cd tests
-$ ./run_tests.sh --verbose    # Verbose output
-$ ./run_tests.sh              # Minimal output
+cd tests
+./run_tests.sh --verbose    # Verbose output
+./run_tests.sh              # Minimal output
 ```
 
 ## Test organization
@@ -72,45 +72,45 @@ Full system validation:
 ### Using Makefile (from project root)
 
 ```bash
-$ make test              # All tests with verbose output (default)
-$ make test-quiet        # All tests with minimal output
-$ make test-unit         # Unit tests only (verbose)
-$ make test-functional   # Functional tests only (verbose)
-$ make test-integration  # Integration test only (verbose)
-$ make test-all          # Explicitly run all tests (verbose)
+make test              # All tests with verbose output (default)
+make test-quiet        # All tests with minimal output
+make test-unit         # Unit tests only (verbose)
+make test-functional   # Functional tests only (verbose)
+make test-integration  # Integration test only (verbose)
+make test-all          # Explicitly run all tests (verbose)
 ```
 
 ### Using test runner (from tests directory)
 
 ```bash
-$ ./run_tests.sh              # All tests, minimal output
-$ ./run_tests.sh --verbose    # All tests, detailed output
+./run_tests.sh              # All tests, minimal output
+./run_tests.sh --verbose    # All tests, detailed output
 ```
 
 ### Specific categories
 
 ```bash
-$ ./run_tests.sh unit         # Unit tests only
-$ ./run_tests.sh functional   # Functional tests only
-$ ./run_tests.sh integration  # Integration tests only
+./run_tests.sh unit         # Unit tests only
+./run_tests.sh functional   # Functional tests only
+./run_tests.sh integration  # Integration tests only
 ```
 
 ### Individual tests
 
 ```bash
-$ ./run_tests.sh test_cpu     # Run specific test
-$ ./run_tests.sh memory       # Run all tests matching "memory"
-$ ./run_tests.sh stress       # Run stress test
-$ ./run_tests.sh performance  # Run performance baselines
+./run_tests.sh test_cpu     # Run specific test
+./run_tests.sh memory       # Run all tests matching "memory"
+./run_tests.sh stress       # Run stress test
+./run_tests.sh performance  # Run performance baselines
 ```
 
 ### Advanced options
 
 ```bash
-$ ./run_tests.sh --verbose    # Detailed output
-$ ./run_tests.sh --list       # List available tests
-$ ./run_tests.sh --no-color   # Disable colored output
-$ ./run_tests.sh --help       # Show all options
+./run_tests.sh --verbose    # Detailed output
+./run_tests.sh --list       # List available tests
+./run_tests.sh --no-color   # Disable colored output
+./run_tests.sh --help       # Show all options
 ```
 
 ## Test output
@@ -166,7 +166,7 @@ Add test to Makefile TEST_SOURCES variable.
 
 Build and run:
 ```bash
-$ make clean && make test
+make clean && make test
 ```
 
 ### Test guidelines
@@ -185,28 +185,28 @@ $ make clean && make test
 ### Build failures
 
 ```bash
-$ cd .. && make clean && make
+cd .. && make clean && make
 ```
 
 ### Library not found
 
 Ensure library is built first:
 ```bash
-$ cd .. && make
+cd .. && make
 ```
 
 ### Permission denied
 
 Fix script permissions:
 ```bash
-$ chmod +x integration/test_integration.sh
+chmod +x integration/test_integration.sh
 ```
 
 ### Hugepage test failures
 
 Check system hugepage configuration:
 ```bash
-$ cat /proc/sys/vm/nr_hugepages
+cat /proc/sys/vm/nr_hugepages
 ```
 
 Value should be greater than 0 for hugepage tests.

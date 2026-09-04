@@ -12,19 +12,19 @@ configuration by construction. Design record:
 Estimate a recipe (host, in the training container):
 
 ```bash
-$ make memfit CONFIG=training/recipes/reference/pretrain-1b.yaml
+make memfit CONFIG=training/recipes/reference/pretrain-1b.yaml
 ```
 
 Solve for the largest fitting micro-batch or sequence length, with machine output:
 
 ```bash
-$ make memfit CONFIG=training/recipes/reference/pretrain-1b.yaml ARGS="--solve batch --json"
+make memfit CONFIG=training/recipes/reference/pretrain-1b.yaml ARGS="--solve batch --json"
 ```
 
 Direct invocation, with dotlist overrides applied before estimation:
 
 ```bash
-$ python -m training memfit --config training/recipes/reference/pretrain-1b.yaml \
+python -m training memfit --config training/recipes/reference/pretrain-1b.yaml \
     data.micro_batch=8 --solve seq
 ```
 
@@ -84,7 +84,7 @@ real training loop on the workstation GPU, records
 the estimate:
 
 ```bash
-$ make train-calibrate CONFIG=training/recipes/reference/pretrain-150m.yaml \
+make train-calibrate CONFIG=training/recipes/reference/pretrain-150m.yaml \
     ARGS="--out /mnt/ai-data/training/calibration/pretrain-150m.json"
 ```
 
@@ -119,5 +119,5 @@ hand-computed tiny configuration, the reference-recipe parameter counts
 and the CLI JSON contract. All tests are CPU-only:
 
 ```bash
-$ pytest tests/training/test_calculator.py
+pytest tests/training/test_calculator.py
 ```

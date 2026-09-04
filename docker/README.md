@@ -41,10 +41,10 @@ registry, so `make agent-sandbox-build` is required after changing that file or
 ## Entry points
 
 ```bash
-$ make up                  # the inference services
-$ make train-build         # training image
-$ make interp-up           # interpretability workbench
-$ make agent-sandbox-build # rebuild the agent sandbox
+make up                  # the inference services
+make train-build         # training image
+make interp-up           # interpretability workbench
+make agent-sandbox-build # rebuild the agent sandbox
 ```
 
 ## Where the real docs live

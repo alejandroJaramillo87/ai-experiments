@@ -270,8 +270,8 @@ reference at some position. The sequence from symptom to cause:
 2. Record the failing run under rr:
 
    ```bash
-   $ make debug-record ARGS='--model fixtures/tiny-gemma4 <task>'
-   $ make debug-replay
+   make debug-record ARGS='--model fixtures/tiny-gemma4 <task>'
+   make debug-replay
    ```
 
 3. Inside `rr replay` (a gdb session), stop at the divergent call, then set
@@ -410,9 +410,9 @@ The harness image carries no Python, so browsing happens on the host, where
 training and interp runs are already browsed:
 
 ```bash
-$ make harness-runs
-$ make harness-runs ARGS='-n 50 --failed'
-$ uv run --no-sync python -m common.obs.runs --cli harness --json
+make harness-runs
+make harness-runs ARGS='-n 50 --failed'
+uv run --no-sync python -m common.obs.runs --cli harness --json
 ```
 
 `common/obs/runs.py` is the shared command surface behind
@@ -432,7 +432,7 @@ A run's charts come from the same command the training tier uses, pointed at the
 run directory the catalog names:
 
 ```bash
-$ uv run --no-sync python -m training report --run ${OBS_LOG_DIR}/harness/<run_id>
+uv run --no-sync python -m training report --run ${OBS_LOG_DIR}/harness/<run_id>
 ```
 
 It writes `run.html` beside `metrics.jsonl`, joins the event file through the

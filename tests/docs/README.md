@@ -1,6 +1,6 @@
 # Documentation gate tests
 
-Unit tests for the seven documentation gates in `scripts/docs/`, all of which run in
+Unit tests for the documentation gates in `scripts/docs/`, all of which run in
 `make quality` as standalone scripts as well as under pytest here.
 
 Most of these gates share a failure mode, and it is not the one a reader expects: the risk
@@ -28,6 +28,7 @@ the host-environment reporters in `scripts/utils/`.
 | `test_runbook_entries.py` | `scripts/docs/check_runbook_entries.py` | `find_entries`, `has_evidence` and `find_citations` against the four shapes that defeated the first implementation — a parent entry heading children with their own statuses, an `Observed (` parenthetical whose colon is on a later line, a gate-backed entry with no Observed block at all, and a cited test class rather than a function — plus the empty-set guard |
 | `test_surface_census.py` | `scripts/docs/check_surface_census.py` | `surface` enumeration and the `--help` exclusion, whole-word binary matching so prose about layers does not satisfy `layer-diff`, and the empty-set guard, which matters more here than anywhere: an enumeration that collects nothing reports every element as covered |
 | `test_kb_refs.py` | `scripts/docs/check_kb_refs.py` | `extract_citations` including the reserved next identifier, `collect_defined` across both ledgers, `is_exempt`; then the full-tree gate |
+| `test_command_prompts.py` | `scripts/docs/check_command_prompts.py` | `find_prompts` against the constructs that start a line with `$` or `#` without being a prompt — a variable, a substitution, a comment, a commented-out command, a non-shell block, a `console` transcript — the Observed exemption and where it ends, `is_exempt` for frozen records; then the full-tree gate |
 
 ## Notes
 

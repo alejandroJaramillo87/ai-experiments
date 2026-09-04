@@ -65,7 +65,7 @@ shard sizes or content hashes do not match the manifest (integrity), or whose
 Host-side, through the training container:
 
 ```bash
-$ make prepare-data ARGS="--source HuggingFaceFW/fineweb-edu --split train \
+make prepare-data ARGS="--source HuggingFaceFW/fineweb-edu --split train \
     --tokenizer /mnt/ai-data/training/tokenizers/base \
     --out /mnt/ai-data/training/shards/fineweb-edu-10B \
     --max-tokens 10_000_000_000 --num-proc 30"
@@ -74,7 +74,7 @@ $ make prepare-data ARGS="--source HuggingFaceFW/fineweb-edu --split train \
 Local JSONL:
 
 ```bash
-$ python -m training prepare-data --source ./data.jsonl --text-field text \
+python -m training prepare-data --source ./data.jsonl --text-field text \
     --tokenizer HuggingFaceTB/SmolLM2-135M \
     --out /mnt/ai-data/training/shards/local-test
 ```
@@ -101,8 +101,8 @@ Build the contamination index once per benchmark-list revision, then prepare cor
 against it:
 
 ```bash
-$ make build-contamination ARGS="--out /mnt/ai-data/training/datasets/_contamination/v1"
-$ make prepare-corpus ARGS="--source HuggingFaceFW/fineweb-edu --split train \
+make build-contamination ARGS="--out /mnt/ai-data/training/datasets/_contamination/v1"
+make prepare-corpus ARGS="--source HuggingFaceFW/fineweb-edu --split train \
     --contamination /mnt/ai-data/training/datasets/_contamination/v1 \
     --tokenizer google/gemma-4-E2B \
     --work-dir /mnt/ai-data/training/datasets/fineweb-edu-2B \
@@ -146,7 +146,7 @@ Sandbox-runnable unit tests live in `/tests/training/` (tiny on-the-fly BPE toke
 synthetic JSONL, no network or GPU):
 
 ```bash
-$ python -m pytest tests/training/
+python -m pytest tests/training/
 ```
 
 Host-side acceptance (per the roadmap): a 1B-token run demonstrating CPU-bound

@@ -116,7 +116,7 @@ run with the keystone skipped is much weaker than it looks.
 ## Running
 
 ```bash
-$ uv run --no-sync pytest tests/models -q -rs   # -rs shows skip reasons
-$ uv run --no-sync pytest tests/models -k defect
-$ uv run --no-sync pytest tests/models -k mutation
+uv run --no-sync pytest tests/models -q -rs   # -rs shows skip reasons
+uv run --no-sync pytest tests/models -k defect
+uv run --no-sync pytest tests/models -k mutation
 ```

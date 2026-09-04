@@ -252,7 +252,7 @@ because the agent image installs this group without `transformers`.
 Install the sandbox tier with:
 
 ```bash
-$ uv sync --group sandbox --group dev
+uv sync --group sandbox --group dev
 ```
 
 ## The interp dependency group
@@ -375,25 +375,25 @@ images build their own from `pyproject.toml` and `uv.lock`.
 
 ```bash
 # Sync the environment (all groups and extras)
-$ make install
+make install
 
 # Update dependencies (lock upgrade, sync, verify)
-$ make update
+make update
 
 # Run tests, lint, and format
-$ make test
-$ make lint
-$ make format
+make test
+make lint
+make format
 
 # Add or bump a dependency: edit the pin in pyproject.toml, then
-$ uv lock
-$ uv sync --all-groups --all-extras
+uv lock
+uv sync --all-groups --all-extras
 
 # Install only the quant extra
-$ uv sync --extra quant
+uv sync --extra quant
 
 # Show the resolved dependency tree
-$ uv tree
+uv tree
 ```
 
 Commit `uv.lock` with every dependency change. Do not edit `uv.lock` by hand.

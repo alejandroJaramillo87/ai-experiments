@@ -322,7 +322,7 @@ slots in at the same `Model` seam.
 ## Quality gate
 
 ```bash
-$ make quality        # fmt check, clippy -D warnings, lockfile check,
+make quality        # fmt check, clippy -D warnings, lockfile check,
                       # rustdoc -D warnings, cargo test
 ```
 

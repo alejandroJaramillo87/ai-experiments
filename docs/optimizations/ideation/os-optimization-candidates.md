@@ -35,8 +35,8 @@ existing documentation. Each is one command; the answers gate Tier A.
 cannot describe the same host. Decide with:
 
 ```bash
-$ grep -r . /sys/kernel/mm/hugepages/*/nr_hugepages
-$ grep Huge /proc/meminfo
+grep -r . /sys/kernel/mm/hugepages/*/nr_hugepages
+grep Huge /proc/meminfo
 ```
 
 Whichever document loses is the documentation bug and gets corrected to
@@ -49,7 +49,7 @@ cores across both CCDs, with 16-31 as SMT siblings — in which case the
 pinned container spans two CCDs rather than isolating one. Decide with:
 
 ```bash
-$ lscpu -e=CPU,CORE,SOCKET,NODE,L3
+lscpu -e=CPU,CORE,SOCKET,NODE,L3
 ```
 
 The L3 column shows the CCD split. The answer determines whether CCD-aware
@@ -63,8 +63,8 @@ performance energy-performance preference is the current recommendation for
 Zen 5. Decide with:
 
 ```bash
-$ cat /sys/devices/system/cpu/amd_pstate/status
-$ cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver
+cat /sys/devices/system/cpu/amd_pstate/status
+cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver
 ```
 
 ## Tier A: likely wins
@@ -89,7 +89,7 @@ existing GPU IRQ affinity assignment persists — `irqbalance` rewrites
 survives an hour of uptime:
 
 ```bash
-$ for irq in $(grep -E "nvidia" /proc/interrupts | cut -d: -f1); do
+for irq in $(grep -E "nvidia" /proc/interrupts | cut -d: -f1); do
     cat /proc/irq/$irq/smp_affinity; done
 ```
 
@@ -102,7 +102,7 @@ kernel modules are the recommended default for Blackwell GPUs, and new
 features land there first. Check which flavor the host runs:
 
 ```bash
-$ modinfo nvidia | grep -i license
+modinfo nvidia | grep -i license
 ```
 
 If proprietary, switching to the open modules is a low-risk,

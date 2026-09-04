@@ -92,11 +92,13 @@ sudo apt-get update
 cargo run --release -p harness -- --model "$MODEL" --text-only
 ```
 
-Keep commands and their output in separate blocks. Output lines use no prefix either,
-and a block that mixes a command with what it printed is neither pasteable nor
-verbatim. The one place a `$ ` prompt may appear is inside an Observed block of a
-verification runbook, where it is part of a transcript recorded as typed; those blocks
-are evidence, not instructions, and are never pasted.
+Keep commands and their output in separate blocks; output lines use no prefix either.
+When a command and what it printed must be shown together, tag the block `console`
+and keep the `$ ` prompt: that is a transcript, the prompt is what tells the command
+from its output, and nothing in it is meant to be pasted. The other transcript is an
+Observed block of a verification runbook, recorded as typed and never edited.
+`scripts/docs/check_command_prompts.py` enforces this: it reads `bash`, `sh`, `shell`
+and `zsh` blocks outside Observed sections and frozen records, and fails on a prompt.
 
 Always specify the language on programming code blocks. Use pipe tables with headers.
 Unordered lists use `-`; ordered lists use `1. 2. 3.`.

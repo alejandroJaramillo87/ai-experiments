@@ -45,13 +45,13 @@ network — which is why the property is hardware-independent and the entry live
 Command:
 
 ```bash
-$ cd scripts/verify/obs_browser && npm install && node check.mjs
+cd scripts/verify/obs_browser && npm install && node check.mjs
 ```
 
 Set `PW_CHROMIUM` explicitly when no browser sits under `/opt/pw-browsers`:
 
 ```bash
-$ PW_CHROMIUM=$(ls -d ~/.cache/ms-playwright/chromium-*/chrome-linux/chrome | head -1) \
+PW_CHROMIUM=$(ls -d ~/.cache/ms-playwright/chromium-*/chrome-linux/chrome | head -1) \
     node check.mjs
 ```
 
@@ -136,19 +136,19 @@ did not would produce identical listings.
 Command:
 
 ```bash
-$ D=$(mktemp -d) && mkdir -p "$D/training"
-$ printf '{}\n' > "$D/training/R-20250101-000000-aaaaaa.jsonl"
-$ printf '{}\n' > "$D/training/runs.jsonl"
-$ printf '{}\n' > "$D/training/notes.txt"
-$ touch -d '90 days ago' "$D/training/R-20250101-000000-aaaaaa.jsonl" \
+D=$(mktemp -d) && mkdir -p "$D/training"
+printf '{}\n' > "$D/training/R-20250101-000000-aaaaaa.jsonl"
+printf '{}\n' > "$D/training/runs.jsonl"
+printf '{}\n' > "$D/training/notes.txt"
+touch -d '90 days ago' "$D/training/R-20250101-000000-aaaaaa.jsonl" \
     "$D/training/runs.jsonl" "$D/training/notes.txt"
-$ ls "$D/training/"
-$ OBS_LOG_DIR="$D" OBS_RETENTION_DAYS=30 uv run --no-sync python -m training runs
-$ ls "$D/training/"
-$ OBS_LOG_DIR="$D" OBS_RETENTION_DAYS=30 \
+ls "$D/training/"
+OBS_LOG_DIR="$D" OBS_RETENTION_DAYS=30 uv run --no-sync python -m training runs
+ls "$D/training/"
+OBS_LOG_DIR="$D" OBS_RETENTION_DAYS=30 \
     uv run --no-sync python -m training validate \
     training/recipes/reference/tiny-e2e.yaml
-$ ls "$D/training/"
+ls "$D/training/"
 ```
 
 Expected signal: the aged `R-*.jsonl` survives the `runs` listing, because a viewer command

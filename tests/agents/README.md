@@ -47,7 +47,7 @@ prints the container command instead of running it. Never exercise this target w
 ## Running the deterministic layer
 
 ```bash
-$ make test
+make test
 ```
 
 ## QA role acceptance tests
@@ -56,8 +56,8 @@ Every subagent role is asserted against a fixture built so the wrong answer is t
 plausible one. The passing outcome is the role refusing the plausible answer.
 
 ```bash
-$ make agent-role-tests                     # every role
-$ make agent-role-tests ROLE=perf-auditor   # one role
+make agent-role-tests                     # every role
+make agent-role-tests ROLE=perf-auditor   # one role
 ```
 
 `planted_defect/` is the only fixture with executable code. `window_start` is off by

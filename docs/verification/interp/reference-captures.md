@@ -29,8 +29,8 @@ missing prerequisite.
    stale image. After any such change:
 
    ```bash
-   $ uv lock              # the Dockerfile syncs with --frozen and fails on a stale lock
-   $ make interp-build
+   uv lock              # the Dockerfile syncs with --frozen and fails on a stale lock
+   make interp-build
    ```
 
 3. **Disk.** Check free space against the projection below before starting. The preflight
@@ -62,9 +62,9 @@ the disk preflight prices the written figure rather than the request. The reason
 ## Running a capture
 
 ```bash
-$ df -h /mnt/ai-data
-$ make harvest-check-hooks RECIPE=training/recipes/interp/harvest-false-fact.yaml
-$ make harvest RECIPE=training/recipes/interp/harvest-false-fact.yaml
+df -h /mnt/ai-data
+make harvest-check-hooks RECIPE=training/recipes/interp/harvest-false-fact.yaml
+make harvest RECIPE=training/recipes/interp/harvest-false-fact.yaml
 ```
 
 Expected signal: 20 `Caching activations` progress bars, one per chunk, each about 50 minutes;
@@ -76,7 +76,7 @@ is gone, `<capture>/<hook>/` holds the flat assembled dataset, `progress.json` i
 Then train an SAE against it, since a capture no SAE has read is not a finished deliverable:
 
 ```bash
-$ make sae-train RECIPE=training/recipes/interp/sae-false-fact.yaml
+make sae-train RECIPE=training/recipes/interp/sae-false-fact.yaml
 ```
 
 ## Recovering from an interruption
@@ -85,8 +85,8 @@ $ make sae-train RECIPE=training/recipes/interp/sae-false-fact.yaml
 50 minutes; deleting the directory costs everything captured so far.
 
 ```bash
-$ cat /mnt/ai-data/interp/activations/<name>/progress.json
-$ make harvest RECIPE=training/recipes/interp/harvest-false-fact.yaml
+cat /mnt/ai-data/interp/activations/<name>/progress.json
+make harvest RECIPE=training/recipes/interp/harvest-false-fact.yaml
 ```
 
 The resume reads `completed_chunks`, clears the interrupted chunk's directory, fast-forwards the

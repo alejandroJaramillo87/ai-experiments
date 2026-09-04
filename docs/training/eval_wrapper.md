@@ -9,7 +9,7 @@ scorecard from three independently skippable evaluators (Phase 1 F7). Design rec
 Host-run; sequences the GPU phases itself so the one-GPU-consumer policy holds:
 
 ```bash
-$ make eval-ft ARGS="\
+make eval-ft ARGS="\
     --base google/gemma-4-E2B \
     --tuned /mnt/ai-data/training/checkpoints/<run>/latest \
     --dataset /mnt/ai-data/training/datasets/sft/<name> \
@@ -57,5 +57,5 @@ thinking-off comparison is refused rather than footnoted.
 Manual restore after an unclean exit:
 
 ```bash
-$ docker compose up -d --force-recreate llama-gpu llama-cpu
+docker compose up -d --force-recreate llama-gpu llama-cpu
 ```

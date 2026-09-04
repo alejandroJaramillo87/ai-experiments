@@ -53,12 +53,12 @@ Extraction runs at bf16 in the workbench (batch GPU work); serving loads the exp
 safetensors image as configuration.
 
 ```bash
-$ make steer-extract ARGS="--method repeng --model google/gemma-2-2b \
+make steer-extract ARGS="--method repeng --model google/gemma-2-2b \
     --pairs interp/steering/prompts/honesty_pairs.jsonl \
     --out /mnt/ai-data/interp/vectors/honesty-v1"
-$ make steer-up VECTOR=/mnt/ai-data/interp/vectors/honesty-v1 SCALE=1.0
-$ make steer-down
-$ make steer-scorecard VECTOR=/mnt/ai-data/interp/vectors/honesty-v1 ATTRIBUTE="honesty"
+make steer-up VECTOR=/mnt/ai-data/interp/vectors/honesty-v1 SCALE=1.0
+make steer-down
+make steer-scorecard VECTOR=/mnt/ai-data/interp/vectors/honesty-v1 ATTRIBUTE="honesty"
 ```
 
 `--method sae_row` exports a single Gemma Scope decoder row instead
@@ -77,12 +77,12 @@ conventions and is published to `docs/interp/experiments/` whichever arm wins.
 ## W2: probe toolkit
 
 ```bash
-$ make probe-capture ARGS="--model /app/models/hf/gemma-4-E4B \
+make probe-capture ARGS="--model /app/models/hf/gemma-4-E4B \
     --dataset interp/probes/prompts/refusal.jsonl \
     --layers 8,16,24 --out /mnt/ai-data/interp/activations/refusal-v1"
-$ make probe-train ARGS="--capture /mnt/ai-data/interp/activations/refusal-v1 --name refusal-v1"
-$ make probe-eval ARGS="--probe /mnt/ai-data/interp/probes/refusal-v1 --label-name refusal"
-$ make probe-export ARGS="--probe /mnt/ai-data/interp/probes/refusal-v1"
+make probe-train ARGS="--capture /mnt/ai-data/interp/activations/refusal-v1 --name refusal-v1"
+make probe-eval ARGS="--probe /mnt/ai-data/interp/probes/refusal-v1 --label-name refusal"
+make probe-export ARGS="--probe /mnt/ai-data/interp/probes/refusal-v1"
 ```
 
 Capture is a workbench batch job (bf16, nnsight); training is CPU scikit-learn with a
@@ -113,9 +113,9 @@ that scores production traffic.
 ## W3: served-request log
 
 ```bash
-$ make probe-export ARGS="--probe /mnt/ai-data/interp/probes/<name>"
-$ make harness-serve HARNESS_PROBE=/app/probes/<name>/probe.safetensors
-$ make harness-serve-down
+make probe-export ARGS="--probe /mnt/ai-data/interp/probes/<name>"
+make harness-serve HARNESS_PROBE=/app/probes/<name>/probe.safetensors
+make harness-serve-down
 ```
 
 The two paths name one file: `probe-export` writes it under the host tree at
@@ -170,8 +170,8 @@ the `interp` compose profile, which went with it.
 ## W4: probe monitor
 
 ```bash
-$ make probe-monitor ARGS="--window 7d"
-$ make probe-monitor ARGS="--window 7d --probes refusal-v1 \
+make probe-monitor ARGS="--window 7d"
+make probe-monitor ARGS="--window 7d --probes refusal-v1 \
     --log-dir /mnt/ai-data/interp/logs/harness"
 ```
 
@@ -222,30 +222,30 @@ Sandboxed agents cannot run these; the human executes and reports back (AGENTS.m
 
 ```bash
 # Serving entrypoint: the harness starts unsteered with CONTROL_VECTOR unset
-$ make harness-serve && docker logs rust-harness-serve | head -40
+make harness-serve && docker logs rust-harness-serve | head -40
 
 # Steer round trip. Loading the checkpoint takes minutes and the reply is
 # slow, so give curl a timeout matched to max_tokens rather than its default.
-$ make steer-up VECTOR=/mnt/ai-data/interp/vectors/<name> SCALE=1.0
-$ curl -s --max-time 600 http://127.0.0.1:8005/v1/chat/completions \
+make steer-up VECTOR=/mnt/ai-data/interp/vectors/<name> SCALE=1.0
+curl -s --max-time 600 http://127.0.0.1:8005/v1/chat/completions \
     -H 'Content-Type: application/json' \
     -d '{"messages":[{"role":"user","content":"hi"}],"max_tokens":32}'
-$ make steer-down
+make steer-down
 
 # Served-request log: a request lands as one record carrying its probe scores
-$ make harness-serve HARNESS_PROBE=/app/probes/<name>/probe.safetensors
-$ curl -s --max-time 600 http://127.0.0.1:8005/v1/chat/completions \
+make harness-serve HARNESS_PROBE=/app/probes/<name>/probe.safetensors
+curl -s --max-time 600 http://127.0.0.1:8005/v1/chat/completions \
     -H 'Content-Type: application/json' \
     -d '{"messages":[{"role":"user","content":"hi"}],"max_tokens":32}'
-$ tail -1 /mnt/ai-data/interp/logs/harness/$(date -u +%F).jsonl | python3 -m json.tool
+tail -1 /mnt/ai-data/interp/logs/harness/$(date -u +%F).jsonl | python3 -m json.tool
 
 # The record must be on disk before the process ends, not flushed at shutdown
-$ docker kill rust-harness-serve
-$ wc -l /mnt/ai-data/interp/logs/harness/$(date -u +%F).jsonl
+docker kill rust-harness-serve
+wc -l /mnt/ai-data/interp/logs/harness/$(date -u +%F).jsonl
 
 # The monitor aggregates without a model, and without stopping inference
-$ make probe-monitor ARGS="--window 1d --log-dir /mnt/ai-data/interp/logs/harness"
+make probe-monitor ARGS="--window 1d --log-dir /mnt/ai-data/interp/logs/harness"
 
 # Production path unchanged by any of the above
-$ docker compose up -d llama-gpu && curl -sf 127.0.0.1:8002/v1/health
+docker compose up -d llama-gpu && curl -sf 127.0.0.1:8002/v1/health
 ```

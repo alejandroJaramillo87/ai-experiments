@@ -43,8 +43,8 @@ because the old Makefile ran.
 Before trusting any result, confirm the tree carries the change:
 
 ```bash
-$ git status --short          # uncommitted work will not reach a new worktree
-$ grep -c '<distinctive string from the change>' <path>
+git status --short          # uncommitted work will not reach a new worktree
+grep -c '<distinctive string from the change>' <path>
 ```
 
 When the answer is that the change is uncommitted, the fix is to commit, not to add logic.
@@ -96,12 +96,12 @@ When a result contradicts the expectation, report the contradiction before expla
 ## Common host-side checks
 
 ```bash
-$ make quality                    # full gate; mandatory before every push
-$ make status                     # service health
-$ make up / make down             # service lifecycle
-$ ./scripts/benchmark/benchmark_gpu.sh    # no make wrapper; see the benchmarking skill
-$ nvidia-smi                      # GPU state
-$ docker compose -f docker-compose.agents.yaml -p ai-agents build agent-proxy
+make quality                    # full gate; mandatory before every push
+make status                     # service health
+make up / make down             # service lifecycle
+./scripts/benchmark/benchmark_gpu.sh    # no make wrapper; see the benchmarking skill
+nvidia-smi                      # GPU state
+docker compose -f docker-compose.agents.yaml -p ai-agents build agent-proxy
 ```
 
 For performance numbers specifically, follow `.claude/skills/benchmarking/SKILL.md` instead —

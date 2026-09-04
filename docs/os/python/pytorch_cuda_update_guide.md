@@ -63,13 +63,13 @@ Update the PyTorch CUDA build when:
 Check the system CUDA version reported by the driver toolkit:
 
 ```bash
-$ nvcc --version
+nvcc --version
 ```
 
 Check the installed PyTorch build:
 
 ```bash
-$ uv run python -c "import torch; print(torch.__version__)"
+uv run python -c "import torch; print(torch.__version__)"
 ```
 
 The version string includes the CUDA suffix, for example `2.9.1+cu130`.
@@ -107,7 +107,7 @@ bump in the same step.
 ### Step 2: Refresh the lock file
 
 ```bash
-$ uv lock
+uv lock
 ```
 
 uv re-resolves `torch` and `torchvision` from the new index and rewrites `uv.lock`.
@@ -115,20 +115,20 @@ uv re-resolves `torch` and `torchvision` from the new index and rewrites `uv.loc
 ### Step 3: Sync the environment
 
 ```bash
-$ uv sync --all-groups --all-extras
+uv sync --all-groups --all-extras
 ```
 
 ### Step 4: Run the acceptance checks
 
 ```bash
-$ uv run python -c "import torch; assert torch.cuda.is_available()"
-$ uv run python scripts/utils/check_py_deps_install.py
+uv run python -c "import torch; assert torch.cuda.is_available()"
+uv run python scripts/utils/check_py_deps_install.py
 ```
 
 The update script runs the lock refresh, sync, and PyTorch verification in one step:
 
 ```bash
-$ ./scripts/update/update_python.sh
+./scripts/update/update_python.sh
 ```
 
 The script runs `uv lock --upgrade` followed by `uv sync --all-groups --all-extras`, then
@@ -142,8 +142,8 @@ A major-version jump elsewhere in the graph therefore passes it silently. The ac
 check for an upgrade is the test suite, not the script's closing `[OK]`:
 
 ```bash
-$ make quality
-$ make test
+make quality
+make test
 ```
 
 ## Verification
@@ -151,7 +151,7 @@ $ make test
 Confirm the installed build and GPU detection:
 
 ```bash
-$ uv run python -c "
+uv run python -c "
 import torch
 print(f'PyTorch version: {torch.__version__}')
 print(f'CUDA available: {torch.cuda.is_available()}')
@@ -193,8 +193,8 @@ Confirm `[tool.uv.sources]` in `pyproject.toml` binds `torch` and `torchvision`
 to the CUDA index, then refresh:
 
 ```bash
-$ uv lock
-$ uv sync --all-groups --all-extras
+uv lock
+uv sync --all-groups --all-extras
 ```
 
 ### CUDA version mismatch warning
@@ -217,24 +217,24 @@ system CUDA 13.0.88 toolkit.
 
 ```bash
 # Check current versions (system vs PyTorch)
-$ nvcc --version
-$ uv run python -c "import torch; print(f'PyTorch: {torch.__version__}, CUDA: {torch.version.cuda}')"
+nvcc --version
+uv run python -c "import torch; print(f'PyTorch: {torch.__version__}, CUDA: {torch.version.cuda}')"
 
 # Update the CUDA build: edit the pins and index in pyproject.toml, then
-$ uv lock
-$ uv sync --all-groups --all-extras
+uv lock
+uv sync --all-groups --all-extras
 
 # Or run the update script (lock upgrade, sync, verify)
-$ ./scripts/update/update_python.sh
+./scripts/update/update_python.sh
 
 # Verify GPU detection
-$ uv run python -c "import torch; assert torch.cuda.is_available()"
+uv run python -c "import torch; assert torch.cuda.is_available()"
 
 # Full environment check (system and PyTorch CUDA)
-$ uv run python scripts/utils/check_py_deps_install.py
+uv run python scripts/utils/check_py_deps_install.py
 
 # Roll back a bad update
-$ git checkout uv.lock && uv sync --all-groups --all-extras
+git checkout uv.lock && uv sync --all-groups --all-extras
 ```
 
 ---

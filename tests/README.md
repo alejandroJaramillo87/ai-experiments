@@ -39,10 +39,10 @@ expression rather than adding to it.** So `-m gpu` silently re-enables `hw_smoke
 ## Entry points
 
 ```bash
-$ make quality-full           # everything: the gate, the suite, and hw_smoke (workstation only)
-$ make test                   # the whole suite, in either environment
-$ pytest tests/common -v      # one directory
-$ pytest -m hw_smoke          # workstation only
+make quality-full           # everything: the gate, the suite, and hw_smoke (workstation only)
+make test                   # the whole suite, in either environment
+pytest tests/common -v      # one directory
+pytest -m hw_smoke          # workstation only
 ```
 
 `make quality-full` is the only command that covers a hardware tier; add `HW=full` to include

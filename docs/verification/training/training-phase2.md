@@ -24,7 +24,7 @@ Implementation: `training/commands/build_contamination.py`,
 Command:
 
 ```bash
-$ make build-contamination ARGS="--out /mnt/ai-data/training/datasets/_contamination/v1"
+make build-contamination ARGS="--out /mnt/ai-data/training/datasets/_contamination/v1"
 ```
 
 Expected signal: exit 0; the index directory contains the benchmark n-gram
@@ -47,7 +47,7 @@ Implementation: `training/commands/prepare_corpus.py`,
 Command:
 
 ```bash
-$ make prepare-corpus ARGS="--source HuggingFaceFW/fineweb-edu --split train \
+make prepare-corpus ARGS="--source HuggingFaceFW/fineweb-edu --split train \
     --tokenizer HuggingFaceTB/SmolLM2-135M \
     --contamination /mnt/ai-data/training/datasets/_contamination/v1 \
     --work-dir /mnt/ai-data/training/work/verify-corpus \
@@ -74,7 +74,7 @@ Implementation: `training/data/mixture.py`, `training/data/loader.py`,
 Command (two prepared shard directories with one tokenizer hash):
 
 ```bash
-$ make train CONFIG=training/recipes/reference/tiny-e2e.yaml \
+make train CONFIG=training/recipes/reference/tiny-e2e.yaml \
     ARGS="mixture.enabled=true \
           'mixture.sources=[{name: a, path: /mnt/ai-data/training/shards/verify-small, weight: 0.7}, {name: b, path: /mnt/ai-data/training/shards/verify-corpus, weight: 0.3}]' \
           schedule.total_steps=50"
@@ -101,7 +101,7 @@ Implementation: `training/runtime/schedules.py`, `training/runtime/loop.py`,
 Command:
 
 ```bash
-$ make train CONFIG=training/recipes/reference/tiny-e2e.yaml \
+make train CONFIG=training/recipes/reference/tiny-e2e.yaml \
     ARGS="data.source=/mnt/ai-data/training/shards/verify-small \
           schedule.type=wsd schedule.warmup_steps=5 schedule.total_steps=50 \
           'schedule.decay_start_frac=0.8' 'schedule.final_lr_frac=0.1'"
@@ -126,12 +126,12 @@ Implementation: `training/commands/make_replay_synthetic.py`,
 Command:
 
 ```bash
-$ docker compose -f docker-compose.training.yaml run --rm training \
+docker compose -f docker-compose.training.yaml run --rm training \
     python -m training make-replay-synthetic --out /mnt/ai-data/training/shards/replay-verify --gb 1
-$ make train CONFIG=training/recipes/reference/continual-gemma4-e2b.yaml \
+make train CONFIG=training/recipes/reference/continual-gemma4-e2b.yaml \
     ARGS="'replay.sources=[{name: replay, path: /mnt/ai-data/training/shards/replay-verify, weight: 1.0}]' \
           replay.max_gb=2.0 schedule.total_steps=30"
-$ uv run pytest -m hw_full tests/hardware/test_ram.py -k replay -v
+uv run pytest -m hw_full tests/hardware/test_ram.py -k replay -v
 ```
 
 Expected signal: the synthetic shard set generates; the run draws the
@@ -157,7 +157,7 @@ Implementation: `training/runtime/offload.py`, `training/runtime/loop.py`,
 Command:
 
 ```bash
-$ make train CONFIG=training/recipes/reference/continual-gemma4-e2b.yaml \
+make train CONFIG=training/recipes/reference/continual-gemma4-e2b.yaml \
     ARGS="schedule.total_steps=30"
 ```
 
@@ -185,7 +185,7 @@ Implementation: the same offload path as P2.6, resumed through
 Command:
 
 ```bash
-$ make train CONFIG=training/recipes/reference/continual-gemma4-e2b.yaml \
+make train CONFIG=training/recipes/reference/continual-gemma4-e2b.yaml \
     ARGS="schedule.total_steps=60 checkpoint.resume=latest"
 ```
 

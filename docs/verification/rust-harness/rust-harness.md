@@ -344,10 +344,20 @@ through `transformers` and through the harness, and compare. Confirm the
 checkpoint directory name against the listing before running; both sides read
 the same directory, so there is no conversion step to account for.
 
+**Run the harness from an empty directory.** It continues whatever
+`session.jsonl` sits in its working directory, and `rust-harness/` has held a
+stale one more than once (RH.10 restored 111 tokens from it). A run made there
+on 2026-09-04 printed `Prefill: 977 tokens` for a six-token prompt, ended at
+993 cached tokens, and emitted `<unused10>二品<unused10>二品` — the continuation
+of a transcript full of an earlier run's garbage, not a verdict on the
+weights. A prefill count far above the prompt length is the tell.
+
 ```bash
 ls /mnt/ai-data/models/hf/
-cd ~/workspace/ai-experiments/rust-harness
-cargo run --release -p harness -- \
+rm -f ~/workspace/ai-experiments/rust-harness/session.jsonl \
+      ~/workspace/ai-experiments/rust-harness/session.kv
+mkdir -p /tmp/rh1a && cd /tmp/rh1a
+~/workspace/ai-experiments/rust-harness/target/release/harness --text-only \
     --model /mnt/ai-data/models/hf/gemma-4-E2B \
     --max-tokens 16 --temperature 0 'The capital of France is'
 ```
@@ -371,10 +381,16 @@ print(tok.decode(out[0], skip_special_tokens=True))
 EOF
 ```
 
-Expected signal: matching token sequences mean the backend's reading is
-correct. Divergence that begins early and does not recover means it is not —
-in which case flip the `owns_cache` branch in the loader so shared layers
-compute their own K/V, rebuild, and rerun.
+Expected signal: both sides continue the prompt fluently and agree on the
+first words. The harness renders the prompt through the chat template
+(`<bos><|turn>user\n...<turn|>\n<|turn>model\n`) while `transformers` here
+tokenizes the bare string, so the two token sequences differ before the first
+forward pass and token-for-token agreement is not expected from this pair of
+commands. The exact-match comparison is the ladder's L4 rung, which feeds both
+sides one prompt and passed at Tier E on 2026-08-14 (RH.1b). Word salad or
+repeated `<unused>` tokens from a clean directory means the backend's reading
+is wrong — in which case flip the `owns_cache` branch in the loader so shared
+layers compute their own K/V, rebuild, and rerun.
 
 Capture the `from_pretrained` output verbatim, warnings included. A warning
 naming the shared layers' `k_proj`, `v_proj`, or `k_norm` as unexpected keys

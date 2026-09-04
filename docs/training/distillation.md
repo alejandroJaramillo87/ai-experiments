@@ -109,16 +109,16 @@ meta alone; F6 export and F7 evaluation read it from there.
 
 ```bash
 # Online logit distillation (reference recipe)
-$ make train-distill CONFIG=training/recipes/reference/distill-e2b.yaml
+make train-distill CONFIG=training/recipes/reference/distill-e2b.yaml
 
 # Cached mode: pre-pass, then train
-$ make distill-cache CONFIG=... ARGS="distill.mode=cached distill.cache_path=/mnt/ai-data/training/datasets/distill-logits/e4b-k64 distill.teacher_quantize=none"
-$ make train-distill CONFIG=... ARGS="distill.mode=cached distill.cache_path=... distill.teacher_quantize=none sft.packing=false"
+make distill-cache CONFIG=... ARGS="distill.mode=cached distill.cache_path=/mnt/ai-data/training/datasets/distill-logits/e4b-k64 distill.teacher_quantize=none"
+make train-distill CONFIG=... ARGS="distill.mode=cached distill.cache_path=... distill.teacher_quantize=none sft.packing=false"
 
 # Response tier: F4 capture -> prepare -> train
-$ make generate-teacher ARGS="--pipeline respond ..."
-$ make prepare-sft ARGS="--source /mnt/ai-data/training/datasets/distill/<name>/train.jsonl ..."
-$ make train-distill CONFIG=... ARGS="distill.tier=response distill.teacher_manifest=/mnt/ai-data/training/datasets/distill/<name>/manifest.json"
+make generate-teacher ARGS="--pipeline respond ..."
+make prepare-sft ARGS="--source /mnt/ai-data/training/datasets/distill/<name>/train.jsonl ..."
+make train-distill CONFIG=... ARGS="distill.tier=response distill.teacher_manifest=/mnt/ai-data/training/datasets/distill/<name>/manifest.json"
 ```
 
 Overrides pass through the D5 loader: `ARGS="distill.alpha=0.3

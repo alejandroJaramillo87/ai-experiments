@@ -243,7 +243,7 @@ Reproduce the module tree on the workstation. This builds the model on the meta 
 the configuration alone, so it reads no weights and needs no GPU:
 
 ```bash
-$ uv run python -c "
+uv run python -c "
 import torch
 from transformers import AutoConfig, AutoModelForCausalLM
 cfg = AutoConfig.from_pretrained('/mnt/ai-data/models/hf/gemma-4-E2B')
@@ -302,7 +302,7 @@ GGUF container the runtime still opens. See
 The configuration and tensor facts regenerate on the workstation with no GPU and no network:
 
 ```bash
-$ ./scripts/models/gemma4_header_transcript.sh
+./scripts/models/gemma4_header_transcript.sh
 ```
 
 The module path requires loading the model; see
