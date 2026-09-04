@@ -38,38 +38,29 @@ dimensions cannot distinguish.
 
 ## Generating the Tier E artifacts
 
-Workstation only: every command below needs the real checkpoint and a torch environment. See
+Workstation only: every generator needs the real checkpoint and a torch environment. See
 `docs/testing/quality-gate.md` for where this sits relative to `make quality`.
 
+The five artifacts are file prerequisites of `make ladder`, so the ordinary way to generate
+them is to climb: a missing one is written first, a present one is left alone. To rewrite
+all five, after a checkpoint or `transformers` change that make cannot see under an existing
+directory:
+
 ```bash
-# L0: token ids for a plain string, for text carrying specials that must stay
-# bytes, and for a real rendered chat turn.
-uv run python rust-harness/fixtures/reference_tokenizer.py \
-    --model <checkpoint-dir> \
-    --out rust-harness/fixtures/reference/e4b/quick/tokenizer_parity.json
-
-# L1 and L2: per-layer residual stream, the pre-stack stages, and the
-# final-position distribution. --generate also writes L4's continuation.
-uv run python rust-harness/fixtures/reference_capture.py \
-    --model <checkpoint-dir> \
-    --prompt "The capital of France is" \
-    --generate 16 \
-    --out rust-harness/fixtures/reference/e4b/quick/layers.json
-
-# L3: per-token NLL over a prefix of the committed corpus, in 256-token
-# windows. The slowest of the four.
-uv run python rust-harness/fixtures/reference_perplexity.py \
-    --model <checkpoint-dir> \
-    --size quick \
-    --out rust-harness/fixtures/reference/e4b/quick/ppl.json
-
-# L4: a 64-token greedy continuation per prompt, for as many prompts as the
-# size decodes.
-uv run python rust-harness/fixtures/reference_greedy.py \
-    --model <checkpoint-dir> \
-    --size quick \
-    --out rust-harness/fixtures/reference/e4b/quick/greedy.json
+cd rust-harness
+make ladder-reference SIZE=quick MODEL=<checkpoint-dir>
 ```
+
+The rules in `rust-harness/Makefile` run these five, one per artifact, and are the source of
+truth for their arguments:
+
+| Artifact | Generator | Measures |
+|----------|-----------|----------|
+| `tokenizer_parity.json` | `reference_tokenizer.py` | L0: token ids for a plain string, for text carrying specials that must stay bytes, and for a real rendered chat turn |
+| `layers.json` | `reference_capture.py --prompt "The capital of France is" --generate 16` | L1 and L2: per-layer residual stream, the pre-stack stages, and the final-position distribution; `--generate` also writes L4's continuation |
+| `ppl.json` | `reference_perplexity.py --size <SIZE>` | L3: per-token NLL over a prefix of the committed corpus, in 256-token windows. The slowest |
+| `greedy.json` | `reference_greedy.py --size <SIZE>` | L4: a 64-token greedy continuation per prompt, for as many prompts as the size decodes |
+| `long_context.json` | `reference_long_context.py` | L5: logits at anchors past the sliding window, over a prompt four windows long |
 
 Every artifact the ladder reads lives directly under the `--reference`
 directory. L0's does not vary with `SIZE`, and is regenerated into each size

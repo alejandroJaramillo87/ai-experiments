@@ -68,7 +68,7 @@ test-e4b: ## Run the checks needing the real E4B checkpoint (HARNESS_E4B_MODEL=<
 # make/quality.mk owns and means smoke|full, and not TIER, which make/agents.mk
 # owns and means sandbox|full; a third meaning on either would be resolved by
 # include order and silently mis-set.
-.PHONY: ladder
+.PHONY: ladder ladder-reference ladder-preflight
 SIZE ?= quick
 REFERENCE ?= fixtures/reference/e4b/$(SIZE)
 # The released E4B is Gemma4ForConditionalGeneration: a text tower beside a
@@ -82,7 +82,27 @@ TEXT_ONLY ?= 1
 ifeq ($(TEXT_ONLY),1)
 LADDER_TEXT_ONLY := --text-only
 endif
-ladder:
+
+# The generators need the parent tree's torch environment. `uv run` discovers
+# the project by walking up from here, so this is the workstation venv rather
+# than whichever python is on PATH -- the first Tier E attempt ran a bare
+# python without transformers and wrote nothing (RH.1b).
+LADDER_PY ?= uv run python
+
+# One artifact per generator, named as runtime/src/bin/ladder.rs joins them
+# onto --reference. `ladder` depends on these as files, so a missing one is
+# generated on the way up and a present one is not paid for again: the L3
+# generator scores the corpus with transformers and the L5 one runs a
+# 2052-token forward pass. Nothing here notices a checkpoint swapped under an
+# existing directory; `make ladder-reference` regenerates unconditionally for
+# that case.
+LADDER_ARTIFACTS := $(addprefix $(REFERENCE)/,\
+  tokenizer_parity.json layers.json ppl.json greedy.json long_context.json)
+
+# The refusals, shared by the climb and the generators. An order-only
+# prerequisite of the artifact rules, so a phony target does not make every
+# artifact look stale on every run.
+ladder-preflight:
 ifdef AI_SANDBOX
 	@printf '[ERROR] make ladder needs the real checkpoint and the GPU host; the sandbox has neither\n'
 	@printf '  The sandbox mounts only the worktree, so /mnt/ai-data is not reachable.\n'
@@ -101,6 +121,39 @@ endif
 	  printf '  Solution: use one of quick, standard, deep\n'; \
 	  printf '  Command: make ladder SIZE=quick MODEL=%s\n' '$(MODEL)'; \
 	  exit 1 ;; esac
+
+# L0. Does not vary with SIZE; written into each size directory rather than
+# resolved from a parent (fixtures/reference/README.md).
+$(REFERENCE)/tokenizer_parity.json: | ladder-preflight
+	@mkdir -p $(REFERENCE)
+	$(LADDER_PY) fixtures/reference_tokenizer.py --model "$(MODEL)" --out $@
+
+# L1 and L2; --generate also writes L4's continuation for the same prompt.
+$(REFERENCE)/layers.json: | ladder-preflight
+	@mkdir -p $(REFERENCE)
+	$(LADDER_PY) fixtures/reference_capture.py --model "$(MODEL)" \
+	  --prompt "The capital of France is" --generate 16 --out $@
+
+# L3. The slow one.
+$(REFERENCE)/ppl.json: | ladder-preflight
+	@mkdir -p $(REFERENCE)
+	$(LADDER_PY) fixtures/reference_perplexity.py --model "$(MODEL)" --size $(SIZE) --out $@
+
+# L4.
+$(REFERENCE)/greedy.json: | ladder-preflight
+	@mkdir -p $(REFERENCE)
+	$(LADDER_PY) fixtures/reference_greedy.py --model "$(MODEL)" --size $(SIZE) --out $@
+
+# L5. Both sides derive the scored positions from the checkpoint's
+# sliding_window, so which positions were scored is part of what L5 asserts.
+$(REFERENCE)/long_context.json: | ladder-preflight
+	@mkdir -p $(REFERENCE)
+	$(LADDER_PY) fixtures/reference_long_context.py --model "$(MODEL)" --out $@
+
+ladder-reference: ladder-preflight ## Regenerate every reference artifact for SIZE from transformers (MODEL=<dir>)
+	$(MAKE) -B $(LADDER_ARTIFACTS) MODEL="$(MODEL)" SIZE=$(SIZE) REFERENCE=$(REFERENCE)
+
+ladder: ladder-preflight $(LADDER_ARTIFACTS) ## Climb the correctness ladder, generating any missing artifact first (MODEL=<dir>, SIZE=quick|standard|deep)
 	cargo run --release -p runtime --bin ladder -- \
 	  $(LADDER_TEXT_ONLY) --size $(SIZE) --model $(MODEL) --reference $(REFERENCE)
 

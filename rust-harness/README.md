@@ -118,7 +118,9 @@ Testing is test-first and tiered:
   KV-bookkeeping stack against a scripted `MockModel`. Run with `cargo test`.
 - **Tier 3 — the correctness ladder** (`runtime/src/ladder.rs`): the real
   checkpoint against `transformers`, on the workstation, under its own make
-  target. It is not part of `make quality`.
+  target, which generates any missing reference artifact before it climbs.
+  It is not part of `make quality`; `make quality-full HW=full` runs it
+  through `tests/hardware/test_ladder.py`.
 
 Cutting across those: **the conformance invariants** (`runtime/src/conformance.rs`),
 which are obligations on every backend rather than tests of one. They say that

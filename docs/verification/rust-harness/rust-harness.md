@@ -530,36 +530,28 @@ that can call the backend correct.
 The generators are GPU consumers and `reference_perplexity.py` is the slow
 one. The artifacts land in a git-ignored directory by design — tens of MB at
 a 262144-wide vocabulary — so the printed table is the only evidence that
-leaves the workstation. Every artifact lives directly under the directory
-`make ladder` reads for the `SIZE`, `rust-harness/fixtures/reference/e4b/quick`
-here; a generator pointed anywhere else produces a skipped rung, not a
-failure.
+leaves the workstation. The five artifacts are prerequisites of `make ladder`
+itself: one that is missing under the directory the `SIZE` reads,
+`rust-harness/fixtures/reference/e4b/quick` here, is generated on the way up,
+and one that is present is not paid for again. `make ladder-reference`
+regenerates all five unconditionally, which is the command after a
+checkpoint or `transformers` change, since a stale artifact under an existing
+directory is not something make can see. `tests/hardware/test_ladder.py`
+runs the same target under `make quality-full HW=full`, so a routine
+full-tier run repeats this entry.
 
 Command:
 
 ```bash
 cd ~/workspace/ai-experiments/rust-harness
-MODEL=<the gemma-4-E4B checkpoint directory>
-REF=fixtures/reference/e4b/quick
-mkdir -p "$REF"
-uv run python fixtures/reference_tokenizer.py --model "$MODEL" \
-    --out "$REF/tokenizer_parity.json"
-uv run python fixtures/reference_capture.py --model "$MODEL" \
-    --prompt "The capital of France is" --generate 16 \
-    --out "$REF/layers.json"
-uv run python fixtures/reference_perplexity.py --model "$MODEL" --size quick \
-    --out "$REF/ppl.json"
-uv run python fixtures/reference_greedy.py --model "$MODEL" --size quick \
-    --out "$REF/greedy.json"
-uv run python fixtures/reference_long_context.py --model "$MODEL" \
-    --out "$REF/long_context.json"
-make ladder SIZE=quick MODEL="$MODEL"
+make ladder SIZE=quick MODEL=<the gemma-4-E4B checkpoint directory>
 ```
 
 Expected signal: six rows, each `PASS`, and `0 skipped`. **A `skipped` rung is
 missing evidence, not a pass** — read the count in the closing `[OK]` line
-rather than the exit code. The run recorded below predates L5 and shows five
-rows; L5's first pass is RH.17's Observed block.
+rather than the exit code. A skip after the generators ran means one wrote
+somewhere other than where the climb read. The first run recorded below
+predates L5 and shows five rows; L5's first pass is RH.17's Observed block.
 
 Observed:
 

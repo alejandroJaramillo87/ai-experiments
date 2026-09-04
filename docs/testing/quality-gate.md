@@ -158,7 +158,11 @@ make ladder SIZE=quick MODEL=<checkpoint-dir>      # also standard, deep
 ```
 
 It is deliberately outside `make quality`. The gate is mandatory before every push and has to
-stay fast, and the ladder loads the real checkpoint. The half that does run inside the gate is
+stay fast, and the ladder loads the real checkpoint. It is inside `make quality-full HW=full`:
+`tests/hardware/test_ladder.py` drives the same target at `SIZE=quick` and fails on a red rung
+or a skipped one. The reference artifacts are file prerequisites of the target, so a first run
+generates them through `transformers` before climbing and later runs reuse them;
+`make ladder-reference` rewrites them after a checkpoint or `transformers` change. The half that does run inside the gate is
 Tier T: the same rungs against a tiny Gemma 4 that `transformers` itself built, committed
 whole, measured in milliseconds.
 
