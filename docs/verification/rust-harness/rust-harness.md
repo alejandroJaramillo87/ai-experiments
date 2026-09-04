@@ -1030,6 +1030,23 @@ just closed a code block reaches for it. A decoder fault looks different: the
 contaminated RH.1a attempt produced `<unused10>` and mojibake, where this is a
 well-formed two-character word in a plausible position.
 
+Why Chinese rather than English is a fact about the pretraining corpus, not
+about the harness, and it is worth stating once because the next reader will
+ask. The model is not fetching anything at generation time; it reproduces a
+pattern it saw in training. A large share of the code-heavy pages on the web
+are Chinese developer sites (CSDN, Zhihu, Juejin), and when those pages are
+flattened to text the copy button beside every code block becomes the literal
+string `复制` on the line after the code. English sites carry the same button,
+but it is usually an icon or stripped as interface markup, so the word "Copy"
+appears far less often in that position. A code block ending on a bare `g()`
+line is therefore, in the corpus, very often followed by `复制`, and nothing in
+the language-neutral code above it pushed the distribution toward English.
+Two observations tie this to the checkpoint rather than to our code: the token
+was sampled from a distribution L2 and L4 show agrees with `transformers`, so
+the reference emits it too; and it occurs exactly once, immediately after the
+code block closes, where a tokenizer or decoding defect would not confine
+itself to one position.
+
 Status: VERIFIED 2026-09-04 (first decided 2026-08-14)
 
 ## RH.4 KV delta prefill
