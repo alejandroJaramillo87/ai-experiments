@@ -65,8 +65,6 @@ TRANSITIVE = {
 # with the version conflict that keeps it out; the importing module defers the
 # import so the rest of the tier loads without it.
 ISOLATED = {
-    "repeng": "0.4.0 requires numpy<2.0 and references the removed np.float_ "
-    "(KB-32); runs in its own venv, invoked out-of-process",
     "sae_bench": "0.6.0 requires datasets<4.0 and numpy<2.0 against the core "
     "datasets 5.0.0 pin; runs in its own venv (P4-D3)",
     "datatrove": "every release caps huggingface-hub<1.0 against the core 1.23.0 "

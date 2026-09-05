@@ -69,7 +69,7 @@ CASES = [
     ),
     (["sae-train", "--recipe", "r.yaml"], sae_train.cmd),
     (["sae-eval", "--sae-dir", "s", "--capture-dir", "c"], sae_eval.cmd),
-    (["steer-extract", "--model", "m", "--out", "o"], steer_extract.cmd),
+    (["steer-extract", "--capture", "c", "--out", "o"], steer_extract.cmd),
     (["steer-scorecard", "--vector", "v", "--attribute", "a"], steer_scorecard.cmd),
     (["smoke"], smoke_test.cmd),
     # `runs` is absent here on purpose: common/obs/runs.py binds it to a

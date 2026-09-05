@@ -23,8 +23,8 @@ tier.
 **A harvest contends with a training run.** Borrowing `training.runtime.lock` means the GPU
 lock is shared repository-wide, by design.
 
-**Several commands are serving-dependent, and one refuses to run.** Steering targets a live
-llama-gpu or vllm-gpu; `probe-monitor` actively refuses to start while inference is up,
+**Several commands are serving-dependent, and one refuses to run.** Steered serving and
+the scorecard target `harness-serve`; `probe-monitor` actively refuses to start while inference is up,
 rather than competing for VRAM. Most `make interp-*` targets first run
 `scripts/interp/preflight.sh`, which gates on the GPU and is workstation-only.
 
@@ -41,7 +41,7 @@ Those contracts are in `schemas/`.
 make interp-up                        # workbench container
 make harvest RECIPE=...               # activation harvesting
 make probe-train CAPTURE=...
-make steer-extract VECTOR=...
+make steer-extract ARGS="--capture ... --out ..."
 ```
 
 ## Where the real docs live

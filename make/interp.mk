@@ -52,7 +52,7 @@ interp-dirs: ## Create the /mnt/ai-data/interp storage tree on the host
 STEER_SERVICE ?= harness-serve
 VECTOR_CONTAINER = $(patsubst /mnt/ai-data/interp/vectors%,/app/vectors%,$(VECTOR))/vector.safetensors
 
-steer-extract: ## Extract and export a control vector in the workbench (ARGS="--method repeng --model ... --pairs ... --out ...")
+steer-extract: ## Extract and export a control vector from a capture directory (ARGS="--capture ... --out ...")
 	@./scripts/interp/preflight.sh
 	docker compose -f $(INTERP_COMPOSE) run --rm interp python -m interp steer-extract $(ARGS)
 

@@ -1,27 +1,49 @@
 """Direction extraction (W1 decision 1): two backends behind one interface.
 
-method "repeng": contrastive prompt pairs through repeng's ControlVector.train
-on the bf16 HF checkpoint (the default). method "sae_row": a single feature's
-decoder row from a pretrained SAE (Gemma Scope via SAELens) placed at its
-layer, zero elsewhere. Both return the same in-memory DirectionSet; export.py
-writes it as a safetensors image plus a JSON manifest beside it
-(schemas/control_vector_artifact.json). There is no third method: hand-rolled
-activation-difference extraction is what repeng already does.
+method "diff_means": the mean residual of the label-1 examples minus the mean
+residual of the label-0 examples, per layer, read from an activation-capture
+directory (the W2 capture format, written by `probe-capture` on the GPU or by
+the rust harness's `activation-capture` on the CPU). method "sae_row": a
+single feature's decoder row from a pretrained SAE (Gemma Scope via SAELens)
+placed at its layer, zero elsewhere. Both return the same in-memory
+DirectionSet; export.py writes it as a safetensors image plus a JSON manifest
+beside it (schemas/control_vector_artifact.json).
 
-Extraction is batch GPU work for the workbench container (bf16 substrate
-rule); this module imports torch/repeng/sae_lens lazily so the CPU sandbox can
-import it.
+Until 2026-09 the first method was repeng's ControlVector.train, and this
+docstring said there was no third method because hand-rolled activation
+differences were what repeng already did. repeng left for two reasons. Its
+only PyPI release, 0.4.0, requires numpy<2 and cannot import under the tier's
+numpy pin (KB-32), and the promised out-of-process venv never landed. And the
+repository already produced repeng's input: a capture holds exactly the
+last-token residuals repeng would have collected, at the block output where
+the harness adds the vector, with the model hash the harness checks.
+
+Conventions the harness relies on:
+
+- Sign: label 1 is the attribute. Adding the vector at a positive scale moves
+  the stream toward the label-1 examples.
+- Magnitude: the raw mean difference, unnormalised. The difference of two
+  means is already in residual-stream units, so `--control-vector-scale 1.0`
+  means "one class gap" at every layer, and that scale flag is the only knob.
+- Layers: every layer in the capture unless `layers` narrows it. Serving-time
+  narrowing is `--control-vector-layer-range` on the harness.
+
+Extraction reads numpy only, so this module and the diff_means path run in
+the CPU sandbox; the SAE backend imports sae_lens lazily.
 """
 
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass, field
 
 import numpy as np
 
-from interp.manifest import text_sha256
+from interp.manifest import load_manifest
+
+METHOD_DIFF_MEANS = "diff_means"
+METHOD_SAE_ROW = "sae_row"
+UNKNOWN_MODEL_HASH = "unknown"
 
 
 class ExtractionError(Exception):
@@ -41,95 +63,97 @@ class DirectionSet:
     and repeng describe this numbering as 1-based and leave the first block
     unsteerable; that floor went with the llama.cpp steering path, and the
     indices it admitted did not move.
+
+    model_hash is the sha256 of the checkpoint's model.safetensors when the
+    extractor can know it (diff_means reads it from the capture manifest) and
+    "unknown" otherwise; the exporter records it and the harness checks it.
     """
 
     directions: dict[int, np.ndarray]
     model_id: str
     model_revision: str
-    method: str  # "repeng" | "sae_row"
-    source: dict = field(default_factory=dict)  # pairs file hash or SAE identity
+    method: str  # "diff_means" | "sae_row"
+    source: dict = field(default_factory=dict)  # capture identity or SAE identity
+    model_hash: str = UNKNOWN_MODEL_HASH
 
     def layer_count(self) -> int:
         return max(self.directions) if self.directions else 0
 
 
-def load_pairs(path: str) -> list[dict]:
-    """Load contrastive pairs JSONL: one {"positive": ..., "negative": ...} per line."""
-    pairs = []
-    with open(path, encoding="utf-8") as f:
-        for lineno, line in enumerate(f, 1):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                record = json.loads(line)
-            except json.JSONDecodeError as exc:
-                raise ExtractionError(f"{path}:{lineno}: invalid JSON: {exc}") from exc
-            if "positive" not in record or "negative" not in record:
-                raise ExtractionError(
-                    f"{path}:{lineno}: pair needs 'positive' and 'negative' keys"
-                )
-            pairs.append(record)
-    if not pairs:
-        raise ExtractionError(f"{path}: no contrastive pairs found")
-    return pairs
-
-
-def extract_repeng(
-    model_id: str,
-    pairs_path: str,
-    revision: str = "main",
-    layer_range: tuple[int, int] | None = None,
+def extract_diff_means(
+    capture_dir: str,
+    layers: list[int] | None = None,
 ) -> DirectionSet:
-    """Train a contrastive control vector with repeng on the bf16 HF checkpoint."""
-    import torch
-    from repeng import ControlModel, ControlVector, DatasetEntry
-    from transformers import AutoModelForCausalLM, AutoTokenizer
+    """Mean of label-1 rows minus mean of label-0 rows, per captured layer.
 
-    pairs = load_pairs(pairs_path)
-    dataset = [
-        DatasetEntry(positive=p["positive"], negative=p["negative"]) for p in pairs
-    ]
+    The capture loader already checks that shards, labels and texts agree in
+    count; this adds the checks a class contrast needs. Means accumulate in
+    float64 and the direction is cast to float32 once, so re-extracting from
+    the same capture reproduces the same bytes (the W1 acceptance check).
+    """
+    from interp.probes.capture import load_capture
 
-    tokenizer = AutoTokenizer.from_pretrained(model_id, revision=revision)
-    if tokenizer.pad_token_id is None:
-        tokenizer.pad_token_id = tokenizer.eos_token_id
-    model = AutoModelForCausalLM.from_pretrained(
-        model_id,
-        revision=revision,
-        torch_dtype=torch.bfloat16,
-        device_map="auto",
-    )
-    # The registry's text-config unwrap: a composite Gemma 4 config keeps
-    # num_hidden_layers on text_config, not the top level.
-    from interp.families import unwrap_text_config
+    manifest = load_manifest(capture_dir)
+    activations, labels, _texts = load_capture(capture_dir)
+    if labels.size == 0:
+        raise ExtractionError(f"{capture_dir}: capture is empty")
 
-    n_layers = unwrap_text_config(model.config).num_hidden_layers
-    if layer_range is None:
-        # repeng's own default band: skip the embedding-adjacent early layers
-        layers = list(range(-1, -n_layers, -1))
+    classes = sorted(int(c) for c in np.unique(labels))
+    if classes != [0, 1]:
+        if len(classes) == 1:
+            raise ExtractionError(
+                f"{capture_dir}: capture holds only label {classes[0]}; "
+                "difference of means needs both classes"
+            )
+        raise ExtractionError(
+            f"{capture_dir}: labels must be exactly 0 and 1, got {classes}"
+        )
+
+    captured = sorted(activations)
+    if layers is None:
+        chosen = captured
     else:
-        layers = list(range(layer_range[0], layer_range[1] + 1))
-    control_model = ControlModel(model, layers)
-    vector = ControlVector.train(control_model, tokenizer, dataset)
+        missing = sorted(set(layers) - set(captured))
+        if missing:
+            raise ExtractionError(
+                f"{capture_dir}: layers {missing} not in capture "
+                f"(captured: {captured}); re-run capture with --layers"
+            )
+        chosen = sorted(set(layers))
 
-    directions = {
-        int(layer): np.asarray(direction, dtype=np.float32)
-        for layer, direction in vector.directions.items()
+    positive = labels == 1
+    negative = labels == 0
+    directions: dict[int, np.ndarray] = {}
+    for layer in chosen:
+        acts = activations[layer].astype(np.float64)
+        direction = acts[positive].mean(axis=0) - acts[negative].mean(axis=0)
+        if not np.isfinite(direction).all():
+            raise ExtractionError(
+                f"{capture_dir}: layer {layer} yields a non-finite direction"
+            )
+        directions[int(layer)] = direction.astype(np.float32)
+
+    source = {
+        "capture_dir": os.path.abspath(capture_dir),
+        "dataset_path": manifest.get("dataset_path"),
+        "dataset_sha256": manifest.get("dataset_sha256"),
+        "count": int(labels.size),
+        "positive_count": int(positive.sum()),
+        "negative_count": int(negative.sum()),
+        "position": manifest.get("position"),
     }
-    with open(pairs_path, encoding="utf-8") as f:
-        pairs_hash = text_sha256(f.read())
+    # Written by the rust capture only; a Python capture has neither key.
+    for key in ("site", "capture_backend"):
+        if key in manifest:
+            source[key] = manifest[key]
+
     return DirectionSet(
         directions=directions,
-        model_id=model_id,
-        model_revision=revision,
-        method="repeng",
-        source={
-            "pairs_path": os.path.relpath(pairs_path),
-            "pairs_sha256": pairs_hash,
-            "pair_count": len(pairs),
-            "model_type": getattr(vector, "model_type", "unknown"),
-        },
+        model_id=str(manifest.get("model_id", "")),
+        model_revision=str(manifest.get("model_revision", "main")),
+        method=METHOD_DIFF_MEANS,
+        source=source,
+        model_hash=str(manifest.get("model_hash", UNKNOWN_MODEL_HASH)),
     )
 
 
@@ -159,7 +183,7 @@ def extract_sae_row(
         directions={int(layer): direction},
         model_id=model_id,
         model_revision=revision,
-        method="sae_row",
+        method=METHOD_SAE_ROW,
         source={
             "sae_release": sae_release,
             "sae_id": sae_id,

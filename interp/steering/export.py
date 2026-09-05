@@ -1,10 +1,9 @@
 """Control-vector safetensors export (W1 decision 2, format per R10).
 
 One exporter for both extraction methods, writing one float32 tensor per
-steered decoder block named "block.<index>", 0-based. Using safetensors
-directly for repeng vectors too -- instead of repeng's own exporter -- keeps
-a single deterministic code path, which is what makes the
-re-export-reproduces-the-same-hash acceptance check meaningful.
+steered decoder block named "block.<index>", 0-based. One deterministic code
+path for every method is what makes the re-export-reproduces-the-same-hash
+acceptance check meaningful.
 
 The format is safetensors rather than the llama.cpp control-vector GGUF
 layout (ggml-org/llama.cpp PR 5970) this exporter wrote until R10. That
@@ -72,10 +71,17 @@ def write_control_vector(directions: dict[int, np.ndarray], path: str) -> None:
 def export_control_vector(
     direction_set: DirectionSet,
     out_dir: str,
-    model_hash: str = "unknown",
+    model_hash: str | None = None,
     layer_range: tuple[int, int] | None = None,
 ) -> dict:
-    """Write vector.safetensors plus its manifest; return the manifest."""
+    """Write vector.safetensors plus its manifest; return the manifest.
+
+    model_hash defaults to the direction set's own, which diff_means reads
+    from the capture manifest; a caller passes one only when the extractor
+    could not know it (sae_row).
+    """
+    if model_hash is None:
+        model_hash = direction_set.model_hash
     os.makedirs(out_dir, exist_ok=True)
     vector_path = os.path.join(out_dir, VECTOR_NAME)
     write_control_vector(direction_set.directions, vector_path)

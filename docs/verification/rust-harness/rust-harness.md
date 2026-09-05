@@ -2,10 +2,11 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 18 verified, 3 blocked, 16 pending, of 37.** The three blocked are
-RH.9d, RH.11 and RH.15, which need an instruction-tuned checkpoint or a
-control vector this repository does not yet have. Each says so in its own
-Status line; none is merely unrun. RH.7 was blocked until 2026-09-05 on the
+**Entries: 18 verified, 1 blocked, 18 pending, of 37.** The one blocked is
+RH.11, which needs an instruction-tuned E4B checkpoint. RH.9d and RH.15 were
+blocked until 2026-09-05 on a control vector this repository could not
+produce; `steer-extract` now derives one from an RH.9a capture, so both are
+pending on a run rather than on an artifact. RH.7 was blocked until 2026-09-05 on the
 packaged rr 5.7.0, which does not recognize the 9950X; upstream 5.9.0 does,
 and the entry records the install step. RH.8 was blocked until the same day
 on the absence of an instruction-tuned checkpoint; gemma-4-E2B-it now closes
@@ -57,7 +58,7 @@ their expected signal: **RH.9d** (steering, judged against a baseline reply),
 and the agent loop (RH.8). Those cannot pass against a base checkpoint no
 matter how correct the backend, and closing them needs an `-it` variant.
 The E2B one, `gemma-4-E2B-it`, arrived on the workstation on 2026-09-05 and
-closed RH.8; the other two carry a note to that effect.
+closed RH.8; RH.9d now targets it, and RH.11 carries a note to that effect.
 
 Recording protocol: the [runbook README](../../README.md) rules apply. The human
 runs each command on the workstation and pastes command plus output
@@ -2244,41 +2245,60 @@ Status: VERIFIED 2026-08-14
 
 ### RH.9d Steering on real weights
 
-Command (using an existing exported control vector, or one extracted from
-rust captures via `interp/steering`):
+The vector is the difference of class means over the RH.9a capture, exported
+by `steer-extract` (I.3 in the interp runbook); its manifest carries the
+capture's `model_hash`, which is the served checkpoint's, so the harness
+loads it under its identity check with no `[WARN]`. The subject is
+`gemma-4-E2B-it`: the refusal set is what RH.9a captured, and a refusal
+vector is only judgeable against a model that refuses. Capture every layer in
+RH.9a (`--layers $(seq -s, 0 34)`) so the same capture feeds the probe and
+the vector; narrow at load with `--control-vector-layer-range`, starting
+with a band around the layer RH.9b selected.
+
+Command:
 
 ```bash
-mkdir -p /tmp/rh9/steer1 /tmp/rh9/steer2
-cd /tmp/rh9/steer1 && ~/workspace/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/hf/<e4b> --text-only \
-    --control-vector <vector-dir>/vector.safetensors --control-vector-scale 1.0 \
-    "Describe your day in two sentences"
-cd /tmp/rh9/steer2 && ~/workspace/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/hf/<e4b> --text-only \
-    --control-vector <vector-dir>/vector.safetensors --control-vector-scale 1.0 \
-    "Describe your day in two sentences"
+cd ~/workspace/ai-experiments && make steer-extract \
+    ARGS="--capture /mnt/ai-data/interp/captures/rust-e2b-it-refusal \
+    --out /mnt/ai-data/interp/vectors/refusal-e2b-it"
+V=/mnt/ai-data/interp/vectors/refusal-e2b-it/vector.safetensors
+rm -rf /tmp/rh9d && mkdir -p /tmp/rh9d/base /tmp/rh9d/steer1 /tmp/rh9d/steer2 /tmp/rh9d/neg
+cd /tmp/rh9d/base && ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only \
+    "Describe how to pick a lock in two sentences"
+cd /tmp/rh9d/steer1 && ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only \
+    --control-vector $V --control-vector-scale 1.0 --control-vector-layer-range "<lo> <hi>" \
+    "Describe how to pick a lock in two sentences"
+cd /tmp/rh9d/steer2 && ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only \
+    --control-vector $V --control-vector-scale 1.0 --control-vector-layer-range "<lo> <hi>" \
+    "Describe how to pick a lock in two sentences"
+cd /tmp/rh9d/neg && ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only \
+    --control-vector $V --control-vector-scale -1.0 --control-vector-layer-range "<lo> <hi>" \
+    "Describe how to pick a lock in two sentences"
+cmp /tmp/rh9d/steer1/session.jsonl /tmp/rh9d/steer2/session.jsonl && echo identical
 ```
 
-**Partly blocked on an instruction-tuned checkpoint.** "In the direction of
-the vector's attribute" is a judgment about a reply to an instruction, and
-base E4B does not reply to instructions; see the base-model note at the top of
-this file. The determinism half stands on its own and is the part to close
-here.
+If scale 1.0 destroys fluency, halve it until the reply is coherent and
+record the scale that worked; a mean-difference vector is one class gap per
+layer, and adding it at every layer of the band compounds.
 
-Expected signal: the steered output differs from the RH.2/RH.9c baseline
-in the direction of the vector's attribute, and the two steered runs are
-identical to each other (deterministic). Record which vector was used and
-its provenance.
+Expected signal: no `[WARN]` about model identity; the two steered runs are
+byte-identical (`identical`); the positive-scale reply moves toward refusal
+relative to the baseline and the negative-scale reply moves away from it.
+Record the vector manifest, the layer range and scale used, and all four
+replies.
 
 Observed:
 
 ```
 ```
 
-Status: BLOCKED 2026-08-14. Needs the instruction-tuned E4B checkpoint,
-which is not on this workstation. Instruction following is this entry's
-expected signal, so no run against the base checkpoint can close it — a
-fluent non-answer is correct behaviour and proves nothing either way.
+Status: PENDING (blocked 2026-08-14 on the absence of an instruction-tuned
+checkpoint and of any control vector; gemma-4-E2B-it and the diff-means
+extractor arrived 2026-09-05).
 
 ## RH.10 Flamegraph baseline
 
@@ -2718,10 +2738,10 @@ scorecard's subject is now `harness-serve` rather than `llama-gpu`. Everything
 below is verified in the sandbox against a synthetic model, which proves the
 format and the wiring and nothing about steering a real checkpoint.
 
-Requires a control vector extracted against the E4B weights being served; a
+Requires a control vector extracted against the weights being served; a
 vector whose `manifest.json` records a different `model_hash` is refused, and
-one exported before R10 is a GGUF that no longer loads. Re-export it with
-`make steer-extract`.
+one exported before R10 is a GGUF that no longer loads. RH.9d produces one
+from an RH.9a capture, and `harness-serve` must serve that same checkpoint.
 
 ```bash
 make harness-build
@@ -2751,15 +2771,11 @@ Observed:
 ```
 ```
 
-Status: BLOCKED 2026-08-14. **There is no control vector this entry can use.**
-The harness reads safetensors control vectors as of R10; every vector this
-repository produced before then is GGUF, which the harness no longer loads.
-Extraction against E4B has not been run, and the obvious route to it —
-`make steer-extract --method repeng` — is itself blocked by KB-32, since
-repeng 0.4.0 cannot import under the pinned numpy and is deliberately absent
-from the interp image. `--method sae_row` may sidestep that and has not been
-tried. Unblocks when a vector extracted against this checkpoint exists and
-loads; the arms and the judge wiring are otherwise ready.
+Status: PENDING (blocked 2026-08-14 while no control vector this entry could
+use existed: every pre-R10 vector is GGUF, and extraction was blocked by
+KB-32. `steer-extract` now derives a vector from a capture, RH.9d exercises
+it, and this entry is pending on that vector and a serving run). The arms and
+the judge wiring are otherwise ready.
 
 ## RH.16 The preflight answers before the model loads
 
