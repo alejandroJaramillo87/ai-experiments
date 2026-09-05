@@ -2,11 +2,12 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 16 verified, 5 blocked, 16 pending, of 37.** The five blocked are
-RH.7 (the packaged rr 5.7.0 does not recognize the 9950X; upstream 5.9.0 does,
-and installing it is a host step) and RH.8, RH.9d, RH.11 and RH.15, which
-need an instruction-tuned checkpoint or a control vector this repository does
-not yet have. Each says so in its own Status line; none is merely unrun.
+**Entries: 17 verified, 4 blocked, 16 pending, of 37.** The four blocked are
+RH.8, RH.9d, RH.11 and RH.15, which need an instruction-tuned checkpoint or a
+control vector this repository does not yet have. Each says so in its own
+Status line; none is merely unrun. RH.7 was blocked until 2026-09-05 on the
+packaged rr 5.7.0, which does not recognize the 9950X; upstream 5.9.0 does,
+and the entry records the install step.
 
 Of the 16 pending, one is RH.13, reopened by U7: the code under it changed the
 terminal output the entry records, so its Observed block needs re-collecting
@@ -1673,19 +1674,43 @@ Observed block. Drop it only after applying rr's Zen workaround.
 Inside the rr/gdb session:
 
 ```
-(rr) break cpu.rs:3186
+(rr) break cpu.rs:3242
 (rr) continue
-(rr) watch -l logits[0]
+(rr) watch -l logits.buf.inner.ptr.pointer.pointer[0]
+(rr) continue
 (rr) reverse-continue
 ```
 
+**The watchpoint names the heap cell, not the `Vec`.** `logits` is a Rust
+`Vec<f32>`: a struct of pointer, capacity, and length. gdb subscripts only C
+arrays, so `watch -l logits[0]` fails with `Cannot subscript non-array type`.
+The field path above reaches the buffer pointer through `RawVec`; it is the
+layout of the pinned toolchain, and a toolchain bump that renames a field
+shows up as `There is no member named ...`, at which point `print logits`
+shows the new path. The first `continue` catches the forward write so that
+`reverse-continue` has a live write to travel back from.
+
+The line number is the `fill_dots(` call that fills `logits` in the tied-head
+projection, and it moves whenever `cpu.rs` is edited above it. Before
+replaying, recompute it from the checkout the recording was built from:
+
+```bash
+grep -n 'fill_dots($' rust-harness/runtime/src/model/cpu.rs
+```
+
+Two lines match; the breakpoint is the one whose `&mut logits` argument
+follows it. A stale line number fails as `No symbol "logits" in current
+context.`, which is what happened on 2026-09-05 with the pre-2026-09-04
+line 3186.
+
 **The breakpoint is a line number, not a function.** An earlier version of
 this entry said `break cpu.rs:forward_one` followed by `watch -l logits[0]`,
-and that sequence cannot work: `forward_one` is declared at `cpu.rs:2703`,
-while `logits` is a local of a different function, declared at `cpu.rs:3174`
+and that sequence cannot work: `forward_one` is declared at `cpu.rs:2733`,
+while `logits` is a local of a different function, declared at `cpu.rs:3230`
 inside the tied-head projection loop. The watchpoint has nothing to resolve
-against at the `forward_one` frame. Breaking at `cpu.rs:3186`, the
-`fill_dots(` call that fills it, puts `logits` in scope.
+against at the `forward_one` frame. Breaking at `cpu.rs:3242`, the
+`fill_dots(` call that fills it, puts `logits` in scope. Line numbers as of
+2026-09-05.
 
 `release-with-debug` (`rust-harness/Cargo.toml:7-9`) inherits `release`, so it
 is fully optimized and locals may print `<optimized out>`. If they do, rebuild
@@ -1695,7 +1720,91 @@ Expected signal: recording completes; replay reaches the breakpoint; the
 watchpoint triggers under `reverse-continue` and gdb stops at the write
 site inside the forward pass. Record the gdb transcript.
 
-Observed:
+Observed (2026-09-05, rr 5.9.0, model `fixtures/tiny-gemma4`, build
+`0.1.0 git 851d5f18`):
+
+Recording:
+
+```
+cargo build --profile release-with-debug -p harness
+    Finished `release-with-debug` profile [optimized + debuginfo] target(s) in 0.02s
+rr record target/release-with-debug/harness --model fixtures/tiny-gemma4 --single-thread "Reply with the single word: ready"
+rr: Saving execution to trace directory `/home/alejandro/snap/code/259/.local/share/rr/harness-3'.
+[INFO] Model: fixtures/tiny-gemma4 hash=573adc2708d4c13b layers=2
+[INFO] Weights: 0.00 GiB resident at f32
+[INFO] Peak RSS after load: 0.01 GiB
+[INFO] KV cache: 1024 tokens, 0.00 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 81 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=1
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=256
+[INFO] Build: 0.1.0 git 851d5f18d9cc27e182e7930f09ef1f32d98b963e
+[INFO] Model load: 0.02 s
+[INFO] Prefill: 81 tokens in 0.00 s (376508 tok/s)
+[INFO] Session snapshot: 337 cached tokens at /home/alejandro/workspace/ai-experiments/rust-harness/session.kv
+```
+
+The reply line between the last two INFO lines is omitted: the fixture's
+weights are synthetic, so it is a row of random tokens from a 288-piece
+vocabulary and carries no information.
+
+Replay, breakpoint:
+
+```
+Breakpoint 1, runtime::model::cpu::CpuModel::forward_batch (self=0x5a6a159011b0, tokens=..., start=64, want=...) at runtime/src/model/cpu.rs:3244
+3244                    &hidden[p * c.embed_dim..(p + 1) * c.embed_dim],
+```
+
+gdb reports 3244 for a breakpoint set at 3242 because the call's first
+instruction belongs to the argument on that line. Two things were noted at
+this stop and are expected: `watch -l logits[0]` answered `Cannot subscript
+non-array type` (see the note under the command block), and gdb printed
+repeated `warning: (Internal error: pc ... in read in CU, but not in
+symtab.)` lines, a known gdb complaint about Rust binaries with no effect on
+the session.
+
+Forward watchpoint hit, after `continue`:
+
+```
+Hardware watchpoint 2: -location logits.buf.inner.ptr.pointer.pointer[0]
+
+Old value = 0
+New value = 46
+runtime::model::cpu::fill_run_blocked<4, runtime::model::cpu::{impl#16}::forward_batch::{closure_env#5}> (w=0x5a6a159009d0, x=..., base=0, run=..., post=0x7ffc73ed3ca8) at runtime/src/model/cpu.rs:1749
+1749            for (dst, g) in block.iter_mut().zip(got) {
+```
+
+Stack at that stop, innermost first: `fill_run_blocked` at `cpu.rs:1749`,
+`fill_dots::{closure#2}` at `cpu.rs:1790`, `par_row_runs` at `cpu.rs:1530`,
+`fill_dots` at `cpu.rs:1789`, `CpuModel::forward_batch` at `cpu.rs:3242`,
+`prefill_groups` at `cpu.rs:3321`, `prefill` at `cpu.rs:3370`,
+`Session::sync` at `session.rs:242`, `Session::begin_generation` at
+`session.rs:260`, `Session::generate` at `session.rs:299`. Locals at the
+stop: `got = [0.142605513, 0.17676878, 0.00949310139, 0.16828309]` and
+`head = [0.142605513, 0 <repeats 287 times>]`. The `New value = 46` is gdb
+printing the cell through the raw pointer's type rather than as `f32`; the
+`head` local carries the real value.
+
+Reverse watchpoint hit, after `reverse-continue`:
+
+```
+Hardware watchpoint 2: -location logits.buf.inner.ptr.pointer.pointer[0]
+
+Old value = 46
+New value = 0
+runtime::model::cpu::fill_run_blocked<4, runtime::model::cpu::{impl#16}::forward_batch::{closure_env#5}> (w=0x5a6a159009d0, x=..., base=0, run=..., post=0x7ffc73ed3ca8) at runtime/src/model/cpu.rs:1750
+1750                *dst = post(g);
+```
+
+Same stack as the forward hit. `rip` is `0x5a69f001e430`, the
+`movss %xmm0,0x0(%r13)` that performs the store; the forward stop was one
+instruction later at `0x5a69f001e436`. Locals: `dst = 0x5a6a1592db80: 0`, the
+address `r13` holds, and `head = [0 <repeats 288 times>]`, so gdb is standing
+before the write it stood after a moment earlier. That is the write site,
+`*dst = post(g)` at `cpu.rs:1750`, inside the tied-head projection of the
+forward pass: the expected signal, met on the first attempt after the rr
+upgrade.
+
+The first attempt on 2026-08-14, under the packaged rr, was:
 
 ```
 [FATAL ./src/PerfCounters_x86.h:122:compute_cpu_microarch()]
@@ -1703,8 +1812,8 @@ Observed:
  -> Assertion `false' failed to hold. AMD CPU type 0x40f40 (ext family 0xb) unknown
 ```
 
-Both `make debug-record` and `make debug-replay` fail identically, before any
-harness code runs. `0x40f40` is CPUID leaf 1 `eax` masked to its base family,
+Both `make debug-record` and `make debug-replay` failed identically, before any
+harness code ran. `0x40f40` is CPUID leaf 1 `eax` masked to its base family,
 model, and extended-model bits: base family `0xf`, model `0x44`, which is the
 9950X (family 26, model 68 in `/proc/cpuinfo`). The extended family `0xb` is
 all that separates it from Rembrandt, the Zen 3+ mobile part with the same
@@ -1747,15 +1856,13 @@ in the command block. To record the threaded backend instead, run rr's
 root, which writes MSR `0xc0011020` and does not persist across reboot or
 suspend, then drop the flag.
 
-This is an external tooling wall, not a harness defect. Nothing in
-`rust-harness/` was exercised, so no claim about the harness — positive or
-negative — follows from it. The rr targets in `rust-harness/Makefile` are
-untested on this workstation until the command block above runs under 5.9.0.
+The 2026-08-14 failure was an external tooling wall, not a harness defect,
+and the 2026-09-05 run confirms it: with 5.9.0 in place, the rr targets in
+`rust-harness/Makefile` ran unchanged and the harness recorded and replayed
+on the first attempt.
 
-Status: BLOCKED 2026-08-14, rediagnosed 2026-09-05. The block is the packaged
-rr 5.7.0, not Zen 5 support. Unblocks when `rr --version` on the workstation
-prints `rr version 5.9.0`; the command block then runs as written, and its gdb
-transcript replaces this Observed block.
+Status: VERIFIED 2026-09-05 (blocked 2026-08-14 on the packaged rr 5.7.0;
+rediagnosed and run under upstream 5.9.0).
 
 ## RH.8 End-to-end coding task
 
