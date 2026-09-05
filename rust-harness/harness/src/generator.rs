@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 
-use runtime::grammar::Vocab;
+use runtime::grammar::{Grammar, Vocab};
 use runtime::sampler::{Sampler, SamplingParams};
 use runtime::session::Session;
 use runtime::tokenizer::Tokenizer;
@@ -26,6 +26,11 @@ pub struct SessionGenerator {
     vocab: Vocab,
     sampler: Sampler,
     max_tokens: usize,
+    /// Tool-call grammar for `complete`, installed on the task path only.
+    /// Triggered rather than forced: a turn that opens with `{` is held to
+    /// exactly one well-formed call and then EOS; any other turn is free
+    /// text. Chat and serve never install one.
+    grammar: Option<Grammar>,
     /// Token-to-text alignment for the latest turn, when a caller asked for
     /// it. This is the one place the rendered prompt and the ids the model
     /// produced are both in hand, which is what building the table needs.
@@ -64,10 +69,19 @@ impl SessionGenerator {
             vocab,
             sampler: Sampler::new(params),
             max_tokens,
+            grammar: None,
             alignment: None,
             metrics: obs::MetricsSink::disabled(),
             step: 0,
         })
+    }
+
+    /// Constrain every `complete` turn with `grammar`. The server path
+    /// (`complete_sampled`) is unaffected: a served completion has no tool
+    /// loop to hand a call to.
+    pub fn with_tool_grammar(mut self, grammar: Grammar) -> Self {
+        self.grammar = Some(grammar);
+        self
     }
 
     /// Write per-step metrics into the run's `metrics.jsonl`.
@@ -253,13 +267,15 @@ impl Generator for SessionGenerator {
             vocab,
             sampler,
             max_tokens,
+            grammar,
             metrics,
             step,
             ..
         } = self;
         let started = std::time::Instant::now();
         let mut produced = 0usize;
-        let generation = session.generate(&ids, vocab, None, sampler, *max_tokens, |_| {
+        let grammar = grammar.as_ref();
+        let generation = session.generate(&ids, vocab, grammar, sampler, *max_tokens, |_| {
             produced += 1;
             let secs = started.elapsed().as_secs_f64();
             let mut fields = Vec::with_capacity(2);

@@ -260,3 +260,135 @@ fn test_200_forced_tool_calls_produce_zero_malformed_calls() {
         assert!(v["args"].is_object(), "run {run}");
     }
 }
+
+fn tool_set() -> Vec<ToolSchema> {
+    vec![
+        ToolSchema {
+            name: "read".into(),
+            params: vec![("path".into(), ParamType::String)],
+        },
+        ToolSchema {
+            name: "readall".into(),
+            params: vec![],
+        },
+        ToolSchema {
+            name: "todo".into(),
+            params: vec![("items".into(), ParamType::StringArray)],
+        },
+    ]
+}
+
+#[test]
+fn a_multi_tool_grammar_accepts_a_call_to_each_tool_and_rejects_an_unknown_one() {
+    let g = Grammar::compile_many(&tool_set());
+    for call in [
+        r#"{"tool": "read", "args": {"path": "a.txt"}}"#,
+        r#"{"tool": "readall", "args": {}}"#,
+        r#"{"tool": "todo", "args": {"items": []}}"#,
+        r#"{"tool": "todo", "args": {"items": ["one", "two \"quoted\""]}}"#,
+    ] {
+        let st = g
+            .advance_str(&g.start(), call)
+            .unwrap_or_else(|| panic!("rejected: {call}"));
+        assert!(g.is_complete(&st), "incomplete after: {call}");
+    }
+    // A name that is a prefix of another must still close on its own quote.
+    assert!(g
+        .advance_str(&g.start(), r#"{"tool": "read", "args": {}}"#)
+        .is_none());
+    assert!(g.advance_str(&g.start(), r#"{"tool": "bash""#).is_none());
+    // Arrays hold strings only, separated by exactly `, `.
+    assert!(g
+        .advance_str(&g.start(), r#"{"tool": "todo", "args": {"items": [1"#)
+        .is_none());
+    assert!(g
+        .advance_str(&g.start(), r#"{"tool": "todo", "args": {"items": ["a",]"#)
+        .is_none());
+}
+
+#[test]
+#[should_panic(expected = "duplicate tool name")]
+fn duplicate_tool_names_are_a_config_bug() {
+    let mut set = tool_set();
+    set.push(tool_set().remove(0));
+    Grammar::compile_many(&set);
+}
+
+#[test]
+fn random_multi_tool_walks_parse_and_reach_every_tool() {
+    let g = Grammar::compile_many(&tool_set());
+    let vocab = test_vocab();
+    let mut seed: u64 = 0xa11;
+    let mut names = std::collections::BTreeSet::new();
+    for _ in 0..120 {
+        let mut st = g.start();
+        let mut out = String::new();
+        loop {
+            let mask = g.mask(&st, &vocab);
+            let allowed: Vec<u32> = (0..vocab.len() as u32)
+                .filter(|&t| mask[t as usize])
+                .collect();
+            assert!(!allowed.is_empty(), "grammar dead end after: {out}");
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            let tok = allowed[(seed >> 33) as usize % allowed.len()];
+            if tok == vocab.eos() {
+                break;
+            }
+            st = g.advance_str(&st, vocab.text(tok)).unwrap();
+            out.push_str(vocab.text(tok));
+        }
+        let v: serde_json::Value = serde_json::from_str(&out)
+            .unwrap_or_else(|e| panic!("walk produced invalid JSON: {e}\n{out}"));
+        let name = v["tool"].as_str().unwrap().to_string();
+        if name == "todo" {
+            let items = v["args"]["items"].as_array().unwrap();
+            assert!(items.iter().all(|i| i.is_string()), "{out}");
+        }
+        names.insert(name);
+    }
+    assert_eq!(
+        names.into_iter().collect::<Vec<_>>(),
+        vec!["read", "readall", "todo"]
+    );
+}
+
+#[test]
+fn a_triggered_grammar_constrains_only_a_turn_that_opens_the_skeleton() {
+    let g = Grammar::compile_many(&tool_set()).triggered();
+    let vocab = test_vocab();
+    let start = g.start();
+    // Before the first character nothing is constrained and EOS is legal.
+    assert!(!g.constrained(&start));
+    assert!(g.is_complete(&start));
+    assert!(g.mask(&start, &vocab).iter().all(|&b| b));
+
+    // A prose opening makes the turn free text: every later character is
+    // legal, including a `{` that would have opened a call.
+    let free = g.advance_str(&start, "I will").unwrap();
+    assert!(!g.constrained(&free));
+    assert!(g.is_complete(&free));
+    let still_free = g.advance_str(&free, " now {\"tool\": \"read\"").unwrap();
+    assert!(!g.constrained(&still_free));
+
+    // A skeleton opening constrains the rest of the turn to one call.
+    let call = g.advance_str(&start, "{\"tool\"").unwrap();
+    assert!(g.constrained(&call));
+    assert!(!g.is_complete(&call));
+    let done = g
+        .advance_str(&start, r#"{"tool": "read", "args": {"path": "a"}}"#)
+        .unwrap();
+    assert!(g.is_complete(&done));
+    let mask = g.mask(&done, &vocab);
+    assert_eq!(
+        mask.iter().filter(|&&b| b).count(),
+        1,
+        "only EOS after the closing brace"
+    );
+    assert!(mask[vocab.eos() as usize]);
+    // A forced grammar over the same set is constrained from the start.
+    let forced = Grammar::compile_many(&tool_set());
+    assert!(forced.constrained(&forced.start()));
+    assert!(!forced.is_complete(&forced.start()));
+}

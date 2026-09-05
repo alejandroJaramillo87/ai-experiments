@@ -44,11 +44,17 @@ fn agent_loop_runs_through_tokenizer_and_session() {
     let tokenizer = byte_tokenizer();
     let vocab_len = tokenizer.vocab_len();
 
-    // The exact prompt the first model turn sees: rendered user turn plus
-    // the open model turn, with a BOS token in front.
+    // The exact prompt the first model turn sees: the tool contract as a
+    // system turn, the rendered user turn, then the open model turn, with a
+    // BOS token in front.
     let task = "say ok";
     let prompt = format!(
-        "{}{}",
+        "{}{}{}",
+        render_entry(&Entry {
+            role: Role::System,
+            content: harness::tools::contract(),
+            replaces: None,
+        }),
         render_entry(&Entry {
             role: Role::User,
             content: task.into(),

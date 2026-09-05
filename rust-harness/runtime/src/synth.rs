@@ -128,7 +128,7 @@ impl Default for TinySpec {
             head_dim_global: None,
             ffn_dim: 32,
             double_wide_mlp: false,
-            context_length: 1024,
+            context_length: 4096,
             sliding_window: 4,
             sliding_window_pattern: 2,
             rope_freq_base: 10000.0,

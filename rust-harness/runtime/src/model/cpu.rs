@@ -6066,7 +6066,8 @@ mod tests {
     #[test]
     fn context_length_overflow_is_an_error() {
         let mut m = tiny();
-        let long: Vec<Token> = (0..1025).map(|i| (i % 30) as Token).collect();
+        let over = m.config().context_length + 1;
+        let long: Vec<Token> = (0..over).map(|i| (i % 30) as Token).collect();
         let err = m.prefill(&long).unwrap_err();
         assert!(err.to_string().contains("context length"), "{err}");
     }

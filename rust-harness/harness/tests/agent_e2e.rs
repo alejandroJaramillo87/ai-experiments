@@ -286,13 +286,15 @@ fn memory_leads_the_agent_prompt_and_never_persists() {
     agent
         .run_task(&mut generator, "task", 2, |_| false)
         .unwrap();
-    // Memory is a System entry, and Gemma 4 has a native system role, so it
-    // leads as a system turn rather than the user turn Gemma 3 forced.
+    // The tool contract leads, then memory. Both are System entries, and
+    // Gemma 4 has a native system role, so they render as system turns
+    // rather than the user turn Gemma 3 forced.
     let expected = format!(
-        "{}{}system\nprefer small diffs{}\n",
-        harness::template::BOS,
-        harness::template::TURN_OPEN,
-        harness::template::TURN_CLOSE
+        "{bos}{open}system\n{contract}{close}\n{open}system\nprefer small diffs{close}\n",
+        bos = harness::template::BOS,
+        open = harness::template::TURN_OPEN,
+        close = harness::template::TURN_CLOSE,
+        contract = harness::tools::contract(),
     );
     assert!(
         generator.prompts[0].starts_with(&expected),
