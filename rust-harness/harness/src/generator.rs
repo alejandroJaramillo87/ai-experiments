@@ -59,8 +59,13 @@ impl SessionGenerator {
         params: SamplingParams,
         max_tokens: usize,
     ) -> Result<SessionGenerator> {
+        // The grammar walks each token's decoded text against literal JSON,
+        // so this is `surface`, not `piece`: a raw piece spells a space as
+        // the marker and `{` as `<0x7B>`, which the skeleton never matches.
+        // An empty surface (a special, a non-ASCII byte piece) is a token
+        // the grammar never allows.
         let texts = (0..tokenizer.vocab_len())
-            .map(|i| Ok(tokenizer.piece(i as u32)?.to_string()))
+            .map(|i| tokenizer.surface(i as u32))
             .collect::<Result<Vec<_>>>()?;
         let vocab = Vocab::new(texts, tokenizer.eos());
         Ok(SessionGenerator {

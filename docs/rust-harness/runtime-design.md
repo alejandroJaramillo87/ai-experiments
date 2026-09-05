@@ -236,8 +236,10 @@ top-p. In task mode the harness compiles one JSON grammar over every tool schema
 character decides the turn. A turn that opens with `{` is masked to exactly one
 well-formed call to one of the tools, then EOS, so a second call, a hallucinated
 result, or trailing prose is unrepresentable; any other opening leaves the turn
-unconstrained, which is how a plain-text final answer stays possible. Chat and
-serve install no grammar.
+unconstrained, which is how a plain-text final answer stays possible. The mask
+walks each token's decoded surface text (`Tokenizer::surface`), not its raw piece:
+a piece spells a space as the marker and `{` as `<0x7B>`, and against those the
+skeleton is unreachable. Chat and serve install no grammar.
 Gemma's vocabulary (~256K entries) makes the LM-head matmul and logits transfer
 disproportionately expensive at small model sizes; the sampler keeps logits on the
 GPU and copies only the sampled token, or a trimmed top-k slice, to the CPU.
