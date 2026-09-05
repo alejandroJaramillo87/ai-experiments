@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 8 verified, 2 blocked, 8 pending, of 18.**
+**Entries: 9 verified, 2 blocked, 7 pending, of 18.**
 
 The 18 entries are I.1 through I.17 plus the interstitial I.9b
 ("Chunked-capture crash recovery"); none is missing. I.9b is numbered beside I.9
@@ -129,14 +129,28 @@ safetensors and retired the GGUF reader, so a vector in the old format no
 longer loads anywhere — see `AGENTS.md` on why GGUF is now llama.cpp's format
 alone. It said repeng until 2026-09-05; see the KB-32 row for why that left.
 
-Observed:
+Observed (2026-09-05, capture from RH.9a on gemma-4-E2B-it):
 
 ```
+[RUN] exec: python -m interp steer-extract --capture /mnt/ai-data/interp/captures/rust-e2b-it-refusal --out /mnt/ai-data/interp/vectors/refusal-e2b-it
+[RUN] Extracting diff-means vector: /mnt/ai-data/interp/captures/rust-e2b-it-refusal
+[INFO] Classes: 129 positive, 129 negative; model_hash 2db5482b20d746879bb3ef79b5203e9075a2e2b98f54ec7c2f281c1477ddc550
+[OK] Vector exported: /mnt/ai-data/interp/vectors/refusal-e2b-it/vector.safetensors
+[OK] Layers: 35, width: 1536
+[OK] Vector xxhash: d66c1d6da0b70309
 ```
 
-Status: PENDING (blocked 2026-08-14 on KB-32, unblocked 2026-09-05 by the
-in-repo extractor). Closing it also unblocks I.4 and the harness runbook's
-RH.15, which both wait on a vector this step has never produced.
+Exit 0, no `[WARN]`: the class counts are the 129 pairs of the refusal set,
+and the `model_hash` is the one the RH.9a manifest carries, which
+`sha256sum` of the served `model.safetensors` also gives. 35 `block.<n>`
+tensors at width 1536, E2B's residual width. The re-run check
+(`vector_xxhash` reproduced) was not executed as a separate command; RH.9d
+loaded this vector under the harness's identity check with no warning and
+steered in both directions, which is the consumer-side confirmation this
+entry exists for. KB-32 closes on that.
+
+Status: VERIFIED 2026-09-05 (blocked 2026-08-14 on KB-32). I.4 and the
+harness runbook's RH.15 now have a vector to serve.
 
 ## I.4 Steered serving and scorecard (W1)
 
