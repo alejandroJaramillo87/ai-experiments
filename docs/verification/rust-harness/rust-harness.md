@@ -2018,6 +2018,25 @@ establish an effect in first. Both modes continue `session.jsonl` and
 `session.kv` from the working directory, so every run below gets a fresh
 one.
 
+**The chain is also a test.** Each sub-entry below names the functions in
+`tests/hardware/test_interp_chain.py` that assert its signal, and the module
+walks the whole chain rather than checking artifacts in isolation: it
+captures, trains, exports, monitors, steers, and measures the refusal rate,
+on the same checkpoint at the same scale and band. Run 2026-09-05 on the
+workstation:
+
+```
+uv run pytest -m hw_full tests/hardware/test_interp_chain.py -v
+collected 10 items
+... 10 passed
+[TIER] full: torch present, the whole suite was in scope.
+```
+
+The first run of that module failed one test and the failure was in the
+test rather than the harness, which is recorded under RH.9d: it steered
+three of the seven layers RH.9d does, and it asserted that a positive scale
+perturbs a reply the model already refuses. Both are fixed above.
+
 **Risks likely to surface here.**
 
 - RH.3 may show capture over even a few hundred examples is impractically
