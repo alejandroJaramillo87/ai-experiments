@@ -2,12 +2,14 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 17 verified, 4 blocked, 16 pending, of 37.** The four blocked are
-RH.8, RH.9d, RH.11 and RH.15, which need an instruction-tuned checkpoint or a
+**Entries: 18 verified, 3 blocked, 16 pending, of 37.** The three blocked are
+RH.9d, RH.11 and RH.15, which need an instruction-tuned checkpoint or a
 control vector this repository does not yet have. Each says so in its own
 Status line; none is merely unrun. RH.7 was blocked until 2026-09-05 on the
 packaged rr 5.7.0, which does not recognize the 9950X; upstream 5.9.0 does,
-and the entry records the install step.
+and the entry records the install step. RH.8 was blocked until the same day
+on the absence of an instruction-tuned checkpoint; gemma-4-E2B-it now closes
+it, and its entry records the two harness defects the first runs exposed.
 
 Of the 16 pending, one is RH.13, reopened by U7: the code under it changed the
 terminal output the entry records, so its Observed block needs re-collecting
@@ -52,9 +54,10 @@ recorder, the trace, the profile or determinism, and any prompt of the right
 length would do. Three entries are different, because instruction following is
 their expected signal: **RH.9d** (steering, judged against a baseline reply),
 **RH.11** (`--chat`, "coherent and responsive to the conversation history"),
-and the agent loop. Those cannot pass against a base checkpoint no matter how
-correct the backend, and closing them needs the `-it` variant, which is not on
-this workstation. Each carries a note to that effect.
+and the agent loop (RH.8). Those cannot pass against a base checkpoint no
+matter how correct the backend, and closing them needs an `-it` variant.
+The E2B one, `gemma-4-E2B-it`, arrived on the workstation on 2026-09-05 and
+closed RH.8; the other two carry a note to that effect.
 
 Recording protocol: the [runbook README](../../README.md) rules apply. The human
 runs each command on the workstation and pastes command plus output
@@ -75,6 +78,50 @@ Entries carry a "Risks likely to surface here" block where a failure mode
 is predicted. Rust-harness has no known-bugs ledger; these are known
 unknowns, and a failure matching a listed risk should be recorded against
 it rather than re-diagnosed from scratch.
+
+## Table of Contents
+
+- [RH.0 Build and test gate](#rh0-build-and-test-gate)
+- [RH.1 Model location and architecture reconciliation](#rh1-model-location-and-architecture-reconciliation)
+  - [RH.1a Shared-KV weight conflict](#rh1a-shared-kv-weight-conflict)
+- [RH.1b Correctness ladder at Tier E](#rh1b-correctness-ladder-at-tier-e)
+- [RH.2 Real-model load and generation smoke](#rh2-real-model-load-and-generation-smoke)
+- [RH.3 CPU generation speed](#rh3-cpu-generation-speed)
+- [RH.4 KV delta prefill](#rh4-kv-delta-prefill)
+- [RH.5 Flight recorder and sandbox replay](#rh5-flight-recorder-and-sandbox-replay)
+- [RH.6 Chrome trace in Perfetto](#rh6-chrome-trace-in-perfetto)
+- [RH.7 rr record, replay, reverse-continue](#rh7-rr-record-replay-reverse-continue)
+- [RH.8 End-to-end coding task](#rh8-end-to-end-coding-task)
+- [RH.9 Interp chain on real weights](#rh9-interp-chain-on-real-weights)
+  - [RH.9a Activation capture](#rh9a-activation-capture)
+  - [RH.9b Probe training on rust captures](#rh9b-probe-training-on-rust-captures)
+  - [RH.9c In-band probe monitor](#rh9c-in-band-probe-monitor)
+  - [RH.9d Steering on real weights](#rh9d-steering-on-real-weights)
+- [RH.10 Flamegraph baseline](#rh10-flamegraph-baseline)
+- [RH.11 Multi-turn chat on real weights](#rh11-multi-turn-chat-on-real-weights)
+- [RH.12 Container build and reproducibility](#rh12-container-build-and-reproducibility)
+- [RH.13 Run-level observability records](#rh13-run-level-observability-records)
+- [RH.14 The endpoint answers the interp client](#rh14-the-endpoint-answers-the-interp-client)
+  - [RH.15 Steered scorecard through the harness endpoint](#rh15-steered-scorecard-through-the-harness-endpoint)
+- [RH.16 The preflight answers before the model loads](#rh16-the-preflight-answers-before-the-model-loads)
+- [RH.17 The CPU backend past E4B's real sliding window](#rh17-the-cpu-backend-past-e4bs-real-sliding-window)
+- [RH.18 Attention capture on real weights](#rh18-attention-capture-on-real-weights)
+- [RH.19 The alignment artifact on the real vocabulary](#rh19-the-alignment-artifact-on-the-real-vocabulary)
+- [RH.20 Compaction past the rewind horizon](#rh20-compaction-past-the-rewind-horizon)
+- [RH.21 Layer diff against a real reference capture](#rh21-layer-diff-against-a-real-reference-capture)
+- [RH.22 checkpoint-info --check against the real E4B](#rh22-checkpoint-info---check-against-the-real-e4b)
+- [Gate-backed entries](#gate-backed-entries)
+  - [RH.23 layer-diff numerics are bracketed around a measured value](#rh23-layer-diff-numerics-are-bracketed-around-a-measured-value)
+  - [RH.24 The ladder table is invariant across the flags that may not change it](#rh24-the-ladder-table-is-invariant-across-the-flags-that-may-not-change-it)
+  - [RH.25 The fixture writers produce what they claim, reproducibly](#rh25-the-fixture-writers-produce-what-they-claim-reproducibly)
+  - [RH.26 --alignment-out reaches the same contract through the binary](#rh26---alignment-out-reaches-the-same-contract-through-the-binary)
+  - [RH.27 Probe identity decides, and --probe-out writes where it names](#rh27-probe-identity-decides-and---probe-out-writes-where-it-names)
+  - [RH.28 The sampling and compaction thresholds are validated at the boundary](#rh28-the-sampling-and-compaction-thresholds-are-validated-at-the-boundary)
+  - [RH.29 --tokenizer overrides the one beside the checkpoint](#rh29---tokenizer-overrides-the-one-beside-the-checkpoint)
+  - [RH.30 --control-vector-layer-range decides which directions load](#rh30---control-vector-layer-range-decides-which-directions-load)
+  - [RH.31 --serve-addr binds where it names](#rh31---serve-addr-binds-where-it-names)
+- [Known defects](#known-defects)
+- [Coverage roster](#coverage-roster)
 
 ## RH.0 Build and test gate
 
@@ -1867,34 +1914,81 @@ rediagnosed and run under upstream 5.9.0).
 ## RH.8 End-to-end coding task
 
 Implementation: `rust-harness/harness/src/permissions.rs`,
-`rust-harness/harness/src/tools.rs`, `rust-harness/harness/src/agent.rs`.
+`rust-harness/harness/src/tools.rs`, `rust-harness/harness/src/agent.rs`,
+`rust-harness/runtime/src/grammar.rs`.
 
-The full agent loop (permissions, tools, transcript) on real weights.
+The full agent loop (permissions, tools, transcript) on real weights. The
+subject is the instruction-tuned E2B checkpoint: instruction following is
+the expected signal, and a base checkpoint's fluent non-answer would prove
+nothing either way.
 
 Command:
 
 ```bash
-mkdir -p /tmp/rh8 && cd /tmp/rh8
+rm -rf /tmp/rh8 && mkdir -p /tmp/rh8 && cd /tmp/rh8
 printf 'rules:\n  - tool: "*"\n    action: allow\n' > permissions.yaml
 ~/workspace/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/hf/<e4b> --text-only \
+    --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only \
     "Create a file named hello.txt containing the word hello, then read it back"
+cat session.jsonl; cat hello.txt
 ```
 
 Expected signal: the task completes with exit 0, `hello.txt` exists with
-the expected content, and `session.jsonl` records the tool calls the model
-made. Tool-call formation is grammar-constrained, so malformed calls
-should be impossible; any malformed call is a finding.
+the expected content, and every model entry in `session.jsonl` is either
+exactly one JSON tool call or plain text. Tool-call formation is
+grammar-constrained, so a second call, a fabricated result, or prose
+around a call in one model turn is a finding.
 
-Observed:
+Observed (2026-09-05, gemma-4-E2B-it, default sampling: seed 0,
+temperature 0.8):
 
 ```
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E2B-it hash=7ddcbbe752dcfbf6 layers=35
+[INFO] Weights: 8.62 GiB resident at bf16
+[INFO] Peak RSS after load: 9.51 GiB
+[INFO] KV cache: 131072 tokens, 1.52 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=256
+[INFO] Build: 0.1.0 git unknown
+[INFO] Model load: 3.61 s
+[INFO] Prefill: 261 tokens in 11.85 s (22 tok/s)
+[INFO] Prefill: 18 tokens in 0.87 s (21 tok/s)
+[INFO] Prefill: 11 tokens in 0.55 s (20 tok/s)
+hello
+[INFO] Session snapshot: 333 cached tokens at /tmp/rh8/session.kv
 ```
 
-Status: BLOCKED 2026-08-14. Needs the instruction-tuned E4B checkpoint,
-which is not on this workstation. Instruction following is this entry's
-expected signal, so no run against the base checkpoint can close it — a
-fluent non-answer is correct behaviour and proves nothing either way.
+```
+{"role":"user","content":"Create a file named hello.txt containing the word hello, then read it back"}
+{"role":"model","content":"{\"tool\": \"write\", \"args\": {\"path\": \"hello.txt\", \"content\": \"hello\"}}"}
+{"role":"tool","content":"wrote 5 bytes to hello.txt"}
+{"role":"model","content":"{\"tool\": \"read\", \"args\": {\"path\": \"hello.txt\"}}"}
+{"role":"tool","content":"hello"}
+{"role":"model","content":"hello"}
+hello
+```
+
+Three model turns: one `write` call, one `read` call, one plain-text
+answer, each a whole turn with nothing beside it. Both tool entries are
+the harness's own results, and the last line is `hello.txt` on disk.
+
+This run closed two harness defects the first attempts on 2026-09-05
+exposed; both fixes are on the branch. With no tool contract in the prompt
+the model answered in prose, and with one supplied through `HARNESS.md` it
+emitted two calls plus a fabricated result in one turn, then prose before
+the calls, which the loop accepted as a final answer. The harness now
+renders a built-in tool contract from the tool schemas and installs the
+grammar in triggered mode on the task path, so a turn that opens with `{`
+is held to one call. The first constrained run then died with `empty
+sampling support (mask excludes all tokens)`: the grammar had been given
+raw vocabulary pieces, which spell a space as the SentencePiece marker and
+`{` as `<0x7B>`, so nothing could follow `{"tool":`. It is now given each
+token's decoded surface text.
+
+Status: VERIFIED 2026-09-05 (blocked 2026-08-14 on the absence of an
+instruction-tuned checkpoint; gemma-4-E2B-it has since been placed on the
+workstation).
 
 ## RH.9 Interp chain on real weights
 
