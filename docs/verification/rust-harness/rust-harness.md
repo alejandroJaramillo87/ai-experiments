@@ -3,7 +3,8 @@
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
 **Entries: 16 verified, 5 blocked, 16 pending, of 37.** The five blocked are
-RH.7 (rr does not recognize Zen 5) and RH.8, RH.9d, RH.11 and RH.15, which
+RH.7 (the packaged rr 5.7.0 does not recognize the 9950X; upstream 5.9.0 does,
+and installing it is a host step) and RH.8, RH.9d, RH.11 and RH.15, which
 need an instruction-tuned checkpoint or a control vector this repository does
 not yet have. Each says so in its own Status line; none is merely unrun.
 
@@ -1640,19 +1641,34 @@ fixture is an acceptable subject, and the Observed block must record which
 model was used.
 
 **Prerequisites, both learned the hard way on 2026-08-14.** `kernel.perf_event_paranoid <= 1`,
-and an rr build that knows this CPU. rr identifies the microarchitecture
-explicitly rather than probing it, because deterministic replay depends on the
-retired-branch counter, and an unrecognized family is a hard failure rather
-than a degraded mode. **No released rr recognizes Zen 5**, which is what this
-workstation runs; see the Observed block.
+and an rr build that knows this CPU. rr identifies the microarchitecture from
+a fixed CPUID table rather than probing it, because deterministic replay
+depends on the retired-branch counter, and an unlisted part is a hard failure
+rather than a degraded mode. **The rr that Ubuntu 24.04 packages, 5.7.0, does
+not list the 9950X; upstream 5.9.0 does**, by the route the Observed block
+explains. Replace the packaged rr with the upstream release before recording:
+
+```bash
+cd /tmp
+curl -LO https://github.com/rr-debugger/rr/releases/download/5.9.0/rr-5.9.0-Linux-x86_64.deb
+sudo dpkg -i rr-5.9.0-Linux-x86_64.deb
+rr --version
+sudo sysctl kernel.perf_event_paranoid=1
+```
+
+`dpkg -i` replaces the packaged `rr` in place. `rr --version` must print
+`rr version 5.9.0` before the next block is worth running.
 
 Command:
 
 ```bash
 cd rust-harness
-make debug-record ARGS='--model fixtures/tiny-gemma4 "Reply with the single word: ready"'
+make debug-record ARGS='--model fixtures/tiny-gemma4 --single-thread "Reply with the single word: ready"'
 make debug-replay
 ```
+
+`--single-thread` is there for rr's Zen SpecLockMap check, explained after the
+Observed block. Drop it only after applying rr's Zen workaround.
 
 Inside the rr/gdb session:
 
@@ -1688,26 +1704,58 @@ Observed:
 ```
 
 Both `make debug-record` and `make debug-replay` fail identically, before any
-harness code runs. `0x40f40` decodes as base family `0xf` plus extended family
-`0xb`, so family `0x1a` — Zen 5, the 9950X in this workstation. rr master maps
-`ext_family 0xb` to `AMDZen5`, but the newest release, 5.9.0, predates that
-change, and `0x40f40` additionally appears in rr's fixed CPUID table mapped to
-AMDZen3 (Rembrandt), so even a partial fix risks silently misidentifying the
-part rather than refusing.
+harness code runs. `0x40f40` is CPUID leaf 1 `eax` masked to its base family,
+model, and extended-model bits: base family `0xf`, model `0x44`, which is the
+9950X (family 26, model 68 in `/proc/cpuinfo`). The extended family `0xb` is
+all that separates it from Rembrandt, the Zen 3+ mobile part with the same
+base identifier, which rr's table has listed at `0x40f40` since 5.6.0.
 
-Building rr from source did not clear it either: cmake refused with
-`Your toolchain doesn't support 32-bit cross-compilation. Install the required
-packages or pass -Ddisable32bit=ON to cmake.` The next attempt should start
-from a clean object directory and configure with `-Ddisable32bit=ON`.
+**Rediagnosed 2026-09-05 against rr's source history.** The rr that failed is
+5.7.0, the version Ubuntu 24.04 packages: the fatal's line number,
+`PerfCounters_x86.h:122`, matches that release and no other. 5.7.0 guards its
+Zen 3 and Zen 4 entries with `ext_family == 0xa`, so a Zen 5 part whose base
+identifier collides with a listed one falls through to the fatal. 5.9.0
+(2025-02-13) dropped that guard when it split the Zen generations apart, rr
+commit `ca5c4d91`, and `0x40f40` now returns `AMDZen3` unconditionally. A 9950X
+therefore records under 5.9.0 as a misidentified Rembrandt. That is a working
+configuration, not a degraded one: every Zen row in rr's counter table, Zen
+through Zen 5, carries the same retired-branch event (`0x5100d1`) and the same
+skid and tick flags, so the label rr picks changes nothing that replay depends
+on. rr master (commit `5c202cd8`, 2026-08-17) is the same on this point; its
+explicit Zen 5 entries cover Strix Point, Strix Halo, and Krackan Point only,
+and no release after 5.9.0 exists. Upstream issue
+[#3914](https://github.com/rr-debugger/rr/issues/3914), filed for exactly this
+fatal on a 9950X under 5.8.0, is closed. The earlier claim in this entry that
+no released rr recognizes Zen 5 was true of the desktop part's own identifier
+and wrong about what 5.9.0 does with it.
+
+Building from source is not required. The 5.9.0 release ships
+`rr-5.9.0-Linux-x86_64.deb`, which the prerequisite block above installs. The
+source build's cmake refusal recorded on 2026-08-14, `Your toolchain doesn't
+support 32-bit cross-compilation. Install the required packages or pass
+-Ddisable32bit=ON to cmake.`, is answered by `-Ddisable32bit=ON` from a clean
+object directory should a source build ever be wanted; the cost is replaying
+32-bit recordings, which this harness never produces.
+
+One Zen caveat survives the version change. rr tests whether the CPU's
+SpecLockMap optimization is enabled, and its own comment states that recording
+with it enabled works for a single process with a single thread and not
+beyond. 5.9.0 prints a warning on stderr and continues; rr master has since
+made the check fatal unless `--force-things` is passed. Hence `--single-thread`
+in the command block. To record the threaded backend instead, run rr's
+`zen_workaround.py` (in the `scripts` directory of the rr source tree) as
+root, which writes MSR `0xc0011020` and does not persist across reboot or
+suspend, then drop the flag.
 
 This is an external tooling wall, not a harness defect. Nothing in
 `rust-harness/` was exercised, so no claim about the harness — positive or
 negative — follows from it. The rr targets in `rust-harness/Makefile` are
-untested on this workstation and will stay that way until rr supports Zen 5.
+untested on this workstation until the command block above runs under 5.9.0.
 
-Status: BLOCKED 2026-08-14. Unblocks when an rr that recognizes Zen 5 is
-available, whether from a release after 5.9.0 or a source build configured
-with `-Ddisable32bit=ON`.
+Status: BLOCKED 2026-08-14, rediagnosed 2026-09-05. The block is the packaged
+rr 5.7.0, not Zen 5 support. Unblocks when `rr --version` on the workstation
+prints `rr version 5.9.0`; the command block then runs as written, and its gdb
+transcript replaces this Observed block.
 
 ## RH.8 End-to-end coding task
 

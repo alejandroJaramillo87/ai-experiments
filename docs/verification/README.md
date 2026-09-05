@@ -134,8 +134,10 @@ worth distinguishing from the usual one: it was verified, and then the code
 under it changed what it prints. An entry whose Observed block no longer shows
 everything the command produces is not verified, and the repair is a re-run
 rather than an edit. Its five blocked ones are a third thing again: they need
-an rr that supports Zen 5, an instruction-tuned checkpoint, or a control vector
-extracted against E4B, and no amount of sitting down produces those.
+rr 5.9.0 installed on the host in place of the packaged 5.7.0, an
+instruction-tuned checkpoint, or a control vector extracted against E4B. The
+first is a host step the entry spells out; no amount of sitting down produces
+the other two.
 
 ## Phase order
 
