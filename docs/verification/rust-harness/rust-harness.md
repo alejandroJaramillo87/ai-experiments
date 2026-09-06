@@ -3607,11 +3607,21 @@ The test spawns the release binary on a free port into a directory holding
 a deliberately invalid `session.kv`, polls with the registry's `ServiceSpec`
 moved to that port, and reads the two replies through `chat_completion`
 unmodified. Its sandbox sibling is `rust-harness/harness/tests/serve_snapshot.rs`,
-the same snapshot assertion over the tiny fixture on every `cargo test`.
+the same snapshot assertion over the tiny fixture on every `cargo test`. The
+test runs whatever release binary is on disk, so rebuild after a pull:
 
 ```bash
+cd rust-harness && cargo build --release --bin harness && cd ..
 uv run pytest -m hw_full tests/hardware/test_harness_endpoint.py -v
 ```
+
+First workstation run, 2026-09-06: a run against the release binary built
+before the snapshot fix errored at setup on all four tests, because that
+binary deleted the planted `session.kv`, which is the behaviour the fix
+removes and the negative proof of it. After the rebuild the operator
+reported four passed under `[TIER] full`; the output was not pasted, so that
+pass is recorded here in prose. The snapshot test now reports a deleted file
+as its own failure naming the rebuild, rather than as a setup error.
 
 Observed:
 

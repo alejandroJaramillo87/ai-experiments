@@ -154,7 +154,11 @@ def endpoint(tmp_path_factory) -> Endpoint:
         server.terminate()
         server.wait(timeout=30)
         reader.join(timeout=30)
-    return Endpoint(spec, healthy_s, replies, "".join(lines), snapshot.read_bytes())
+    # None rather than an exception when the file is gone: a release binary
+    # older than the serve-mode fix deletes it, and that belongs to the
+    # snapshot test's report, not to every test's setup.
+    after = snapshot.read_bytes() if snapshot.is_file() else None
+    return Endpoint(spec, healthy_s, replies, "".join(lines), after)
 
 
 def test_the_client_sees_the_server_healthy_within_its_own_budget(endpoint):
@@ -193,4 +197,8 @@ def test_serve_mode_leaves_the_snapshot_alone(endpoint):
     err = endpoint.stderr
     assert "Session restored" not in err, err
     assert "Session snapshot" not in err, err
+    assert endpoint.snapshot_after is not None, (
+        "session.kv was deleted: the served binary predates the serve-mode "
+        f"snapshot fix; rebuild it with `cargo build --release --bin harness` in {HARNESS_DIR}"
+    )
     assert endpoint.snapshot_after == NOT_A_SNAPSHOT, "session.kv was rewritten"
