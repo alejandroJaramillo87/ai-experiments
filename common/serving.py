@@ -126,20 +126,24 @@ SERVICES = {
     # cover it -- but it holds ~14 GiB resident and saturates the cores, so
     # treat it as exclusive with training and benchmark runs.
     #
-    # start_budget_s covers loading a ~14 GiB checkpoint from disk. Still a
-    # placeholder: RH.14 measured the endpoint against real E4B but polled an
-    # already-running server, so it timed the poll and not the load.
+    # start_budget_s is set from RH.14's 2026-09-06 re-run: the server printed
+    # `Model load: 3.71 s` for gemma-4-E2B-it (8.62 GiB of weights) from a
+    # warm page cache. 60 s is sixteen times that, which covers a cold cache
+    # and the E4B-it default the compose file names, at 1.6x the weights.
+    # tests/hardware/test_harness_endpoint.py asserts the poll lands inside it.
     #
-    # The decode rate it did measure is 5.5-5.8 tokens/s at the default thread
-    # width, so callers must pass an explicit timeout: chat_completion's 120s
-    # default covers about 660 tokens, and a 256-token call takes roughly 45s.
+    # The decode rate is checkpoint-bound and callers must still pass an
+    # explicit timeout: RH.14 measured 5.5-5.8 tokens/s on E4B at the default
+    # thread width, so chat_completion's 120s default covers about 660 tokens
+    # there, and a 256-token call takes roughly 45s. E2B-it answered 29 tokens
+    # in 2.7-3.1s.
     "harness": ServiceSpec(
         "harness",
         8005,
         "HARNESS_MODEL",
         "/v1/health",
         concurrency=1,
-        start_budget_s=600,
+        start_budget_s=60,
         compose_file=HARNESS_COMPOSE,
         compose_name="harness-serve",
     ),

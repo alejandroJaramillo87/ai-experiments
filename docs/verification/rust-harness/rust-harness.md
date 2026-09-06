@@ -3565,26 +3565,53 @@ client change. It also measures the decode rate those callers need in order
 to size their `timeout`, because `chat_completion` defaults to 120 s and a
 CPU reply can exceed it.
 
-Command (server in one shell, client in another):
+Command (server in one shell, client in another). The server starts from an
+empty directory so no `session.kv` from an interactive run is beside it, and
+the client is started the moment the server is, so `wait_healthy` times the
+load rather than a poll against a server already up:
 
 ```bash
-cd rust-harness && cargo build --release --bin harness
-./target/release/harness --model <e4b-checkpoint-dir> --text-only --serve 8005
+cd ~/workspace/ai-experiments/rust-harness && cargo build --release --bin harness
+rm -rf /tmp/rh14 && mkdir -p /tmp/rh14 && cd /tmp/rh14
+date +%T; ~/workspace/ai-experiments/rust-harness/target/release/harness \
+  --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only --serve 8005
 ```
 
 ```bash
-.venv/bin/python -c "
+cd ~/workspace/ai-experiments && uv run python -c "
 from common import serving
 s = serving.SERVICES['harness']
 print('healthy in', serving.wait_healthy(s), 's')
-r = serving.chat_completion(s, [{'role':'user','content':'Name three primes.'}],
-                            {'temperature': 0.0, 'max_tokens': 64}, timeout=1800)
-print(r)"
+for _ in range(2):
+    r = serving.chat_completion(s, [{'role':'user','content':'Name three primes.'}],
+                                {'temperature': 0.0, 'max_tokens': 64}, timeout=1800)
+    print(r)"
 ```
 
 Expected signal: `wait_healthy` returns; `chat_completion` returns a dict
 whose `content` is coherent text and whose `usage` counts are internally
-consistent; two identical greedy requests return identical text.
+consistent; two identical greedy requests return identical text. Since U8
+the server also prints `Model load:` once, and since 2026-09-06 it prints no
+`Session restored` line in serve mode, whatever the directory holds.
+
+Asserted by `tests/hardware/test_harness_endpoint.py`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| The client's own `wait_healthy` sees the server up inside the registry's `start_budget_s`, and one `Model load:` line sits inside that figure | `test_the_client_sees_the_server_healthy_within_its_own_budget` |
+| Two greedy requests return identical, non-empty text naming 2, 3 and 5 | `test_two_greedy_requests_return_identical_coherent_text` |
+| `prompt_tokens + completion_tokens == total_tokens`, completion within the budget, both requests alike | `test_usage_counts_are_internally_consistent` |
+| A served session neither restores nor rewrites a `session.kv` beside it | `test_serve_mode_leaves_the_snapshot_alone` |
+
+The test spawns the release binary on a free port into a directory holding
+a deliberately invalid `session.kv`, polls with the registry's `ServiceSpec`
+moved to that port, and reads the two replies through `chat_completion`
+unmodified. Its sandbox sibling is `rust-harness/harness/tests/serve_snapshot.rs`,
+the same snapshot assertion over the tiny fixture on every `cargo test`.
+
+```bash
+uv run pytest -m hw_full tests/hardware/test_harness_endpoint.py -v
+```
 
 Observed:
 
@@ -3612,7 +3639,57 @@ number itself', 'usage': {'prompt_tokens': 13, 'completion_tokens': 64,
 'total_tokens': 77}, 'latency_ms': 10969.0}
 ```
 
-Status: VERIFIED 2026-08-12
+Observed (2026-09-06, gemma-4-E2B-it from an empty directory, before the
+serve-mode snapshot fix landed):
+
+```
+➜  rh14 cd ~/workspace/ai-experiments/rust-harness && cargo build --release --bin harness
+rm -rf /tmp/rh14 && mkdir -p /tmp/rh14 && cd /tmp/rh14
+date +%T; ~/workspace/ai-experiments/rust-harness/target/release/harness \
+  --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only --serve 8005
+    Finished `release` profile [optimized] target(s) in 0.02s
+08:41:57
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E2B-it hash=7ddcbbe752dcfbf6 layers=35
+[INFO] Weights: 8.62 GiB resident at bf16
+[INFO] Peak RSS after load: 9.51 GiB
+[INFO] KV cache: 131072 tokens, 1.52 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=256
+[INFO] Build: 0.1.0 git unknown
+[INFO] Model load: 3.71 s
+[INFO] Serving on http://127.0.0.1:8005 (model /mnt/ai-data/models/hf/gemma-4-E2B-it)
+```
+
+```
+➜  ai-experiments git:(rust-harness-verification) ✗ cd ~/workspace/ai-experiments && uv run python -c "
+from common import serving
+s = serving.SERVICES['harness']
+print('healthy in', serving.wait_healthy(s), 's')
+for _ in range(2):
+    r = serving.chat_completion(s, [{'role':'user','content':'Name three primes.'}],
+                                {'temperature': 0.0, 'max_tokens': 64}, timeout=1800)
+    print(r)"
+healthy in 0.005302289000610472 s
+{'content': 'Here are three prime numbers:\n\n1. **2**\n2. **3**\n3. **5**', 'usage': {'prompt_tokens': 13, 'completion_tokens': 29, 'total_tokens': 42}, 'latency_ms': 3120.8}
+{'content': 'Here are three prime numbers:\n\n1. **2**\n2. **3**\n3. **5**', 'usage': {'prompt_tokens': 13, 'completion_tokens': 29, 'total_tokens': 42}, 'latency_ms': 2694.2}
+```
+
+Every criterion holds on the instruction-tuned checkpoint: the client
+functions run unmodified, `usage` sums (13 + 29 = 42), and the two greedy
+replies are byte-identical. This reply ended on an EOS at 29 tokens rather
+than at the budget, which the base-E4B run above never did. `Model load:
+3.71 s` is the cold-start figure this entry had been missing; the health poll
+again reported milliseconds because the client shell was started after the
+serving line, so on the terminal the poll still timed a running server. That
+is why the hardware test, and not the pasted block, is what asserts the
+budget: it starts the poll with the process. Decode on E2B-it: 29 tokens in
+2.7-3.1 s including the 13-token prefill, about 10 tokens/second, against
+5.5-5.8 on E4B. No `Session restored` line, as expected from an empty
+directory; the fix that makes that true from any directory landed after this
+paste and is pinned by `serve_snapshot.rs` and the hardware test.
+
+Status: VERIFIED 2026-08-12; re-verified 2026-09-06
 
 **U8, 2026-08-15, adds one line to this entry's startup and none per
 request.** The server prints `Model load: {s}` once at start; the per-turn
@@ -3647,20 +3724,26 @@ with prefill too small to separate out. Consequences for callers: a 256-token
 scorecard call costs roughly 45 s, and `chat_completion`'s 120 s default
 covers about 660 tokens. Interp callers should pass an explicit `timeout`.
 
-**`start_budget_s` remains unmeasured.** Both health polls returned in 10 ms
-against an already-running server, so they timed the poll and not the load.
-The 600 s in the registry is still a placeholder; timing a cold start until
-the serving line appears is what would replace it.
+**`start_budget_s` was unmeasured until 2026-09-06.** The 2026-08-12 health
+polls returned in 10 ms against an already-running server, so they timed
+the poll and not the load, and the 600 s in the registry was a placeholder.
+The re-run's `Model load: 3.71 s` on E2B-it (8.62 GiB of weights, warm page
+cache) replaced it with 60 s: sixteen times the measurement, room for a cold
+cache and for the E4B-it default the compose file names at 1.6x the weights.
+`test_harness_endpoint.py` asserts every future run lands inside it.
 
-Two findings for follow-up, neither a defect in the endpoint itself:
+Three findings came out of the 2026-08-12 run, none a defect in the endpoint
+itself. Two are closed:
 
 - `Session restored: 111 cached tokens` — the server inherited an earlier
   interactive run's KV cache, because it was started from the worktree where
   that run left `session.kv`. Harmless, and the identical replies above show
   it: `sync` reconciles against the common prefix. But a server restoring a
   conversation it will never continue is confusing, and `--serve` returns
-  before the save path, so it restores and never writes. Serve mode should
-  probably not participate in session persistence at all.
+  before the save path, so it restored and never wrote. **Closed 2026-09-06:**
+  serve mode now hands `build_generator` no snapshot path, so save and
+  restore agree; `serve_snapshot.rs` and the hardware test pin it.
+- `start_budget_s`: closed as above.
 - KV at 4.05 GiB, with its own `[WARN]`: serve mode takes the full trained
   context by default and holds it for the process lifetime. `--context` is
   the lever, and a serving deployment likely wants it set.

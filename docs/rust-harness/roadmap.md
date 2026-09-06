@@ -38,7 +38,7 @@ this file owns only the ordering and the reasoning behind it.
 | R6 | IF-2 token-to-text alignment | done |
 | R7 | P12 probes to safetensors plus JSON sidecar | done |
 | R8 | IF-3 attention weights | done, cheaper than budgeted |
-| R9 | P13 harness serves interp | done, verified against real E4B (RH.14) |
+| R9 | P13 harness serves interp | done, verified against real E4B (RH.14); re-verified on E2B-it 2026-09-06 |
 | R10 | P14 control vector to safetensors | done; RH.15 acceptance not yet run |
 | R10.5 | The proxy and the replay stage retire | done; I.6 and I.7 acceptance not yet run |
 | R11 | IF-4 plus IF-5 together | not started |
