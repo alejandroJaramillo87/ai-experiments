@@ -3768,28 +3768,67 @@ format and the wiring and nothing about steering a real checkpoint.
 
 Requires a control vector extracted against the weights being served; a
 vector whose `manifest.json` records a different `model_hash` is refused, and
-one exported before R10 is a GGUF that no longer loads. RH.9d produces one
-from an RH.9a capture, and `harness-serve` must serve that same checkpoint.
+one exported before R10 is a GGUF that no longer loads. RH.9d produced one
+from the RH.9a capture, `refusal-e2b-it`, fitted on `gemma-4-E2B-it`, so
+`harness-serve` must serve that checkpoint: `HARNESS_MODEL` is exported for
+the run because the compose default is E4B-it, and the scorecard's
+`make steer-up` inherits it. The band and the scale are RH.9d's, layers 10 to
+16 at 0.5, with 1.0 kept in the sweep because RH.9d recorded that it breaks
+fluency on this band and the coherence arm is where that should show; 2.0 is
+dropped as a quarter of the run spent confirming a known result. The prompt
+set is the refusal pair beside the honesty triple in
+`interp/steering/prompts/`: benign requests, where added refusal has the
+headroom RH.9e measured (0.00 to 1.00 at +0.5), and a refuse-everything
+system prompt for the tuned-baseline arm. The judge is `llama-cpu`, whatever
+`.env` gives it, and the subject is the harness; both come from the registry
+since 2026-09-06.
 
 ```bash
+cd ~/workspace/ai-experiments
 make harness-build
-make steer-up VECTOR=/mnt/ai-data/interp/vectors/<name> SCALE=1.0
-make steer-scorecard VECTOR=/mnt/ai-data/interp/vectors/<name> \
-    ATTRIBUTE="<behavior the judge scores>"
-make steer-down
+make cpu-up
+export HARNESS_MODEL=/app/models/hf/gemma-4-E2B-it
+date +%T
+make steer-scorecard VECTOR=/mnt/ai-data/interp/vectors/refusal-e2b-it \
+    ATTRIBUTE="refusal: the response declines to help with the request" \
+    ARGS="--behavior-prompts interp/steering/prompts/behavior_refusal.jsonl \
+          --system-prompt interp/steering/prompts/system_prompt_refusal.json \
+          --layer-range '10 16' --scales 0.5,1 --max-tokens 128"
+date +%T
+docker logs rust-harness-serve 2>&1 | grep -E "Control vector|WARN|Model load"
 ```
 
-Expected signal: the three arms complete and the scorecard writes its report,
-with the steered arm differing from the unsteered baseline. The scorecard
-restores the unsteered state on failure as well as on success, so a partial
-run should leave `harness-serve` unsteered.
+Expected signal: the four arms complete and the scorecard writes its report,
+with the steered arm differing from the unsteered baseline: `steered@0.5`'s
+behavior mean well above `baseline`'s, and `steered@1`'s fluency mean below
+it. No identity `[WARN]` in the container log, and its last `Control
+vector:` line reads `none, serving unsteered`. The scorecard restores the
+unsteered state on failure as well as on success, so a partial run should
+leave `harness-serve` unsteered; if it fails before its report, run
+`make steer-down` and the same `docker logs` line, and paste both.
 
-Record: the wall-clock for the full three-arm sweep, and the per-call latency.
-This is the number that decides whether a GPU backend becomes urgent. RH.14
-measured 5.5-5.8 tokens per second at the default thread width, which puts a
-256-token arm at roughly 45 seconds; a sweep is many such calls. If it proves
-impractical, that is a finding to record against a future GPU backend, not a
-reason to revert R10.
+No hardware test asserts this entry. The orchestration is pinned in the
+sandbox (`tests/interp/test_steering.py`, `test_cli_handlers_steering.py`),
+and an end-to-end run needs Docker, two services and the better part of an
+hour, which no pytest tier here covers; the paste is the evidence.
+
+Three things stood between the command above and a run, all found on
+2026-09-06 while writing it and closed in the same commit. The scorecard's
+`--subject-url` and `--judge-url` still defaulted to llama-gpu and vllm-gpu
+from before R10, so a default run steered `harness-serve` and questioned a
+service it had never touched; both now come from `common/serving.py`.
+`MakeServiceController` could not pass a band to `make steer-up`, so every
+scorecard would have applied the vector at all 35 blocks; `--layer-range`
+reaches `steer-up` as `LAYER_RANGE` and lands in the report. And the only
+prompt set was honesty, for a vector that is refusal.
+
+Record: the wall-clock for the full sweep (the two `date` lines), and the
+per-call latency from each arm's summary. This is the number that decides
+whether a GPU backend becomes urgent. RH.14 measured 5.5-5.8 tokens per
+second on E4B and about 10 on E2B-it, so at `--max-tokens 128` the 64
+subject calls of four arms are roughly 15 minutes before the judge's share.
+If it proves impractical, that is a finding to record against a future GPU
+backend, not a reason to revert R10.
 
 Also record whether the judge service and the subject contend: the judge runs
 on `llama-cpu`, and both are now CPU consumers on the same machine.
@@ -3802,8 +3841,8 @@ Observed:
 Status: PENDING (blocked 2026-08-14 while no control vector this entry could
 use existed: every pre-R10 vector is GGUF, and extraction was blocked by
 KB-32. `steer-extract` now derives a vector from a capture, RH.9d verified
-it on 2026-09-05, and this entry is pending on a serving run). The arms and
-the judge wiring are otherwise ready.
+it on 2026-09-05, the scorecard's wiring was corrected on 2026-09-06, and
+this entry is pending on the serving run above).
 
 ## RH.16 The preflight answers before the model loads
 

@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 9 verified, 2 blocked, 7 pending, of 18.**
+**Entries: 9 verified, 1 blocked, 8 pending, of 18.**
 
 The 18 entries are I.1 through I.17 plus the interstitial I.9b
 ("Chunked-capture crash recovery"); none is missing. I.9b is numbered beside I.9
@@ -169,10 +169,21 @@ requires `$(VECTOR)/vector.safetensors` to exist under
 Command:
 
 ```bash
-make steer-up VECTOR=/mnt/ai-data/interp/vectors/honesty-e2b SCALE=1.0
-make steer-scorecard VECTOR=/mnt/ai-data/interp/vectors/honesty-e2b ATTRIBUTE="honesty"
-make steer-down
+cd ~/workspace/ai-experiments
+make harness-build
+make cpu-up
+export HARNESS_MODEL=/app/models/hf/gemma-4-E2B-it
+make steer-scorecard VECTOR=/mnt/ai-data/interp/vectors/refusal-e2b-it \
+    ATTRIBUTE="refusal: the response declines to help with the request" \
+    ARGS="--behavior-prompts interp/steering/prompts/behavior_refusal.jsonl \
+          --system-prompt interp/steering/prompts/system_prompt_refusal.json \
+          --layer-range '10 16' --scales 0.5,1 --max-tokens 128"
+docker logs rust-harness-serve 2>&1 | grep -E "Control vector|WARN|Model load"
 ```
+
+The vector, band, scale and prompt set are RH.9d's and RH.15's; the harness
+runbook's RH.15 carries the reasoning for each, and the same run closes both
+entries.
 
 Expected signal: the service recreates steered; the three-arm scorecard
 (baseline, tuned system prompt, steered at the scale sweep) writes its
@@ -185,10 +196,11 @@ Observed:
 ```
 ```
 
-Status: BLOCKED 2026-08-14 on I.3. `make steer-up` refuses without
-`$(VECTOR)/vector.safetensors`, and no such vector exists — I.3 has never
-produced one. Unblocks the moment I.3 does. The harness runbook's RH.15 is the
-same step against the same missing artifact; running one closes both.
+Status: PENDING (blocked 2026-08-14 on I.3, which had never produced a
+vector; I.3 closed on 2026-09-05 with `refusal-e2b-it`, and on 2026-09-06 the
+scorecard's subject and judge defaults and its missing layer band were
+corrected, so the command above is runnable). The harness runbook's RH.15 is
+the same step against the same artifact; running one closes both.
 
 Two things to expect when it does run. The subject is now a CPU backend at
 single-digit tokens per second, so a 256-token arm costs roughly 45 seconds and
