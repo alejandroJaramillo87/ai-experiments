@@ -80,8 +80,11 @@ at load, and `steer-scorecard --layer-range` is how a scorecard says that band t
 score some other pair. The judge runs with thinking off: the Gemma 4 GGUF template leaves
 the thought channel open and gemma-4-E2B-it reasons at length before every verdict, so the
 judge request carries llama-server's per-request thinking budget at zero, which ends the
-thought the moment it starts. `--judge-max-tokens` (512) bounds the verdict itself; a
-verdict the budget cuts off is reported by name rather than as an unparseable reply.
+thought the moment it starts. The same request carries the verdict's JSON schema, which
+llama-server compiles to a grammar, so the prompt's "JSON only" is enforced by the sampler
+rather than hoped for: score an integer 0 to 10, reason a bounded string, nothing else.
+`--judge-max-tokens` (512) bounds the verdict itself; a verdict the budget cuts off is
+reported by name rather than as an unparseable reply.
 
 `--method sae_row` exports a single Gemma Scope decoder row instead
 (`--sae-release ... --sae-id ... --feature N --layer L`). The serving entrypoint adds

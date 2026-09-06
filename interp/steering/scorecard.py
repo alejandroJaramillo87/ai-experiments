@@ -21,6 +21,10 @@ channel open, so gemma-4-E2B-it reasons at length before every verdict, and a
 verdict that arrives after a thought of unbounded length is one that a token
 budget cuts off sooner or later. llama-server's per-request thinking budget
 ends the thought as soon as it starts, and the judge request carries it.
+With the thought closed the model argues in the open instead and stops
+without a verdict, so the request also carries the verdict's JSON schema,
+which llama-server compiles to a grammar: the verdict is then the only
+legal continuation.
 
 The service recreates between arms; the controller is injectable so tests can
 run the orchestration without Docker, and the default controller shells out to
@@ -63,12 +67,39 @@ JUDGE_FLUENCY_TEMPLATE = (
 )
 
 
-# Thinking off for the judge. llama-server (b9976) reads this per-request
-# field wherever the chat format declares thinking tags, which the Gemma 4
-# format does (<|channel>thought ... <channel|>); 0 forces the end tag the
-# moment the start tag is generated. Without it gemma-4-E2B-it reasoned
-# through 128 and then 512 tokens before any verdict on 2026-09-06.
-JUDGE_REQUEST_EXTRA = {"thinking_budget_tokens": 0}
+# What a verdict may be. llama-server compiles this to a grammar
+# (common/json-schema-to-grammar.cpp honors minimum/maximum and maxLength),
+# so the score range and the length of the reason are enforced by the
+# sampler; the range check in judge_score stays for a judge that ignores
+# response_format. The bound on reason is what keeps a verdict inside
+# --judge-max-tokens.
+JUDGE_VERDICT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "score": {"type": "integer", "minimum": 0, "maximum": 10},
+        "reason": {"type": "string", "maxLength": 300},
+    },
+    "required": ["score", "reason"],
+    "additionalProperties": False,
+}
+
+# Two request fields llama-server (b9976, commit e3546c794) reads beyond the
+# OpenAI shape, layered against gemma-4-E2B-it's habit of reasoning step by
+# step before any verdict (three RH.15 runs on 2026-09-06):
+#   thinking_budget_tokens: read wherever the chat format declares thinking
+#     tags, which the Gemma 4 format does (common/chat.cpp,
+#     <|channel>thought ... <channel|>); 0 forces the end tag the moment the
+#     start tag is generated. Without it the thought consumed 128 and then
+#     512 tokens. With it alone the model argued in plain content and
+#     stopped without a verdict.
+#   response_format: for the Gemma 4 format the grammar is not lazy, so
+#     from the first token the only path to end-of-turn is an optional
+#     thought (closed at once by the budget above) and then a fenced JSON
+#     object matching the schema.
+JUDGE_REQUEST_EXTRA = {
+    "thinking_budget_tokens": 0,
+    "response_format": {"type": "json_object", "schema": JUDGE_VERDICT_SCHEMA},
+}
 
 
 class ScorecardError(Exception):
@@ -475,6 +506,7 @@ def run_scorecard(
             "layer_range": list(cfg.layer_range) if cfg.layer_range else None,
             "max_tokens": cfg.max_tokens,
             "judge_max_tokens": cfg.judge_max_tokens,
+            "judge_verdict_schema": JUDGE_VERDICT_SCHEMA,
             "temperature": cfg.temperature,
             "behavior_prompts": cfg.behavior_prompts,
             "behavior_prompts_sha256": _file_sha(cfg.behavior_prompts),

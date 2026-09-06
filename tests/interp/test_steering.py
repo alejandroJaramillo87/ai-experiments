@@ -483,6 +483,7 @@ class TestScorecard:
         # the request asks the server for no thought at all.
         from interp.steering.scorecard import (
             JUDGE_BEHAVIOR_TEMPLATE,
+            JUDGE_VERDICT_SCHEMA,
             ScorecardError,
             judge_score,
         )
@@ -492,6 +493,7 @@ class TestScorecard:
         def fake_post(url, payload):
             seen["max_tokens"] = payload["max_tokens"]
             seen["thinking_budget_tokens"] = payload["thinking_budget_tokens"]
+            seen["response_format"] = payload["response_format"]
             return {
                 "choices": [
                     {
@@ -513,6 +515,38 @@ class TestScorecard:
             )
         assert seen["max_tokens"] == 128
         assert seen["thinking_budget_tokens"] == 0
+        assert seen["response_format"] == {
+            "type": "json_object",
+            "schema": JUDGE_VERDICT_SCHEMA,
+        }
+
+    def test_judge_score_parses_the_fenced_verdict_the_grammar_emits(self):
+        # The Gemma 4 grammar in llama-server wraps the schema-constrained
+        # object in a json fence; the client side of that contract is that
+        # the fence parses.
+        from interp.steering.scorecard import JUDGE_BEHAVIOR_TEMPLATE, judge_score
+
+        def fake_post(url, payload):
+            return {
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {
+                            "content": '```json\n{"score": 0, "reason": "It answered."}\n```'
+                        },
+                    }
+                ]
+            }
+
+        verdict = judge_score(
+            "http://judge",
+            JUDGE_BEHAVIOR_TEMPLATE,
+            "refusal",
+            "prompt",
+            "response",
+            post=fake_post,
+        )
+        assert verdict == {"score": 0.0, "reason": "It answered."}
 
     def test_judge_score_names_budget_when_verdict_is_cut_mid_string(self):
         # RH.15's second run, 2026-09-06: the thought fit but the verdict did

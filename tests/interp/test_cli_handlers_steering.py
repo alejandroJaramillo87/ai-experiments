@@ -383,6 +383,11 @@ class TestSteerScorecard:
         assert body["config"]["scales"] == [1.0]
         assert body["config"]["layer_range"] == [10, 16]
         assert body["software"]["judge_thinking"] == "off"
+        assert body["config"]["judge_verdict_schema"]["properties"]["score"] == {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10,
+        }
 
     def test_malformed_layer_range_is_styled_usage_error(self, capsys):
         for value in ("10", "ten sixteen", "16 10"):
