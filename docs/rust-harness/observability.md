@@ -456,7 +456,9 @@ that fails on a missing checkpoint: two rows with exit codes 0 and 1, run ids
 of the documented shape, and each row's event file bracketed by `cmd.start`
 and `cmd.end` with `fail` present exactly when the row's exit code says so.
 That is runbook entry RH.13's claim, asserted against a scratch
-`${OBS_LOG_DIR}` on every `cargo test`. The check matters because the reader is permissive by design:
+`${OBS_LOG_DIR}` on every `cargo test`; `tests/hardware/test_obs_records.py`
+asserts it against the default root and a real checkpoint on the workstation,
+in the `hw_full` tier. The check matters because the reader is permissive by design:
 `read_runs` skips a line it cannot parse, so a drifted writer would show an
 empty runs table rather than an error. The catalog line is also formatted by
 hand rather than through serde, so nothing in the type system holds it to the

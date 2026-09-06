@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 21 verified, 0 blocked, 17 pending, of 38.** RH.11 was blocked
+**Entries: 22 verified, 0 blocked, 16 pending, of 38.** RH.11 was blocked
 until 2026-09-05 on an instruction-tuned checkpoint; gemma-4-E2B-it unblocked
 it, and it closed on that checkpoint on 2026-09-06. RH.9d and RH.15 were
 blocked until the same day on a control vector this repository could not
@@ -13,9 +13,7 @@ and the entry records the install step. RH.8 was blocked until the same day
 on the absence of an instruction-tuned checkpoint; gemma-4-E2B-it now closes
 it, and its entry records the two harness defects the first runs exposed.
 
-Of the 17 pending, one is RH.13, reopened by U7: the code under it changed the
-terminal output the entry records, so its Observed block needs re-collecting
-rather than editing. RH.17 through RH.22 are new full entries from the surface
+Of the 16 pending, RH.17 through RH.22 are new full entries from the surface
 inventory, each needing a human, the GPU host, or the real E4B checkpoint.
 RH.23 through RH.31 are **gate-backed**: each names the test function that
 asserts its expected signal, and one `cargo test --workspace` run closes all
@@ -3245,7 +3243,8 @@ Status: VERIFIED 2026-08-14
 
 Implementation: `rust-harness/obs/src/lib.rs`,
 `rust-harness/harness/tests/obs_contract.rs`,
-`rust-harness/harness/tests/obs_records.rs`, `common/obs/catalog.py`.
+`rust-harness/harness/tests/obs_records.rs`,
+`tests/hardware/test_obs_records.py`, `common/obs/catalog.py`.
 
 The harness writes run-level records in the shared obs contract
 (`common/obs`): an event file `${OBS_LOG_DIR}/harness/<run_id>.jsonl`
@@ -3265,9 +3264,9 @@ git fetch origin rust-harness-verification
 git checkout -B rust-harness-verification origin/rust-harness-verification
 git log -1 --oneline
 cd rust-harness && cargo build --release --bin harness 2>&1 | tail -1
-mkdir -p /tmp/rh13 && cd /tmp/rh13
+rm -rf /tmp/rh13 && mkdir -p /tmp/rh13 && cd /tmp/rh13
 ~/workspace/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/hf/<e4b> --text-only \
+    --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only \
     "Reply with the single word: ready"
 ~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /nonexistent-checkpoint "task" ; echo "exit: $?"
@@ -3287,6 +3286,14 @@ branch that was not fast-forwarded, and a release binary older than the
 pull, each produced a run that looked like a defect and was not one. The
 `cat` prints the failing run's event file, which the 2026-08-14 evidence
 included by hand.
+
+The successful run names the instruction-tuned checkpoint, where the
+2026-08-14 run used base E4B. A positional task puts the binary in
+coding-agent mode, and on 2026-09-06 base E2B answered the tool contract
+with a tool call rather than the word (recorded below): the entry is about
+the records, not the reply, but a run that aborts is the wrong row. The
+`rm -rf` keeps another model's `session.kv` from being resumed and then
+discarded on the hash check.
 
 Expected signal: the successful run catalogs with `exit_code` 0 and the
 failed run with `exit_code` 1 plus a `fail` event in its event file; run
@@ -3375,7 +3382,169 @@ the file reads `cmd.start`, `phase.start`, `phase.end` (both `model.load`,
 in the `cat` output; it is not a regression, since the phase closes at once
 and the run still ends before any weight is read.
 
-Status: PENDING (verified 2026-08-14; reopened by U7 for a terminal re-run)
+**Hardware test (added 2026-09-06).** The workstation half is also a test,
+so `make quality-full HW=full` re-checks it instead of this block waiting
+for the next hand re-run. Its successful run is `--chat` with the prompt on
+stdin rather than a positional task, for the reason RH.9's preamble gives,
+so its catalog row reads `command: chat` where the paste below reads
+`task`; the expected signal names neither. The failing run is the block's,
+byte for byte.
+
+Asserted by `tests/hardware/test_obs_records.py`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| Two rows appended to `/mnt/ai-data/logs/harness/runs.jsonl` with `exit_code` 0 then 1, `run_dir` under the default root, keys equal to the contract's | `test_a_success_and_a_failure_append_two_rows_to_the_default_catalog` |
+| Both run ids match `R-YYYYMMDD-HHMMSS-xxxxxx` and differ | `test_run_ids_have_the_documented_shape` |
+| The failure prints the `Task failed:` line and the two remedy lines, and its event file is `cmd.start`, `phase.start`, `phase.end`, `fail`, `cmd.end` with `exc_msg` equal to the printed message and carrying neither remedy | `test_the_failing_run_states_its_fix_and_records_only_the_diagnosis` |
+| The success's event file opens with `cmd.start`, closes with `cmd.end` at exit 0, and holds no `fail`; the reply is on stdout | `test_the_successful_run_records_no_failure` |
+
+```bash
+cd ~/workspace/ai-experiments
+uv run pytest -m hw_full tests/hardware/test_obs_records.py -v
+```
+
+The test writes to the real default root: two rows and two event files per
+run, as any invocation leaves. It counts the rows present first and asserts
+only on what it appended. `hw_full` rather than `hw_smoke` because it loads
+a real model and writes outside a temporary directory. It skips when
+`gemma-4-E2B-it` is not on disk and fails, rather than skips, when the
+release binary is absent.
+
+Observed (2026-09-06, two base-checkpoint runs before the passing block;
+recorded as findings, not failures):
+
+```
+➜  rh13 cd /tmp/rh13
+printf '%s\n' "Reply with the single word: ready" \
+  | ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/gemma-4-E4B --text-only --chat
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E4B hash=e376216f8b693aff layers=42
+[INFO] Weights: 13.90 GiB resident at bf16
+[INFO] Peak RSS after load: 14.03 GiB
+[INFO] KV cache: 131072 tokens, 4.05 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=256
+[INFO] Build: 0.1.0 git unknown
+[WARN] KV cache above 2 GiB: consider --context to cap it (compaction keeps long sessions inside the cap)
+[INFO] Model load: 5.72 s
+[INFO] Prefill: 62 tokens in 4.78 s (13 tok/s)
+{"tool": "read", "args": {"path": "main.py"}}
+Gait and Pose Estimation.ipynb (4740 lines)
+# Copyright (c) 2020-present, NVIDIA CORPORATION.  All rights reserved.
+#
+# This work is licensed under the Creative Commons Attribution 4.0
+# International License. To view a copy of this license, visit
+# http://creativecommons.org/licenses/by/4.0/ or send a letter to
+# Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
+#
+# This notebook demonstrates how to create and train a pose and
+# gait estimation model using the VGG Pose framework.
+#
+# The model is trained using a synthetic dataset, but it can also be
+# trained using a real-world dataset. The dataset is provided by the
+# `dataset` package.
+#
+# The model is trained using the `train` function. The function takes
+# the following arguments:
+# - `model`: The model to train.
+# - `dataset`: The dataset to train on.
+# - `epochs`: The number of
+[INFO] Chat ended: 1 model turns
+[INFO] Session snapshot: 318 cached tokens at /tmp/rh13/session.kv
+➜  rh13 ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/gemma-4-E2B --text-only \ 
+    "Reply with the single word: ready"
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E2B hash=dc91ecfbc2392fa9 layers=35
+[INFO] Weights: 8.62 GiB resident at bf16
+[INFO] Peak RSS after load: 9.51 GiB
+[INFO] KV cache: 131072 tokens, 1.52 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=256
+[INFO] Build: 0.1.0 git unknown
+[WARN] Session snapshot /tmp/rh13/session.kv discarded: snapshot was written for different model weights (hash e376216f8b693aff, expected dc91ecfbc2392fa9) (starting with an empty cache)
+[INFO] Model load: 5.91 s
+[INFO] Prefill: 571 tokens in 28.54 s (20 tok/s)
+allow read main.py? [y/N] y
+[INFO] Prefill: 29 tokens in 1.64 s (18 tok/s)
+allow read main.py? [y/N] y
+[INFO] Prefill: 29 tokens in 1.65 s (18 tok/s)
+allow read main.py? [y/N] y
+[ERROR] Task failed: aborting: tool call read main.py failed identically 3 times
+```
+
+Both are base-checkpoint behaviour, the same reason RH.8 and RH.11 were
+blocked until `gemma-4-E2B-it` arrived. In chat mode the base E4B continued
+the templated text with a fabricated tool call and a notebook header. In
+task mode the base E2B saw the tool contract in its 571-token prefill,
+emitted `read main.py`, the file was absent from `/tmp/rh13`, and the loop
+aborted after three identical failures with exit 1: the abort guard working
+is the useful part, and that row went into the catalog as a `task` failure
+that is not the entry's. The second run also shows the snapshot hash check
+discarding the chat run's `session.kv` from a different model, which is why
+the block now starts with `rm -rf`.
+
+Observed (2026-09-06, the command block, release binary rebuilt at
+`efcdfd0`):
+
+```
+➜  rh13 rm -rf /tmp/rh13 && mkdir -p /tmp/rh13 && cd /tmp/rh13
+~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only \
+    "Reply with the single word: ready"
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E2B-it hash=7ddcbbe752dcfbf6 layers=35
+[INFO] Weights: 8.62 GiB resident at bf16
+[INFO] Peak RSS after load: 9.51 GiB
+[INFO] KV cache: 131072 tokens, 1.52 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=256
+[INFO] Build: 0.1.0 git unknown
+[INFO] Model load: 3.69 s
+[INFO] Prefill: 252 tokens in 11.40 s (22 tok/s)
+ready
+[INFO] Session snapshot: 255 cached tokens at /tmp/rh13/session.kv
+➜  rh13 ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /nonexistent-checkpoint "task" ; echo "exit: $?"
+[ERROR] Task failed: read model /nonexistent-checkpoint: no checkpoint at /nonexistent-checkpoint: expected a directory holding config.json and model.safetensors, or a path to the weights file itself
+  Solution: point --model at a directory holding config.json and model.safetensors, or at the weights file itself
+  Command: ls /nonexistent-checkpoint
+exit: 1
+➜  rh13 tail -2 /mnt/ai-data/logs/harness/runs.jsonl                    
+{"run_id":"R-20260906-151052-759f47","command":"task","timestamp":"2026-09-06T15:11:07.934+00:00","duration_s":15.59,"exit_code":0,"run_dir":"/mnt/ai-data/logs/harness/R-20260906-151052-759f47"}
+{"run_id":"R-20260906-151124-b5ddbd","command":"task","timestamp":"2026-09-06T15:11:24.530+00:00","duration_s":0,"exit_code":1,"run_dir":"/mnt/ai-data/logs/harness/R-20260906-151124-b5ddbd"}
+➜  rh13 cat /mnt/ai-data/logs/harness/$(tail -1 /mnt/ai-data/logs/harness/runs.jsonl \
+    | python3 -c "import json,sys; print(json.load(sys.stdin)['run_id'])").jsonl
+{"ts":"2026-09-06T15:11:24.530+00:00","level":"info","run_id":"R-20260906-151124-b5ddbd","cli":"harness","command":"task","pid":2073151,"event":"cmd.start","msg":"","argv":["--model","/nonexistent-checkpoint","task"]}
+{"ts":"2026-09-06T15:11:24.530+00:00","level":"info","run_id":"R-20260906-151124-b5ddbd","cli":"harness","command":"task","pid":2073151,"event":"phase.start","msg":"","phase":"model.load"}
+{"ts":"2026-09-06T15:11:24.530+00:00","level":"info","run_id":"R-20260906-151124-b5ddbd","cli":"harness","command":"task","pid":2073151,"event":"phase.end","msg":"","phase":"model.load","duration_s":0.0}
+{"ts":"2026-09-06T15:11:24.530+00:00","level":"error","run_id":"R-20260906-151124-b5ddbd","cli":"harness","command":"task","pid":2073151,"event":"fail","msg":"","exc_type":"anyhow","exc_msg":"read model /nonexistent-checkpoint: no checkpoint at /nonexistent-checkpoint: expected a directory holding config.json and model.safetensors, or a path to the weights file itself","exit_code":1}
+{"ts":"2026-09-06T15:11:24.530+00:00","level":"info","run_id":"R-20260906-151124-b5ddbd","cli":"harness","command":"task","pid":2073151,"event":"cmd.end","msg":"","exit_code":1,"duration_s":0}
+➜  rh13 cd ~/workspace/ai-experiments && uv run python -c "
+from common.obs import catalog
+rows = catalog.read_runs(catalog.catalog_path('harness'))
+for r in rows[-2:]:
+    print(r['run_id'], r['command'], r['exit_code'])
+"
+R-20260906-151052-759f47 task 0
+R-20260906-151124-b5ddbd task 1
+```
+
+Every criterion holds, and the terminal half is now complete. The
+instruction-tuned checkpoint answered `ready` and catalogued at `exit_code`
+0 with `duration_s` 15.59; the forced failure printed the `Task failed:`
+line with the two U7 lines under it, exited 1, and catalogued at
+`exit_code` 1 with `duration_s` 0. Both run ids have the documented shape.
+The event file is the five-event sequence the gate paragraph predicted, with
+the `model.load` pair closed in the same millisecond as `cmd.start`, and
+`exc_msg` is byte for byte the printed message, carrying neither remedy
+line. The Python reader returned both rows. The hardware test above was
+written from this evidence and has not yet run on the workstation; its
+first pass is recorded when it lands.
+
+Status: VERIFIED (2026-08-14; re-verified 2026-09-06 after U7)
 
 ## RH.14 The endpoint answers the interp client
 

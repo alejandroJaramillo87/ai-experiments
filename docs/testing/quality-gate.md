@@ -54,7 +54,8 @@ trace check skips only its workstation half, and asserts the same span relations
 fixture chat trace it writes itself on every run. The run-level records are asserted the same
 way: `obs_records.rs` spawns the binary for a success and a forced failure and checks the
 catalog rows and event files they leave, so the workstation half of RH.13 adds only the default
-log root and a real checkpoint.
+log root and a real checkpoint; that half is `tests/hardware/test_obs_records.py`, under
+`hw_full`.
 
 Steps 5 and 6 are complementary rather than redundant. The reference check asks whether a
 cited path exists, which requires classifying a token as a path claim — and that classifier
