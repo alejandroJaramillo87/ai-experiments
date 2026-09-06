@@ -3541,8 +3541,14 @@ The event file is the five-event sequence the gate paragraph predicted, with
 the `model.load` pair closed in the same millisecond as `cmd.start`, and
 `exc_msg` is byte for byte the printed message, carrying neither remedy
 line. The Python reader returned both rows. The hardware test above was
-written from this evidence and has not yet run on the workstation; its
-first pass is recorded when it lands.
+written from this evidence and first ran on the workstation the same day.
+Its first run errored at setup on every test: the fixture handed
+`read_runs` a string where it takes a `Path`, a line the sandbox never
+reaches because the checkpoint check skips before it. Commit `1155e90`
+fixed that, and the operator reported the re-run passing, four tests under
+`[TIER] full`. That report is the evidence for the test's first pass; the
+terminal output was not pasted, so the run is recorded here in prose
+rather than in an Observed block.
 
 Status: VERIFIED (2026-08-14; re-verified 2026-09-06 after U7)
 
