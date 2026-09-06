@@ -382,6 +382,7 @@ class TestSteerScorecard:
         assert body["vector_manifest"]["model_hash"] == "h1"
         assert body["config"]["scales"] == [1.0]
         assert body["config"]["layer_range"] == [10, 16]
+        assert body["software"]["judge_thinking"] == "off"
 
     def test_malformed_layer_range_is_styled_usage_error(self, capsys):
         for value in ("10", "ten sixteen", "16 10"):

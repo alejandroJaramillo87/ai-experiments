@@ -77,10 +77,11 @@ residual-stream units, so `SCALE=1.0` means one class gap at every layer.
 at load, and `steer-scorecard --layer-range` is how a scorecard says that band to
 `make steer-up`. The scorecard's subject and judge default to the `harness` and
 `llama-cpu` entries of `common/serving.py`; pass `--subject-url` or `--judge-url` only to
-score some other pair. The judge has its own budget, `--judge-max-tokens` (512): Gemma 4
-reasons before its JSON verdict and llama-server keeps that reasoning out of `content`,
-so a budget that ends mid-thought yields no verdict at all, which the scorecard reports
-by name rather than as an unparseable reply.
+score some other pair. The judge runs with thinking off: the Gemma 4 GGUF template leaves
+the thought channel open and gemma-4-E2B-it reasons at length before every verdict, so the
+judge request carries llama-server's per-request thinking budget at zero, which ends the
+thought the moment it starts. `--judge-max-tokens` (512) bounds the verdict itself; a
+verdict the budget cuts off is reported by name rather than as an unparseable reply.
 
 `--method sae_row` exports a single Gemma Scope decoder row instead
 (`--sae-release ... --sae-id ... --feature N --layer L`). The serving entrypoint adds

@@ -479,7 +479,8 @@ class TestScorecard:
     def test_judge_score_names_budget_when_thought_exhausts_it(self):
         # llama-server's shape for a reasoning model cut off mid-thought:
         # empty content, finish_reason length, the thought in a field this
-        # parser never reads. The error names the budget, not the parse.
+        # parser never reads. The error names the budget, not the parse, and
+        # the request asks the server for no thought at all.
         from interp.steering.scorecard import (
             JUDGE_BEHAVIOR_TEMPLATE,
             ScorecardError,
@@ -490,6 +491,7 @@ class TestScorecard:
 
         def fake_post(url, payload):
             seen["max_tokens"] = payload["max_tokens"]
+            seen["thinking_budget_tokens"] = payload["thinking_budget_tokens"]
             return {
                 "choices": [
                     {
@@ -510,3 +512,35 @@ class TestScorecard:
                 post=fake_post,
             )
         assert seen["max_tokens"] == 128
+        assert seen["thinking_budget_tokens"] == 0
+
+    def test_judge_score_names_budget_when_verdict_is_cut_mid_string(self):
+        # RH.15's second run, 2026-09-06: the thought fit but the verdict did
+        # not, so content held a fragment with no closing brace. That is the
+        # same budget failure, not an unparseable reply.
+        from interp.steering.scorecard import (
+            JUDGE_FLUENCY_TEMPLATE,
+            ScorecardError,
+            judge_score,
+        )
+
+        fragment = (
+            '```json\n{"score": 10, "reason": "The response is highly fluent, logically'
+        )
+
+        def fake_post(url, payload):
+            return {
+                "choices": [
+                    {"finish_reason": "length", "message": {"content": fragment}}
+                ]
+            }
+
+        with pytest.raises(ScorecardError, match="512-token budget"):
+            judge_score(
+                "http://judge",
+                JUDGE_FLUENCY_TEMPLATE,
+                "refusal",
+                "prompt",
+                "response",
+                post=fake_post,
+            )

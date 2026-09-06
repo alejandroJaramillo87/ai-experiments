@@ -16,6 +16,11 @@ read from the registry in common/serving.py rather than spelled here. The
 band the vector is applied in is a config field, because a diff-means vector
 added at every block compounds: RH.9d found seven blocks at scale 1.0 already
 too strong on gemma-4-E2B-it, so a scorecard has to be able to say the band.
+The judge runs with thinking off: the Gemma 4 GGUF template leaves the thought
+channel open, so gemma-4-E2B-it reasons at length before every verdict, and a
+verdict that arrives after a thought of unbounded length is one that a token
+budget cuts off sooner or later. llama-server's per-request thinking budget
+ends the thought as soon as it starts, and the judge request carries it.
 
 The service recreates between arms; the controller is injectable so tests can
 run the orchestration without Docker, and the default controller shells out to
@@ -58,6 +63,14 @@ JUDGE_FLUENCY_TEMPLATE = (
 )
 
 
+# Thinking off for the judge. llama-server (b9976) reads this per-request
+# field wherever the chat format declares thinking tags, which the Gemma 4
+# format does (<|channel>thought ... <channel|>); 0 forces the end tag the
+# moment the start tag is generated. Without it gemma-4-E2B-it reasoned
+# through 128 and then 512 tokens before any verdict on 2026-09-06.
+JUDGE_REQUEST_EXTRA = {"thinking_budget_tokens": 0}
+
+
 class ScorecardError(Exception):
     """Configuration, lock, or judge failure that invalidates the run."""
 
@@ -75,10 +88,9 @@ class ScorecardConfig:
     scales: tuple[float, ...] = (0.5, 1.0, 2.0)
     layer_range: tuple[int, int] | None = None  # inclusive 0-based block band
     max_tokens: int = 256
-    # The judge's own budget, separate from the subject's. gemma-4-E2B-it on
-    # llama-cpu reasons before it answers even with thinking off in the
-    # template, and llama-server moves that reasoning out of `content`; at
-    # 128 tokens the verdict never arrived (2026-09-06, RH.15's first run).
+    # The judge's own budget, separate from the subject's, bounding the JSON
+    # verdict; the judge runs with thinking off (JUDGE_REQUEST_EXTRA), so a
+    # verdict that exceeds it is a judge fault, not a thought that ran long.
     judge_max_tokens: int = 512
     temperature: float = 0.0
     perplexity_cmd: str | None = None  # recorded verbatim when set
@@ -219,8 +231,13 @@ def chat(
     max_tokens: int = 256,
     temperature: float = 0.0,
     post=_post_chat,
+    extra: dict | None = None,
 ) -> dict:
-    """One chat completion; returns text, latency, and token usage."""
+    """One chat completion; returns text, latency, and token usage.
+
+    extra is merged into the request body for server-specific fields the
+    OpenAI shape does not carry.
+    """
     messages = []
     if system:
         messages.append({"role": "system", "content": system})
@@ -229,6 +246,7 @@ def chat(
         "messages": messages,
         "max_tokens": max_tokens,
         "temperature": temperature,
+        **(extra or {}),
     }
     start = time.monotonic()
     body = post(url, payload)
@@ -273,14 +291,15 @@ def judge_score(
         max_tokens=max_tokens,
         temperature=0.0,
         post=post,
+        extra=JUDGE_REQUEST_EXTRA,
     )
-    if not completion["text"] and completion["finish_reason"] == "length":
-        # A reasoning judge that ran out of budget mid-thought: the server
-        # holds the thought in a field this parser never reads, so name the
-        # budget rather than report an empty verdict as unparseable.
+    if completion["finish_reason"] == "length":
+        # A verdict cut off by the budget, whether nothing arrived or the
+        # JSON stopped mid-string, is the budget's failure: name it rather
+        # than report the fragment as unparseable.
         raise ScorecardError(
-            f"judge spent its {max_tokens}-token budget without a verdict; "
-            "raise --judge-max-tokens"
+            f"judge spent its {max_tokens}-token budget without a complete "
+            f"verdict: {completion['text']!r}; raise --judge-max-tokens"
         )
     verdict = parse_judge_json(completion["text"])
     score = verdict.get("score")
@@ -447,6 +466,7 @@ def run_scorecard(
             "subject_url": cfg.subject_url,
             "judge_url": cfg.judge_url,
             "judge_model": cfg.judge_model,
+            "judge_thinking": "off",
         },
         "vector_manifest": manifest,
         "config": {

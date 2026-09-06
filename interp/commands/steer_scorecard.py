@@ -54,8 +54,7 @@ def configure(sub) -> None:
         "--judge-max-tokens",
         type=int,
         default=512,
-        help="judge budget; a reasoning judge thinks before its JSON verdict, "
-        "and the verdict is lost when the budget ends mid-thought",
+        help="judge budget for the JSON verdict; the judge runs with thinking off",
     )
     p.add_argument(
         "--layer-range",
