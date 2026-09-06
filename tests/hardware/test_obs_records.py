@@ -36,6 +36,7 @@ import json
 import os
 import re
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -52,7 +53,7 @@ CONTRACT = os.path.join(REPO_ROOT, "schemas", "obs_record.json")
 # Python side's own constant rather than through catalog_path, which would
 # honour an OBS_LOG_DIR in the test's shell that the child never sees.
 LOG_ROOT = os.path.join(DEFAULT_LOG_DIR, "harness")
-CATALOG = os.path.join(LOG_ROOT, "runs.jsonl")
+CATALOG = Path(LOG_ROOT) / "runs.jsonl"  # read_runs takes a Path, not a str
 
 RUN_ID = re.compile(r"R-\d{8}-\d{6}-[0-9a-f]{6}")
 FAILURE_LINE = "[ERROR] Task failed: "
@@ -133,7 +134,7 @@ def records(tmp_path_factory) -> Records:
     # Read with the same reader the workstation tooling uses. The rows already
     # present are counted and not read: the assertion is about what these two
     # runs add.
-    before = len(read_runs(CATALOG)) if os.path.isfile(CATALOG) else 0
+    before = len(read_runs(CATALOG)) if CATALOG.is_file() else 0
 
     base = tmp_path_factory.mktemp("rh13")
     ok = harness(
