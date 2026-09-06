@@ -3244,7 +3244,8 @@ Status: VERIFIED 2026-08-14
 ## RH.13 Run-level observability records
 
 Implementation: `rust-harness/obs/src/lib.rs`,
-`rust-harness/harness/tests/obs_contract.rs`, `common/obs/catalog.py`.
+`rust-harness/harness/tests/obs_contract.rs`,
+`rust-harness/harness/tests/obs_records.rs`, `common/obs/catalog.py`.
 
 The harness writes run-level records in the shared obs contract
 (`common/obs`): an event file `${OBS_LOG_DIR}/harness/<run_id>.jsonl`
@@ -3255,9 +3256,15 @@ harness-written files unchanged. Cross-language compatibility is verified
 in the sandbox against a scratch `OBS_LOG_DIR`; this entry confirms the
 default log root on the workstation.
 
-Command (a normal run, then a forced failure, then inspection):
+Command (check out and rebuild, then a normal run, a forced failure, and
+inspection):
 
 ```bash
+cd ~/workspace/ai-experiments
+git fetch origin rust-harness-verification
+git checkout -B rust-harness-verification origin/rust-harness-verification
+git log -1 --oneline
+cd rust-harness && cargo build --release --bin harness 2>&1 | tail -1
 mkdir -p /tmp/rh13 && cd /tmp/rh13
 ~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only \
@@ -3265,6 +3272,8 @@ mkdir -p /tmp/rh13 && cd /tmp/rh13
 ~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /nonexistent-checkpoint "task" ; echo "exit: $?"
 tail -2 /mnt/ai-data/logs/harness/runs.jsonl
+cat /mnt/ai-data/logs/harness/$(tail -1 /mnt/ai-data/logs/harness/runs.jsonl \
+    | python3 -c "import json,sys; print(json.load(sys.stdin)['run_id'])").jsonl
 cd ~/workspace/ai-experiments && uv run python -c "
 from common.obs import catalog
 rows = catalog.read_runs(catalog.catalog_path('harness'))
@@ -3272,6 +3281,12 @@ for r in rows[-2:]:
     print(r['run_id'], r['command'], r['exit_code'])
 "
 ```
+
+The checkout and rebuild come first for the reason RH.11 records: a local
+branch that was not fast-forwarded, and a release binary older than the
+pull, each produced a run that looked like a defect and was not one. The
+`cat` prints the failing run's event file, which the 2026-08-14 evidence
+included by hand.
 
 Expected signal: the successful run catalogs with `exit_code` 0 and the
 failed run with `exit_code` 1 plus a `fail` event in its event file; run
@@ -3340,6 +3355,25 @@ transcript's own string. But the block is evidence, not a prediction, and
 writing the two lines into it from the source rather than from a run would
 make it the second kind of thing. Re-run the command block on the workstation
 and paste what it prints.
+
+**Gate (added 2026-09-06).** `rust-harness/harness/tests/obs_records.rs` runs
+the same two invocations over a scratch `OBS_LOG_DIR`, the success over the
+tiny fixture, on every `cargo test`, and so under `make quality`. It asserts
+the two catalog rows in order with exit codes 0 and 1, their key set against
+`schemas/obs_record.json`, the run-id shape, that each row's event file opens
+with `cmd.start`, closes with `cmd.end` carrying the row's exit code, and
+holds `fail` exactly when the exit code is 1, and that the Python reader
+returns both rows. What this entry adds over the gate is the default
+`/mnt/ai-data/logs` root and a real checkpoint.
+
+Writing the gate found a second change since 2026-08-14, also from the U
+campaign: the failing run's event file is no longer the bare
+`cmd.start` / `fail` / `cmd.end` triple. A `model.load` phase now brackets
+the whole cold start, so the missing checkpoint is rejected inside it and
+the file reads `cmd.start`, `phase.start`, `phase.end` (both `model.load`,
+`duration_s` 0), `fail`, `cmd.end`. The test pins that sequence. Expect it
+in the `cat` output; it is not a regression, since the phase closes at once
+and the run still ends before any weight is read.
 
 Status: PENDING (verified 2026-08-14; reopened by U7 for a terminal re-run)
 
@@ -4391,6 +4425,7 @@ is a decision rather than an oversight.
 | Errors that name a runnable remedy | `rust-harness/harness/tests/actionable_surface.rs` |
 | Status on stderr, payload on stdout | `rust-harness/harness/tests/status_streams.rs` |
 | `run.header` field set, both directions | `rust-harness/harness/tests/run_header.rs`, `rust-harness/harness/tests/obs_contract.rs` |
+| Catalog rows and event files from a binary success and failure (RH.13's sandbox half) | `rust-harness/harness/tests/obs_records.rs` |
 | Capture obs records | `rust-harness/runtime/tests/capture_obs.rs` |
 | Ladder obs records | `rust-harness/runtime/tests/ladder_obs.rs` |
 | `ladder::window_schedule` against the reference generator's | `rust-harness/runtime/tests/ladder_reference_contract.rs` |

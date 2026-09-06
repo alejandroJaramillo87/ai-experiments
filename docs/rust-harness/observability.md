@@ -450,7 +450,13 @@ integration seam. That is now asserted rather than asserted about. The key
 sets live in `schemas/obs_record.json` and both writers are checked against
 them, and `harness/tests/obs_contract.rs` feeds a harness-written catalog to
 the real `common.obs.catalog.read_runs` and requires the record back with its
-fields intact. The check matters because the reader is permissive by design:
+fields intact. `harness/tests/obs_records.rs` does the same with a catalog the
+binary itself wrote, across a run that answers over the tiny fixture and one
+that fails on a missing checkpoint: two rows with exit codes 0 and 1, run ids
+of the documented shape, and each row's event file bracketed by `cmd.start`
+and `cmd.end` with `fail` present exactly when the row's exit code says so.
+That is runbook entry RH.13's claim, asserted against a scratch
+`${OBS_LOG_DIR}` on every `cargo test`. The check matters because the reader is permissive by design:
 `read_runs` skips a line it cannot parse, so a drifted writer would show an
 empty runs table rather than an error. The catalog line is also formatted by
 hand rather than through serde, so nothing in the type system holds it to the
