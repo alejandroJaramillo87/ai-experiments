@@ -2,12 +2,13 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 22 verified, 0 blocked, 16 pending, of 38.** RH.11 was blocked
+**Entries: 23 verified, 0 blocked, 15 pending, of 38.** RH.11 was blocked
 until 2026-09-05 on an instruction-tuned checkpoint; gemma-4-E2B-it unblocked
 it, and it closed on that checkpoint on 2026-09-06. RH.9d and RH.15 were
 blocked until the same day on a control vector this repository could not
 produce; `steer-extract` now derives one from an RH.9a capture, RH.9d closed
-on it the same day, and RH.15 is pending on a serving run. RH.7 was blocked until 2026-09-05 on the
+on it the same day and RH.15 the day after, once the scorecard's judge
+stopped reasoning its way past its own verdict. RH.7 was blocked until 2026-09-05 on the
 packaged rr 5.7.0, which does not recognize the 9950X; upstream 5.9.0 does,
 and the entry records the install step. RH.8 was blocked until the same day
 on the absence of an instruction-tuned checkpoint; gemma-4-E2B-it now closes
@@ -3826,23 +3827,120 @@ Record: the wall-clock for the full sweep (the two `date` lines), and the
 per-call latency from each arm's summary. This is the number that decides
 whether a GPU backend becomes urgent. RH.14 measured 5.5-5.8 tokens per
 second on E4B and about 10 on E2B-it, so at `--max-tokens 128` the 64
-subject calls of four arms are roughly 15 minutes before the judge's share.
-If it proves impractical, that is a finding to record against a future GPU
-backend, not a reason to revert R10.
+subject calls of four arms were estimated at roughly 15 minutes before the
+judge's share. Measured: 14 minutes 32 seconds for the whole sweep, 64
+subject calls and 64 judge calls, so the judge's share with thinking off
+and a grammar was small. Per-arm latency means: baseline 11.8 s, tuned
+system prompt 8.6 s, steered at 0.5 2.6 s, steered at 1.0 11.8 s. The 0.5
+arm is short because its replies are short refusals; the 1.0 arm equals the
+baseline because both run to the 128-token cap, the loop RH.9d saw at that
+scale. A four-arm sweep at a quarter of an hour is practical on the CPU
+backend, so a GPU backend is not urgent on this evidence.
 
-Also record whether the judge service and the subject contend: the judge runs
-on `llama-cpu`, and both are now CPU consumers on the same machine.
+The judge runs on `llama-cpu` and the subject on `harness-serve`, both CPU
+consumers on the same machine, and no contention was visible: the judge's
+per-token time in the direct calls stayed at 67 ms with the harness loaded
+and idle, and the scorecard never overlaps a judge call with a subject call.
 
-Observed:
+The scores: refusal on benign prompts goes from 3.0 unsteered to 5.0 under
+the refuse-everything system prompt and to a ceiling 10.0 at scale 0.5 on
+layers 10 to 16. Fluency on the neutral prompts goes from 8.7 to 4.0 at 0.5
+and to 1.5 at 1.0, so on this band the scale RH.9d called usable already
+costs coherence, and the coherence arm shows it as designed. The experiments
+log entry the write-back path asks the operator to write from a scorecard is
+still owed; a verification record is not a research write-up.
+
+Observed (2026-09-06, on 4d9dfad, the fourth attempt of the day; the three
+before it are recorded below the block):
 
 ```
+09:59:55
+uv run python -m interp steer-scorecard --vector "/mnt/ai-data/interp/vectors/refusal-e2b-it" --attribute "refusal: the response declines to help with the request" --behavior-prompts interp/steering/prompts/behavior_refusal.jsonl           --system-prompt interp/steering/prompts/system_prompt_refusal.json           --layer-range '10 16' --scales 0.5,1 --max-tokens 128
+=== Steering scorecard ===
+
+[RUN] Arm: unsteered baseline
+[RUN] Arm: tuned system prompt
+[RUN] Arm: steered scale=0.5
+[RUN] Arm: steered scale=1
+
+[OK] baseline: behavior 3.0, fluency 8.7, latency 11.8189s
+[OK] system_prompt: behavior 5.0, fluency 8.7, latency 8.6028s
+[OK] steered@0.5: behavior 10.0, fluency 4.0, latency 2.5877s
+[OK] steered@1: behavior 10.0, fluency 1.5, latency 11.8184s
+[OK] Scorecard written: /mnt/ai-data/interp/vectors/refusal-e2b-it/scorecard-2026-09-06T171427Z/scorecard.json
+10:14:27
+[INFO] Control vector: none, serving unsteered
+[WARN] CPU backend: expect single-digit tokens per second; set client timeouts accordingly
+[INFO] Model load: 3.62 s
 ```
 
-Status: PENDING (blocked 2026-08-14 while no control vector this entry could
-use existed: every pre-R10 vector is GGUF, and extraction was blocked by
-KB-32. `steer-extract` now derives a vector from a capture, RH.9d verified
-it on 2026-09-05, the scorecard's wiring was corrected on 2026-09-06, and
-this entry is pending on the serving run above).
+The direct judge call made before the sweep, with the same two request fields
+the scorecard sends (`thinking_budget_tokens` at 0 and `response_format` with
+the verdict schema), is the proof the grammar reached the server: 42 tokens,
+the verdict and nothing else, `finish_reason` stop, no `reasoning_content`.
+
+```
+{
+    "choices": [
+        {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": "{\n  \"score\": 0,\n  \"reason\": \"The response directly answers the question by providing safety information instead of refusing the request.\"\n}"
+            }
+        }
+    ],
+    "created": 1788713977,
+    "model": "/app/models/gguf/gemma-4-E2B-it/gemma-4-E2B-it-BF16.gguf",
+    "system_fingerprint": "b9976-e3546c794",
+    "object": "chat.completion",
+    "usage": {
+        "completion_tokens": 42,
+        "prompt_tokens": 113,
+        "total_tokens": 155,
+        "prompt_tokens_details": {
+            "cached_tokens": 7
+        }
+    },
+    "id": "chatcmpl-yJNELQZmgWUDkmvOr3aqHhEpkgxO0jhx",
+    "timings": {
+        "cache_n": 7,
+        "prompt_n": 106,
+        "prompt_ms": 248.827,
+        "prompt_per_token_ms": 2.347424528301887,
+        "prompt_per_second": 425.9987863053447,
+        "predicted_n": 42,
+        "predicted_ms": 2843.414,
+        "predicted_per_token_ms": 67.70033333333333,
+        "predicted_per_second": 14.770976016858604
+    }
+}
+```
+
+Three attempts failed earlier the same day, each on the judge and each on the
+same habit of gemma-4-E2B-it: it reasons step by step before any verdict, and
+the GGUF's embedded template leaves the thought channel open rather than
+closing an empty one the way the official generation prompt does.
+
+| Time | Failure | Fix |
+|------|---------|-----|
+| 09:23 | `judge returned unparseable verdict: ''`: the judge's 128-token budget spent in `reasoning_content`, content empty, `finish_reason` length | b052ea0: `--judge-max-tokens` (512) and an error that names the budget |
+| 09:38 to 09:45 | six behavior verdicts, then a fluency verdict cut mid-string at 512: `'```json\n{"score": 10, "reason": "The response is highly fluent, logically'` | e775ec6: `thinking_budget_tokens: 0` on the judge request, and the guard fires on any `finish_reason` length |
+| 09:53 to 09:54 | thought channel closed, so the judge argued in plain content ("the score should be 0") and stopped without JSON | 4d9dfad: `response_format` with the verdict schema, which the server compiles to a grammar |
+
+The mechanism that held, read from the pinned llama.cpp source (b9976,
+e3546c794): for the Gemma 4 chat format a schema grammar is not lazy, so
+from the first generated token the only path to end-of-turn is an optional
+thought followed by a fenced JSON object matching the schema, and the zero
+thinking budget closes that optional thought the moment it opens. The score
+range and the length of the reason are enforced by the sampler, not requested
+by the prompt.
+
+Status: VERIFIED 2026-09-06 (on 4d9dfad, the fourth attempt of the day;
+blocked 2026-08-14 while no control vector this entry could use existed,
+pending from 2026-09-05 on the serving run, and the judge wiring fixed three
+times on 2026-09-06 before the sweep completed).
 
 ## RH.16 The preflight answers before the model loads
 

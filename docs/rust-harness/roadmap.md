@@ -39,7 +39,7 @@ this file owns only the ordering and the reasoning behind it.
 | R7 | P12 probes to safetensors plus JSON sidecar | done |
 | R8 | IF-3 attention weights | done, cheaper than budgeted |
 | R9 | P13 harness serves interp | done, verified against real E4B (RH.14); re-verified on E2B-it 2026-09-06 |
-| R10 | P14 control vector to safetensors | done; RH.15 acceptance not yet run |
+| R10 | P14 control vector to safetensors | done; RH.15 verified 2026-09-06 on E2B-it |
 | R10.5 | The proxy and the replay stage retire | done; I.6 and I.7 acceptance not yet run |
 | R11 | IF-4 plus IF-5 together | not started |
 | R12 | IF-3 remaining sites | not started |
@@ -327,11 +327,12 @@ someone does change the base.
 GGUF reader left the verdicts had no referent, so they went and eleven tests went with them.
 The transcription the llama.cpp services still depend on is untouched.
 
-**Not yet evidenced.** Everything above is verified in the sandbox against a synthetic model,
-which proves the format and the wiring and nothing about steering real weights. RH.15 is the
-workstation check, and it also measures what a three-arm sweep costs now that the subject
-decodes at 5.5-5.8 tokens per second instead of on the GPU. If that proves impractical it is a
-finding against a future GPU backend, not a reason to revert.
+**Evidenced.** Everything above was verified in the sandbox against a synthetic model until
+2026-09-06, when RH.15 ran the scorecard against real weights: `refusal-e2b-it` at scale 0.5
+on layers 10 to 16 moved refusal on benign prompts from 3.0 to 10.0 while fluency fell from
+8.7 to 4.0, so the vector steers and the coherence arm prices it. The four-arm sweep took
+14 minutes 32 seconds on the CPU backend, which is practical; a GPU backend is not urgent
+on this evidence.
 
 ### R10.5 — the proxy and the replay stage retire (done, acceptance pending)
 

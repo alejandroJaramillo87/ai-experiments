@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 9 verified, 1 blocked, 8 pending, of 18.**
+**Entries: 10 verified, 1 blocked, 7 pending, of 18.**
 
 The 18 entries are I.1 through I.17 plus the interstitial I.9b
 ("Chunked-capture crash recovery"); none is missing. I.9b is numbered beside I.9
@@ -191,23 +191,40 @@ report (`kind: steering_scorecard`, shared envelope) and the service ends
 unsteered — including when a scorecard arm fails mid-run (the finally
 restore).
 
-Observed:
+Observed (2026-09-06, on 4d9dfad, the fourth attempt of the day; the three
+before it are recorded in the harness runbook's RH.15):
 
 ```
+09:59:55
+uv run python -m interp steer-scorecard --vector "/mnt/ai-data/interp/vectors/refusal-e2b-it" --attribute "refusal: the response declines to help with the request" --behavior-prompts interp/steering/prompts/behavior_refusal.jsonl           --system-prompt interp/steering/prompts/system_prompt_refusal.json           --layer-range '10 16' --scales 0.5,1 --max-tokens 128
+=== Steering scorecard ===
+
+[RUN] Arm: unsteered baseline
+[RUN] Arm: tuned system prompt
+[RUN] Arm: steered scale=0.5
+[RUN] Arm: steered scale=1
+
+[OK] baseline: behavior 3.0, fluency 8.7, latency 11.8189s
+[OK] system_prompt: behavior 5.0, fluency 8.7, latency 8.6028s
+[OK] steered@0.5: behavior 10.0, fluency 4.0, latency 2.5877s
+[OK] steered@1: behavior 10.0, fluency 1.5, latency 11.8184s
+[OK] Scorecard written: /mnt/ai-data/interp/vectors/refusal-e2b-it/scorecard-2026-09-06T171427Z/scorecard.json
+10:14:27
+[INFO] Control vector: none, serving unsteered
+[WARN] CPU backend: expect single-digit tokens per second; set client timeouts accordingly
+[INFO] Model load: 3.62 s
 ```
 
-Status: PENDING (blocked 2026-08-14 on I.3, which had never produced a
-vector; I.3 closed on 2026-09-05 with `refusal-e2b-it`, and on 2026-09-06 the
-scorecard's subject and judge defaults and its missing layer band were
-corrected, so the command above is runnable). The harness runbook's RH.15 is
-the same step against the same artifact; running one closes both.
+Status: VERIFIED 2026-09-06 (on 4d9dfad; blocked 2026-08-14 on I.3, which
+closed 2026-09-05; the run is RH.15's, recorded there with the three attempts
+that preceded it).
 
-Two things to expect when it does run. The subject is now a CPU backend at
-single-digit tokens per second, so a 256-token arm costs roughly 45 seconds and
-a three-arm sweep is many such calls — record the wall-clock, because it is the
-number that decides whether a GPU backend becomes urgent. And the judge runs on
-`llama-cpu` while the subject runs on `harness-serve`: both are CPU consumers on
-the same machine, so record whether they contend.
+The four-arm sweep took 14 minutes 32 seconds on the CPU backend, 64 subject
+calls and 64 judge calls, which is practical and leaves a GPU backend not
+urgent. The judge on `llama-cpu` and the subject on `harness-serve` did not
+visibly contend: the scorecard never overlaps their calls, and the judge's
+per-token time held at 67 ms with the harness loaded. The scores, the
+per-arm latencies and the three failed attempts are RH.15's record.
 
 ## I.5 Probe capture, train, eval (W2)
 
@@ -863,7 +880,7 @@ Each is a gap in evidence, not a known defect.
 | `--validated` | `sae-train` | Sets `recipe.sae.mark_capture_validated`, the handoff that exempts a capture from garbage collection. I.10 verifies the collector, not this handoff. |
 | `--delta-loss-texts`, `--max-tokens` | `sae-eval` | The delta-LM-loss path (`delta_lm_loss` in `interp/sae/evaluate.py`) runs only when `--delta-loss-texts` is non-empty. I.11 omitted it, so that function has no evidence at all. `--max-tokens` ran only at its 1000000 default. |
 | `--revision`, `--model-hash`, `--batch-size` | `probe-capture` | Provenance fields written into the capture manifest, and the forward-pass batch size. I.5 ran at the defaults. |
-| `--behavior-prompts`, `--neutral-prompts`, `--system-prompt`, `--subject-url`, `--judge-url`, `--judge-model`, `--scales`, `--max-tokens`, `--judge-max-tokens`, `--layer-range`, `--perplexity-cmd` | `steer-scorecard` | Eleven of the command's thirteen flags. Only `--vector` and `--attribute` appear in I.4, which is itself blocked. |
+| `--neutral-prompts`, `--subject-url`, `--judge-url`, `--judge-model`, `--judge-max-tokens`, `--perplexity-cmd` | `steer-scorecard` | Six of the command's thirteen flags. I.4 ran the other seven on 2026-09-06 (`--vector`, `--attribute`, `--behavior-prompts`, `--system-prompt`, `--scales`, `--max-tokens`, `--layer-range`); `--neutral-prompts` ran only at its default. |
 
 Note that the two `sae-eval` flag names differ from the make-target variables:
 the target passes `SAE=` and `CAPTURE=` into `--sae-dir` and `--capture-dir`.

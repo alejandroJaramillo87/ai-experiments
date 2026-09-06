@@ -110,10 +110,10 @@ Each runbook's own progress line is authoritative; this table is the index.
 | [training/training-phase0.md](training/training-phase0.md) | 4 | 0 | 7 | 11 |
 | [training/training-phase1.md](training/training-phase1.md) | 0 | 0 | 13 | 13 |
 | [training/training-phase2.md](training/training-phase2.md) | 0 | 0 | 7 | 7 |
-| [interp/interp.md](interp/interp.md) | 9 | 1 | 8 | 18 |
+| [interp/interp.md](interp/interp.md) | 10 | 1 | 7 | 18 |
 | [observability/observability.md](observability/observability.md) | 2 | 0 | 7 | 9 |
 | [sandbox/sandbox-executable.md](sandbox/sandbox-executable.md) | 2 | 0 | 0 | 2 |
-| [rust-harness/rust-harness.md](rust-harness/rust-harness.md) | 22 | 0 | 16 | 38 |
+| [rust-harness/rust-harness.md](rust-harness/rust-harness.md) | 23 | 0 | 15 | 38 |
 | [rust-harness/rust-harness-ux.md](rust-harness/rust-harness-ux.md) | 0 | 0 | 9 | 9 |
 | [hardware/hardware-stress.md](hardware/hardware-stress.md) | 0 | 0 | 6 | 6 |
 | [interp/reference-captures.md](interp/reference-captures.md) | 0 | 0 | 2 | 2 |
@@ -138,7 +138,10 @@ test, so the next such change fails `make quality-full HW=full` instead of
 waiting for someone to notice. RH.11 was a third thing again until 2026-09-05:
 it needed an instruction-tuned checkpoint, which no amount of sitting down
 produces, and was `BLOCKED` until gemma-4-E2B-it arrived. It closed on that
-checkpoint the next day.
+checkpoint the next day. RH.15 was a fourth kind on 2026-09-06: the command
+was right and both services were up, and the judge failed three times on the
+model's own habit of reasoning before it answers, until the request said
+exactly what it would accept.
 
 ## Phase order
 
