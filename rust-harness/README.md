@@ -244,8 +244,9 @@ regression pins and nothing more.
 The agent loop and everything above the forward pass are implemented and tested
 against a scripted `MockModel`: tools, permissions, transcript, chat template,
 tokenizer, sessions with a hard context budget, sampler,
-grammar-constrained decoding, subagent fork/interleave, and the perplexity
-evaluator.
+grammar-constrained decoding (installed on the task path in triggered mode, so a
+turn is either one well-formed tool call or free text), subagent
+fork/interleave, and the perplexity evaluator.
 
 Numerics come from a hand-rolled f32 CPU backend
 (`runtime/src/model/cpu.rs`) implementing a Gemma-4-style forward pass from a

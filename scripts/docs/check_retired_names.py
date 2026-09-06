@@ -76,6 +76,11 @@ RETIRED: dict[str, tuple[str, str]] = {
         "docs/verification/hardware/hardware-stress.md",
         "the same tier-folder move; see docs/verification/training-phase0.md above",
     ),
+    "interp/steering/prompts/honesty_pairs.jsonl": (
+        "interp/steering/prompts/honesty.jsonl",
+        "repeng's positive/negative pair format left with repeng; the steering set "
+        "now uses the capture format, one text and label per line",
+    ),
     "docs/verification/known-bugs.md": (
         "docs/verification/bugs/known-bugs.md",
         "the same tier-folder move; see docs/verification/training-phase0.md above",

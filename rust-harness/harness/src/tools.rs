@@ -14,6 +14,7 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use anyhow::{bail, ensure, Context, Result};
+use runtime::grammar::{ParamType, ToolSchema};
 use serde_json::Value;
 
 use crate::util::Pattern;
@@ -60,6 +61,65 @@ pub enum ToolCall {
     Todo {
         items: Vec<String>,
     },
+}
+
+/// The tool set as grammar schemas, in the argument order `parse` reads.
+///
+/// One source for both the decoding grammar and the prompt contract, so
+/// what the model is told, what it is allowed to emit, and what `parse`
+/// accepts cannot drift apart.
+pub fn schemas() -> Vec<ToolSchema> {
+    let tool = |name: &str, params: &[(&str, ParamType)]| ToolSchema {
+        name: name.to_string(),
+        params: params.iter().map(|(k, ty)| (k.to_string(), *ty)).collect(),
+    };
+    use ParamType::{String as S, StringArray};
+    vec![
+        tool("read", &[("path", S)]),
+        tool("write", &[("path", S), ("content", S)]),
+        tool("edit", &[("path", S), ("old", S), ("new", S)]),
+        tool("bash", &[("command", S)]),
+        tool("glob", &[("pattern", S)]),
+        tool("todo", &[("items", StringArray)]),
+    ]
+}
+
+/// The tool contract rendered into every task prompt: the wire form of each
+/// tool and the one-call-per-turn protocol the loop enforces.
+///
+/// The grammar holds a turn that opens with `{` to this shape, but it
+/// cannot make the model open one: a model that has never been told the
+/// tools exist answers in prose, which the loop correctly takes as final.
+pub fn contract() -> String {
+    let mut out = String::from(
+        "You are a coding agent working in the current directory. \
+         You have these tools. To call one, reply with exactly one JSON object \
+         and nothing else: no text before it, no second object after it, and \
+         never write what the result will be.\n",
+    );
+    for schema in schemas() {
+        out.push_str(&format!("{{\"tool\": \"{}\", \"args\": {{", schema.name));
+        for (i, (key, ty)) in schema.params.iter().enumerate() {
+            if i > 0 {
+                out.push_str(", ");
+            }
+            let placeholder = match ty {
+                ParamType::String => "\"<string>\"",
+                ParamType::Int => "<integer>",
+                ParamType::Bool => "<true|false>",
+                ParamType::StringArray => "[\"<string>\", ...]",
+            };
+            out.push_str(&format!("\"{key}\": {placeholder}"));
+        }
+        out.push_str("}}\n");
+    }
+    out.push_str(
+        "Paths are relative to the working directory. String values are JSON \
+         strings, so a newline is written as \\n and a quote as \\\". The \
+         tool result arrives as the next user message; call the next tool only \
+         after reading it. When the task is complete, reply in plain text.",
+    );
+    out
 }
 
 impl ToolCall {
@@ -111,6 +171,13 @@ impl ToolCall {
     pub fn parse(text: &str) -> Result<Option<ToolCall>> {
         let trimmed = text.trim();
         if !trimmed.starts_with('{') {
+            // A call buried in prose is an attempted call, not an answer:
+            // silently returning it as final would end the task with the
+            // tool never run.
+            ensure!(
+                !trimmed.contains("{\"tool\""),
+                "malformed tool call: text before the call"
+            );
             return Ok(None);
         }
         let v: Value = match serde_json::from_str(trimmed) {
@@ -841,6 +908,55 @@ mod tests {
         assert!(ToolCall::parse(r#"{"tool": 3, "args": {}}"#).is_err());
         // JSON-looking text without a tool key stays a final answer.
         assert_eq!(ToolCall::parse(r#"{"summary": "done"}"#).unwrap(), None);
+        // Prose followed by a call is an attempted call, not a final answer.
+        let err =
+            ToolCall::parse("I will try again.\n{\"tool\": \"read\", \"args\": {\"path\": \"a\"}}")
+                .unwrap_err();
+        assert!(err.to_string().contains("text before the call"), "{err}");
+    }
+
+    #[test]
+    fn every_schema_walk_parses_into_its_tool_call_variant() {
+        use runtime::grammar::{Grammar, Vocab};
+        // Round trip: text the grammar accepts is text `parse` accepts, and
+        // the fixed key order the grammar emits is the order `parse` reads.
+        // A character vocabulary plus EOS; a seeded walk over the mask, as
+        // in the runtime's own grammar tests.
+        let mut tokens: Vec<String> = (32u8..127).map(|b| (b as char).to_string()).collect();
+        tokens.push("</s>".to_string());
+        let vocab = Vocab::new(tokens, 95);
+        let schemas = schemas();
+        let g = Grammar::compile_many(&schemas);
+        let mut seed: u64 = 0x7001;
+        let mut seen = std::collections::BTreeSet::new();
+        for _ in 0..200 {
+            let mut st = g.start();
+            let mut out = String::new();
+            loop {
+                let mask = g.mask(&st, &vocab);
+                let allowed: Vec<u32> = (0..vocab.len() as u32)
+                    .filter(|&t| mask[t as usize])
+                    .collect();
+                assert!(!allowed.is_empty(), "grammar dead end after: {out}");
+                seed = seed
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                let tok = allowed[(seed >> 33) as usize % allowed.len()];
+                if tok == vocab.eos() {
+                    break;
+                }
+                st = g.advance_str(&st, vocab.text(tok)).unwrap();
+                out.push_str(vocab.text(tok));
+            }
+            let call = ToolCall::parse(&out)
+                .unwrap_or_else(|e| panic!("grammar output rejected by parse: {e}\n{out}"))
+                .unwrap_or_else(|| panic!("grammar output taken as final text:\n{out}"));
+            seen.insert(call.name());
+        }
+        let expected: std::collections::BTreeSet<&str> =
+            schemas.iter().map(|s| s.name.as_str()).collect();
+        let seen_names: std::collections::BTreeSet<&str> = seen.iter().copied().collect();
+        assert_eq!(seen_names, expected, "walks never reached some tools");
     }
 
     #[test]

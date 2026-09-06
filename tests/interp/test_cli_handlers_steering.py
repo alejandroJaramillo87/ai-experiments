@@ -1,9 +1,9 @@
 """CLI handler tests for steer-extract and steer-scorecard (interp Phase 3 W1).
 
-Handlers execute torch-free: only the extraction backends (repeng/sae_lens
-live behind interp.steering.extract) are replaced at their home module, while
-GGUF export, wiring validation, and the scorecard orchestration run for real
-against tmp-dir artifacts. The scorecard's service controller and chat POST
+Handlers execute torch-free: diff_means runs for real against the conftest
+fake capture, the sae_lens backend is replaced at its home module, and the
+safetensors export, wiring validation, and scorecard orchestration run for
+real against tmp-dir artifacts. The scorecard's service controller and chat POST
 seam are faked so no Docker or network is touched. Asserted contracts: exit
 codes (0 success, 1 failure, 2 invalid usage), styled [OK]/[RUN]/[ERROR]
 lines, and on-disk artifacts (vector.safetensors, manifest.json, scorecard.json).
@@ -28,7 +28,7 @@ def parse(argv: list[str]):
     return cli.build_parser().parse_args(argv)
 
 
-def direction_set(layers=(1, 2, 3), width=16, method="repeng") -> DirectionSet:
+def direction_set(layers=(1, 2, 3), width=16, method="diff_means") -> DirectionSet:
     rng = np.random.default_rng(7)
     return DirectionSet(
         directions={
@@ -37,63 +37,149 @@ def direction_set(layers=(1, 2, 3), width=16, method="repeng") -> DirectionSet:
         model_id="test/model",
         model_revision="main",
         method=method,
-        source={"model_type": "test"},
+        source={"capture_dir": "test"},
     )
 
 
 class TestSteerExtract:
-    def test_repeng_success_exports_a_real_image(self, tmp_path, monkeypatch, capsys):
-        # Only the torch-bound backend is faked; export runs for real, so the
-        # printed hash must match both manifest and file on disk.
-        calls = {}
-
-        def fake_extract_repeng(model_id, pairs_path, revision="main"):
-            calls["args"] = (model_id, pairs_path, revision)
-            return direction_set()
-
-        monkeypatch.setattr(
-            "interp.steering.extract.extract_repeng", fake_extract_repeng
-        )
-        pairs = tmp_path / "pairs.jsonl"
-        pairs.write_text('{"positive": "a", "negative": "b"}\n')
+    def test_diff_means_exports_a_real_image_from_a_capture(
+        self, tmp_path, capture_dir, capsys
+    ):
+        # Nothing is faked: the fake-backed capture is a real capture
+        # directory, so identity, class counts and the hash all come from it.
         out_dir = str(tmp_path / "vec")
-        args = parse(
-            [
-                "steer-extract",
-                "--model",
-                "test/model",
-                "--revision",
-                "r1",
-                "--model-hash",
-                "h1",
-                "--pairs",
-                str(pairs),
-                "--out",
-                out_dir,
-            ]
-        )
+        args = parse(["steer-extract", "--capture", capture_dir, "--out", out_dir])
         assert args.func(args) == 0
 
         vector_path = os.path.join(out_dir, VECTOR_NAME)
         assert os.path.isfile(vector_path)
         manifest = load_manifest(out_dir)
-        assert manifest["model_hash"] == "h1"
-        assert manifest["method"] == "repeng"
-        assert manifest["layers"] == [1, 2, 3]
+        assert manifest["method"] == "diff_means"
+        assert manifest["model_id"] == "test-model"
+        assert manifest["model_hash"] == "modelhash-1"
+        assert manifest["layers"] == [3, 5]
+        assert manifest["width"] == 8
+        assert manifest["source"]["positive_count"] == 60
         assert manifest["vector_xxhash"] == file_xxhash(vector_path)
-        assert calls["args"] == ("test/model", str(pairs), "r1")
 
         captured = capsys.readouterr().err
-        assert "[RUN] Extracting repeng vector: test/model" in captured
+        assert f"[RUN] Extracting diff-means vector: {capture_dir}" in captured
+        assert (
+            "[INFO] Classes: 60 positive, 60 negative; model_hash modelhash-1"
+            in captured
+        )
+        assert "[WARN]" not in captured
         assert f"[OK] Vector exported: {out_dir}/{VECTOR_NAME}" in captured
-        assert "[OK] Layers: 3, width: 16" in captured
+        assert "[OK] Layers: 2, width: 8" in captured
         assert f"[OK] Vector xxhash: {manifest['vector_xxhash']}" in captured
 
-    def test_repeng_without_pairs_is_usage_error(self, tmp_path, capsys):
-        args = parse(["steer-extract", "--model", "m", "--out", str(tmp_path / "v")])
+    def test_layers_flag_narrows_the_export(self, tmp_path, capture_dir):
+        out_dir = str(tmp_path / "vec")
+        args = parse(
+            [
+                "steer-extract",
+                "--capture",
+                capture_dir,
+                "--layers",
+                "5",
+                "--out",
+                out_dir,
+            ]
+        )
+        assert args.func(args) == 0
+        assert load_manifest(out_dir)["layers"] == [5]
+
+    def test_unknown_capture_hash_is_warned(self, tmp_path, labeled_dataset, capsys):
+        # A capture from an HF id records no hash; the handler says so because
+        # the harness will then load the vector without an identity check.
+        from interp.probes.capture import run_capture
+        from tests.interp.conftest import fake_capture
+
+        capture = str(tmp_path / "capture")
+        run_capture("org/model", labeled_dataset, [3], capture, capture_fn=fake_capture)
+        args = parse(
+            ["steer-extract", "--capture", capture, "--out", str(tmp_path / "v")]
+        )
+        assert args.func(args) == 0
+        captured = capsys.readouterr().err
+        assert "[WARN] Model hash: unknown in the capture manifest" in captured
+        assert load_manifest(str(tmp_path / "v"))["model_hash"] == "unknown"
+
+    def test_diff_means_without_capture_is_usage_error(self, tmp_path, capsys):
+        args = parse(["steer-extract", "--out", str(tmp_path / "v")])
         assert args.func(args) == 2
         captured = capsys.readouterr().err
-        assert "[ERROR] --pairs is required with --method repeng" in captured
+        assert "[ERROR] --capture is required with --method diff_means" in captured
+
+    def test_diff_means_refuses_a_model_hash_override(self, tmp_path, capsys):
+        args = parse(
+            [
+                "steer-extract",
+                "--capture",
+                "c",
+                "--model-hash",
+                "h",
+                "--out",
+                str(tmp_path),
+            ]
+        )
+        assert args.func(args) == 2
+        assert "--model-hash is not accepted with --method diff_means" in (
+            capsys.readouterr().err
+        )
+
+    def test_bad_layers_token_is_usage_error(self, tmp_path, capsys):
+        args = parse(
+            [
+                "steer-extract",
+                "--capture",
+                "c",
+                "--layers",
+                "3,x",
+                "--out",
+                str(tmp_path),
+            ]
+        )
+        assert args.func(args) == 2
+        assert "--layers expects comma-separated integers" in capsys.readouterr().err
+
+    def test_missing_capture_dir_is_styled_failure(self, tmp_path, capsys):
+        # A manifest that is not there is a ManifestError, one of the loader
+        # errors the handler must style rather than let escape as a traceback.
+        args = parse(
+            [
+                "steer-extract",
+                "--capture",
+                str(tmp_path / "nope"),
+                "--out",
+                str(tmp_path / "v"),
+            ]
+        )
+        assert args.func(args) == 1
+        captured = capsys.readouterr().err
+        assert "[ERROR] Extraction failed:" in captured
+        assert "manifest not found" in captured
+
+    def test_sae_row_without_model_is_usage_error(self, tmp_path, capsys):
+        args = parse(
+            [
+                "steer-extract",
+                "--method",
+                "sae_row",
+                "--sae-release",
+                "r",
+                "--sae-id",
+                "i",
+                "--feature",
+                "1",
+                "--layer",
+                "2",
+                "--out",
+                str(tmp_path / "v"),
+            ]
+        )
+        assert args.func(args) == 2
+        assert "--method sae_row requires: ['model']" in capsys.readouterr().err
 
     def test_sae_row_lists_only_missing_flags(self, tmp_path, capsys):
         # Partial sae_row invocation: the usage error names exactly the
@@ -168,15 +254,11 @@ class TestSteerExtract:
         # Real export refuses negative block indices; the handler turns the
         # ExportError into exit 1 and writes no artifact.
         monkeypatch.setattr(
-            "interp.steering.extract.extract_repeng",
+            "interp.steering.extract.extract_diff_means",
             lambda *a, **k: direction_set(layers=(-1, 1)),
         )
-        pairs = tmp_path / "pairs.jsonl"
-        pairs.write_text('{"positive": "a", "negative": "b"}\n')
         out_dir = str(tmp_path / "vec")
-        args = parse(
-            ["steer-extract", "--model", "m", "--pairs", str(pairs), "--out", out_dir]
-        )
+        args = parse(["steer-extract", "--capture", "c", "--out", out_dir])
         assert args.func(args) == 1
         captured = capsys.readouterr().err
         assert "[ERROR] Extraction failed:" in captured
@@ -187,24 +269,12 @@ class TestSteerExtract:
         # --out colliding with an existing regular file raises a real OSError
         # from makedirs, the third arm of the handler's except clause.
         monkeypatch.setattr(
-            "interp.steering.extract.extract_repeng",
+            "interp.steering.extract.extract_diff_means",
             lambda *a, **k: direction_set(),
         )
-        pairs = tmp_path / "pairs.jsonl"
-        pairs.write_text('{"positive": "a", "negative": "b"}\n')
         blocker = tmp_path / "occupied"
         blocker.write_text("not a directory\n")
-        args = parse(
-            [
-                "steer-extract",
-                "--model",
-                "m",
-                "--pairs",
-                str(pairs),
-                "--out",
-                str(blocker),
-            ]
-        )
+        args = parse(["steer-extract", "--capture", "c", "--out", str(blocker)])
         assert args.func(args) == 1
         captured = capsys.readouterr().err
         assert "[ERROR] Extraction failed:" in captured

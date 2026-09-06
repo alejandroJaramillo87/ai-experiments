@@ -42,7 +42,7 @@
       "control_vector"
     ],
     "method": [
-      "repeng",
+      "diff_means",
       "sae_row"
     ]
   },
@@ -62,6 +62,7 @@
     "layer_range_at_load": "manifest.layer_range records the band directions were extracted over, and is null when none was given. It is provenance, not a filter. Selecting a subset at serve time is --control-vector-layer-range on the harness, which drops the blocks outside it as the image is read, so the forward pass sees only what it must add. llama.cpp spelled the same idea --control-vector-layer-range.",
     "comparison_is_semantic": "The committed fixtures are compared by parsed content -- tensor names, widths, values, and the manifest's keys and values -- never byte for byte. safetensors is pinned, but a version bump may legitimately change header key order or padding, and the manifest carries 'created' and 'git_sha', which differ on every regeneration; a byte comparison would report either as exporter drift.",
     "float_exactness": "Fixture values are chosen to be exact in f32, so a round trip through the writer and the Rust reader is an equality comparison and needs no tolerance.",
-    "non_finite_directions": "A non-finite direction is added to every position's residual, so it turns the whole stream to NaN and the model emits noise instead of failing. The exporter refuses it and names the block, rather than leaving the reader to discover it as output nobody can interpret."
+    "non_finite_directions": "A non-finite direction is added to every position's residual, so it turns the whole stream to NaN and the model emits noise instead of failing. The exporter refuses it and names the block, rather than leaving the reader to discover it as output nobody can interpret.",
+    "source_by_method": "source names the extractor's input. For diff_means it is the capture directory the means were taken from, with the dataset path and sha256, the class counts, and (for a rust capture) the site and backend; model_id, model_revision and model_hash are copied from that capture's manifest. For sae_row it is the SAE release, id, feature index and layer, and model_hash is whatever the caller passed."
   }
 }

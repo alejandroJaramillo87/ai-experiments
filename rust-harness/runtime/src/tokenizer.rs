@@ -215,6 +215,35 @@ impl Tokenizer {
             .with_context(|| format!("token {tok} outside vocabulary"))
     }
 
+    /// Surface text of one token: what `decode` would emit for it alone.
+    ///
+    /// The grammar compares token text character by character against
+    /// literal JSON, so it needs the decoded form -- `piece` keeps the space
+    /// marker (`\u{2581}`) and spells `{` as the byte piece `<0x7B>`, and
+    /// against those the skeleton's `": "` can never be reached. This is the
+    /// defect behind "empty sampling support" on a published checkpoint.
+    ///
+    /// An empty result marks a token the grammar must never allow: the
+    /// sequence boundaries, anything the checkpoint marks special, and a
+    /// byte piece outside ASCII, since a lone continuation byte is not a
+    /// character and must not enter a string value.
+    pub fn surface(&self, tok: Token) -> Result<String> {
+        let piece = self.piece(tok)?;
+        if let Some(byte) = byte_piece(piece) {
+            return Ok(if byte.is_ascii() {
+                (byte as char).to_string()
+            } else {
+                String::new()
+            });
+        }
+        if tok == self.bos || tok == self.eos {
+            return Ok(String::new());
+        }
+        self.inner
+            .decode(&[tok], true)
+            .map_err(|e| anyhow::anyhow!("decode token {tok}: {e}"))
+    }
+
     /// Decode token ids to text.
     ///
     /// The sequence boundaries render as nothing, and so does anything the
@@ -393,6 +422,14 @@ impl Tokenizer {
     }
 }
 
+/// The byte a `<0xNN>` byte-fallback piece stands for.
+fn byte_piece(piece: &str) -> Option<u8> {
+    let hex = piece.strip_prefix("<0x")?.strip_suffix('>')?;
+    (hex.len() == 2)
+        .then(|| u8::from_str_radix(hex, 16).ok())
+        .flatten()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -437,6 +474,40 @@ mod tests {
         ];
         let json = tokenizer_json_from_parts(&pieces, &merges, "<pad>").unwrap();
         Tokenizer::from_json(&json).unwrap()
+    }
+
+    /// Id of a piece in `tokenizer_with_delimiters`, by text.
+    fn id_of(t: &Tokenizer, piece: &str) -> Token {
+        (0..t.vocab_len() as Token)
+            .find(|&i| t.piece(i).unwrap() == piece)
+            .unwrap_or_else(|| panic!("no piece {piece:?}"))
+    }
+
+    #[test]
+    fn a_space_marked_piece_surfaces_with_a_real_space() {
+        let t = tokenizer_with_delimiters();
+        let tok = id_of(&t, "\u{2581}");
+        assert_eq!(t.piece(tok).unwrap(), "\u{2581}", "piece keeps the marker");
+        let got = t.surface(tok).unwrap();
+        assert_eq!(got, " ", "surface of the marker piece: {got:?}");
+    }
+
+    #[test]
+    fn an_ascii_byte_piece_surfaces_as_its_character() {
+        let t = tokenizer_with_delimiters();
+        for (piece, want) in [("<0x7B>", "{"), ("<0x22>", "\""), ("<0x20>", " ")] {
+            let got = t.surface(id_of(&t, piece)).unwrap();
+            assert_eq!(got, want, "surface of {piece}: {got:?}");
+        }
+    }
+
+    #[test]
+    fn a_non_ascii_byte_piece_and_a_special_surface_as_nothing() {
+        let t = tokenizer_with_delimiters();
+        for piece in ["<0x80>", "<0xC3>", "<s>", "</s>"] {
+            let got = t.surface(id_of(&t, piece)).unwrap();
+            assert!(got.is_empty(), "surface of {piece}: {got:?}");
+        }
     }
 
     #[test]

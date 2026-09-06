@@ -13,18 +13,24 @@ import numpy as np
 import pytest
 
 from interp.manifest import file_xxhash
+from interp.probes.capture import load_capture, load_labeled_dataset, run_capture
 from interp.steering.export import (
     VECTOR_NAME,
     ExportError,
     export_control_vector,
 )
-from interp.steering.extract import DirectionSet, ExtractionError, load_pairs
+from interp.steering.extract import (
+    DirectionSet,
+    ExtractionError,
+    extract_diff_means,
+)
 from interp.steering.wiring import (
     WiringError,
     container_vector_path,
     steering_env,
     validate_vector_dir,
 )
+from tests.interp.conftest import fake_capture
 
 # export_control_vector imports safetensors lazily, so only tests that export
 # need the package; wiring, extract-input, and judge-parsing tests run without it
@@ -42,8 +48,8 @@ def direction_set() -> DirectionSet:
         },
         model_id="test/model",
         model_revision="main",
-        method="repeng",
-        source={"model_type": "test"},
+        method="diff_means",
+        source={"capture_dir": "test"},
     )
 
 
@@ -147,17 +153,85 @@ class TestWiring:
         }
 
 
-class TestExtractInputs:
-    def test_load_pairs_validates(self, tmp_path):
-        path = tmp_path / "pairs.jsonl"
-        path.write_text('{"positive": "a"}\n')
-        with pytest.raises(ExtractionError, match="negative"):
-            load_pairs(str(path))
+def one_class_capture(tmp_path, labels: list[int]) -> str:
+    """A capture whose labels are exactly the given list, via the fake backend."""
+    dataset = tmp_path / "dataset.jsonl"
+    with open(dataset, "w") as f:
+        for i, label in enumerate(labels):
+            f.write(json.dumps({"text": f"example {i} neg", "label": label}) + "\n")
+    out = str(tmp_path / "capture-one-class")
+    run_capture("m", str(dataset), [3], out, capture_fn=fake_capture)
+    return out
 
+
+class TestDiffMeans:
+    def test_direction_is_positive_mean_minus_negative_mean(self, capture_dir):
+        # fake_capture offsets axis 0 by +-(1 + layer/10) per class, so the
+        # direction is about 2(1 + layer/10) there and about 0 elsewhere; the
+        # exact check is against the same rows the loader returns.
+        acts, labels, _ = load_capture(capture_dir)
+        ds = extract_diff_means(capture_dir)
+        assert sorted(ds.directions) == [3, 5]
+        for layer in (3, 5):
+            expected = (
+                acts[layer][labels == 1].astype(np.float64).mean(axis=0)
+                - acts[layer][labels == 0].astype(np.float64).mean(axis=0)
+            ).astype(np.float32)
+            got = ds.directions[layer]
+            assert got.dtype == np.float32
+            np.testing.assert_array_equal(got, expected)
+            assert got[0] == pytest.approx(2 * (1 + layer / 10), abs=0.1), got[0]
+            assert np.abs(got[1:]).max() < 0.1, got
+
+    def test_identity_comes_from_the_capture_manifest(self, capture_dir):
+        ds = extract_diff_means(capture_dir)
+        assert ds.method == "diff_means"
+        assert ds.model_id == "test-model"
+        assert ds.model_hash == "modelhash-1"
+        assert ds.source["positive_count"] == 60
+        assert ds.source["negative_count"] == 60
+        assert ds.source["count"] == 120
+        assert ds.source["capture_dir"] == os.path.abspath(capture_dir)
+        assert ds.source["position"] == "last"
+
+    def test_layer_subset_and_missing_layer(self, capture_dir):
+        assert sorted(extract_diff_means(capture_dir, layers=[3]).directions) == [3]
+        with pytest.raises(ExtractionError, match=r"layers \[4\] not in capture"):
+            extract_diff_means(capture_dir, layers=[4])
+
+    def test_single_class_capture_is_refused(self, tmp_path):
+        capture = one_class_capture(tmp_path, [1] * 6)
+        with pytest.raises(ExtractionError, match="only label 1"):
+            extract_diff_means(capture)
+
+    def test_non_binary_labels_are_refused(self, tmp_path):
+        capture = one_class_capture(tmp_path, [0, 1, 2, 0, 1, 2])
+        with pytest.raises(ExtractionError, match=r"exactly 0 and 1, got \[0, 1, 2\]"):
+            extract_diff_means(capture)
+
+    @requires_safetensors
+    def test_export_reproduces_the_same_hash_from_the_same_capture(
+        self, tmp_path, capture_dir
+    ):
+        # W1 acceptance, now for the capture-backed method: the manifest's
+        # model hash is the capture's, with no caller guess involved.
+        m1 = export_control_vector(extract_diff_means(capture_dir), str(tmp_path / "a"))
+        m2 = export_control_vector(extract_diff_means(capture_dir), str(tmp_path / "b"))
+        assert m1["vector_xxhash"] == m2["vector_xxhash"]
+        assert m1["model_hash"] == "modelhash-1"
+        assert m1["method"] == "diff_means"
+        assert m1["source"]["dataset_sha256"] == m2["source"]["dataset_sha256"]
+
+
+class TestExtractInputs:
     def test_repo_prompt_sets_parse(self, repo_root):
         prompts = repo_root / "interp" / "steering" / "prompts"
-        pairs = load_pairs(str(prompts / "honesty_pairs.jsonl"))
-        assert len(pairs) >= 10
+        examples = load_labeled_dataset(str(prompts / "honesty.jsonl"))
+        assert len(examples) == 24
+        labels = [e["label"] for e in examples]
+        # Positive and its deceptive twin stay adjacent: the pairing repeng
+        # needed survives as line order, so the set still reads as pairs.
+        assert labels == [1, 0] * 12
         record = json.loads((prompts / "system_prompt_honesty.json").read_text())
         assert len(record["iterations"]) >= 3
 

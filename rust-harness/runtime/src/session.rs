@@ -482,10 +482,11 @@ impl ActiveGeneration<'_> {
             token = tracing::field::Empty
         );
         let _enter = span.enter();
-        let mask = self.state.as_ref().map(|st| {
-            self.grammar
-                .expect("state implies grammar")
-                .mask(st, self.vocab)
+        // A triggered grammar whose turn is (or may still be) free text
+        // constrains nothing, so the per-vocabulary walk is skipped.
+        let mask = self.state.as_ref().and_then(|st| {
+            let g = self.grammar.expect("state implies grammar");
+            g.constrained(st).then(|| g.mask(st, self.vocab))
         });
         let logits = self
             .session
@@ -1092,5 +1093,65 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
         assert_eq!(parsed["tool"], "ping");
         assert!(parsed["args"]["n"].is_number());
+    }
+
+    #[test]
+    fn a_triggered_grammar_leaves_a_prose_turn_unconstrained_and_holds_a_call_to_one_object() {
+        use crate::grammar::{Grammar, ParamType, ToolSchema};
+        let mut tokens: Vec<String> = "{}\"argstol: ,pingx"
+            .chars()
+            .map(|c| c.to_string())
+            .collect();
+        tokens.push("</s>".to_string());
+        let eos = (tokens.len() - 1) as u32;
+        let v = Vocab::new(tokens, eos);
+        let grammar = Grammar::compile(&ToolSchema {
+            name: "ping".into(),
+            params: vec![("n".into(), ParamType::String)],
+        })
+        .triggered();
+        let idx = |s: &str| v.iter().position(|t| t == s).unwrap();
+        // Greedy sampling follows the script exactly where the mask allows.
+        let mut params = SamplingParams {
+            temperature: 0.0,
+            top_p: 1.0,
+            top_k: None,
+            seed: 0,
+        };
+        let peak = |t: usize, n: usize| {
+            let mut row = vec![0.0f32; n];
+            row[t] = 10.0;
+            row
+        };
+
+        // Prose opening: `x` then a `{` that would open a call is left free.
+        let mut script: Vec<Vec<f32>> = vec![peak(idx("x"), v.len()), peak(idx("{"), v.len())];
+        script.push(peak(eos as usize, v.len()));
+        let mut s = Session::new(Box::new(MockModel::new(v.len(), script)), 4096).unwrap();
+        let mut sampler = Sampler::new(params);
+        let gen = s
+            .generate(&[0], &v, Some(&grammar), &mut sampler, 16, |_| {})
+            .unwrap();
+        let text: String = gen.tokens.iter().map(|&t| v.text(t)).collect();
+        assert_eq!(text, "x{", "free text must pass through untouched");
+        assert!(gen.stopped_at_eos);
+
+        // Skeleton opening: after `{` the script wants a quote at every
+        // step, the mask forces the skeleton around an empty string value,
+        // and after the closing brace only EOS is legal.
+        let mut script = vec![peak(idx("{"), v.len())];
+        script.extend(std::iter::repeat_n(peak(idx("\""), v.len()), 64));
+        let mut s = Session::new(Box::new(MockModel::new(v.len(), script)), 4096).unwrap();
+        params.seed = 1;
+        let mut sampler = Sampler::new(params);
+        let gen = s
+            .generate(&[0], &v, Some(&grammar), &mut sampler, 64, |_| {})
+            .unwrap();
+        assert!(gen.stopped_at_eos, "call must end at EOS, not the budget");
+        let text: String = gen.tokens.iter().map(|&t| v.text(t)).collect();
+        let parsed: serde_json::Value =
+            serde_json::from_str(&text).unwrap_or_else(|e| panic!("{e}: {text}"));
+        assert_eq!(parsed["tool"], "ping", "{text}");
+        assert!(parsed["args"]["n"].is_string(), "{text}");
     }
 }

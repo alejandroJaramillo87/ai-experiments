@@ -205,8 +205,8 @@ def _vector_dir(tmp_path) -> str:
             directions=directions,
             model_id="test/model",
             model_revision="main",
-            method="repeng",
-            source={"model_type": "test"},
+            method="diff_means",
+            source={"capture_dir": "test"},
         ),
         vdir,
     )

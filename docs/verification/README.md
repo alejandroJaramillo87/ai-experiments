@@ -110,10 +110,10 @@ Each runbook's own progress line is authoritative; this table is the index.
 | [training/training-phase0.md](training/training-phase0.md) | 4 | 0 | 7 | 11 |
 | [training/training-phase1.md](training/training-phase1.md) | 0 | 0 | 13 | 13 |
 | [training/training-phase2.md](training/training-phase2.md) | 0 | 0 | 7 | 7 |
-| [interp/interp.md](interp/interp.md) | 8 | 3 | 7 | 18 |
+| [interp/interp.md](interp/interp.md) | 9 | 2 | 7 | 18 |
 | [observability/observability.md](observability/observability.md) | 2 | 0 | 7 | 9 |
 | [sandbox/sandbox-executable.md](sandbox/sandbox-executable.md) | 2 | 0 | 0 | 2 |
-| [rust-harness/rust-harness.md](rust-harness/rust-harness.md) | 16 | 5 | 16 | 37 |
+| [rust-harness/rust-harness.md](rust-harness/rust-harness.md) | 20 | 1 | 17 | 38 |
 | [rust-harness/rust-harness-ux.md](rust-harness/rust-harness-ux.md) | 0 | 0 | 9 | 9 |
 | [hardware/hardware-stress.md](hardware/hardware-stress.md) | 0 | 0 | 6 | 6 |
 | [interp/reference-captures.md](interp/reference-captures.md) | 0 | 0 | 2 | 2 |
@@ -129,13 +129,13 @@ artifact rather than on hardware, and
 it. The shards were confirmed present on the workstation 2026-08-14, so those
 entries are now waiting only on a GPU slot.
 
-`rust-harness.md`'s one pending entry is RH.13, and it is pending for a reason
-worth distinguishing from the usual one: it was verified, and then the code
-under it changed what it prints. An entry whose Observed block no longer shows
-everything the command produces is not verified, and the repair is a re-run
-rather than an edit. Its five blocked ones are a third thing again: they need
-an rr that supports Zen 5, an instruction-tuned checkpoint, or a control vector
-extracted against E4B, and no amount of sitting down produces those.
+`rust-harness.md`'s pending entries include RH.13, which is pending for a
+reason worth distinguishing from the usual one: it was verified, and then the
+code under it changed what it prints. An entry whose Observed block no longer
+shows everything the command produces is not verified, and the repair is a
+re-run rather than an edit. Its one blocked entry, RH.11, is a third thing
+again: it needs an instruction-tuned E4B checkpoint, and no amount of sitting
+down produces that.
 
 ## Phase order
 

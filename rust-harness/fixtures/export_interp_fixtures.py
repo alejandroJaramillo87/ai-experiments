@@ -58,8 +58,9 @@ CV_DIRECTIONS = {
 def build_direction_set():
     """A DirectionSet with the fields the exporter reads.
 
-    Built directly rather than through extract_repeng or extract_sae_row:
-    both need a model, and the exporter needs only the dataclass.
+    Built directly rather than through extract_diff_means or extract_sae_row:
+    one needs a capture and the other an SAE, and the exporter needs only the
+    dataclass.
     """
     from interp.steering.extract import DirectionSet
 

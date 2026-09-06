@@ -61,9 +61,11 @@ pub struct Agent {
 }
 
 impl Agent {
-    /// `memory` is the HARNESS.md content: a synthetic leading turn rendered
-    /// before every persisted entry and never written to the transcript, so
-    /// it stays stable within a process and the KV prefix stays maximal.
+    /// The prompt opens with the tool contract (`tools::contract`) as a
+    /// system turn, then `memory`, the HARNESS.md content, as a second one.
+    /// Both are synthetic leading turns rendered before every persisted
+    /// entry and never written to the transcript, so they stay stable within
+    /// a process and the KV prefix stays maximal.
     pub fn new(
         root: PathBuf,
         permissions: Permissions,
@@ -77,6 +79,11 @@ impl Agent {
         // it. This is also the value restored on a compaction rebuild
         // below, so the rebuilt prompt keeps its BOS.
         let mut memory_rendered = String::from(crate::template::BOS);
+        memory_rendered.push_str(&render_entry(&Entry {
+            role: Role::System,
+            content: crate::tools::contract(),
+            replaces: None,
+        }));
         if let Some(content) = memory {
             memory_rendered.push_str(&render_entry(&Entry {
                 role: Role::System,

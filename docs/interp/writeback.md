@@ -49,17 +49,31 @@ that process refused the mismatch before any score existed.
 
 ## W1: steering deployment
 
-Extraction runs at bf16 in the workbench (batch GPU work); serving loads the exported
+A steering vector is the difference of class means over an activation capture: the
+mean residual of the label-1 prompts minus the mean of the label-0 prompts, per layer.
+Extraction therefore reads the same capture directory W2 trains probes from, and needs
+no model of its own. The capture comes from `probe-capture` on the GPU or from the rust
+harness's `activation-capture` on the CPU; the second records the served checkpoint's
+hash, which the harness checks when it loads the vector. Serving loads the exported
 safetensors image as configuration.
 
 ```bash
-make steer-extract ARGS="--method repeng --model google/gemma-2-2b \
-    --pairs interp/steering/prompts/honesty_pairs.jsonl \
-    --out /mnt/ai-data/interp/vectors/honesty-v1"
-make steer-up VECTOR=/mnt/ai-data/interp/vectors/honesty-v1 SCALE=1.0
+make probe-capture ARGS="--model /app/models/hf/gemma-4-E2B-it \
+    --dataset interp/steering/prompts/honesty.jsonl --layers 8,16,24 \
+    --out /mnt/ai-data/interp/captures/honesty-e2b-it"
+make steer-extract ARGS="--capture /mnt/ai-data/interp/captures/honesty-e2b-it \
+    --out /mnt/ai-data/interp/vectors/honesty-e2b-it"
+make steer-up VECTOR=/mnt/ai-data/interp/vectors/honesty-e2b-it SCALE=1.0
 make steer-down
-make steer-scorecard VECTOR=/mnt/ai-data/interp/vectors/honesty-v1 ATTRIBUTE="honesty"
+make steer-scorecard VECTOR=/mnt/ai-data/interp/vectors/honesty-e2b-it ATTRIBUTE="honesty"
 ```
+
+Until 2026-09 extraction went through repeng, whose only release cannot import under
+the tier's numpy pin (KB-32). The mean difference is what the current steering
+literature recommends over repeng's PCA of pair differences, and it lands in
+residual-stream units, so `SCALE=1.0` means one class gap at every layer.
+`--layers` on `steer-extract` narrows the export; `--control-vector-layer-range` narrows
+at load.
 
 `--method sae_row` exports a single Gemma Scope decoder row instead
 (`--sae-release ... --sae-id ... --feature N --layer L`). The serving entrypoint adds

@@ -231,8 +231,15 @@ win is turn latency proportional to the appended delta rather than the full
 transcript; the magnitude is unmeasured until phase B of the roadmap.
 
 **Sampling and grammar.** Sampling runs on trimmed logits with temperature and
-top-p. When the harness requests a tool call, a compiled JSON grammar for the tool
-schemas masks invalid tokens each step, making malformed calls unrepresentable.
+top-p. In task mode the harness compiles one JSON grammar over every tool schema
+(`harness::tools::schemas`) and installs it in triggered mode: the first sampled
+character decides the turn. A turn that opens with `{` is masked to exactly one
+well-formed call to one of the tools, then EOS, so a second call, a hallucinated
+result, or trailing prose is unrepresentable; any other opening leaves the turn
+unconstrained, which is how a plain-text final answer stays possible. The mask
+walks each token's decoded surface text (`Tokenizer::surface`), not its raw piece:
+a piece spells a space as the marker and `{` as `<0x7B>`, and against those the
+skeleton is unreachable. Chat and serve install no grammar.
 Gemma's vocabulary (~256K entries) makes the LM-head matmul and logits transfer
 disproportionately expensive at small model sizes; the sampler keeps logits on the
 GPU and copies only the sampled token, or a trimmed top-k slice, to the CPU.
@@ -273,7 +280,10 @@ built over the append-only prompt discipline the KV cache depends on:
 - **Memory file.** `HARNESS.md` in the working root is read once at startup
   and rendered as a synthetic leading turn — never persisted to the
   transcript, stable within a process (so the KV prefix stays maximal),
-  picked up again on the next start.
+  picked up again on the next start. It follows the tool contract
+  (`harness::tools::contract`), a first synthetic system turn rendered from
+  the same schemas the grammar compiles, so the memory file is memory rather
+  than the place the tools get described.
 - **Compaction.** When the rendered prompt crosses `--compact-at` (default
   0.8) of the context budget, or on `/compact` in chat mode, the middle of
   the effective transcript is summarized by the model itself and replaced

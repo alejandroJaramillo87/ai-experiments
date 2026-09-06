@@ -149,12 +149,9 @@ interp = [
     # already carries transitively through transformers. The sandbox group keeps its own
     # gguf pin, for tests/models reading the GGUF headers training/export still produces.
     #
-    # repeng is NOT pinned here: 0.4.0 (the latest release) requires numpy<2.0 and
-    # references the removed np.float_ alias, so it neither resolves nor imports against
-    # the core numpy 2.x pin (KB-32, confirmed at both resolve and import time). Like
-    # SAEBench (P4-D3, above), it runs in its own isolated numpy<2 venv rather than joining
-    # this group; the W1 write-back path invokes it out-of-process. The isolation venv and
-    # the extract_repeng refactor land together at verification step I.3.
+    # repeng is absent on purpose. Its only release, 0.4.0, requires numpy<2.0 against the
+    # core pin (KB-32), and interp/steering/extract.py computes the difference of means
+    # over an activation capture instead; no steering extraction depends on it.
     "gguf==0.19.0",
     "xxhash==3.5.0",
     # Recipe loading. interp/harvest.py and interp/sae/train.py take a
@@ -311,7 +308,6 @@ module = [
     "peft.*",
     "psutil.*",
     "pynvml.*",
-    "repeng.*",
     "requests.*",
     "sae_lens.*",
     "safetensors.*",

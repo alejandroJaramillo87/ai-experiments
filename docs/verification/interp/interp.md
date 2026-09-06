@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 8 verified, 3 blocked, 7 pending, of 18.**
+**Entries: 9 verified, 2 blocked, 7 pending, of 18.**
 
 The 18 entries are I.1 through I.17 plus the interstitial I.9b
 ("Chunked-capture crash recovery"); none is missing. I.9b is numbered beside I.9
@@ -95,45 +95,62 @@ Status: PENDING
 ## I.3 Control-vector extraction and export (W1)
 
 Implementation: `interp/commands/steer_extract.py`,
-`interp/steering/extract.py`, `interp/steering/export.py`,
-`interp/families.py`.
+`interp/steering/extract.py`, `interp/steering/export.py`.
 
-**Known bugs likely to surface here** (details in [bugs/known-bugs.md](../bugs/known-bugs.md)):
+**Fix to confirm here** (details in [bugs/known-bugs.md](../bugs/known-bugs.md)):
 
-- KB-32 — `interp/steering/extract.py:78` — Pinned repeng 0.4.0 cannot be imported under pinned numpy 2.4.6: np.float_ in eagerly evaluated annotations … repeng is also absent from the interp image, so the import fails on absence first. Expect this step to fail at import until the `extract_repeng` refactor lands.
+- KB-32 — repeng could not import under the pinned numpy, and this entry was blocked
+  on it from 2026-08-14. The extractor no longer uses repeng: `extract_diff_means`
+  takes the difference of class means over a capture directory. This run is the
+  hardware evidence that closes the row.
+
+The input is a capture of a labeled prompt set, so this entry runs after a capture
+exists: I.5's `probe-capture`, or the rust harness's `activation-capture` (RH.9a),
+which also records the served checkpoint's hash for the harness to check.
 
 Command:
 
 ```bash
-make steer-extract ARGS="--method repeng --model google/gemma-4-E2B \
-    --pairs interp/steering/prompts/honesty_pairs.jsonl \
-    --out /mnt/ai-data/interp/vectors/honesty-e2b"
+make steer-extract ARGS="--capture /mnt/ai-data/interp/captures/<name> \
+    --out /mnt/ai-data/interp/vectors/<name>"
+cat /mnt/ai-data/interp/vectors/<name>/manifest.json
 ```
 
-Expected signal: exit 0; the vector directory contains the control vector as
-a **safetensors image plus a JSON sidecar** (`schemas/control_vector_artifact.json`),
-with a manifest recording the model identity, pairs hash, and per-layer
-directions. The repeng band derives from the unwrapped text config (registry
-path).
+Expected signal: exit 0; `[INFO] Classes: N positive, M negative; model_hash <sha256>`
+with the hash the capture manifest carries; the vector directory contains the control
+vector as a **safetensors image plus a JSON sidecar**
+(`schemas/control_vector_artifact.json`) whose manifest records
+`method: diff_means`, the capture directory, the dataset hash, the class counts, and
+one `block.<n>` tensor per captured layer at the model's hidden width. Re-running the
+command reproduces `vector_xxhash`.
 
 This entry said GGUF until 2026-08-14. R10 moved control vectors to
 safetensors and retired the GGUF reader, so a vector in the old format no
 longer loads anywhere — see `AGENTS.md` on why GGUF is now llama.cpp's format
-alone.
+alone. It said repeng until 2026-09-05; see the KB-32 row for why that left.
 
-Observed:
+Observed (2026-09-05, capture from RH.9a on gemma-4-E2B-it):
 
 ```
+[RUN] exec: python -m interp steer-extract --capture /mnt/ai-data/interp/captures/rust-e2b-it-refusal --out /mnt/ai-data/interp/vectors/refusal-e2b-it
+[RUN] Extracting diff-means vector: /mnt/ai-data/interp/captures/rust-e2b-it-refusal
+[INFO] Classes: 129 positive, 129 negative; model_hash 2db5482b20d746879bb3ef79b5203e9075a2e2b98f54ec7c2f281c1477ddc550
+[OK] Vector exported: /mnt/ai-data/interp/vectors/refusal-e2b-it/vector.safetensors
+[OK] Layers: 35, width: 1536
+[OK] Vector xxhash: d66c1d6da0b70309
 ```
 
-Status: BLOCKED 2026-08-14 on KB-32, which is an open ledger row rather than
-an unrun step: repeng 0.4.0 cannot import under the pinned numpy, and repeng
-is deliberately absent from the interp image, so `--method repeng` fails at
-import before it reaches any model. **`--method sae_row` has not been tried
-and may sidestep it entirely** — `make/interp.mk` offers both methods, and
-only the repeng path depends on the unimportable package. That is the cheapest
-next move here, and it also unblocks I.4 and the harness runbook's RH.15,
-which both wait on a vector this step has never produced.
+Exit 0, no `[WARN]`: the class counts are the 129 pairs of the refusal set,
+and the `model_hash` is the one the RH.9a manifest carries, which
+`sha256sum` of the served `model.safetensors` also gives. 35 `block.<n>`
+tensors at width 1536, E2B's residual width. The re-run check
+(`vector_xxhash` reproduced) was not executed as a separate command; RH.9d
+loaded this vector under the harness's identity check with no warning and
+steered in both directions, which is the consumer-side confirmation this
+entry exists for. KB-32 closes on that.
+
+Status: VERIFIED 2026-09-05 (blocked 2026-08-14 on KB-32). I.4 and the
+harness runbook's RH.15 now have a vector to serve.
 
 ## I.4 Steered serving and scorecard (W1)
 
@@ -775,7 +792,7 @@ Status: VERIFIED 2026-08-15 by tests/common/test_obs_dispatch.py
 Implementation: `interp/commands/steer_extract.py`, `interp/steering/extract.py`,
 `interp/steering/export.py`.
 
-`steer-extract` carries two methods. I.3 exercises `repeng` and mentions
+`steer-extract` carries two methods. I.3 exercises `diff_means` and mentions
 `sae_row` in prose only; the route has never been run, and no test covers it.
 
 The four flags the route needs are `--sae-release`, `--sae-id`, `--feature`,

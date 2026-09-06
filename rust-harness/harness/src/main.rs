@@ -573,6 +573,14 @@ fn run(
     let mut generator = generator
         .observing_metrics(run_log.metrics_sink())
         .observing_phases(run_log.event_sink());
+    if !chat && serve.is_none() {
+        // Task mode is the one path with a tool loop to hand a call to. The
+        // grammar is triggered, so a plain-text final answer stays possible;
+        // what it rules out is a second call or trailing prose after one.
+        generator = generator.with_tool_grammar(
+            runtime::grammar::Grammar::compile_many(&harness::tools::schemas()).triggered(),
+        );
+    }
     // Started here rather than in `build_generator`, which does not own the
     // handle the artifact is written from.
     let alignment = alignment_out.map(|_| generator.record_alignment());
