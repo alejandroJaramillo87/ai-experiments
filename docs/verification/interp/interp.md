@@ -863,7 +863,7 @@ Each is a gap in evidence, not a known defect.
 | `--validated` | `sae-train` | Sets `recipe.sae.mark_capture_validated`, the handoff that exempts a capture from garbage collection. I.10 verifies the collector, not this handoff. |
 | `--delta-loss-texts`, `--max-tokens` | `sae-eval` | The delta-LM-loss path (`delta_lm_loss` in `interp/sae/evaluate.py`) runs only when `--delta-loss-texts` is non-empty. I.11 omitted it, so that function has no evidence at all. `--max-tokens` ran only at its 1000000 default. |
 | `--revision`, `--model-hash`, `--batch-size` | `probe-capture` | Provenance fields written into the capture manifest, and the forward-pass batch size. I.5 ran at the defaults. |
-| `--behavior-prompts`, `--neutral-prompts`, `--system-prompt`, `--subject-url`, `--judge-url`, `--judge-model`, `--scales`, `--max-tokens`, `--layer-range`, `--perplexity-cmd` | `steer-scorecard` | Ten of the command's twelve flags. Only `--vector` and `--attribute` appear in I.4, which is itself blocked. |
+| `--behavior-prompts`, `--neutral-prompts`, `--system-prompt`, `--subject-url`, `--judge-url`, `--judge-model`, `--scales`, `--max-tokens`, `--judge-max-tokens`, `--layer-range`, `--perplexity-cmd` | `steer-scorecard` | Eleven of the command's thirteen flags. Only `--vector` and `--attribute` appear in I.4, which is itself blocked. |
 
 Note that the two `sae-eval` flag names differ from the make-target variables:
 the target passes `SAE=` and `CAPTURE=` into `--sae-dir` and `--capture-dir`.

@@ -475,3 +475,38 @@ class TestScorecard:
             post=fake_post,
         )
         assert verdict == {"score": 8.0, "reason": "ok"}
+
+    def test_judge_score_names_budget_when_thought_exhausts_it(self):
+        # llama-server's shape for a reasoning model cut off mid-thought:
+        # empty content, finish_reason length, the thought in a field this
+        # parser never reads. The error names the budget, not the parse.
+        from interp.steering.scorecard import (
+            JUDGE_BEHAVIOR_TEMPLATE,
+            ScorecardError,
+            judge_score,
+        )
+
+        seen = {}
+
+        def fake_post(url, payload):
+            seen["max_tokens"] = payload["max_tokens"]
+            return {
+                "choices": [
+                    {
+                        "finish_reason": "length",
+                        "message": {"content": "", "reasoning_content": "Thinking"},
+                    }
+                ]
+            }
+
+        with pytest.raises(ScorecardError, match="128-token budget"):
+            judge_score(
+                "http://judge",
+                JUDGE_BEHAVIOR_TEMPLATE,
+                "refusal",
+                "prompt",
+                "response",
+                max_tokens=128,
+                post=fake_post,
+            )
+        assert seen["max_tokens"] == 128

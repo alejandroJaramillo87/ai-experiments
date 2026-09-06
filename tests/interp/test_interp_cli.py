@@ -148,6 +148,7 @@ def test_defaults_preserved():
     assert args.subject_url == "http://127.0.0.1:8005"
     assert args.judge_url == "http://127.0.0.1:8001"
     assert args.layer_range is None
+    assert args.judge_max_tokens == 512
 
 
 def test_steer_scorecard_malformed_scales_is_styled_usage_error(capsys):

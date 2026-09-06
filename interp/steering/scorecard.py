@@ -75,6 +75,11 @@ class ScorecardConfig:
     scales: tuple[float, ...] = (0.5, 1.0, 2.0)
     layer_range: tuple[int, int] | None = None  # inclusive 0-based block band
     max_tokens: int = 256
+    # The judge's own budget, separate from the subject's. gemma-4-E2B-it on
+    # llama-cpu reasons before it answers even with thinking off in the
+    # template, and llama-server moves that reasoning out of `content`; at
+    # 128 tokens the verdict never arrived (2026-09-06, RH.15's first run).
+    judge_max_tokens: int = 512
     temperature: float = 0.0
     perplexity_cmd: str | None = None  # recorded verbatim when set
     out_dir: str = "/mnt/ai-data/interp/vectors"
@@ -228,9 +233,15 @@ def chat(
     start = time.monotonic()
     body = post(url, payload)
     latency = time.monotonic() - start
-    text = body["choices"][0]["message"]["content"]
+    choice = body["choices"][0]
+    text = choice["message"]["content"]
     usage = body.get("usage", {})
-    return {"text": text, "latency_s": round(latency, 3), "usage": usage}
+    return {
+        "text": text,
+        "latency_s": round(latency, 3),
+        "usage": usage,
+        "finish_reason": choice.get("finish_reason"),
+    }
 
 
 def parse_judge_json(text: str) -> dict:
@@ -253,17 +264,25 @@ def judge_score(
     attribute: str,
     prompt: str,
     response: str,
-    max_tokens: int = 128,
+    max_tokens: int = 512,
     post=_post_chat,
 ) -> dict:
-    verdict_text = chat(
+    completion = chat(
         judge_url,
         template.format(attribute=attribute, prompt=prompt, response=response),
         max_tokens=max_tokens,
         temperature=0.0,
         post=post,
-    )["text"]
-    verdict = parse_judge_json(verdict_text)
+    )
+    if not completion["text"] and completion["finish_reason"] == "length":
+        # A reasoning judge that ran out of budget mid-thought: the server
+        # holds the thought in a field this parser never reads, so name the
+        # budget rather than report an empty verdict as unparseable.
+        raise ScorecardError(
+            f"judge spent its {max_tokens}-token budget without a verdict; "
+            "raise --judge-max-tokens"
+        )
+    verdict = parse_judge_json(completion["text"])
     score = verdict.get("score")
     if not isinstance(score, int | float) or not 0 <= score <= 10:
         raise ScorecardError(f"judge score out of range: {verdict!r}")
@@ -306,6 +325,7 @@ def run_arm(
             cfg.attribute,
             prompt,
             completion["text"],
+            max_tokens=cfg.judge_max_tokens,
             post=post,
         )
         records.append({"prompt": prompt, **completion, "behavior": verdict})
@@ -325,6 +345,7 @@ def run_arm(
             cfg.attribute,
             prompt,
             completion["text"],
+            max_tokens=cfg.judge_max_tokens,
             post=post,
         )
         coherence.append({"prompt": prompt, **completion, "fluency": verdict})
@@ -433,6 +454,7 @@ def run_scorecard(
             "scales": list(cfg.scales),
             "layer_range": list(cfg.layer_range) if cfg.layer_range else None,
             "max_tokens": cfg.max_tokens,
+            "judge_max_tokens": cfg.judge_max_tokens,
             "temperature": cfg.temperature,
             "behavior_prompts": cfg.behavior_prompts,
             "behavior_prompts_sha256": _file_sha(cfg.behavior_prompts),

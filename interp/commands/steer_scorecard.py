@@ -49,7 +49,14 @@ def configure(sub) -> None:
     p.add_argument(
         "--scales", default="0.5,1,2", help="comma-separated steering scales"
     )
-    p.add_argument("--max-tokens", type=int, default=256)
+    p.add_argument("--max-tokens", type=int, default=256, help="subject budget")
+    p.add_argument(
+        "--judge-max-tokens",
+        type=int,
+        default=512,
+        help="judge budget; a reasoning judge thinks before its JSON verdict, "
+        "and the verdict is lost when the budget ends mid-thought",
+    )
     p.add_argument(
         "--layer-range",
         default=None,
@@ -109,6 +116,7 @@ def cmd(args: argparse.Namespace) -> int:
         judge_model=args.judge_model,
         scales=scales,
         max_tokens=args.max_tokens,
+        judge_max_tokens=args.judge_max_tokens,
         layer_range=layer_range,
         perplexity_cmd=args.perplexity_cmd,
     )
