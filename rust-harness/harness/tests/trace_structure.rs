@@ -11,9 +11,9 @@
  *
  * The assertions are the count relations docs/rust-harness/observability.md
  * documents and the runbook's RH.6 reads by eye: one layer span per layer per
- * forward, the block spans equal to it, one load with its stages, the prefill
- * forward without a step. Durations are printed, never asserted; they belong
- * to the machine. The trace level is not recorded in the file, so the shape
+ * prefill group, the block spans equal to it, one load with its stages, one
+ * sync per generation with its prefill forward outside any step. Durations
+ * are printed, never asserted; they belong to the machine. The trace level is not recorded in the file, so the shape
  * decides which level's relations apply.
  */
 
@@ -55,10 +55,6 @@ impl Trace {
         parents.sort();
         parents.dedup();
         parents
-    }
-
-    fn first(&self, name: &str) -> Option<&Span> {
-        self.spans.iter().find(|s| s.name == name)
     }
 }
 
@@ -189,29 +185,41 @@ fn a_chrome_trace_from_a_real_run_has_the_documented_span_shape() {
     ] {
         assert!(trace.count(name) >= 1, "{name} is absent from {path}");
     }
-    assert_eq!(
-        trace.count("session.sync"),
-        1,
-        "session.sync fires once per run"
-    );
-    // The prefill forward has no enclosing step. A run that hit its token
-    // budget forwarded on every step, so forwards are steps plus one; a run
-    // that stopped on EOS sampled EOS in its last step and forwarded nothing
-    // after it, so the two are equal.
+    // session.sync fires once per generation: once in a single-prompt run,
+    // once per turn under --chat, where one process syncs each turn's delta
+    // on top of the previous turn's cache. Each sync's prefill forward has no
+    // enclosing step. A generation that hit its token budget forwarded on
+    // every step, so its forwards are its steps plus one; one that stopped on
+    // EOS sampled EOS in its last step and forwarded nothing after it, so the
+    // two are equal. Over the whole trace that bounds forwards between steps
+    // and steps plus syncs.
+    let syncs = trace.count("session.sync");
     assert!(
-        forwards == steps + 1 || forwards == steps,
-        "model.forward {forwards} against session.step {steps}: expected steps or steps + 1"
+        forwards >= steps && forwards <= steps + syncs,
+        "model.forward {forwards} against session.step {steps} and session.sync {syncs}: \
+         expected between steps and steps + syncs"
     );
-    status::info(if forwards == steps {
-        "forwards equal steps: the run stopped on EOS"
-    } else {
-        "forwards exceed steps by one: the run stopped on its token budget"
-    });
-    if let Some(sync) = trace.first("session.sync") {
-        status::info(&format!("session.sync args {:?}", sync.args));
-    }
-    if let Some(forward) = trace.first("model.forward") {
-        status::info(&format!("first model.forward args {:?}", forward.args));
+    status::info(&format!(
+        "session.sync {syncs} calls: {} stopped on EOS, {} on the token budget",
+        steps + syncs - forwards,
+        forwards - steps
+    ));
+    // Each sync's cached length, and the start and length of the prefill
+    // forward that follows it, which is the delta it prefilled. The second
+    // sync of a chat trace is RH.4's claim made in one process: its start is
+    // the first turn's cached length, and its len the new turn alone.
+    for (i, s) in trace.spans.iter().enumerate() {
+        if s.name != "session.sync" {
+            continue;
+        }
+        let forward = trace.spans[i + 1..]
+            .iter()
+            .find(|f| f.name == "model.forward");
+        status::info(&format!(
+            "session.sync args {:?}, prefill model.forward args {:?}",
+            s.args,
+            forward.map(|f| &f.args)
+        ));
     }
 
     // model.load is written at INFO, its stages and everything inside the
@@ -242,11 +250,33 @@ fn a_chrome_trace_from_a_real_run_has_the_documented_span_shape() {
     assert!(layers >= 1, "no model.load.layer span");
     assert_parent(&trace, "model.load.layer", "model.from_checkpoint");
 
+    // The layer stack runs once per prefill group, not once per forward: a
+    // forward wider than the batch splits into groups, and the spans inside
+    // it are per group. Each forward's `groups` field carries the count; a
+    // decode forward is one group, as is any prefill within the batch width,
+    // which is why every single-prompt trace before the field existed read
+    // as one `model.layer` per layer per forward.
+    let batches: usize = trace
+        .spans
+        .iter()
+        .filter(|s| s.name == "model.forward")
+        .map(|s| {
+            s.args
+                .get("groups")
+                .unwrap_or_else(|| panic!("model.forward without a groups field: {:?}", s.args))
+                .parse::<usize>()
+                .unwrap_or_else(|e| panic!("model.forward groups {:?}: {e}", s.args))
+        })
+        .sum();
+    assert!(
+        batches >= forwards,
+        "prefill groups {batches} below model.forward {forwards}"
+    );
     let layer_spans = trace.count("model.layer");
     assert_eq!(
         layer_spans,
-        layers * forwards,
-        "model.layer {layer_spans} against {layers} layers x {forwards} forwards"
+        layers * batches,
+        "model.layer {layer_spans} against {layers} layers x {batches} prefill groups"
     );
     assert_parent(&trace, "model.layer", "model.forward");
     for block in ["model.layer.attn", "model.layer.mlp"] {
@@ -262,21 +292,22 @@ fn a_chrome_trace_from_a_real_run_has_the_documented_span_shape() {
         ple == 0 || ple == layer_spans,
         "model.layer.ple {ple}: every layer or none, against {layer_spans} layers"
     );
-    for per_forward in ["model.prelude", "model.lm_head"] {
+    for per_group in ["model.prelude", "model.lm_head"] {
         assert_eq!(
-            trace.count(per_forward),
-            forwards,
-            "{per_forward} once per forward"
+            trace.count(per_group),
+            batches,
+            "{per_group} once per prefill group"
         );
-        assert_parent(&trace, per_forward, "model.forward");
+        assert_parent(&trace, per_group, "model.forward");
     }
     assert!(
         trace.count("tokenizer.encode") >= 1,
         "no tokenizer.encode span"
     );
     status::info(&format!(
-        "layers {layers}, forwards {forwards}, model.layer / model.forward = {:.1}",
-        layer_spans as f64 / forwards as f64
+        "layers {layers}, forwards {forwards}, prefill groups {batches}, \
+         model.layer / group = {:.1}",
+        layer_spans as f64 / batches as f64
     ));
 
     let kernels = ["kernel.matmul", "kernel.attention", "kernel.lm_head"];
@@ -291,7 +322,7 @@ fn a_chrome_trace_from_a_real_run_has_the_documented_span_shape() {
         );
         assert_eq!(
             trace.count("kernel.lm_head"),
-            forwards,
+            batches,
             "kernel.lm_head once per model.lm_head"
         );
         assert!(

@@ -2,9 +2,10 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 20 verified, 1 blocked, 17 pending, of 38.** The one blocked is
-RH.11, which needs an instruction-tuned E4B checkpoint. RH.9d and RH.15 were
-blocked until 2026-09-05 on a control vector this repository could not
+**Entries: 20 verified, 0 blocked, 18 pending, of 38.** RH.11 was blocked
+until 2026-09-05 on an instruction-tuned checkpoint; gemma-4-E2B-it unblocks
+it, and its command block now targets that checkpoint. RH.9d and RH.15 were
+blocked until the same day on a control vector this repository could not
 produce; `steer-extract` now derives one from an RH.9a capture, RH.9d closed
 on it the same day, and RH.15 is pending on a serving run. RH.7 was blocked until 2026-09-05 on the
 packaged rr 5.7.0, which does not recognize the 9950X; upstream 5.9.0 does,
@@ -12,7 +13,7 @@ and the entry records the install step. RH.8 was blocked until the same day
 on the absence of an instruction-tuned checkpoint; gemma-4-E2B-it now closes
 it, and its entry records the two harness defects the first runs exposed.
 
-Of the 17 pending, one is RH.13, reopened by U7: the code under it changed the
+Of the 18 pending, one is RH.13, reopened by U7: the code under it changed the
 terminal output the entry records, so its Observed block needs re-collecting
 rather than editing. RH.17 through RH.22 are new full entries from the surface
 inventory, each needing a human, the GPU host, or the real E4B checkpoint.
@@ -58,7 +59,7 @@ their expected signal: **RH.9d** (steering, judged against a baseline reply),
 and the agent loop (RH.8). Those cannot pass against a base checkpoint no
 matter how correct the backend, and closing them needs an `-it` variant.
 The E2B one, `gemma-4-E2B-it`, arrived on the workstation on 2026-09-05 and
-closed RH.8; RH.9d now targets it, and RH.11 carries a note to that effect.
+closed RH.8; RH.9d and RH.11 now target it.
 
 Recording protocol: the [runbook README](../../README.md) rules apply. The human
 runs each command on the workstation and pastes command plus output
@@ -2707,12 +2708,21 @@ for the CPU backend; there is no pass threshold beyond the profile being
 attributable.
 
 Command (the `make flame` target takes no arguments, so the underlying
-command is invoked directly with the trailing binary arguments):
+command is invoked directly with the trailing binary arguments). The run
+must start from `rust-harness/` because cargo builds there, and the harness
+keeps its session beside the binary's working directory, so the two session
+files are removed first; the 2026-08-14 run below shows what a stale
+`session.kv` does to a profile nobody reads the text of.
 
 ```bash
-cd rust-harness
-cargo flamegraph --profile release-with-debug --bin harness -- \
-    --model /mnt/ai-data/models/hf/<e4b> --text-only "Reply with the single word: ready"
+cd ~/workspace/ai-experiments/rust-harness
+rm -f session.jsonl session.kv perf.data perf.data.old flamegraph.svg
+sysctl kernel.perf_event_paranoid kernel.kptr_restrict
+cargo flamegraph -F 97 --profile release-with-debug --bin harness -- \
+    --model /mnt/ai-data/models/hf/gemma-4-E4B --text-only \
+    "Reply with the single word: ready"
+ls -la flamegraph.svg perf.data
+perf report -i perf.data --no-children --sort sym --stdio 2>/dev/null | head -30
 ```
 
 Expected signal: `flamegraph.svg` is produced and the profile is dominated
@@ -2720,12 +2730,14 @@ by the forward-pass matrix multiplications (attention and MLP projections
 in `model::cpu`), not by tokenization, sampling, or I/O. Record the top
 frames.
 
-**Pass `-F 97`.** At the default sampling frequency this run lost 48.22
-percent of its samples and wrote a 45.9 GB `perf.data`; the profile is not
-trustworthy at that loss rate and the file is a disk hazard. Re-running under
-`perf record -F 97` produced the attributable profile recorded below.
+**Pass `-F 97`.** At the default sampling frequency the 2026-08-14 run lost
+48.22 percent of its samples and wrote a 45.9 GB `perf.data`; the profile
+is not trustworthy at that loss rate and the file is a disk hazard.
+Re-running under `perf record -F 97` produced the attributable profile
+recorded below, and the command block now carries the flag.
 
-Observed:
+Observed (2026-08-14, before the command block carried `-F 97` and the
+session clean-up):
 
 ```
 # Total Lost Samples: 194
@@ -2796,36 +2808,53 @@ stops at the tokenizer EOS, and a distinct `<turn|>` terminator
 would instead run to the `--max-tokens` budget with the trailing marker
 trimmed from the reply. Record which behavior is observed.
 
-Command (three or more turns, then EOF or `/quit`):
+Command (three turns scripted on stdin so the run is reproducible, then EOF;
+the chat loop reads a line per turn and `/quit` or end of input ends it).
+The first turn states two facts, and the second and third each ask for one
+of them back, so responsiveness to history is a string to look for rather
+than a judgement. The trace is then checked from the workspace:
 
 ```bash
-mkdir -p /tmp/rh11 && cd /tmp/rh11
-~/workspace/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/hf/<e4b> --text-only --chat \
+rm -rf /tmp/rh11 && mkdir -p /tmp/rh11 && cd /tmp/rh11
+printf '%s\n' \
+    "My name is Alejandro and my workstation has an RTX 5090." \
+    "Which GPU did I say my workstation has?" \
+    "Reply with just my name." \
+  | ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only --chat \
     --trace-chrome trace.json --max-tokens 128
+cat session.jsonl
+cd ~/workspace/ai-experiments/rust-harness
+make trace-check TRACE=/tmp/rh11/trace.json
 ```
 
-**Blocked on an instruction-tuned checkpoint.** The responsiveness half of
-this signal is unmeetable against base E4B; see the base-model note at the top
-of this file. The mechanical half — the session record and the sync spans — is
-still worth running and recording, and a base model produces turns of text
-that exercise both.
+**Unblocked 2026-09-05 by gemma-4-E2B-it.** The entry was written against
+an instruction-tuned E4B, and the responsiveness half of its signal is
+unmeetable against base E4B; see the base-model note at the top of this file.
+The E2B `-it` checkpoint that closed RH.8 and RH.9d is instruction-tuned, so
+it is the subject here, as it is there. The mechanical half — the session
+record and the per-turn sync spans — does not depend on which checkpoint
+answers.
 
 Expected signal: replies are coherent and responsive to the conversation
-history across at least three turns; `session.jsonl` records alternating
-user and model entries; the per-turn `session.sync` spans in the trace
-cover only each turn's delta, not the whole transcript. Record whether
-replies terminate at EOS or run to the token budget.
+history across the three turns — the second reply names the RTX 5090 and the
+third names Alejandro, both stated only in the first turn; `session.jsonl`
+records six entries alternating `user` and `model`; `make trace-check`
+passes, prints three `session.sync` calls, and each sync's prefill
+`model.forward` starts at the previous turn's cached length with `len` the
+size of the new turn alone, not the transcript. `trace-check` also prints
+how many of the three generations stopped on EOS and how many ran to the
+128-token budget; record that line, and whether a `<turn|>` marker survived
+into any reply.
 
 Observed:
 
 ```
 ```
 
-Status: BLOCKED 2026-08-14. Needs the instruction-tuned E4B checkpoint,
-which is not on this workstation. Instruction following is this entry's
-expected signal, so no run against the base checkpoint can close it — a
-fluent non-answer is correct behaviour and proves nothing either way.
+Status: PENDING (blocked 2026-08-14 on the absence of an instruction-tuned
+checkpoint; gemma-4-E2B-it arrived 2026-09-05 and the command block now
+targets it).
 
 ## RH.12 Container build and reproducibility
 

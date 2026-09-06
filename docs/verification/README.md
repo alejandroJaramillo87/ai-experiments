@@ -113,7 +113,7 @@ Each runbook's own progress line is authoritative; this table is the index.
 | [interp/interp.md](interp/interp.md) | 9 | 2 | 7 | 18 |
 | [observability/observability.md](observability/observability.md) | 2 | 0 | 7 | 9 |
 | [sandbox/sandbox-executable.md](sandbox/sandbox-executable.md) | 2 | 0 | 0 | 2 |
-| [rust-harness/rust-harness.md](rust-harness/rust-harness.md) | 20 | 1 | 17 | 38 |
+| [rust-harness/rust-harness.md](rust-harness/rust-harness.md) | 20 | 0 | 18 | 38 |
 | [rust-harness/rust-harness-ux.md](rust-harness/rust-harness-ux.md) | 0 | 0 | 9 | 9 |
 | [hardware/hardware-stress.md](hardware/hardware-stress.md) | 0 | 0 | 6 | 6 |
 | [interp/reference-captures.md](interp/reference-captures.md) | 0 | 0 | 2 | 2 |
@@ -133,9 +133,9 @@ entries are now waiting only on a GPU slot.
 reason worth distinguishing from the usual one: it was verified, and then the
 code under it changed what it prints. An entry whose Observed block no longer
 shows everything the command produces is not verified, and the repair is a
-re-run rather than an edit. Its one blocked entry, RH.11, is a third thing
-again: it needs an instruction-tuned E4B checkpoint, and no amount of sitting
-down produces that.
+re-run rather than an edit. RH.11 was a third thing again until 2026-09-05:
+it needed an instruction-tuned checkpoint, which no amount of sitting down
+produces, and was `BLOCKED` until gemma-4-E2B-it arrived.
 
 ## Phase order
 
