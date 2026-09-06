@@ -235,6 +235,60 @@ class TestExtractInputs:
         record = json.loads((prompts / "system_prompt_honesty.json").read_text())
         assert len(record["iterations"]) >= 3
 
+    def test_refusal_prompt_pair_parses(self, repo_root):
+        # RH.15's set: benign prompts, where added refusal has headroom, and
+        # a system prompt with the three iterations the scorecard requires.
+        from interp.steering.scorecard import load_prompts, load_system_prompt
+
+        prompts = repo_root / "interp" / "steering" / "prompts"
+        behavior = load_prompts(str(prompts / "behavior_refusal.jsonl"))
+        assert len(behavior) == 6
+        record = load_system_prompt(str(prompts / "system_prompt_refusal.json"))
+        assert record["iterations"][-1] == record["prompt"]
+
+
+class TestMakeServiceController:
+    """The make invocation, with subprocess faked: what steer-up is told."""
+
+    def _calls(self, monkeypatch, layer_range):
+        from interp.steering import scorecard as sc
+
+        calls: list[list[str]] = []
+
+        class Done:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        monkeypatch.setattr(
+            sc.subprocess, "run", lambda argv, **kw: calls.append(argv) or Done()
+        )
+        controller = sc.MakeServiceController(
+            "make",
+            "/mnt/ai-data/interp/vectors/v1",
+            health_wait=lambda: None,
+            layer_range=layer_range,
+        )
+        controller.steer(0.5)
+        controller.unsteer()
+        return calls
+
+    def test_band_reaches_steer_up_as_one_variable(self, monkeypatch):
+        up, down = self._calls(monkeypatch, (10, 16))
+        assert up == [
+            "make",
+            "steer-up",
+            "VECTOR=/mnt/ai-data/interp/vectors/v1",
+            "SCALE=0.5",
+            "STEER_SERVICE=harness-serve",
+            "LAYER_RANGE=10 16",
+        ]
+        assert down == ["make", "steer-down", "STEER_SERVICE=harness-serve"]
+
+    def test_no_band_passes_no_variable(self, monkeypatch):
+        up, _ = self._calls(monkeypatch, None)
+        assert not any(arg.startswith("LAYER_RANGE") for arg in up)
+
 
 class FakeController:
     def __init__(self, fail_on_scale: float | None = None):

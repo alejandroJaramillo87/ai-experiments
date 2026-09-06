@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 
 from common.output import Printer
+from common.serving import SERVICES
 
 
 def configure(sub) -> None:
@@ -30,13 +31,32 @@ def configure(sub) -> None:
         default="interp/steering/prompts/system_prompt_honesty.json",
         help="tuned system-prompt JSON with recorded iterations",
     )
-    p.add_argument("--subject-url", default="http://127.0.0.1:8002")
-    p.add_argument("--judge-url", default="http://127.0.0.1:8003")
+    # Both defaults come from the registry: the subject is the harness the
+    # make steer targets recreate, and the judge is llama-cpu, which loads
+    # once and stays up. Until 2026-09-06 these named llama-gpu and vllm-gpu,
+    # so a default run steered one service and questioned another.
+    p.add_argument(
+        "--subject-url",
+        default=SERVICES["harness"].base_url,
+        help="the steered service (default: the harness entry in common/serving.py)",
+    )
+    p.add_argument(
+        "--judge-url",
+        default=SERVICES["llama-cpu"].base_url,
+        help="the judge service (default: llama-cpu in common/serving.py)",
+    )
     p.add_argument("--judge-model", default="default")
     p.add_argument(
         "--scales", default="0.5,1,2", help="comma-separated steering scales"
     )
     p.add_argument("--max-tokens", type=int, default=256)
+    p.add_argument(
+        "--layer-range",
+        default=None,
+        metavar='"START END"',
+        help="inclusive 0-based block band the vector is applied in; "
+        "one argument holding two numbers, as make steer-up LAYER_RANGE takes it",
+    )
     p.add_argument(
         "--perplexity-cmd",
         default=None,
@@ -62,6 +82,21 @@ def cmd(args: argparse.Namespace) -> int:
         out.error(f"Invalid --scales value: {args.scales!r}")
         out.line("  Solution: pass comma-separated numbers, e.g. --scales 0.5,1,2")
         return 2
+    layer_range = None
+    if args.layer_range is not None:
+        parts = args.layer_range.split()
+        try:
+            start, end = (int(part) for part in parts)
+        except ValueError:
+            out.error(f"Invalid --layer-range value: {args.layer_range!r}")
+            out.line(
+                '  Solution: pass two block indices in one argument, e.g. --layer-range "10 16"'
+            )
+            return 2
+        if start > end:
+            out.error(f"Invalid --layer-range value: start {start} is above end {end}")
+            return 2
+        layer_range = (start, end)
 
     cfg = ScorecardConfig(
         vector_dir=args.vector,
@@ -74,6 +109,7 @@ def cmd(args: argparse.Namespace) -> int:
         judge_model=args.judge_model,
         scales=scales,
         max_tokens=args.max_tokens,
+        layer_range=layer_range,
         perplexity_cmd=args.perplexity_cmd,
     )
     out.line("=== Steering scorecard ===")

@@ -298,10 +298,13 @@ class FakeController:
 
     log: list[str] = []
 
-    def __init__(self, make, vector_dir, service="llama-gpu", health_wait=None):
+    def __init__(
+        self, make, vector_dir, service="harness", health_wait=None, layer_range=None
+    ):
         self.make = make
         self.vector_dir = vector_dir
         self.service = service
+        self.layer_range = layer_range
 
     def steer(self, scale):
         FakeController.log.append(f"steer:{scale:g}")
@@ -351,6 +354,8 @@ class TestSteerScorecard:
                 system,
                 "--scales",
                 "1",
+                "--layer-range",
+                "10 16",
             ]
         )
         assert args.func(args) == 0
@@ -376,6 +381,23 @@ class TestSteerScorecard:
         ]
         assert body["vector_manifest"]["model_hash"] == "h1"
         assert body["config"]["scales"] == [1.0]
+        assert body["config"]["layer_range"] == [10, 16]
+
+    def test_malformed_layer_range_is_styled_usage_error(self, capsys):
+        for value in ("10", "ten sixteen", "16 10"):
+            args = parse(
+                [
+                    "steer-scorecard",
+                    "--vector",
+                    "v",
+                    "--attribute",
+                    "refusal",
+                    "--layer-range",
+                    value,
+                ]
+            )
+            assert args.func(args) == 2, value
+            assert "[ERROR] Invalid --layer-range value" in capsys.readouterr().err
 
     def test_held_gpu_lock_is_styled_failure(self, tmp_path, monkeypatch, capsys):
         # Fully real failure path: the D9 lock file exists, so the scorecard

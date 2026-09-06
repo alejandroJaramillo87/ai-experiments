@@ -140,6 +140,14 @@ def test_defaults_preserved():
     assert args.subject_url == "http://127.0.0.1:8002"
     assert args.judge_url == "http://127.0.0.1:8003"
     assert args.max_tokens == 256
+    # The scorecard's subject is the harness and its judge llama-cpu, both
+    # from common/serving.py; probe-eval above still names the GPU pair.
+    args = cli.build_parser().parse_args(
+        ["steer-scorecard", "--vector", "v", "--attribute", "a"]
+    )
+    assert args.subject_url == "http://127.0.0.1:8005"
+    assert args.judge_url == "http://127.0.0.1:8001"
+    assert args.layer_range is None
 
 
 def test_steer_scorecard_malformed_scales_is_styled_usage_error(capsys):

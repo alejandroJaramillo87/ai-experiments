@@ -11,6 +11,12 @@ recorded verbatim, and per-request latency. Output is one JSON file following
 the benchmark-schema conventions, written to the run directory and summarized
 in the experiments log by the operator.
 
+The subject is the harness on 8005 and the judge is llama-cpu on 8001, both
+read from the registry in common/serving.py rather than spelled here. The
+band the vector is applied in is a config field, because a diff-means vector
+added at every block compounds: RH.9d found seven blocks at scale 1.0 already
+too strong on gemma-4-E2B-it, so a scorecard has to be able to say the band.
+
 The service recreates between arms; the controller is injectable so tests can
 run the orchestration without Docker, and the default controller shells out to
 the make steer-up/steer-down targets. A finally block restores the unsteered
@@ -29,6 +35,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 
+from common.serving import SERVICES
 from interp.manifest import git_sha, text_sha256, utc_now
 from interp.steering.wiring import validate_vector_dir
 
@@ -62,10 +69,11 @@ class ScorecardConfig:
     behavior_prompts: str  # JSONL: {"prompt": ...}
     neutral_prompts: str  # JSONL: {"prompt": ...}
     system_prompt_file: str  # JSON: {"prompt": ..., "iterations": [...]}
-    subject_url: str = "http://127.0.0.1:8002"
-    judge_url: str = "http://127.0.0.1:8003"
+    subject_url: str = SERVICES["harness"].base_url
+    judge_url: str = SERVICES["llama-cpu"].base_url
     judge_model: str = "default"
     scales: tuple[float, ...] = (0.5, 1.0, 2.0)
+    layer_range: tuple[int, int] | None = None  # inclusive 0-based block band
     max_tokens: int = 256
     temperature: float = 0.0
     perplexity_cmd: str | None = None  # recorded verbatim when set
@@ -139,10 +147,12 @@ class MakeServiceController:
         vector_dir: str,
         service: str = "harness",
         health_wait=None,
+        layer_range: tuple[int, int] | None = None,
     ) -> None:
         self.make = make
         self.vector_dir = vector_dir
         self.service = service
+        self.layer_range = layer_range
         self._health_wait = (
             health_wait if health_wait is not None else self._default_health_wait
         )
@@ -157,7 +167,7 @@ class MakeServiceController:
     def _default_health_wait(self) -> None:
         # A force-recreate returns before the model finishes loading;
         # issuing arm requests immediately would fail on every real run.
-        from common.serving import SERVICES, wait_healthy
+        from common.serving import wait_healthy
 
         wait_healthy(SERVICES[self.service])
 
@@ -169,17 +179,21 @@ class MakeServiceController:
         cannot drift apart. They are spelled differently: the registry key is
         `harness`, and compose calls it `harness-serve`.
         """
-        from common.serving import SERVICES
-
         return SERVICES[self.service].service
 
     def steer(self, scale: float) -> None:
-        self._run(
+        args = [
             "steer-up",
             f"VECTOR={self.vector_dir}",
             f"SCALE={scale:g}",
             f"STEER_SERVICE={self._steer_service()}",
-        )
+        ]
+        if self.layer_range is not None:
+            # One make variable holding two numbers, the spelling
+            # steering_env emits and the harness flag parses.
+            start, end = self.layer_range
+            args.append(f"LAYER_RANGE={start} {end}")
+        self._run(*args)
         self._health_wait()
 
     def unsteer(self) -> None:
@@ -349,7 +363,9 @@ def run_scorecard(
     neutral_prompts = load_prompts(cfg.neutral_prompts)
     system_record = load_system_prompt(cfg.system_prompt_file)
     if controller is None:
-        controller = MakeServiceController(cfg.make, cfg.vector_dir, cfg.service)
+        controller = MakeServiceController(
+            cfg.make, cfg.vector_dir, cfg.service, layer_range=cfg.layer_range
+        )
 
     def say(m: str) -> None:
         if printer is not None:
@@ -415,6 +431,7 @@ def run_scorecard(
         "config": {
             "attribute": cfg.attribute,
             "scales": list(cfg.scales),
+            "layer_range": list(cfg.layer_range) if cfg.layer_range else None,
             "max_tokens": cfg.max_tokens,
             "temperature": cfg.temperature,
             "behavior_prompts": cfg.behavior_prompts,
