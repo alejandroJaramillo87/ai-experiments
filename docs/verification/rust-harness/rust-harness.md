@@ -2,9 +2,9 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 20 verified, 0 blocked, 18 pending, of 38.** RH.11 was blocked
-until 2026-09-05 on an instruction-tuned checkpoint; gemma-4-E2B-it unblocks
-it, and its command block now targets that checkpoint. RH.9d and RH.15 were
+**Entries: 21 verified, 0 blocked, 17 pending, of 38.** RH.11 was blocked
+until 2026-09-05 on an instruction-tuned checkpoint; gemma-4-E2B-it unblocked
+it, and it closed on that checkpoint on 2026-09-06. RH.9d and RH.15 were
 blocked until the same day on a control vector this repository could not
 produce; `steer-extract` now derives one from an RH.9a capture, RH.9d closed
 on it the same day, and RH.15 is pending on a serving run. RH.7 was blocked until 2026-09-05 on the
@@ -13,7 +13,7 @@ and the entry records the install step. RH.8 was blocked until the same day
 on the absence of an instruction-tuned checkpoint; gemma-4-E2B-it now closes
 it, and its entry records the two harness defects the first runs exposed.
 
-Of the 18 pending, one is RH.13, reopened by U7: the code under it changed the
+Of the 17 pending, one is RH.13, reopened by U7: the code under it changed the
 terminal output the entry records, so its Observed block needs re-collecting
 rather than editing. RH.17 through RH.22 are new full entries from the surface
 inventory, each needing a human, the GPU host, or the real E4B checkpoint.
@@ -59,7 +59,7 @@ their expected signal: **RH.9d** (steering, judged against a baseline reply),
 and the agent loop (RH.8). Those cannot pass against a base checkpoint no
 matter how correct the backend, and closing them needs an `-it` variant.
 The E2B one, `gemma-4-E2B-it`, arrived on the workstation on 2026-09-05 and
-closed RH.8; RH.9d and RH.11 now target it.
+closed RH.8; RH.9d and RH.11 closed on it.
 
 Recording protocol: the [runbook README](../../README.md) rules apply. The human
 runs each command on the workstation and pastes command plus output
@@ -2815,6 +2815,11 @@ of them back, so responsiveness to history is a string to look for rather
 than a judgement. The trace is then checked from the workspace:
 
 ```bash
+cd ~/workspace/ai-experiments
+git fetch origin rust-harness-verification
+git checkout -B rust-harness-verification origin/rust-harness-verification
+git log -1 --oneline
+cd rust-harness && cargo build --release --bin harness 2>&1 | tail -1
 rm -rf /tmp/rh11 && mkdir -p /tmp/rh11 && cd /tmp/rh11
 printf '%s\n' \
     "My name is Alejandro and my workstation has an RTX 5090." \
@@ -2836,6 +2841,14 @@ it is the subject here, as it is there. The mechanical half — the session
 record and the per-turn sync spans — does not depend on which checkpoint
 answers.
 
+The checkout and rebuild lines at the top of the block are there because the
+first two runs of this entry were spent without them: one ran the `main`
+version of `trace_structure.rs` from a local branch that had not been
+fast-forwarded, the other ran the new test against a trace from a binary
+built before `model.forward` carried its `groups` field. Both are recorded
+below. A release build that finishes in seconds after a pull that touched
+`runtime/` is the tell.
+
 Expected signal: replies are coherent and responsive to the conversation
 history across the three turns — the second reply names the RTX 5090 and the
 third names Alejandro, both stated only in the first turn; `session.jsonl`
@@ -2847,14 +2860,301 @@ how many of the three generations stopped on EOS and how many ran to the
 128-token budget; record that line, and whether a `<turn|>` marker survived
 into any reply.
 
-Observed:
+Observed (2026-09-06, run 1, local branch stale at `main`'s test):
 
 ```
+➜  ai-experiments git:(rust-harness-verification) ✗ cd rust-harness && cargo build --release --bin harness 2>&1 | tail -1
+    Finished `release` profile [optimized] target(s) in 4.39s
+➜  rust-harness git:(rust-harness-verification) ✗ rm -rf /tmp/rh11 && mkdir -p /tmp/rh11 && cd /tmp/rh11
+➜  rh11 printf '%s\n' \
+    "My name is Alejandro and my workstation has an RTX 5090." \
+    "Which GPU did I say my workstation has?" \
+    "Reply with just my name." \
+  | ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only --chat \
+    --trace-chrome trace.json --max-tokens 128
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E2B-it hash=7ddcbbe752dcfbf6 layers=35
+[INFO] Weights: 8.62 GiB resident at bf16
+[INFO] Peak RSS after load: 9.51 GiB
+[INFO] KV cache: 131072 tokens, 1.52 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=128
+[INFO] Build: 0.1.0 git unknown
+[INFO] Model load: 5.71 s
+[INFO] Prefill: 25 tokens in 0.99 s (25 tok/s)
+That sounds like a very powerful workstation, Alejandro! The **RTX 5090** is a high-end, next-generation graphics card, suggesting you're set up for demanding tasks like:
+
+* **High-end Gaming:** Running the most demanding titles at ultra settings with high frame rates.
+* **3D Rendering & Modeling:** Accelerating workflows in software like Blender, Maya, or 3ds Max.
+* **AI/Machine Learning:** Handling complex deep learning models due to its massive parallel processing power.
+* **Video Editing & Content Creation:** Smooth, real-time playback and rendering in
+[INFO] Prefill: 19 tokens in 0.84 s (23 tok/s)
+You said your workstation has an **RTX 5090**.
+[INFO] Prefill: 15 tokens in 0.70 s (22 tok/s)
+Alejandro
+[INFO] Chat ended: 3 model turns
+[INFO] Session snapshot: 210 cached tokens at /tmp/rh11/session.kv
+➜  rh11 cat session.jsonl
+{"role":"user","content":"My name is Alejandro and my workstation has an RTX 5090."}
+{"role":"model","content":"That sounds like a very powerful workstation, Alejandro! The **RTX 5090** is a high-end, next-generation graphics card, suggesting you're set up for demanding tasks like:\n\n* **High-end Gaming:** Running the most demanding titles at ultra settings with high frame rates.\n* **3D Rendering & Modeling:** Accelerating workflows in software like Blender, Maya, or 3ds Max.\n* **AI/Machine Learning:** Handling complex deep learning models due to its massive parallel processing power.\n* **Video Editing & Content Creation:** Smooth, real-time playback and rendering in"}
+{"role":"user","content":"Which GPU did I say my workstation has?"}
+{"role":"model","content":"You said your workstation has an **RTX 5090**."}
+{"role":"user","content":"Reply with just my name."}
+{"role":"model","content":"Alejandro"}
+➜  rh11 cd -
+~/workspace/ai-experiments/rust-harness
+➜  rust-harness git:(rust-harness-verification) ✗ make trace-check TRACE=/tmp/rh11/trace.json
+HARNESS_TRACE="/tmp/rh11/trace.json" cargo test -p harness --test trace_structure -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.02s
+     Running tests/trace_structure.rs (target/debug/deps/trace_structure-fa0ba0cfa73184e5)
+
+running 1 test
+[INFO] model.forward               160 calls     16.99s
+[INFO] session.step                159 calls     15.23s
+[INFO] model.layer                5600 calls     14.97s
+[INFO] model.layer.mlp            5600 calls     10.63s
+[INFO] model.load                    1 calls      5.14s
+[INFO] model.from_checkpoint         1 calls      5.14s
+[INFO] model.layer.attn           5600 calls      3.30s
+[INFO] session.sync                  3 calls      2.52s
+[INFO] model.load.layer             35 calls      2.10s
+[INFO] model.lm_head               160 calls      1.91s
+[INFO] model.layer.ple            5600 calls      1.01s
+[INFO] sampler.sample              159 calls      0.77s
+[INFO] model.prelude               160 calls      0.09s
+[INFO] checkpoint.read               1 calls      0.00s
+[INFO] tokenizer.encode              3 calls      0.00s
+[INFO] checkpoint.fingerprint        1 calls      0.00s
+[INFO] checkpoint.parse              1 calls      0.00s
+
+thread 'a_chrome_trace_from_a_real_run_has_the_documented_span_shape' panicked at harness/tests/trace_structure.rs:192:5:
+assertion `left == right` failed: session.sync fires once per run
+  left: 3
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test a_chrome_trace_from_a_real_run_has_the_documented_span_shape ... FAILED
+
+failures:
+
+failures:
+    a_chrome_trace_from_a_real_run_has_the_documented_span_shape
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.40s
+
+error: test failed, to rerun pass `-p harness --test trace_structure`
+make: *** [Makefile:81: trace-check] Error 101
 ```
 
-Status: PENDING (blocked 2026-08-14 on the absence of an instruction-tuned
-checkpoint; gemma-4-E2B-it arrived 2026-09-05 and the command block now
-targets it).
+Run 1 reading: the replies and the session record already meet the first
+two clauses of the signal. The panic is the `main` version of the test (the
+sync-once assertion sits at its line 192; on this branch that line is a
+comment), so the local branch had not been fast-forwarded; the 4.39 s
+release build says the binary was stale as well.
+
+Observed (2026-09-06, run 2, after `git pull`, binary not rebuilt):
+
+```
+➜  rust-harness git:(rust-harness-verification) ✗ git pull
+Updating 947de31..6ecad21
+Fast-forward
+ docs/rust-harness/observability.md             |  18 ++++++++++--------
+ docs/verification/README.md                    |   8 ++++----
+ docs/verification/rust-harness/rust-harness.md | 110 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++-------------------------------
+ rust-harness/harness/tests/trace_structure.rs  | 107 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++--------------------------------------
+ rust-harness/runtime/src/model/cpu.rs          |  16 ++++++++++++----
+ 5 files changed, 174 insertions(+), 85 deletions(-)
+➜  rust-harness git:(rust-harness-verification) ✗ rm -rf /tmp/rh11 && mkdir -p /tmp/rh11 && cd /tmp/rh11
+➜  rh11 printf '%s\n' \
+    "My name is Alejandro and my workstation has an RTX 5090." \
+    "Which GPU did I say my workstation has?" \
+    "Reply with just my name." \
+  | ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only --chat \
+    --trace-chrome trace.json --max-tokens 128
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E2B-it hash=7ddcbbe752dcfbf6 layers=35
+[INFO] Weights: 8.62 GiB resident at bf16
+[INFO] Peak RSS after load: 9.51 GiB
+[INFO] KV cache: 131072 tokens, 1.52 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=128
+[INFO] Build: 0.1.0 git unknown
+[INFO] Model load: 3.72 s
+[INFO] Prefill: 25 tokens in 0.99 s (25 tok/s)
+That sounds like a very powerful workstation, Alejandro! The **RTX 5090** is a high-end, next-generation graphics card, suggesting you're set up for demanding tasks like:
+
+* **High-end Gaming:** Running the most demanding titles at ultra settings with high frame rates.
+* **3D Rendering & Modeling:** Accelerating workflows in software like Blender, Maya, or 3ds Max.
+* **AI/Machine Learning:** Handling complex deep learning models due to its massive parallel processing power.
+* **Video Editing & Content Creation:** Smooth, real-time playback and rendering in
+[INFO] Prefill: 19 tokens in 0.84 s (23 tok/s)
+You said your workstation has an **RTX 5090**.
+[INFO] Prefill: 15 tokens in 0.69 s (22 tok/s)
+Alejandro
+[INFO] Chat ended: 3 model turns
+[INFO] Session snapshot: 210 cached tokens at /tmp/rh11/session.kv
+➜  rh11 cat session.jsonl
+{"role":"user","content":"My name is Alejandro and my workstation has an RTX 5090."}
+{"role":"model","content":"That sounds like a very powerful workstation, Alejandro! The **RTX 5090** is a high-end, next-generation graphics card, suggesting you're set up for demanding tasks like:\n\n* **High-end Gaming:** Running the most demanding titles at ultra settings with high frame rates.\n* **3D Rendering & Modeling:** Accelerating workflows in software like Blender, Maya, or 3ds Max.\n* **AI/Machine Learning:** Handling complex deep learning models due to its massive parallel processing power.\n* **Video Editing & Content Creation:** Smooth, real-time playback and rendering in"}
+{"role":"user","content":"Which GPU did I say my workstation has?"}
+{"role":"model","content":"You said your workstation has an **RTX 5090**."}
+{"role":"user","content":"Reply with just my name."}
+{"role":"model","content":"Alejandro"}
+➜  rh11 cd -
+~/workspace/ai-experiments/rust-harness
+➜  rust-harness git:(rust-harness-verification) ✗ make trace-check TRACE=/tmp/rh11/trace.json
+HARNESS_TRACE="/tmp/rh11/trace.json" cargo test -p harness --test trace_structure -- --nocapture
+   Compiling runtime v0.1.0 (/home/alejandro/workspace/ai-experiments/rust-harness/runtime)
+   Compiling harness v0.1.0 (/home/alejandro/workspace/ai-experiments/rust-harness/harness)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.33s
+     Running tests/trace_structure.rs (target/debug/deps/trace_structure-fa0ba0cfa73184e5)
+
+running 1 test
+[INFO] model.forward               160 calls     17.85s
+[INFO] session.step                159 calls     16.11s
+[INFO] model.layer                5600 calls     15.69s
+[INFO] model.layer.mlp            5600 calls     11.20s
+[INFO] model.layer.attn           5600 calls      3.41s
+[INFO] model.load                    1 calls      3.15s
+[INFO] model.from_checkpoint         1 calls      3.15s
+[INFO] session.sync                  3 calls      2.52s
+[INFO] model.lm_head               160 calls      2.05s
+[INFO] model.load.layer             35 calls      1.17s
+[INFO] model.layer.ple            5600 calls      1.04s
+[INFO] sampler.sample              159 calls      0.77s
+[INFO] model.prelude               160 calls      0.10s
+[INFO] checkpoint.read               1 calls      0.00s
+[INFO] tokenizer.encode              3 calls      0.00s
+[INFO] checkpoint.fingerprint        1 calls      0.00s
+[INFO] checkpoint.parse              1 calls      0.00s
+[INFO] session.sync 3 calls: 2 stopped on EOS, 1 on the token budget
+[INFO] session.sync args {"cached_len": "0"}, prefill model.forward args Some({"len": "25", "start": "0"})
+[INFO] session.sync args {"cached_len": "153"}, prefill model.forward args Some({"len": "19", "start": "153"})
+[INFO] session.sync args {"cached_len": "194"}, prefill model.forward args Some({"len": "15", "start": "188"})
+
+thread 'a_chrome_trace_from_a_real_run_has_the_documented_span_shape' panicked at harness/tests/trace_structure.rs:266:36:
+model.forward without a groups field: {"len": "25", "start": "0"}
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test a_chrome_trace_from_a_real_run_has_the_documented_span_shape ... FAILED
+
+failures:
+
+failures:
+    a_chrome_trace_from_a_real_run_has_the_documented_span_shape
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.41s
+
+error: test failed, to rerun pass `-p harness --test trace_structure`
+make: *** [Makefile:81: trace-check] Error 101
+```
+
+Run 2 reading: the test is now this branch's (it printed the sync lines),
+the binary is not (no `groups` in its forward args). `cargo test` rebuilt
+`runtime` for the test profile only; `target/release/harness` was untouched.
+
+Observed (2026-09-06, run 3, after `cargo build --release --bin harness`):
+
+```
+➜  rust-harness git:(rust-harness-verification) ✗ rm -rf /tmp/rh11 && mkdir -p /tmp/rh11 && cd /tmp/rh11
+➜  rh11 printf '%s\n' \
+    "My name is Alejandro and my workstation has an RTX 5090." \
+    "Which GPU did I say my workstation has?" \
+    "Reply with just my name." \
+  | ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only --chat \
+    --trace-chrome trace.json --max-tokens 128
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E2B-it hash=7ddcbbe752dcfbf6 layers=35
+[INFO] Weights: 8.62 GiB resident at bf16
+[INFO] Peak RSS after load: 9.51 GiB
+[INFO] KV cache: 131072 tokens, 1.52 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=128
+[INFO] Build: 0.1.0 git unknown
+[INFO] Model load: 3.73 s
+[INFO] Prefill: 25 tokens in 1.00 s (25 tok/s)
+That sounds like a very powerful workstation, Alejandro! The **RTX 5090** is a high-end, next-generation graphics card, suggesting you're set up for demanding tasks like:
+
+* **High-end Gaming:** Running the most demanding titles at ultra settings with high frame rates.
+* **3D Rendering & Modeling:** Accelerating workflows in software like Blender, Maya, or 3ds Max.
+* **AI/Machine Learning:** Handling complex deep learning models due to its massive parallel processing power.
+* **Video Editing & Content Creation:** Smooth, real-time playback and rendering in
+[INFO] Prefill: 19 tokens in 0.84 s (23 tok/s)
+You said your workstation has an **RTX 5090**.
+[INFO] Prefill: 15 tokens in 0.68 s (22 tok/s)
+Alejandro
+[INFO] Chat ended: 3 model turns
+[INFO] Session snapshot: 210 cached tokens at /tmp/rh11/session.kv
+➜  rh11 cat session.jsonl
+{"role":"user","content":"My name is Alejandro and my workstation has an RTX 5090."}
+{"role":"model","content":"That sounds like a very powerful workstation, Alejandro! The **RTX 5090** is a high-end, next-generation graphics card, suggesting you're set up for demanding tasks like:\n\n* **High-end Gaming:** Running the most demanding titles at ultra settings with high frame rates.\n* **3D Rendering & Modeling:** Accelerating workflows in software like Blender, Maya, or 3ds Max.\n* **AI/Machine Learning:** Handling complex deep learning models due to its massive parallel processing power.\n* **Video Editing & Content Creation:** Smooth, real-time playback and rendering in"}
+{"role":"user","content":"Which GPU did I say my workstation has?"}
+{"role":"model","content":"You said your workstation has an **RTX 5090**."}
+{"role":"user","content":"Reply with just my name."}
+{"role":"model","content":"Alejandro"}
+➜  rh11 cd -
+~/workspace/ai-experiments/rust-harness
+➜  rust-harness git:(rust-harness-verification) ✗ make trace-check TRACE=/tmp/rh11/trace.json
+HARNESS_TRACE="/tmp/rh11/trace.json" cargo test -p harness --test trace_structure -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.02s
+     Running tests/trace_structure.rs (target/debug/deps/trace_structure-fa0ba0cfa73184e5)
+
+running 1 test
+[INFO] model.forward               160 calls     17.03s
+[INFO] session.step                159 calls     15.30s
+[INFO] model.layer                5600 calls     15.01s
+[INFO] model.layer.mlp            5600 calls     10.66s
+[INFO] model.layer.attn           5600 calls      3.30s
+[INFO] model.load                    1 calls      3.16s
+[INFO] model.from_checkpoint         1 calls      3.16s
+[INFO] session.sync                  3 calls      2.52s
+[INFO] model.lm_head               160 calls      1.92s
+[INFO] model.load.layer             35 calls      1.18s
+[INFO] model.layer.ple            5600 calls      1.02s
+[INFO] sampler.sample              159 calls      0.79s
+[INFO] model.prelude               160 calls      0.09s
+[INFO] checkpoint.read               1 calls      0.00s
+[INFO] tokenizer.encode              3 calls      0.00s
+[INFO] checkpoint.fingerprint        1 calls      0.00s
+[INFO] checkpoint.parse              1 calls      0.00s
+[INFO] session.sync 3 calls: 2 stopped on EOS, 1 on the token budget
+[INFO] session.sync args {"cached_len": "0"}, prefill model.forward args Some({"groups": "1", "len": "25", "start": "0"})
+[INFO] session.sync args {"cached_len": "153"}, prefill model.forward args Some({"groups": "1", "len": "19", "start": "153"})
+[INFO] session.sync args {"cached_len": "194"}, prefill model.forward args Some({"groups": "1", "len": "15", "start": "188"})
+[INFO] layers 35, forwards 160, prefill groups 160, model.layer / group = 35.0
+[INFO] kernel spans absent: a debug-level trace
+test a_chrome_trace_from_a_real_run_has_the_documented_span_shape ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.41s
+```
+
+Run 3 against the signal, clause by clause. The second reply names the
+RTX 5090 and the third is the single word `Alejandro`; both facts were
+stated only in the first turn. `session.jsonl` holds six entries alternating
+`user` and `model`. `trace-check` passes and prints three `session.sync`
+calls. Turn 2's prefill starts at 153, exactly turn 1's cached length, with
+`len` 19 for a 41-character question: the delta, not the transcript. Turn 3
+starts at 188 against a cached length of 194, so six tokens at the tip were
+re-prefilled along with the new turn; see the note below. The stop line
+reads `2 stopped on EOS, 1 on the token budget`: the first reply ran to the
+128-token budget and is cut mid-sentence in the transcript, the other two
+stopped at EOS, and no reply carries a `<turn|>` marker. The E2B `-it`
+checkpoint stops at the tokenizer EOS, which answers the question the entry
+was written to ask.
+
+**Six-token re-prefill after an EOS-ended reply.** Turn 2's reply stopped
+on EOS, so the cache tip holds the sampled tokens for `**RTX 5090**.`
+followed by the end-of-turn token. The next sync re-renders the transcript
+from the trimmed reply text, and the tokenizer does not reproduce the
+model's own split at that tip; `Session::sync` truncates to the common
+prefix and re-prefills from there. Turn 1 stopped on the budget mid-word and
+re-tokenized identically, which is why turn 2 synced exactly. The reply is
+unchanged either way; the cost is six tokens of prefill per EOS-ended turn.
+A fixture test that generates to EOS and syncs again would pin the number,
+and token healing at the reply tail would remove it. Neither is done here.
+
+Status: VERIFIED (2026-09-06)
 
 ## RH.12 Container build and reproducibility
 

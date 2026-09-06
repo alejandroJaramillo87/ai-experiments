@@ -169,7 +169,12 @@ is the table RH.6 built by hand, and `make trace-check TRACE=<file>` prints
 the same table from the terminal and asserts the count relations in the table
 above (one `model.layer` per layer per prefill group, summed from each
 forward's `groups` field, the blocks equal to it, one load with its stages,
-the prefill forward without a step), skipping when no file is named. The
+the prefill forward inside its `session.sync` and outside any step),
+skipping when no file is named. The same checker also runs on every
+`cargo test`, and so under `make quality`, against a trace the test writes
+itself: three `--chat` turns of the harness binary over the tiny fixture.
+That is the trace that holds the relations to the schema between
+workstation runs; the workstation trace is the runbook's evidence. The
 `session.sync` delta-length field makes the phase B acceptance property (turn
 latency scales with delta size, not transcript size) directly visible in a
 trace timeline.

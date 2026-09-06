@@ -1,24 +1,34 @@
 /*
- * trace_structure — a Chrome trace from a real run has the documented span
- * shape, and its per-name totals are printed for the runbook.
+ * trace_structure — a Chrome trace has the documented span shape, and a
+ * real run's per-name totals are printed for the runbook.
  *
  * `tracing_spans.rs` proves the subscriber on traces it writes itself over
- * the tiny fixture. This one reads a trace `harness --trace-chrome` wrote
- * against the real checkpoint, a workstation artifact this tree does not
- * carry: the path arrives in HARNESS_TRACE, which `make trace-check
- * TRACE=<file>` sets. Under `make quality` the variable is unset and the test
- * skips, so the gate is not conditioned on a workstation run.
+ * the tiny fixture, one span name at a time. This file asserts the count
+ * relations docs/rust-harness/observability.md documents and the runbook's
+ * RH.6 reads by eye: one layer span per layer per prefill group, the block
+ * spans equal to it, one load with its stages, one sync per generation with
+ * its prefill forward outside any step. The same checker runs over two
+ * traces:
  *
- * The assertions are the count relations docs/rust-harness/observability.md
- * documents and the runbook's RH.6 reads by eye: one layer span per layer per
- * prefill group, the block spans equal to it, one load with its stages, one
- * sync per generation with its prefill forward outside any step. Durations
- * are printed, never asserted; they belong to the machine. The trace level is not recorded in the file, so the shape
- * decides which level's relations apply.
+ * - One the gate writes itself: a three-turn `--chat` run of the harness
+ *   binary over the fixture. It runs on every `cargo test`, so a relation
+ *   that stops holding fails `make quality` here rather than on the
+ *   workstation. A sync-once assertion once shipped on main because nothing
+ *   in the gate produced a chat trace to contradict it.
+ * - One `harness --trace-chrome` wrote against the real checkpoint, a
+ *   workstation artifact this tree does not carry: the path arrives in
+ *   HARNESS_TRACE, which `make trace-check TRACE=<file>` sets. Under `make
+ *   quality` the variable is unset and that test skips.
+ *
+ * Durations are printed, never asserted; they belong to the machine. The
+ * trace level is not recorded in the file, so the shape decides which
+ * level's relations apply.
  */
 
 use std::collections::{BTreeMap, HashMap};
+use std::io::Write;
 use std::path::Path;
+use std::process::{Command, Stdio};
 
 use runtime::{status, testlog};
 use serde_json::Value;
@@ -55,6 +65,22 @@ impl Trace {
         parents.sort();
         parents.dedup();
         parents
+    }
+
+    /// Every `session.sync` span, paired with the first `model.forward`
+    /// opened after it: the prefill that fed the sync.
+    fn syncs_with_prefill(&self) -> Vec<(&Span, Option<&Span>)> {
+        self.spans
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.name == "session.sync")
+            .map(|(i, s)| {
+                let forward = self.spans[i + 1..]
+                    .iter()
+                    .find(|f| f.name == "model.forward");
+                (s, forward)
+            })
+            .collect()
     }
 }
 
@@ -150,20 +176,19 @@ fn assert_parent(trace: &Trace, name: &str, parent: &str) {
     );
 }
 
-#[test]
-fn a_chrome_trace_from_a_real_run_has_the_documented_span_shape() {
-    let Ok(path) = std::env::var("HARNESS_TRACE") else {
-        testlog::skip(
-            "chrome trace structure",
-            "HARNESS_TRACE is not set; write a trace with harness --trace-chrome and \
-             pass its path, or run make trace-check TRACE=<file>",
-        );
-        return;
-    };
-    let trace = fold(&events(Path::new(&path)));
+/// A span argument as the integer it was written as.
+fn arg(span: &Span, field: &str) -> usize {
+    span.args
+        .get(field)
+        .unwrap_or_else(|| panic!("{} without a {field} field: {:?}", span.name, span.args))
+        .parse()
+        .unwrap_or_else(|e| panic!("{} {field} {:?}: {e}", span.name, span.args))
+}
 
-    // The per-name table first, so a failing assertion below is read with
-    // the counts in view.
+/// The per-name table of calls and summed duration, most expensive first.
+/// Printed for a workstation trace only: it is the runbook's evidence, and
+/// the fixture's timings say nothing worth a screen of gate output.
+fn report(trace: &Trace) {
     let mut names: Vec<&String> = trace.duration_us.keys().collect();
     names.sort_by(|a, b| trace.duration_us[*b].total_cmp(&trace.duration_us[*a]));
     for name in &names {
@@ -173,7 +198,11 @@ fn a_chrome_trace_from_a_real_run_has_the_documented_span_shape() {
             trace.duration_us[*name] / 1e6
         ));
     }
+}
 
+/// Every relation the documentation states, asserted against one trace.
+/// `source` names the trace in failure messages.
+fn check_shape(trace: &Trace, source: &str) {
     // The four spans every generation carries, at any level.
     let forwards = trace.count("model.forward");
     let steps = trace.count("session.step");
@@ -183,7 +212,7 @@ fn a_chrome_trace_from_a_real_run_has_the_documented_span_shape() {
         "sampler.sample",
         "model.forward",
     ] {
-        assert!(trace.count(name) >= 1, "{name} is absent from {path}");
+        assert!(trace.count(name) >= 1, "{name} is absent from {source}");
     }
     // session.sync fires once per generation: once in a single-prompt run,
     // once per turn under --chat, where one process syncs each turn's delta
@@ -208,17 +237,24 @@ fn a_chrome_trace_from_a_real_run_has_the_documented_span_shape() {
     // forward that follows it, which is the delta it prefilled. The second
     // sync of a chat trace is RH.4's claim made in one process: its start is
     // the first turn's cached length, and its len the new turn alone.
-    for (i, s) in trace.spans.iter().enumerate() {
-        if s.name != "session.sync" {
-            continue;
-        }
-        let forward = trace.spans[i + 1..]
-            .iter()
-            .find(|f| f.name == "model.forward");
+    for (sync, forward) in trace.syncs_with_prefill() {
+        let forward = forward.unwrap_or_else(|| {
+            panic!(
+                "session.sync {:?} with no model.forward after it",
+                sync.args
+            )
+        });
+        assert_eq!(
+            forward.parent.as_deref(),
+            Some("session.sync"),
+            "the prefill model.forward after session.sync {:?} nests under {:?}, \
+             expected the sync itself and no step",
+            sync.args,
+            forward.parent
+        );
         status::info(&format!(
             "session.sync args {:?}, prefill model.forward args {:?}",
-            s.args,
-            forward.map(|f| &f.args)
+            sync.args, forward.args
         ));
     }
 
@@ -245,10 +281,10 @@ fn a_chrome_trace_from_a_real_run_has_the_documented_span_shape() {
         "checkpoint.fingerprint",
     ] {
         assert_eq!(trace.count(stage), 1, "{stage} once under model.load");
-        assert_parent(&trace, stage, "model.load");
+        assert_parent(trace, stage, "model.load");
     }
     assert!(layers >= 1, "no model.load.layer span");
-    assert_parent(&trace, "model.load.layer", "model.from_checkpoint");
+    assert_parent(trace, "model.load.layer", "model.from_checkpoint");
 
     // The layer stack runs once per prefill group, not once per forward: a
     // forward wider than the batch splits into groups, and the spans inside
@@ -260,13 +296,7 @@ fn a_chrome_trace_from_a_real_run_has_the_documented_span_shape() {
         .spans
         .iter()
         .filter(|s| s.name == "model.forward")
-        .map(|s| {
-            s.args
-                .get("groups")
-                .unwrap_or_else(|| panic!("model.forward without a groups field: {:?}", s.args))
-                .parse::<usize>()
-                .unwrap_or_else(|e| panic!("model.forward groups {:?}: {e}", s.args))
-        })
+        .map(|s| arg(s, "groups"))
         .sum();
     assert!(
         batches >= forwards,
@@ -278,14 +308,14 @@ fn a_chrome_trace_from_a_real_run_has_the_documented_span_shape() {
         layers * batches,
         "model.layer {layer_spans} against {layers} layers x {batches} prefill groups"
     );
-    assert_parent(&trace, "model.layer", "model.forward");
+    assert_parent(trace, "model.layer", "model.forward");
     for block in ["model.layer.attn", "model.layer.mlp"] {
         assert_eq!(
             trace.count(block),
             layer_spans,
             "{block} once per model.layer"
         );
-        assert_parent(&trace, block, "model.layer");
+        assert_parent(trace, block, "model.layer");
     }
     let ple = trace.count("model.layer.ple");
     assert!(
@@ -298,7 +328,7 @@ fn a_chrome_trace_from_a_real_run_has_the_documented_span_shape() {
             batches,
             "{per_group} once per prefill group"
         );
-        assert_parent(&trace, per_group, "model.forward");
+        assert_parent(trace, per_group, "model.forward");
     }
     assert!(
         trace.count("tokenizer.encode") >= 1,
@@ -331,4 +361,98 @@ fn a_chrome_trace_from_a_real_run_has_the_documented_span_shape() {
         );
         status::info(&format!("kernel spans {kernel_count}: a trace-level trace"));
     }
+}
+
+/// Three chat turns over the fixture, in one harness process, traced. This
+/// is the gate's own trace: it is what makes `check_shape` run without a
+/// workstation. Random weights produce random tokens, which is fine, because
+/// every assertion is a count relation.
+fn chat_trace_over_the_fixture(dir: &Path) -> Trace {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../fixtures");
+    let trace_path = dir.join("trace.json");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_harness"))
+        .args([
+            "--model".as_ref(),
+            fixtures.join("tiny-gemma4").as_os_str(),
+            "--tokenizer".as_ref(),
+            fixtures.join("tiny-gemma4.tokenizer.json").as_os_str(),
+            "--text-only".as_ref(),
+            "--chat".as_ref(),
+            "--trace-chrome".as_ref(),
+            trace_path.as_os_str(),
+            "--max-tokens".as_ref(),
+            "8".as_ref(),
+            "--seed".as_ref(),
+            "0".as_ref(),
+        ])
+        // The run's observability records go to scratch, not the real root.
+        .env("OBS_LOG_DIR", dir.join("obs"))
+        // session.jsonl and session.kv land in cwd; see main.rs.
+        .current_dir(dir)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("the harness builds as a test binary");
+    child
+        .stdin
+        .take()
+        .expect("stdin is piped")
+        .write_all(b"first turn\nsecond turn\nthird turn\n/quit\n")
+        .expect("the chat loop reads stdin");
+    let out = child.wait_with_output().expect("the harness exits");
+    assert!(
+        out.status.success(),
+        "chat run failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    fold(&events(&trace_path))
+}
+
+#[test]
+fn a_chat_run_over_the_fixture_has_the_documented_span_shape() {
+    // Held to the end: the trace is read back from it.
+    let dir = tempfile::tempdir().expect("a scratch working directory");
+    let trace = chat_trace_over_the_fixture(dir.path());
+    check_shape(&trace, "the fixture chat trace");
+
+    // What a chat trace adds to the relations above: one sync per turn, each
+    // carrying the cache length it started from and followed by a prefill
+    // forward with the three fields the checker reads. The forward's start is
+    // not asserted against the previous cached length: the fixture's sliding
+    // window is four tokens, so every turn after the first rewinds to zero
+    // (the "rewind past the sliding window" event). That is the fixture's
+    // property; the runbook's RH.11 reads the real number.
+    let syncs = trace.syncs_with_prefill();
+    assert_eq!(syncs.len(), 3, "session.sync once per chat turn");
+    for (sync, forward) in syncs {
+        let cached = arg(sync, "cached_len");
+        let forward = forward.expect("check_shape found a forward after every sync");
+        let (start, len, groups) = (
+            arg(forward, "start"),
+            arg(forward, "len"),
+            arg(forward, "groups"),
+        );
+        assert!(
+            start <= cached && len >= 1 && groups >= 1,
+            "prefill model.forward start {start} len {len} groups {groups} \
+             after session.sync cached_len {cached}"
+        );
+    }
+}
+
+#[test]
+fn a_chrome_trace_from_a_real_run_has_the_documented_span_shape() {
+    let Ok(path) = std::env::var("HARNESS_TRACE") else {
+        testlog::skip(
+            "chrome trace structure",
+            "HARNESS_TRACE is not set; write a trace with harness --trace-chrome and \
+             pass its path, or run make trace-check TRACE=<file>",
+        );
+        return;
+    };
+    let trace = fold(&events(Path::new(&path)));
+    // The table first, so a failing assertion is read with the counts in view.
+    report(&trace);
+    check_shape(&trace, &path);
 }

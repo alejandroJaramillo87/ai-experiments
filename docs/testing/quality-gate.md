@@ -49,7 +49,9 @@ It then chains the rust-harness gate when that directory exists. That half is do
 [../../rust-harness/README.md](../../rust-harness/README.md): its five steps, the
 cross-language contract tests, `runtime/src/pyenv.rs` interpreter resolution and
 `HARNESS_PYTHON`, and why a green run must be read for `[SKIP]` lines rather than trusted by
-exit code. It is not repeated here.
+exit code. It is not repeated here. One of its skips is narrower than it reads: the Chrome
+trace check skips only its workstation half, and asserts the same span relations against a
+fixture chat trace it writes itself on every run.
 
 Steps 5 and 6 are complementary rather than redundant. The reference check asks whether a
 cited path exists, which requires classifying a token as a path claim — and that classifier
