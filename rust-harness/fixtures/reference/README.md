@@ -41,9 +41,9 @@ dimensions cannot distinguish.
 Workstation only: every generator needs the real checkpoint and a torch environment. See
 `docs/testing/quality-gate.md` for where this sits relative to `make quality`.
 
-The five artifacts are file prerequisites of `make ladder`, so the ordinary way to generate
+The six artifacts are file prerequisites of `make ladder`, so the ordinary way to generate
 them is to climb: a missing one is written first, a present one is left alone. To rewrite
-all five, after a checkpoint or `transformers` change that make cannot see under an existing
+all six, after a checkpoint or `transformers` change that make cannot see under an existing
 directory:
 
 ```bash
@@ -51,7 +51,7 @@ cd rust-harness
 make ladder-reference SIZE=quick MODEL=<checkpoint-dir>
 ```
 
-The rules in `rust-harness/Makefile` run these five, one per artifact, and are the source of
+The rules in `rust-harness/Makefile` run these six, one per artifact, and are the source of
 truth for their arguments:
 
 | Artifact | Generator | Measures |
@@ -61,6 +61,7 @@ truth for their arguments:
 | `ppl.json` | `reference_perplexity.py --size <SIZE>` | L3: per-token NLL over a prefix of the committed corpus, in 256-token windows. The slowest |
 | `greedy.json` | `reference_greedy.py --size <SIZE>` | L4: a 64-token greedy continuation per prompt, for as many prompts as the size decodes |
 | `long_context.json` | `reference_long_context.py` | L5: logits at anchors past the sliding window, over a prompt four windows long |
+| `attention.json` | `reference_attention.py` | L6: post-softmax attention rows at L5's anchors, every query head of the first two layers, the middle sliding layer, and the last global layer, over the same prompt |
 
 Every artifact the ladder reads lives directly under the `--reference`
 directory. L0's does not vary with `SIZE`, and is regenerated into each size
@@ -149,4 +150,7 @@ reproduce is not evidence. Every one carries:
 - for L2, the explicit list of positions scored, since the set is capped and
   `ladder::rung_logits` asserts it scored exactly those,
 - for L3, the chunk size, because perplexity computed in different windows is a different
-  quantity.
+  quantity,
+- for L5 and L6, the `sliding_window` the reference attended under, since the run compares it
+  with the window its own loader read, and for L6 the layers chosen and their declared kinds,
+  since the rung recomputes the choice from its own config read and refuses a disagreement.
