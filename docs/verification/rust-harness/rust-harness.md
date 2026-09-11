@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 27 verified, 0 blocked, 11 pending, of 38.** RH.11 was blocked
+**Entries: 28 verified, 0 blocked, 10 pending, of 38.** RH.11 was blocked
 until 2026-09-05 on an instruction-tuned checkpoint; gemma-4-E2B-it unblocked
 it, and it closed on that checkpoint on 2026-09-06. RH.9d and RH.15 were
 blocked until the same day on a control vector this repository could not
@@ -14,8 +14,8 @@ and the entry records the install step. RH.8 was blocked until the same day
 on the absence of an instruction-tuned checkpoint; gemma-4-E2B-it now closes
 it, and its entry records the two harness defects the first runs exposed.
 
-Of the 11 pending, RH.21 and RH.22 are new full entries from the surface
-inventory, each needing a human, the GPU host, or the real E4B checkpoint.
+Of the 10 pending, RH.22 is a new full entry from the surface
+inventory, needing a human, the GPU host, or the real E4B checkpoint.
 RH.23 through RH.31 are **gate-backed**: each names the test function that
 asserts its expected signal, and one `cargo test --workspace` run closes all
 nine. Everything the inventory found that is neither is listed in the coverage
@@ -5044,6 +5044,7 @@ cd ~/workspace/ai-experiments/rust-harness
 MODEL=<the gemma-4-E4B checkpoint directory>
 cargo build --release -p runtime --bin layer-diff
 mkdir -p /tmp/rh21
+set -o pipefail   # so $? after a tee is layer-diff's exit, in bash and zsh alike
 
 # 1. the ladder's capture, present since RH.18's climb; the climb writes
 #    it when absent
@@ -5054,7 +5055,7 @@ test -f fixtures/reference/e4b/quick/layers.json \
 ./target/release/layer-diff --text-only --model "$MODEL" \
   --reference fixtures/reference/e4b/quick/layers.json \
   2>&1 | tee /tmp/rh21/defaults.txt
-echo "exit=${PIPESTATUS[0]}"
+echo "exit=$?"
 
 # 3. the ceiling closed between the second- and third-largest rel_l2 among
 #    the LAYER rows of step 2 (read them off the table; every stage row must
@@ -5063,7 +5064,7 @@ echo "exit=${PIPESTATUS[0]}"
   --reference fixtures/reference/e4b/quick/layers.json \
   --rel-l2-ceiling <between the second- and third-largest layer rel_l2> \
   2>&1 | tee /tmp/rh21/closed.txt
-echo "exit=${PIPESTATUS[0]}"
+echo "exit=$?"
 ```
 
 Expected signal: (2) exit 0; a table of 4 stage rows then 42 layer rows, none
@@ -5099,12 +5100,187 @@ The same test runs under
 It reads the bracket off the tool's own table rather than pinning any figure:
 the drift is a property of the checkpoint, and this entry records it.
 
-Observed:
+Observed (2026-09-11, steps 2 and 3 by hand; the table's trailing spaces
+are trimmed and nothing else is):
 
 ```
+➜  rust-harness git:(rust-harness-verification) ✗ ./target/release/layer-diff --text-only --model "$MODEL" \
+  --reference fixtures/reference/e4b/quick/layers.json \
+  2>&1 | tee /tmp/rh21/defaults.txt
+echo "exit=${PIPESTATUS[0]}"
+[INFO] Reference: 6 tokens, 42 layers, float32 precision
+[INFO] Cosine floor: 0.9999, relative-L2 ceiling: 0.001
+ stage/layer  cosine       max_abs      rel_l2
+       embed  1.00000000   0.000e0      0.000e0
+ple_identity  1.00000000   0.000e0      0.000e0
+ ple_context  1.00000000   3.815e-5     5.510e-7
+         ple  1.00000000   3.052e-5     4.869e-7
+           0  1.00000000   3.815e-5     1.474e-6
+           1  1.00000000   2.575e-5     9.956e-7
+           2  1.00000000   4.578e-5     1.396e-6
+           3  1.00000000   2.289e-5     1.834e-6
+           4  1.00000000   2.289e-5     2.092e-6
+           5  1.00000000   3.290e-5     2.829e-6
+           6  1.00000000   2.646e-5     2.650e-6
+           7  1.00000000   2.915e-5     3.368e-6
+           8  1.00000000   3.219e-5     4.326e-6
+           9  1.00000000   5.054e-5     3.847e-6
+          10  1.00000000   6.580e-5     3.388e-6
+          11  1.00000000   5.627e-5     2.298e-6
+          12  1.00000000   3.171e-5     2.231e-6
+          13  1.00000000   2.474e-5     2.301e-6
+          14  1.00000000   2.956e-5     2.980e-6
+          15  1.00000000   2.801e-5     2.906e-6
+          16  1.00000000   2.980e-5     3.532e-6
+          17  1.00000000   3.386e-5     3.849e-6
+          18  1.00000000   4.029e-5     4.620e-6
+          19  1.00000000   3.040e-5     4.993e-6
+          20  1.00000000   3.409e-5     4.315e-6
+          21  1.00000000   2.867e-5     4.005e-6
+          22  1.00000000   2.909e-5     3.747e-6
+          23  1.00000000   3.794e-5     4.316e-6
+          24  1.00000000   3.099e-5     3.393e-6
+          25  1.00000000   2.623e-5     3.006e-6
+          26  1.00000000   2.766e-5     2.661e-6
+          27  1.00000000   2.718e-5     2.555e-6
+          28  1.00000000   2.989e-5     2.600e-6
+          29  1.00000000   6.104e-5     2.890e-6
+          30  1.00000000   4.292e-5     2.572e-6
+          31  1.00000000   6.104e-5     2.379e-6
+          32  1.00000000   4.578e-5     2.102e-6
+          33  1.00000000   3.815e-5     1.867e-6
+          34  1.00000000   3.767e-5     1.743e-6
+          35  1.00000000   3.672e-5     1.721e-6
+          36  1.00000000   3.076e-5     1.639e-6
+          37  1.00000000   2.861e-5     1.603e-6
+          38  1.00000000   4.005e-5     1.632e-6
+          39  1.00000000   2.670e-5     1.684e-6
+          40  1.00000000   3.052e-5     1.937e-6
+          41  1.00000000   3.195e-5     2.756e-6
+
+[OK] Residual stream: all 42 layers within tolerance
+exit=
 ```
 
-Status: PENDING
+The empty `exit=` is the shell: `PIPESTATUS` is bash's array and the
+workstation runs zsh, whose is `pipestatus`. The block above now sets
+`pipefail` and reads `$?`, which both shells honour. The `[OK]` line is the
+binary's exit-0 path and the verdict was not rerun for the number.
+
+The second- and third-largest layer figures are layer 18 at 4.620e-6 and
+layer 8 at 4.326e-6, with layer 19 at 4.993e-6 the largest; every stage row
+is under 6e-7. The ceiling chosen between them is 4.5e-6:
+
+```
+➜  rust-harness git:(rust-harness-verification) ✗ ./target/release/layer-diff --text-only --model "$MODEL" \
+  --reference fixtures/reference/e4b/quick/layers.json \
+  --rel-l2-ceiling 4.5e-6 \
+  2>&1 | tee /tmp/rh21/closed.txt
+echo "exit=${pipestatus[1]}"
+[INFO] Reference: 6 tokens, 42 layers, float32 precision
+[INFO] Cosine floor: 0.9999, relative-L2 ceiling: 0.0000045
+ stage/layer  cosine       max_abs      rel_l2
+       embed  1.00000000   0.000e0      0.000e0
+ple_identity  1.00000000   0.000e0      0.000e0
+ ple_context  1.00000000   3.815e-5     5.510e-7
+         ple  1.00000000   3.052e-5     4.869e-7
+           0  1.00000000   3.815e-5     1.474e-6
+           1  1.00000000   2.575e-5     9.956e-7
+           2  1.00000000   4.578e-5     1.396e-6
+           3  1.00000000   2.289e-5     1.834e-6
+           4  1.00000000   2.289e-5     2.092e-6
+           5  1.00000000   3.290e-5     2.829e-6
+           6  1.00000000   2.646e-5     2.650e-6
+           7  1.00000000   2.915e-5     3.368e-6
+           8  1.00000000   3.219e-5     4.326e-6
+           9  1.00000000   5.054e-5     3.847e-6
+          10  1.00000000   6.580e-5     3.388e-6
+          11  1.00000000   5.627e-5     2.298e-6
+          12  1.00000000   3.171e-5     2.231e-6
+          13  1.00000000   2.474e-5     2.301e-6
+          14  1.00000000   2.956e-5     2.980e-6
+          15  1.00000000   2.801e-5     2.906e-6
+          16  1.00000000   2.980e-5     3.532e-6
+          17  1.00000000   3.386e-5     3.849e-6
+          18  1.00000000   4.029e-5     4.620e-6     <-- diverges (magnitude)
+          19  1.00000000   3.040e-5     4.993e-6     <-- diverges (magnitude)
+          20  1.00000000   3.409e-5     4.315e-6
+          21  1.00000000   2.867e-5     4.005e-6
+          22  1.00000000   2.909e-5     3.747e-6
+          23  1.00000000   3.794e-5     4.316e-6
+          24  1.00000000   3.099e-5     3.393e-6
+          25  1.00000000   2.623e-5     3.006e-6
+          26  1.00000000   2.766e-5     2.661e-6
+          27  1.00000000   2.718e-5     2.555e-6
+          28  1.00000000   2.989e-5     2.600e-6
+          29  1.00000000   6.104e-5     2.890e-6
+          30  1.00000000   4.292e-5     2.572e-6
+          31  1.00000000   6.104e-5     2.379e-6
+          32  1.00000000   4.578e-5     2.102e-6
+          33  1.00000000   3.815e-5     1.867e-6
+          34  1.00000000   3.767e-5     1.743e-6
+          35  1.00000000   3.672e-5     1.721e-6
+          36  1.00000000   3.076e-5     1.639e-6
+          37  1.00000000   2.861e-5     1.603e-6
+          38  1.00000000   4.005e-5     1.632e-6
+          39  1.00000000   2.670e-5     1.684e-6
+          40  1.00000000   3.052e-5     1.937e-6
+          41  1.00000000   3.195e-5     2.756e-6
+
+[ERROR] Residual stream: first divergence at layer 18 (SlidingWindow(512), head 256, ffn 10240, rope base 10000, kv source 18)
+  Every later layer is downstream of this one; fix layer 18 before reading the rest of the table.
+exit=1
+```
+
+Step 2: exit 0, 46 rows, none marked, every cosine printing as 1.00000000
+and every rel-L2 between 0 and 4.993e-6 against a ceiling of 1e-3, then the
+verdict. Step 3: exit 1, exactly the two rows over 4.5e-6 marked
+`(magnitude)`, and the verdict names layer 18, the earlier, while layer 19
+carries the larger figure. That is the first-not-worst policy shown on real
+weights, which the entry's first draft could not do.
+
+The table is the measurement, and its shape: relative L2 rises from 1.5e-6 at
+layer 0 to a peak of 5e-6 at layers 18 and 19, falls through the shared-KV
+tail from layer 24 to a floor of 1.6e-6 at layer 37, and rises again to 2.8e-6
+at layer 41. `embed` and `ple_identity` are exact zeros, so the embedding
+lookup and the identity half of the per-layer inputs agree with `transformers`
+bit for bit; only the two stages that involve a matmul and a norm carry
+noise. Every figure is two to three orders of magnitude under the ceiling,
+which is the accumulation-order noise the tool's own comment on
+`COSINE_FLOOR` predicts and nothing else. Layer 18's geometry line, a
+sliding-window layer reading its own cache, agrees with RH.2's schedule, in
+which the shared-KV tail begins at layer 24.
+
+Observed (2026-09-11, the gate):
+
+```
+➜  rust-harness git:(rust-harness-verification) ✗ cd ~/workspace/ai-experiments
+HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B \
+  uv run pytest -m hw_e4b tests/hardware/test_layer_diff.py -v
+echo "exit=$?"
+=============================================================================== test session starts ===============================================================================
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /home/alejandro/workspace/ai-experiments/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/alejandro/workspace/ai-experiments
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, mock-3.15.1, jaxtyping-0.3.11, cov-7.1.0, hydra-core-1.3.2, anyio-4.14.2, xdist-3.8.0, typeguard-4.6.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 3 items
+
+tests/hardware/test_layer_diff.py::test_the_defaults_pass_every_row PASSED                                                                                                  [ 33%]
+tests/hardware/test_layer_diff.py::test_every_row_is_within_the_tier_e_tolerances PASSED                                                                                    [ 66%]
+tests/hardware/test_layer_diff.py::test_a_closed_ceiling_names_the_first_row_over_it_not_the_worst PASSED                                                                   [100%]
+
+[TIER] full: torch present, the whole suite was in scope.
+=============================================================================== 3 passed in 12.14s ================================================================================
+exit=0
+```
+
+Three of three. The third function reads its own bracket off the table,
+between the same 4.620e-6 and 4.326e-6, so it reproduced the verdict at
+layer 18 without being told the figure.
+
+Status: VERIFIED 2026-09-11 (gate-backed by `tests/hardware/test_layer_diff.py`)
 
 ## RH.22 checkpoint-info --check against the real E4B
 
