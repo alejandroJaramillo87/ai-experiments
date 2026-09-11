@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 24 verified, 0 blocked, 14 pending, of 38.** RH.11 was blocked
+**Entries: 25 verified, 0 blocked, 13 pending, of 38.** RH.11 was blocked
 until 2026-09-05 on an instruction-tuned checkpoint; gemma-4-E2B-it unblocked
 it, and it closed on that checkpoint on 2026-09-06. RH.9d and RH.15 were
 blocked until the same day on a control vector this repository could not
@@ -14,7 +14,7 @@ and the entry records the install step. RH.8 was blocked until the same day
 on the absence of an instruction-tuned checkpoint; gemma-4-E2B-it now closes
 it, and its entry records the two harness defects the first runs exposed.
 
-Of the 14 pending, RH.18 through RH.22 are new full entries from the surface
+Of the 13 pending, RH.19 through RH.22 are new full entries from the surface
 inventory, each needing a human, the GPU host, or the real E4B checkpoint.
 RH.23 through RH.31 are **gate-backed**: each names the test function that
 asserts its expected signal, and one `cargo test --workspace` run closes all
@@ -4439,7 +4439,7 @@ cargo run --release -q -p runtime --bin ladder -- --text-only \
 echo "exit=$?"
 ```
 
-Expected signal: seven rungs, `0 skipped`, the `L6 attention past the window`
+Expected signal: seven rungs, `0 skipped`, the `L6 attention past window`
 row `PASS` with all five measures within tolerance, `weight outside window`
 printed as `0.000000`, and the detail line `192 rows across 4 layers x 8 heads
 at 6 positions; window 512; worst at layer ...`. Record the five values: the
@@ -4467,12 +4467,104 @@ make quality-full HW=e4b HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B
 The test is RH.1b's; L6 is one more row of the climb it already drives, and
 it reads the counts off the detail line the way it reads L5's window.
 
-Observed:
+Observed (2026-09-11, the first seven-rung climb; the generator wrote
+`attention.json` on the way up):
 
 ```
+➜  rust-harness git:(rust-harness-verification) ✗ make ladder SIZE=quick MODEL="$MODEL"
+uv run python fixtures/reference_attention.py --model "/mnt/ai-data/models/hf/gemma-4-E4B" --out fixtures/reference/e4b/quick/attention.json
+[OK] Window: 512 tokens, scoring [511, 512, 513, 1025, 1026, 2051] of 2052
+[OK] Layers: [0, 1, 21, 41] (sliding_attention, sliding_attention, sliding_attention, full_attention)
+[RUN] Load tokenizer: /mnt/ai-data/models/hf/gemma-4-E4B
+[OK] Prompt: 2052 ids from corpus
+[RUN] Load model: float32 on cpu, this reads the whole file
+Loading weights: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 2076/2076 [00:01<00:00, 1630.76it/s]
+[OK] Decoder layers: 42 at model.language_model.layers
+[RUN] Forward pass: 2052 positions
+[OK] Wrote fixtures/reference/e4b/quick/attention.json: 192 rows across 4 layers x 8 heads at 6 positions; window 512
+cargo run --release -p runtime --bin ladder -- \
+  --text-only --size quick --model /mnt/ai-data/models/hf/gemma-4-E4B --reference fixtures/reference/e4b/quick
+   Compiling runtime v0.1.0 (/home/alejandro/workspace/ai-experiments/rust-harness/runtime)
+    Finished `release` profile [optimized] target(s) in 3.16s
+     Running `target/release/ladder --text-only --size quick --model /mnt/ai-data/models/hf/gemma-4-E4B --reference fixtures/reference/e4b/quick`
+size=quick tokens=512 prompts=2
+prompt=6 tokens
+threads=8
+dot=widen4
+batch=64
+model=/mnt/ai-data/models/hf/gemma-4-E4B
+reference=fixtures/reference/e4b/quick
+
+rung  check                   value         threshold       verdict
+L0    token ids                                             PASS
+      case agreement          1.000000      >= 1.000000     ok
+      5 cases, every id identical
+L1    residual stream                                       PASS
+      worst cosine            1.000000      >= 0.999900     ok
+      worst rel_l2            0.000005      <= 0.001000     ok
+      42 layers within tolerance
+L2    final distribution                                    PASS
+      mean kl                 0.000000      <= 0.001000     ok
+      worst kl                0.000000      <= 0.005000     ok
+      worst top-50 overlap    1.000000      >= 0.980000     ok
+      argmax agreement        1.000000      >= 0.980000     ok
+      1 positions scored; worst at prompt position 5
+L3    perplexity                                            PASS
+      ppl delta               0.000032      <= 0.010000     ok
+      worst token nll         0.001248      <= 0.050000     ok
+      ppl 55.5420 against 55.5438 over 254 tokens; worst token at corpus position 414
+L4    greedy continuation                                   PASS
+      token agreement         1.000000      >= 0.980000     ok
+      mean common prefix      1.000000      >= 0.750000     ok
+      2 prompts, 0 ties
+L5    logits past the window                                PASS
+      scheduled positions agree  1.000000      >= 1.000000     ok
+      worst kl inside window  0.000000      <= 0.005000     ok
+      worst kl past window    0.000000      <= 0.005000     ok
+      worst top-50 overlap    1.000000      >= 0.980000     ok
+      argmax agreement        1.000000      >= 0.980000     ok
+      6 positions across a 512-token window over 2052 tokens; worst at position 1025
+L6    attention past the window                                PASS
+      captured layers agree   1.000000      >= 1.000000     ok
+      weight outside window   0.000000      <= 0.000000     ok
+      worst row max abs diff  0.000023      <= 0.001000     ok
+      worst row mass          0.000001      <= 0.000010     ok
+      worst top-10 overlap    1.000000      >= 0.900000     ok
+      192 rows across 4 layers x 8 heads at 6 positions; window 512; worst at layer 21 head 6 position 1025
+
+timing (not compared; expected to differ between runs)
+  L0        0.48s
+  L1        0.52s
+  L2        0.66s
+  L3       52.16s
+  L4       22.72s
+  L5      267.44s
+  L6      226.79s
+  sum     570.77s  (rung bodies only, excludes model load)
+[OK] Ladder: every rung within tolerance (0 skipped)
+[INFO] Peak RSS at exit: 16.13 GiB
 ```
 
-Status: PENDING
+Every signal is in that run. The generator chose layers 0, 1, 21 and 41 from
+`layer_types` and the rung's own choice agreed at every index, position and
+head. `weight outside window` is 0.000000 at an exact threshold: across 192
+rows, the reference put no weight on any key before the position our loader
+scored from, so the two sides agree on where every sliding row begins. The
+worst single-key difference against `transformers` is 2.3e-5, at layer 21
+head 6 position 1025, the first position past the second window crossing on
+the middle sliding layer; the provisional bound of 1e-3 is forty times
+wider, and stays where it is until a second checkpoint says otherwise. Every
+row's ten heaviest keys are the reference's ten. L6 took 226.79 s of the
+570.77 s climb, on a second 2052-token forward pass with the tap installed;
+peak RSS is unchanged from the six-rung climb at 16.13 GiB, so holding six
+rows per pair rather than every row cost nothing measurable.
+
+One defect the paste shows: the `L6` row's subject, `attention past the
+window`, is three characters wider than the table's subject column, so its
+`PASS` sits past the other rows'. The subject is `attention past window`
+from the commit after this run; the transcript above is as printed.
+
+Status: VERIFIED 2026-09-11 (gate-backed by `tests/hardware/test_ladder.py`)
 
 ## RH.19 The alignment artifact on the real vocabulary
 

@@ -183,16 +183,18 @@ the real checkpoint on the workstation. See
 [fixtures/reference/README.md](fixtures/reference/README.md) for the
 artifacts and how they are generated.
 
-Current status: **the first six rungs ran against real E4B on 2026-09-04 and
+Current status: **all seven rungs ran against real E4B on 2026-09-11 and
 every one passed, with nothing skipped** — L0 token ids, L1 residual stream
 (worst cosine 1.000000 over 42 layers), L2 final distribution, L3 perplexity
 (delta 0.000032 over 254 tokens), L4 greedy continuation, L5 logits past the
-sliding window (six anchors over 2052 tokens). The first five had passed
-identically on 2026-08-14, before L5 existed. L6, attention rows at the same
-anchors against `transformers`' own, is added and has not yet run on real
-weights; its Tier E bounds are provisional until it does (entry RH.18). The rung bodies remain
+sliding window (six anchors over 2052 tokens), L6 attention rows at the same
+anchors (worst single-key difference 2.3e-5 over 192 rows). The first six
+had passed identically on 2026-09-04, before L6 existed, and the first five
+on 2026-08-14, before L5. L6's Tier E bounds remain marked provisional on
+one checkpoint's evidence (entry RH.18). The rung bodies remain
 unit-tested against a scripted `MockModel` as well. The transcript is entry
-RH.1b of [the workstation runbook](../docs/verification/rust-harness/rust-harness.md).
+RH.1b of [the workstation runbook](../docs/verification/rust-harness/rust-harness.md),
+and L6's is entry RH.18.
 
 That is a numerics claim, not an output-quality claim: the ladder measures
 agreement with `transformers`, and says nothing about whether the model's
