@@ -39,7 +39,7 @@ from pathlib import Path
 import pytest
 
 from common.hashing import sha256_file
-from tests.hardware.conftest import AI_DATA_ROOT, REPO_ROOT
+from tests.hardware.conftest import REPO_ROOT, e4b_checkpoint
 
 pytestmark = [
     pytest.mark.hw_smoke,
@@ -76,16 +76,6 @@ SHALLOW_TIMEOUT_S = 60
 # 2026-09-11: `--deep` on the 15 GB E4B weights took 35 s at 99% CPU. Generous,
 # because a timeout here would read as an identity failure.
 DEEP_TIMEOUT_S = 10 * 60
-
-
-def checkpoint() -> str:
-    """The E4B tier names the checkpoint through HARNESS_E4B_MODEL; outside
-    that tier fall back to the same root the sibling weight test reads."""
-    named = os.environ.get("HARNESS_E4B_MODEL")
-    if named:
-        return named
-    root = os.environ.get("GEMMA4_CHECKPOINT_ROOT", f"{AI_DATA_ROOT}/models/hf")
-    return os.path.join(root, "gemma-4-E4B")
 
 
 def require_binary() -> None:
@@ -190,7 +180,7 @@ class Preflight:
 @pytest.fixture(scope="module")
 def preflight(tmp_path_factory) -> Preflight:
     require_binary()
-    model = checkpoint()
+    model = e4b_checkpoint()
     weights = os.path.join(model, "model.safetensors")
     if not os.path.isfile(weights):
         pytest.skip(f"E4B checkpoint not on disk at {model}")

@@ -60,7 +60,11 @@ sandbox, and `tests/hardware/test_harness_endpoint.py` for a real checkpoint beh
 socket and the client's own health budget. So does the preflight (RH.16):
 `preflight_surface.rs` and `probe_identity.rs` over the fixture in the sandbox, and
 `tests/hardware/test_preflight.py` under `hw_smoke` for `--status --deep` against the real
-weights, where it also prints what the hash costs.
+weights, where it also prints what the hash costs. And the alignment artifact (RH.19):
+`alignment_artifact.rs` holds the written file to `schemas/alignment.json` over the fixture,
+and `tests/hardware/test_alignment.py` under `hw_e4b` runs the harness over the real
+vocabulary and decodes every row's `token_id` with `transformers`, holding each span to the
+bytes its own token produced; the sandbox half can only prove the spans partition the text.
 
 Steps 5 and 6 are complementary rather than redundant. The reference check asks whether a
 cited path exists, which requires classifying a token as a path claim — and that classifier

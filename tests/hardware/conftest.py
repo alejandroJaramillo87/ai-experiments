@@ -29,6 +29,16 @@ AI_DATA_ROOT = "/mnt/ai-data"
 sys.path.insert(0, os.path.join(REPO_ROOT, "tests", "training"))
 
 
+def e4b_checkpoint() -> str:
+    """The E4B tier names the checkpoint through HARNESS_E4B_MODEL; outside
+    that tier fall back to the same root the sibling weight test reads."""
+    named = os.environ.get("HARNESS_E4B_MODEL")
+    if named:
+        return named
+    root = os.environ.get("GEMMA4_CHECKPOINT_ROOT", f"{AI_DATA_ROOT}/models/hf")
+    return os.path.join(root, "gemma-4-E4B")
+
+
 @pytest.fixture()
 def torch():
     import torch

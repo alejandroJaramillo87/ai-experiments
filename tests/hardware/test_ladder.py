@@ -37,7 +37,7 @@ import subprocess
 
 import pytest
 
-from tests.hardware.conftest import AI_DATA_ROOT, REPO_ROOT
+from tests.hardware.conftest import REPO_ROOT, e4b_checkpoint
 
 pytestmark = [pytest.mark.hw_full, pytest.mark.hw_e4b, pytest.mark.ssd]
 
@@ -83,18 +83,8 @@ ATTENTION = os.path.join(
 TIMEOUT_S = 120 * 60
 
 
-def checkpoint() -> str:
-    """The E4B tier names the checkpoint through HARNESS_E4B_MODEL; outside
-    that tier fall back to the same root the sibling weight test reads."""
-    named = os.environ.get("HARNESS_E4B_MODEL")
-    if named:
-        return named
-    root = os.environ.get("GEMMA4_CHECKPOINT_ROOT", f"{AI_DATA_ROOT}/models/hf")
-    return os.path.join(root, "gemma-4-E4B")
-
-
 def test_the_ladder_passes_every_rung_at_tier_e():
-    model = checkpoint()
+    model = e4b_checkpoint()
     if not os.path.isfile(os.path.join(model, "model.safetensors")):
         pytest.skip(f"E4B checkpoint not on disk at {model}")
 
