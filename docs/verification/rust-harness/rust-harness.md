@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 26 verified, 0 blocked, 12 pending, of 38.** RH.11 was blocked
+**Entries: 27 verified, 0 blocked, 11 pending, of 38.** RH.11 was blocked
 until 2026-09-05 on an instruction-tuned checkpoint; gemma-4-E2B-it unblocked
 it, and it closed on that checkpoint on 2026-09-06. RH.9d and RH.15 were
 blocked until the same day on a control vector this repository could not
@@ -14,7 +14,7 @@ and the entry records the install step. RH.8 was blocked until the same day
 on the absence of an instruction-tuned checkpoint; gemma-4-E2B-it now closes
 it, and its entry records the two harness defects the first runs exposed.
 
-Of the 12 pending, RH.20 through RH.22 are new full entries from the surface
+Of the 11 pending, RH.21 and RH.22 are new full entries from the surface
 inventory, each needing a human, the GPU host, or the real E4B checkpoint.
 RH.23 through RH.31 are **gate-backed**: each names the test function that
 asserts its expected signal, and one `cargo test --workspace` run closes all
@@ -4961,12 +4961,35 @@ summarization prompt with the same head as the chat prompt would make that
 sync an append and leave only the post-compaction sync crossing the floor. A
 cost defect in `compact::compact`, left for its own commit.
 
-Observed (the gate):
+Observed (2026-09-11, the gate):
 
 ```
+➜  rust-harness git:(rust-harness-verification) ✗ cd ~/workspace/ai-experiments
+HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B \
+  uv run pytest -m hw_e4b tests/hardware/test_compaction.py -v
+=============================================================================== test session starts ===============================================================================
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /home/alejandro/workspace/ai-experiments/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/alejandro/workspace/ai-experiments
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, mock-3.15.1, jaxtyping-0.3.11, cov-7.1.0, hydra-core-1.3.2, anyio-4.14.2, xdist-3.8.0, typeguard-4.6.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 3 items
+
+tests/hardware/test_compaction.py::test_the_header_reports_the_horizon PASSED                                                                                               [ 33%]
+tests/hardware/test_compaction.py::test_the_session_compacts_more_than_once PASSED                                                                                          [ 66%]
+tests/hardware/test_compaction.py::test_every_compaction_rebuilds_the_cache_past_the_floor PASSED                                                                           [100%]
+
+[TIER] full: torch present, the whole suite was in scope.
 ```
 
-Status: PENDING
+Three of three. The third function is the corrected count: twice as many
+rebuilt lines as compaction records, every prefix below its floor, and each
+pair the whole transcript then the compacted prompt. The session is
+deterministic under the default seed and the same input, so the counts are
+the manual run's.
+
+Status: VERIFIED 2026-09-11 (gate-backed by `tests/hardware/test_compaction.py`)
 
 ## RH.21 Layer diff against a real reference capture
 
