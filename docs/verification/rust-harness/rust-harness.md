@@ -4831,11 +4831,24 @@ The settings, from the run header and `kv::window_capacity`: window 512 and a
 batch group of 64 give a capacity of 719 positions, so eviction begins past
 719 and the horizon is 719 - 511 = 208. `--context 2048` does not move it
 (the group is still 64) and puts `--compact-at 0.4` at about 819 rendered
-tokens, past 719; so at the sync after each compaction the floor is several
-hundred while the common prefix is the memory turn plus the one head entry
-`compact::KEEP_PREFIX` keeps verbatim. The transcript is `session.jsonl` in the
-working directory and the harness resumes from it, so run this from an empty
-directory and nothing else there.
+tokens, past 719; so the floor is several hundred at every sync a compaction
+causes. The transcript is `session.jsonl` in the working directory and the
+harness resumes from it, so run this from an empty directory and nothing else
+there.
+
+**A compaction causes two such syncs, and the first run below is what showed
+it.** The entry as first rewritten expected one rebuild per compaction, with a
+common prefix of the memory turn plus the head entry. The run printed two per
+compaction, every one with a prefix of 2. `compact::compact` renders its
+summarization prompt as BOS plus the middle entries, which begin at the first
+model reply; the chat prompt is BOS plus the head user entry
+(`chat::render_all`). The two diverge at their third token, so the
+summarization sync shares two positions with the cache and rebuilds the whole
+transcript; the post-compaction prompt then shares the same two with the
+summarization prompt the cache now holds, and rebuilds again, the short
+compacted prompt this time. Large then small, once per compaction, is the
+shape; the count below is corrected to it, and the reason is this paragraph
+rather than the paste.
 
 ```bash
 cd ~/workspace/ai-experiments/rust-harness
@@ -4865,14 +4878,15 @@ grep 'rebuilt from 0' /tmp/rh20/run.log
 Expected signal: (1) exit 0 — a rewind past the floor is a slower path, not
 an error, and a run that fails here means the floor is being enforced as a
 refusal rather than as a rebuild. (2) `Rewind horizon: 208 tokens behind the
-tip`. (3) at least two `compaction` records. (4) **one `Prefill: N tokens in
+tip`. (3) at least two `compaction` records. (4) **two `Prefill: N tokens in
 S s (R tok/s); rebuilt from 0: a rewind to C fell below the window floor at
-F` line per compaction, each with `C` at least 1 and below `F`, and `N`
-above `C`.** That line is the entry: it is the only evidence that compaction
-crossed the floor rather than staying inside a window where the cheap rewind
-suffices. A run with two compactions and fewer such lines has not tested the
-path this entry exists for; record it as a finding (the threshold sat below
-eviction, or the kept head was longer than the floor) rather than as a pass.
+F` lines per compaction, the summarization sync's then the compacted
+prompt's, each with `C` at least 1 and below `F` and `N` above `C`, the first
+`N` of each pair above the second.** That line is the entry: it is the only
+evidence that compaction crossed the floor rather than staying inside a
+window where the cheap rewind suffices. A run with fewer such lines than two
+per compaction has not tested the path this entry exists for; record it as a
+finding (the threshold sat below eviction) rather than as a pass.
 
 Asserted by `tests/hardware/test_compaction.py`:
 
@@ -4880,7 +4894,7 @@ Asserted by `tests/hardware/test_compaction.py`:
 |-----------------|---------------|
 | The `Rewind horizon` line, with a positive count | `test_the_header_reports_the_horizon` |
 | Exit 0 and at least two `compaction` records, every turn reporting its prefill | `test_the_session_compacts_more_than_once` |
-| As many rebuilt `Prefill:` lines as compaction records, each with `1 <= C < F` and `N > C` | `test_every_compaction_rebuilds_the_cache_past_the_floor` |
+| Twice as many rebuilt `Prefill:` lines as compaction records, each with `1 <= C < F` and `N > C`, in pairs whose first `N` exceeds the second | `test_every_compaction_rebuilds_the_cache_past_the_floor` |
 
 ```bash
 cd ~/workspace/ai-experiments
@@ -4894,7 +4908,60 @@ The same test runs under
 The horizon's value is read into the failure message and not pinned: it is a
 property of the checkpoint the header reports, and this entry records it.
 
-Observed:
+Observed (2026-09-11, the manual run; the entry then expected one rebuild per
+compaction, see above):
+
+```
+➜  rust-harness git:(rust-harness-verification) ✗ cd ~/workspace/ai-experiments/rust-harness
+cargo build --release -p harness
+MODEL=/mnt/ai-data/models/hf/gemma-4-E4B
+mkdir -p /tmp/rh20 && cd /tmp/rh20 && rm -f session.jsonl session.kv
+
+python3 -c 'w="matter energy motion field charge wave particle heat light sound".split()
+for i in range(60): print(f"turn {i+1}: "+" ".join(w[(i+j)%len(w)] for j in range(30)))' \
+  | ~/workspace/ai-experiments/rust-harness/target/release/harness \
+      --model "$MODEL" --text-only --chat --context 2048 --compact-at 0.4 \
+      --max-tokens 8 > /tmp/rh20/replies.txt 2> /tmp/rh20/run.log
+echo "exit=$?"
+grep 'Rewind horizon' /tmp/rh20/run.log
+jq -r .role /tmp/rh20/session.jsonl | sort | uniq -c
+grep 'rebuilt from 0' /tmp/rh20/run.log
+   Compiling runtime v0.1.0 (/home/alejandro/workspace/ai-experiments/rust-harness/runtime)
+   Compiling harness v0.1.0 (/home/alejandro/workspace/ai-experiments/rust-harness/harness)
+    Finished `release` profile [optimized] target(s) in 3.34s
+exit=0
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+      4 compaction
+     60 model
+     60 user
+[INFO] Prefill: 724 tokens in 66.46 s (11 tok/s); rebuilt from 0: a rewind to 2 fell below the window floor at 656
+[INFO] Prefill: 168 tokens in 13.92 s (12 tok/s); rebuilt from 0: a rewind to 2 fell below the window floor at 603
+[INFO] Prefill: 751 tokens in 69.36 s (11 tok/s); rebuilt from 0: a rewind to 2 fell below the window floor at 683
+[INFO] Prefill: 168 tokens in 13.92 s (12 tok/s); rebuilt from 0: a rewind to 2 fell below the window floor at 630
+[INFO] Prefill: 751 tokens in 69.30 s (11 tok/s); rebuilt from 0: a rewind to 2 fell below the window floor at 683
+[INFO] Prefill: 168 tokens in 13.90 s (12 tok/s); rebuilt from 0: a rewind to 2 fell below the window floor at 630
+[INFO] Prefill: 751 tokens in 69.28 s (11 tok/s); rebuilt from 0: a rewind to 2 fell below the window floor at 683
+[INFO] Prefill: 168 tokens in 13.81 s (12 tok/s); rebuilt from 0: a rewind to 2 fell below the window floor at 630
+```
+
+Exit 0, the horizon at 208, four compactions in sixty turns, and eight
+rebuilds in four pairs of the same shape: the whole transcript at the
+threshold (724, then 751 tokens, at 11 tok/s), then the compacted prompt (168
+tokens). Every prefix is 2 and every floor is between 603 and 683, a few
+hundred behind a tip that had just crossed 819, which is where eviction puts
+it. The property held four times; what the run refuted was the count this
+entry had predicted, corrected above.
+
+One finding beside the pass, not part of it. The summarization sync should
+not need a rebuild: its prompt is the transcript the cache already holds,
+minus the head entry at the front, and because the head comes first the
+shared prefix collapses to two tokens and the harness re-prefills the whole
+transcript, 66 to 69 s on E4B, to write an eight-token summary. Rendering the
+summarization prompt with the same head as the chat prompt would make that
+sync an append and leave only the post-compaction sync crossing the floor. A
+cost defect in `compact::compact`, left for its own commit.
+
+Observed (the gate):
 
 ```
 ```
