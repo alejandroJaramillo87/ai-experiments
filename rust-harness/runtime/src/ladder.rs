@@ -1,5 +1,5 @@
 /*
- * ladder — the six-rung correctness gate against a reference implementation.
+ * ladder — the seven-rung correctness gate against a reference implementation.
  *
  * Every rung compares us against transformers. None compares us against our
  * own earlier output, which is the property the whole module exists for: the
@@ -14,6 +14,7 @@
  *   L3  perplexity over a token window
  *   L4  greedy continuations
  *   L5  logits past the sliding window
+ *   L6  attention rows past the sliding window
  *
  * A library rather than only a binary, so the machinery -- ordering,
  * short-circuiting, thresholds, rendering -- is testable in the sandbox with
@@ -27,6 +28,8 @@ use std::time::{Duration, Instant};
 
 use anyhow::{bail, ensure, Context, Result};
 
+use crate::kv::LayerKind;
+use crate::model::cpu::{AttentionKey, AttentionRow};
 use crate::model::{Model, Token};
 use crate::sampler::{Sampler, SamplingParams};
 
@@ -35,8 +38,8 @@ use crate::sampler::{Sampler, SamplingParams};
 /// The order is the whole design. Rung N is not evidence about anything if
 /// rung N-1 failed: wrong token ids make every residual wrong, a wrong
 /// residual stream makes every logit wrong, and wrong logits make perplexity
-/// and greedy decoding meaningless. Reporting all six regardless would
-/// produce five numbers that look like findings and are not.
+/// and greedy decoding meaningless. Reporting all seven regardless would
+/// produce six numbers that look like findings and are not.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Rung {
     L0Tokenizer,
@@ -45,17 +48,19 @@ pub enum Rung {
     L3Perplexity,
     L4Greedy,
     L5LongContext,
+    L6Attention,
 }
 
 impl Rung {
     /// Every rung, in climb order.
-    pub const ALL: [Rung; 6] = [
+    pub const ALL: [Rung; 7] = [
         Rung::L0Tokenizer,
         Rung::L1Layers,
         Rung::L2Logits,
         Rung::L3Perplexity,
         Rung::L4Greedy,
         Rung::L5LongContext,
+        Rung::L6Attention,
     ];
 
     /// Whether this rung reads the sized corpus.
@@ -76,6 +81,7 @@ impl Rung {
             Rung::L3Perplexity => "L3",
             Rung::L4Greedy => "L4",
             Rung::L5LongContext => "L5",
+            Rung::L6Attention => "L6",
         }
     }
 
@@ -88,6 +94,7 @@ impl Rung {
             Rung::L3Perplexity => "perplexity",
             Rung::L4Greedy => "greedy continuation",
             Rung::L5LongContext => "logits past the window",
+            Rung::L6Attention => "attention past the window",
         }
     }
 
@@ -384,7 +391,7 @@ pub struct Ladder {
 ///
 /// Short-circuiting is structural rather than a `break` in the caller: every
 /// rung after the failure is recorded as `NotReached` and still printed, so
-/// the table always has six rows and the reader can see both what failed and
+/// the table always has seven rows and the reader can see both what failed and
 /// what consequently went unmeasured.
 ///
 /// `run` returns `None` for a rung whose reference is absent; that becomes
@@ -657,6 +664,18 @@ pub mod thresholds {
     /// autoregressive, so everything after a divergence is a different run
     /// rather than more evidence.
     pub const GREEDY_PREFIX: f64 = 0.75;
+    /// L6: how far a captured attention row may sum away from 1.0.
+    ///
+    /// Not tiered: a post-softmax row sums to one by construction on both
+    /// oracles, and the only thing this absorbs is the f32 accumulation of
+    /// up to a few thousand terms.
+    pub const ATTENTION_MASS: f64 = 1e-5;
+    /// L6: how many of the reference's heaviest keys ours must also rank.
+    ///
+    /// Ten rather than L2's fifty because an attention row is peaked on a
+    /// handful of keys and flat elsewhere; fifty would count agreement on
+    /// the flat part, which is agreement about nothing.
+    pub const ATTENTION_TOP_K: usize = 10;
 }
 
 /// The tolerances L1 and L2 are judged against, which differ by oracle.
@@ -694,6 +713,16 @@ pub struct Tolerance {
     /// at all, so a rung resting on it would be blind to exactly the defect
     /// class this checkpoint has already produced once.
     pub argmax: f64,
+    /// L6: worst single-key difference between an attention row of ours and
+    /// the reference's, over every key the row may attend.
+    ///
+    /// Absolute rather than KL because the rows are probabilities already
+    /// and most of a row is near zero: a KL over an attention row is
+    /// dominated by the handful of heavy keys and would let a wrong weight
+    /// on a light one hide, which is what a leaked key looks like.
+    pub attention_max_abs: f64,
+    /// L6: worst top-k key overlap across the compared rows.
+    pub attention_overlap: f64,
 }
 
 /// Tier T: the tiny transformers-authored fixture, f32 against f32 on a few
@@ -708,6 +737,8 @@ pub const TIER_T: Tolerance = Tolerance {
     top_k: 50,
     overlap: 1.0,
     argmax: 1.0,
+    attention_max_abs: 1e-5,
+    attention_overlap: 1.0,
 };
 
 /// Tier E: the real checkpoint. Looser, because thousands of dimensions and
@@ -722,6 +753,11 @@ pub const TIER_E: Tolerance = Tolerance {
     top_k: 50,
     overlap: 0.98,
     argmax: 0.98,
+    // PROVISIONAL, both: no attention row of ours has been compared against
+    // transformers on real weights yet. bf16 weights widened to f32 on both
+    // sides, then a 2560-wide dot and a softmax over up to 2052 keys.
+    attention_max_abs: 1e-3,
+    attention_overlap: 0.9,
 };
 
 /// One tokenizer case the reference encoded.
@@ -1494,6 +1530,233 @@ pub fn rung_long_context(
     ))
 }
 
+/// One reference attention row: the dense distribution over keys
+/// `0..=position` for one query head of one layer, masked keys included as
+/// the exact zeros the reference wrote.
+#[derive(Debug, Clone)]
+pub struct AttentionReferenceRow {
+    pub layer: usize,
+    pub head: usize,
+    pub position: usize,
+    pub weights: Vec<f32>,
+}
+
+/// Reference attention rows from a prefill that outruns the sliding window,
+/// written by `fixtures/reference_attention.py`.
+///
+/// Carries the layers, the positions and the head count the generator chose,
+/// not so the rung can read them, but so it can refuse them: the rung
+/// recomputes all three from its own config read, and rows compared at
+/// layers or positions the two sides chose differently are not evidence
+/// about attention.
+#[derive(Debug, Clone)]
+pub struct AttentionReference {
+    pub sliding_window: usize,
+    pub layers: Vec<usize>,
+    pub heads: usize,
+    pub positions: Vec<usize>,
+    pub token_ids: Vec<Token>,
+    pub rows: Vec<AttentionReferenceRow>,
+}
+
+/// The layers L6 compares, from the schedule the checkpoint declares.
+///
+/// Mirrors `reference_attention.attention_layers`, and
+/// `runtime/tests/ladder_reference_contract.rs` pins the two together. The
+/// first two layers, where a wrong input shows before anything can average
+/// it away; the sliding layer nearest the middle of the stack, ties to the
+/// lower index; and the last global layer, which on the released E-series
+/// is inside the shared-KV tail and so reads a donor layer's keys. Derived
+/// from `layer_types` rather than written as an index list so the same rule
+/// picks the interesting layers on the real checkpoint (0, 1, 21, 41) and on
+/// the four-layer fixture (every layer), and so a stride constant never
+/// enters -- the mistake `docs/models/gemma-4.md` warns against by name.
+pub fn attention_layers(kinds: &[LayerKind]) -> Vec<usize> {
+    let n = kinds.len();
+    let mut chosen: Vec<usize> = (0..n.min(2)).collect();
+    let middle = n / 2;
+    let nearest_sliding = (0..n)
+        .filter(|&i| matches!(kinds[i], LayerKind::SlidingWindow(_)))
+        .min_by_key(|&i| (i.abs_diff(middle), i));
+    chosen.extend(nearest_sliding);
+    let last_global = (0..n)
+        .rev()
+        .find(|&i| matches!(kinds[i], LayerKind::Global));
+    chosen.extend(last_global);
+    chosen.sort_unstable();
+    chosen.dedup();
+    chosen
+}
+
+/// Our side of L6: prefill the reference prompt with an attention tap on the
+/// layers and positions the artifact names, over every query head.
+///
+/// Specific to `CpuModel` for the reason `capture_ours` is: the tap is. Every
+/// head rather than the reference's count, so a head-count disagreement
+/// reaches the rung as a measure rather than as rows that were never asked
+/// for. The tap is removed afterwards so a later prefill does not pay for a
+/// capture nobody reads.
+pub fn capture_attention(
+    model: &mut crate::model::cpu::CpuModel,
+    reference: &AttentionReference,
+) -> Result<Vec<(AttentionKey, AttentionRow)>> {
+    use crate::model::cpu::AttentionTap;
+
+    let heads: Vec<usize> = (0..model.config().n_heads).collect();
+    let tap =
+        AttentionTap::at_positions(reference.layers.clone(), heads, reference.positions.clone());
+    model.set_tap(Box::new(tap.clone()));
+    model.truncate(0)?;
+    model
+        .prefill(&reference.token_ids)
+        .context("prefill the reference tokens")?;
+    model.take_tap();
+    Ok(tap.rows())
+}
+
+/// L6: the post-softmax attention rows at positions either side of the
+/// window, against the reference's, key for key.
+///
+/// The reference scores every key and masks the forbidden ones to exact
+/// zero; the engine never scores a forbidden key and its row is padded with
+/// zeros here. Comparing the dense rows is what makes the zeros a checked
+/// fact about the mask on both sides: a key the engine wrongly allows
+/// carries weight where the reference has zero, and one it wrongly forbids
+/// has zero where the reference has weight. `weight outside window` is the
+/// reference's side of that on its own, at a threshold of exactly zero,
+/// because a small nonzero there means the reference masked with a finite
+/// floor and the comparison is no longer against exact zeros at all.
+///
+/// `kinds`, `n_heads` and `window` are what *this run* read from the
+/// checkpoint, so the layers, positions and head count are recomputed here
+/// and the artifact's are refused rather than trusted, in L5's spirit.
+pub fn rung_attention(
+    captured: &[(AttentionKey, AttentionRow)],
+    kinds: &[LayerKind],
+    n_heads: usize,
+    window: usize,
+    reference: &AttentionReference,
+    tol: Tolerance,
+) -> Result<RungResult> {
+    ensure!(
+        !reference.rows.is_empty(),
+        "reference carries no attention rows"
+    );
+    let len = reference.token_ids.len();
+    let ours_layers = attention_layers(kinds);
+    let ours_schedule = window_schedule(window, len)
+        .context("this run's window schedule over the reference prompt")?;
+    let agreements = [
+        reference.layers == ours_layers,
+        reference.positions == ours_schedule,
+        reference.heads == n_heads,
+    ];
+    let agreed = agreements.iter().filter(|&&a| a).count() as f64 / agreements.len() as f64;
+
+    let ours: std::collections::BTreeMap<AttentionKey, &AttentionRow> =
+        captured.iter().map(|(k, r)| (*k, r)).collect();
+    let mut outside = 0.0f64;
+    let mut worst_abs = 0.0f64;
+    let mut worst_mass = 0.0f64;
+    let mut worst_overlap = f64::INFINITY;
+    let mut worst_at = (0usize, 0usize, 0usize);
+    for row in &reference.rows {
+        let (l, h, p) = (row.layer, row.head, row.position);
+        ensure!(
+            row.weights.len() == p + 1,
+            "reference row layer {l} head {h} position {p} holds {} weights",
+            row.weights.len()
+        );
+        let (first, w) = ours.get(&(l, h, p)).with_context(|| {
+            format!("layer {l} head {h} position {p}: this run captured no row")
+        })?;
+        ensure!(
+            first + w.len() == p + 1,
+            "layer {l} head {h} position {p}: {} weights over a span starting at {first}",
+            w.len()
+        );
+        let mut dense = vec![0.0f32; p + 1];
+        dense[*first..].copy_from_slice(w);
+
+        let mut mass = 0.0f64;
+        for &x in w.iter() {
+            ensure!(
+                x.is_finite(),
+                "layer {l} head {h} position {p}: non-finite weight {x}"
+            );
+            mass += f64::from(x);
+        }
+        worst_mass = worst_mass.max((mass - 1.0).abs());
+        for (k, (&a, &b)) in dense.iter().zip(&row.weights).enumerate() {
+            ensure!(
+                b.is_finite(),
+                "layer {l} head {h} position {p}: non-finite reference weight {b} at key {k}"
+            );
+            if k < *first {
+                outside = outside.max(f64::from(b).abs());
+            }
+            let d = (f64::from(a) - f64::from(b)).abs();
+            if d > worst_abs {
+                worst_abs = d;
+                worst_at = (l, h, p);
+            }
+        }
+        worst_overlap = worst_overlap.min(crate::metrics::topk_overlap(
+            &row.weights,
+            &dense,
+            thresholds::ATTENTION_TOP_K,
+        ));
+    }
+
+    let note = match agreements.iter().all(|&a| a) {
+        false => format!(
+            "this run chose layers {ours_layers:?} at {ours_schedule:?} over {n_heads} heads \
+             and the reference recorded {:?} at {:?} over {}: the two compared different rows",
+            reference.layers, reference.positions, reference.heads
+        ),
+        true => format!(
+            "{} rows across {} layers x {} heads at {} positions; window {window}; worst at \
+             layer {} head {} position {}",
+            reference.rows.len(),
+            reference.layers.len(),
+            reference.heads,
+            reference.positions.len(),
+            worst_at.0,
+            worst_at.1,
+            worst_at.2
+        ),
+    };
+
+    Ok(RungResult::measured(
+        Rung::L6Attention,
+        vec![
+            // First, for L5's reason: rows compared at layers or positions the
+            // two sides chose differently are not evidence about attention.
+            Measure::new("captured layers agree", agreed, 1.0, Cmp::AtLeast),
+            Measure::new("weight outside window", outside, 0.0, Cmp::AtMost),
+            Measure::new(
+                "worst row max abs diff",
+                worst_abs,
+                tol.attention_max_abs,
+                Cmp::AtMost,
+            ),
+            Measure::new(
+                "worst row mass",
+                worst_mass,
+                thresholds::ATTENTION_MASS,
+                Cmp::AtMost,
+            ),
+            Measure::new(
+                "worst top-10 overlap",
+                worst_overlap,
+                tol.attention_overlap,
+                Cmp::AtLeast,
+            ),
+        ],
+        note,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1521,6 +1784,7 @@ mod tests {
                 Status::Pass,
                 Status::Pass,
                 Status::Fail,
+                Status::NotReached,
                 Status::NotReached,
                 Status::NotReached,
                 Status::NotReached
@@ -2409,5 +2673,181 @@ mod tests {
         let mut m = MockModel::new(6, script);
         let err = rung_long_context(&mut m, 3, &reference, TIER_T).expect_err("expected an error");
         assert!(err.to_string().contains("schedule scores"), "{err}");
+    }
+
+    /// A four-layer schedule with a 3-token window: the tiny fixture's shape.
+    fn tiny_kinds() -> Vec<LayerKind> {
+        vec![
+            LayerKind::SlidingWindow(3),
+            LayerKind::Global,
+            LayerKind::SlidingWindow(3),
+            LayerKind::Global,
+        ]
+    }
+
+    /// Attention rows over a 40-token prompt at the literal `TINY_SCHEDULE`,
+    /// as the engine would capture them and as an artifact would carry them.
+    ///
+    /// Each row is a distinct peaked distribution over its visible span, so a
+    /// row compared at the wrong layer, head or position differs rather than
+    /// agrees by coincidence. The reference is built dense from the same
+    /// numbers, zero before the span, which is what the generator writes.
+    fn attention_pair(
+        kinds: &[LayerKind],
+        n_heads: usize,
+    ) -> (Vec<(AttentionKey, AttentionRow)>, AttentionReference) {
+        const LEN: usize = 40;
+        let layers = attention_layers(kinds);
+        let mut captured = Vec::new();
+        let mut rows = Vec::new();
+        for &l in &layers {
+            for h in 0..n_heads {
+                for &p in &TINY_SCHEDULE {
+                    let first = match kinds[l] {
+                        LayerKind::Global => 0,
+                        LayerKind::SlidingWindow(w) => (p + 1).saturating_sub(w),
+                    };
+                    let raw: Vec<f32> = (first..=p)
+                        .map(|t| ((t * 7 + p * 3 + l * 5 + h) % 11 + 1) as f32)
+                        .collect();
+                    let total: f32 = raw.iter().sum();
+                    let w: Vec<f32> = raw.iter().map(|x| x / total).collect();
+                    let mut dense = vec![0.0f32; p + 1];
+                    dense[first..].copy_from_slice(&w);
+                    captured.push(((l, h, p), (first, w)));
+                    rows.push(AttentionReferenceRow {
+                        layer: l,
+                        head: h,
+                        position: p,
+                        weights: dense,
+                    });
+                }
+            }
+        }
+        let reference = AttentionReference {
+            sliding_window: 3,
+            layers,
+            heads: n_heads,
+            positions: TINY_SCHEDULE.to_vec(),
+            token_ids: (0..LEN).map(|t| (t % 5) as Token).collect(),
+            rows,
+        };
+        (captured, reference)
+    }
+
+    fn measure<'a>(r: &'a RungResult, name: &str) -> &'a Measure {
+        r.measures
+            .iter()
+            .find(|m| m.name == name)
+            .unwrap_or_else(|| panic!("no measure {name} in {:?}", r.measures))
+    }
+
+    #[test]
+    fn attention_layers_picks_the_first_two_the_middle_sliding_and_the_last_global() {
+        // E4B's schedule: a global layer every sixth, 42 layers.
+        let e4b: Vec<LayerKind> = (0..42)
+            .map(|i| match (i + 1) % 6 {
+                0 => LayerKind::Global,
+                _ => LayerKind::SlidingWindow(512),
+            })
+            .collect();
+        assert_eq!(attention_layers(&e4b), vec![0, 1, 21, 41]);
+        // The fixture: every layer, each once.
+        assert_eq!(attention_layers(&tiny_kinds()), vec![0, 1, 2, 3]);
+        // No global layer: nothing to add for it.
+        let sliding_only = vec![LayerKind::SlidingWindow(3); 5];
+        assert_eq!(attention_layers(&sliding_only), vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn attention_rows_reproducing_the_reference_pass_at_every_row() {
+        let kinds = tiny_kinds();
+        let (captured, reference) = attention_pair(&kinds, 2);
+        let r = rung_attention(&captured, &kinds, 2, 3, &reference, TIER_T).unwrap();
+        assert_eq!(r.status, Status::Pass, "{r:?} note={}", r.note);
+        assert!(r.note.contains("4 layers x 2 heads"), "{}", r.note);
+        assert!(r.note.contains("window 3"), "{}", r.note);
+        assert_eq!(measure(&r, "weight outside window").value, 0.0);
+    }
+
+    #[test]
+    fn one_weight_moved_inside_the_window_fails_and_the_note_names_the_row() {
+        let kinds = tiny_kinds();
+        let (captured, mut reference) = attention_pair(&kinds, 2);
+        // Layer 2 head 1 at position 20: a sliding row, moved on a visible key.
+        let row = reference
+            .rows
+            .iter_mut()
+            .find(|r| r.layer == 2 && r.head == 1 && r.position == 20)
+            .unwrap();
+        row.weights[19] += 0.01;
+        let r = rung_attention(&captured, &kinds, 2, 3, &reference, TIER_T).unwrap();
+        assert_eq!(r.status, Status::Fail, "{r:?}");
+        assert!(!measure(&r, "worst row max abs diff").ok(), "{r:?}");
+        assert!(r.note.contains("layer 2 head 1 position 20"), "{}", r.note);
+        // Only the row comparison moved; the mask facts stand.
+        assert!(measure(&r, "weight outside window").ok(), "{r:?}");
+        assert!(measure(&r, "captured layers agree").ok(), "{r:?}");
+    }
+
+    #[test]
+    fn a_reference_weight_before_the_window_fails_at_exactly_zero() {
+        // The mask fact this rung is for: the reference put weight on a key
+        // the window excludes. Tiny rather than large, because the threshold
+        // is exact and a finite masking floor is the failure it detects.
+        let kinds = tiny_kinds();
+        let (captured, mut reference) = attention_pair(&kinds, 2);
+        let row = reference
+            .rows
+            .iter_mut()
+            .find(|r| r.layer == 0 && r.head == 0 && r.position == 20)
+            .unwrap();
+        row.weights[0] = 1e-7;
+        let r = rung_attention(&captured, &kinds, 2, 3, &reference, TIER_T).unwrap();
+        assert_eq!(r.status, Status::Fail, "{r:?}");
+        let outside = measure(&r, "weight outside window");
+        assert!(!outside.ok(), "{}", outside.value);
+        assert_eq!(outside.threshold, 0.0);
+    }
+
+    #[test]
+    fn a_reference_whose_layer_choice_disagrees_fails_the_agreement_measure() {
+        let kinds = tiny_kinds();
+        let (captured, mut reference) = attention_pair(&kinds, 2);
+        reference.layers = vec![0, 1, 3];
+        let r = rung_attention(&captured, &kinds, 2, 3, &reference, TIER_T).unwrap();
+        assert_eq!(r.status, Status::Fail, "{r:?}");
+        let agree = measure(&r, "captured layers agree");
+        assert!(!agree.ok() && agree.value < 1.0, "{}", agree.value);
+        assert!(
+            r.note.contains("[0, 1, 2, 3]") && r.note.contains("[0, 1, 3]"),
+            "the note must name both choices: {}",
+            r.note
+        );
+    }
+
+    #[test]
+    fn a_run_reading_a_wider_window_fails_the_agreement_measure() {
+        // The reference scheduled its positions from a 3-token window; a run
+        // that read 4 schedules different ones, and the rows it captured are
+        // at positions the reference never scored.
+        let kinds = tiny_kinds();
+        let (captured, reference) = attention_pair(&kinds, 2);
+        let r = rung_attention(&captured, &kinds, 2, 4, &reference, TIER_T).unwrap();
+        assert_eq!(r.status, Status::Fail, "{r:?}");
+        assert!(!measure(&r, "captured layers agree").ok(), "{r:?}");
+    }
+
+    #[test]
+    fn a_reference_row_this_run_never_captured_is_an_error_not_a_failed_rung() {
+        let kinds = tiny_kinds();
+        let (mut captured, reference) = attention_pair(&kinds, 2);
+        captured.retain(|((l, h, p), _)| !(*l == 3 && *h == 1 && *p == 39));
+        let err = rung_attention(&captured, &kinds, 2, 3, &reference, TIER_T)
+            .expect_err("expected an error");
+        assert!(
+            err.to_string().contains("layer 3 head 1 position 39"),
+            "{err}"
+        );
     }
 }

@@ -1,5 +1,5 @@
 /*
- * ladder — run the six-rung correctness gate against a real checkpoint.
+ * ladder — run the seven-rung correctness gate against a real checkpoint.
  *
  * Loads whichever reference artifacts exist under --reference, climbs the
  * rungs in order, prints one table, and exits non-zero on the first failure.
@@ -19,6 +19,7 @@ use std::process::ExitCode;
 use anyhow::Result;
 
 use runtime::cli::{Flag, Kind, Spec};
+use runtime::kv::LayerKind;
 use runtime::ladder::{self, Rung, RungResult, Size, Tolerance};
 use runtime::model::cpu::{BatchKind, CpuModel, DotKind, PRELUDE_STAGES};
 
@@ -126,8 +127,29 @@ fn run_rung(
             // measures, so the rung has to be handed our own answer.
             let window = model.config().sliding_window;
             ladder::rung_long_context(model, window, &reference, tol).map(Some)
+        }
+        Rung::L6Attention => {
+            let path = reference_dir.join("attention.json");
+            let Some(reference) = runtime::reference::load_attention(&path)? else {
+                return Ok(None);
+            };
+            let captured = ladder::capture_attention(model, &reference)?;
+            // Our own reading of the schedule, the head count and the window:
+            // the rung recomputes which rows to expect from these and refuses
+            // the artifact's choices where they differ.
+            let kinds: Vec<LayerKind> = model.layer_specs().iter().map(|l| l.kind).collect();
+            let config = model.config();
+            ladder::rung_attention(
+                &captured,
+                &kinds,
+                config.n_heads,
+                config.sliding_window,
+                &reference,
+                tol,
+            )
+            .map(Some)
         } // Every rung is wired; the match stays exhaustive by arm rather than
-          // by wildcard so a seventh rung has to be handled here rather than
+          // by wildcard so an eighth rung has to be handled here rather than
           // silently reporting skipped forever.
     }
 }
@@ -314,7 +336,7 @@ fn run(
     // closure, so it is the only figure here no rung body can under-report.
     //
     // `step` is the rung index, which makes this a category axis wearing a
-    // continuum's clothes -- six points, ordered but not spaced. That is
+    // continuum's clothes -- seven points, ordered but not spaced. That is
     // honest for `rung_duration_s`, the series the dashboard charts, because
     // the rungs really do run in that order. It is why the measures ride
     // along un-charted: `worst kl` and `ppl delta` are different quantities
@@ -381,7 +403,7 @@ fn run(
 
 const SPEC: Spec = Spec {
     program: "ladder",
-    summary: "Run the six-rung correctness gate against a transformers reference.",
+    summary: "Run the seven-rung correctness gate against a transformers reference.",
     positionals: "",
     required: &["--model", "--reference"],
     flags: &[
@@ -412,8 +434,8 @@ const SPEC: Spec = Spec {
         },
         Flag {
             name: "--rung",
-            kind: Kind::Value("L0|L1|L2|L3|L4|L5"),
-            help: "climb one rung rather than all six",
+            kind: Kind::Value("L0|L1|L2|L3|L4|L5|L6"),
+            help: "climb one rung rather than all seven",
         },
         Flag {
             name: "--dot",
@@ -560,7 +582,7 @@ fn main() -> ExitCode {
             None => {
                 return runtime::cli::usage_error(
                     &SPEC,
-                    &format!("--rung {value}: expected one of L0 L1 L2 L3 L4 L5"),
+                    &format!("--rung {value}: expected one of L0 L1 L2 L3 L4 L5 L6"),
                 )
             }
         }
@@ -627,6 +649,10 @@ mod tests {
         assert_eq!(slug("worst top-50 overlap"), "worst_top_50_overlap");
         assert_eq!(slug("mean common prefix"), "mean_common_prefix");
         assert_eq!(slug("ppl delta"), "ppl_delta");
+        assert_eq!(slug("captured layers agree"), "captured_layers_agree");
+        assert_eq!(slug("weight outside window"), "weight_outside_window");
+        assert_eq!(slug("worst row max abs diff"), "worst_row_max_abs_diff");
+        assert_eq!(slug("worst top-10 overlap"), "worst_top_10_overlap");
     }
 
     /// A run of separators collapses, and neither end keeps one. A key like

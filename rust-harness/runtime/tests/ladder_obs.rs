@@ -94,7 +94,7 @@ fn parse_lines(path: &Path) -> Vec<serde_json::Value> {
 /// The reference directory is built here rather than committed: the L1/L2
 /// loader reads `layers.json`, and the fixture's capture is the same payload
 /// under its own name. Copying it means two rungs genuinely run -- a header
-/// and six phases over six skipped rungs would exercise the plumbing and
+/// and seven phases over seven skipped rungs would exercise the plumbing and
 /// prove nothing about a rung that did work.
 fn run_ladder() -> Option<Recorded> {
     run_ladder_with(&[])
@@ -246,7 +246,7 @@ fn the_ladder_header_matches_its_declared_fields() {
 fn every_attempted_rung_leaves_a_phase_and_a_metrics_record() {
     let Some(r) = run_ladder() else { return };
     // model.load first, then one per rung in climb order. A run with no
-    // `--rung` and no failure attempts all six, so this is the full list and
+    // `--rung` and no failure attempts all seven, so this is the full list and
     // its order is the climb's.
     assert_eq!(
         r.phases(),
@@ -257,7 +257,8 @@ fn every_attempted_rung_leaves_a_phase_and_a_metrics_record() {
             "rung.L2",
             "rung.L3",
             "rung.L4",
-            "rung.L5"
+            "rung.L5",
+            "rung.L6"
         ],
         "events: {:#?}",
         r.events
@@ -280,7 +281,7 @@ fn every_attempted_rung_leaves_a_phase_and_a_metrics_record() {
     // The header record, then one per rung.
     let (header, steps) = r.metrics.split_first().expect("metrics.jsonl is not empty");
     assert_eq!(header["report"], "run_metrics", "{header}");
-    assert_eq!(steps.len(), 6, "{steps:#?}");
+    assert_eq!(steps.len(), 7, "{steps:#?}");
     for (i, rec) in steps.iter().enumerate() {
         // Numeric, or common/obs/viewer.js:109 drops the record silently --
         // present in the file and absent from every chart.
@@ -297,7 +298,7 @@ fn every_attempted_rung_leaves_a_phase_and_a_metrics_record() {
         );
     }
     // L1 and L2 have their reference here, so they carry measures. Without
-    // this the whole file passes over six skipped rungs, which would prove
+    // this the whole file passes over seven skipped rungs, which would prove
     // the plumbing and nothing about a rung that did work.
     assert!(
         steps[1]["worst_cosine"].as_f64().is_some(),

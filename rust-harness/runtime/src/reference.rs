@@ -400,6 +400,78 @@ pub fn load_long_context(path: &Path) -> Result<Option<crate::ladder::LongContex
     }))
 }
 
+/// Load the L6 attention rows written by `fixtures/reference_attention.py`.
+///
+/// Same contract as the loaders above: absent is `Ok(None)` and a skipped
+/// rung, present and malformed is an error. `layers`, `heads` and
+/// `positions` are required for L5's reason with `sliding_window`: the rung
+/// refuses an artifact whose choices differ from its own, and a defaulted
+/// field would silently supply one side of that comparison.
+pub fn load_attention(path: &Path) -> Result<Option<crate::ladder::AttentionReference>> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let text = std::fs::read_to_string(path)
+        .with_context(|| format!("read reference {}", path.display()))?;
+    let v: serde_json::Value = serde_json::from_str(&text)
+        .with_context(|| format!("parse reference {}", path.display()))?;
+
+    let count = |key: &str| -> Result<usize> {
+        Ok(v.get(key)
+            .and_then(serde_json::Value::as_u64)
+            .with_context(|| format!("attention artifact carries no integer {key}"))?
+            as usize)
+    };
+    let indices = |key: &str| -> Result<Vec<usize>> {
+        v.get(key)
+            .and_then(|t| t.as_array())
+            .with_context(|| format!("attention artifact carries no {key} array"))?
+            .iter()
+            .enumerate()
+            .map(|(i, x)| {
+                Ok(x.as_u64()
+                    .with_context(|| format!("{key}[{i}] is not an integer"))?
+                    as usize)
+            })
+            .collect()
+    };
+    let sliding_window = count("sliding_window")?;
+    let heads = count("heads")?;
+    let layers = indices("layers")?;
+    let positions = indices("positions")?;
+    let token_ids = required_ids(&v, "token_ids")?;
+
+    let rows = v
+        .get("rows")
+        .and_then(|t| t.as_array())
+        .context("attention artifact carries no rows array")?;
+    let mut out = Vec::with_capacity(rows.len());
+    for (i, row) in rows.iter().enumerate() {
+        let field = |key: &str| -> Result<usize> {
+            Ok(row
+                .get(key)
+                .and_then(serde_json::Value::as_u64)
+                .with_context(|| format!("row {i} has no integer {key}"))? as usize)
+        };
+        out.push(crate::ladder::AttentionReferenceRow {
+            layer: field("layer")?,
+            head: field("head")?,
+            position: field("position")?,
+            weights: optional_row(row, "weights")?
+                .with_context(|| format!("row {i} carries no weights"))?,
+        });
+    }
+
+    Ok(Some(crate::ladder::AttentionReference {
+        sliding_window,
+        layers,
+        heads,
+        positions,
+        token_ids,
+        rows: out,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

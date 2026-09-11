@@ -101,7 +101,7 @@ impl Run {
 ///
 /// The reference directory is assembled here for the reason `ladder_obs.rs`
 /// gives: the capture is the L1 and L2 payload under another name, and copying
-/// it is what makes two rungs genuinely run. A climb over six skipped rungs
+/// it is what makes two rungs genuinely run. A climb over seven skipped rungs
 /// would compare empty tables and call them identical.
 fn ladder(extra: &[&str]) -> Run {
     let dir = tempfile::tempdir().expect("a scratch working directory");
@@ -297,9 +297,9 @@ fn rung_climbs_only_the_rung_it_names() {
             "--rung {asked} climbed {left} as well:\n{}",
             r.stdout
         );
-        // Every other rung of the six is unclimbed too, not merely the one
+        // Every other rung of the seven is unclimbed too, not merely the one
         // that had an artifact waiting.
-        for other in ["L0", "L3", "L4", "L5"] {
+        for other in ["L0", "L3", "L4", "L5", "L6"] {
             assert_ne!(
                 r.verdict(other),
                 "PASS",
