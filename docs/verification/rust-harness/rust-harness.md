@@ -4794,67 +4794,105 @@ Status: VERIFIED 2026-09-11 (gate-backed by `tests/hardware/test_alignment.py`)
 
 ## RH.20 Compaction past the rewind horizon
 
-Implementation: `rust-harness/runtime/src/session.rs`,
-`rust-harness/runtime/src/model/cpu.rs` (`rewind_horizon`).
+Implementation: `rust-harness/runtime/src/session.rs` (`sync`, `Prefill`),
+`rust-harness/runtime/src/model/cpu.rs` (`rewind_horizon`, `rewindable_from`),
+`rust-harness/harness/src/generator.rs` (`report_prefill`).
 
-`Session::sync` may not rewind past a sliding-window cache's horizon, because
-such a cache evicts rather than masks. Below the horizon it clears and
-re-prefills. Compaction rewinds much further than the horizon by construction —
-it rewrites the middle of the transcript and the summarizing turn opens a fresh
-sequence, so the common prefix lands near zero — which makes the clear-and-
-re-prefill path the routine path after a compaction rather than an edge case.
+`Session::sync` may not rewind past a sliding-window cache's floor, because
+such a cache evicts rather than masks. Below the floor it clears and
+re-prefills. Compaction rewinds much further than the floor by construction —
+it rewrites the middle of the transcript, so the new prompt shares only its
+head with the cache — which makes the clear-and-re-prefill path the routine
+path after a compaction rather than an edge case. The property is that the
+path is taken as a rebuild, exactly, and not enforced as a refusal.
 
-`harness/tests/sampling_flags.rs` pins that `--compact-at` fires at a low
-threshold and does not at a high one (RH.28), but on the fixture the horizon is
-a handful of positions and the re-prefill is instant. **The horizon on E4B is
-reported in the run header as `rewind_horizon`, and this entry expects 208**;
-the header is the authority, so record what it prints rather than assuming the
-figure. Reaching it needs a session long enough that compaction has a middle to
-rewrite, which on E4B means turns numbering in the tens.
+**The first draft of this entry could not be run, for three reasons worth
+keeping.** Its deciding signal was the `tracing::debug!` in `sync`, which no
+stderr subscriber ever prints: the harness installs only the Chrome trace
+layer, and only under `--trace-chrome`, so `RUST_LOG` does nothing. Its
+`--compact-at 0.05` measured against the default budget of 131072 tokens
+(the RH.19 header shows it), so forty short turns never reached the 6553
+tokens at which it would fire. And it expected `floor=208`, confusing two
+quantities: the horizon, which the run header reports as 208, is how far
+behind the tip the floor sits once the window has filled; the floor itself is
+an absolute position, several hundred at the first compaction and rising.
 
-The transcript is `session.jsonl` in the working directory, so run this from an
-empty directory. The debug-level rewind message is the deciding signal, so
-raise the log level for it.
+The rewind rule is unchanged. What changed is that `sync` now records its
+decision in the `Prefill` it already keeps — the positions kept, and when the
+floor forced zero, the prefix it refused and the floor — and the binary names
+both on the `Prefill:` line it already prints (`report_prefill`). The library
+still prints nothing, by its own rule above `last_prefill`. The sandbox pins
+the record on a synthetic four-position window
+(`a_sync_below_the_floor_rebuilds_from_zero_and_records_why`, which also holds
+the rebuilt logits to a fresh session's). This entry reaches the floor on the
+real window through the chat loop.
+
+The settings, from the run header and `kv::window_capacity`: window 512 and a
+batch group of 64 give a capacity of 719 positions, so eviction begins past
+719 and the horizon is 719 - 511 = 208. `--context 2048` does not move it
+(the group is still 64) and puts `--compact-at 0.4` at about 819 rendered
+tokens, past 719; so at the sync after each compaction the floor is several
+hundred while the common prefix is the memory turn plus the one head entry
+`compact::KEEP_PREFIX` keeps verbatim. The transcript is `session.jsonl` in the
+working directory and the harness resumes from it, so run this from an empty
+directory and nothing else there.
 
 ```bash
 cd ~/workspace/ai-experiments/rust-harness
+cargo build --release -p harness
 MODEL=<the gemma-4-E4B checkpoint directory>
-mkdir -p /tmp/rh20 && cd /tmp/rh20
+mkdir -p /tmp/rh20 && cd /tmp/rh20 && rm -f session.jsonl session.kv
 
-# 1. the horizon this checkpoint reports, before anything else
-cargo run --release -q --manifest-path ~/workspace/ai-experiments/rust-harness/Cargo.toml \
-  -p harness -- --model "$MODEL" --text-only --max-tokens 1 "hello" 2>&1 \
-  | grep rewind_horizon
-
-# 2. a session long enough to compact more than once. --compact-at 0.05
-#    reaches the threshold in tens of turns rather than hundreds; the
-#    conversation content does not matter, only its length.
-seq 1 40 | sed 's/^/turn /' \
-  | RUST_LOG=runtime::session=debug cargo run --release -q \
-      --manifest-path ~/workspace/ai-experiments/rust-harness/Cargo.toml \
-      -p harness -- --model "$MODEL" --text-only --chat \
-      --compact-at 0.05 --max-tokens 8 2> /tmp/rh20/run.log
+# 1. sixty turns of thirty words, long enough to cross the threshold more
+#    than once; the content does not matter
+python3 -c 'w="matter energy motion field charge wave particle heat light sound".split()
+for i in range(60): print(f"turn {i+1}: "+" ".join(w[(i+j)%len(w)] for j in range(30)))' \
+  | ~/workspace/ai-experiments/rust-harness/target/release/harness \
+      --model "$MODEL" --text-only --chat --context 2048 --compact-at 0.4 \
+      --max-tokens 8 > /tmp/rh20/replies.txt 2> /tmp/rh20/run.log
 echo "exit=$?"
+
+# 2. the horizon this checkpoint reports
+grep 'Rewind horizon' /tmp/rh20/run.log
 
 # 3. how many compactions the transcript records
 jq -r .role /tmp/rh20/session.jsonl | sort | uniq -c
 
-# 4. the rewind decision, once per compaction
-grep 'rewind past the sliding window' /tmp/rh20/run.log
+# 4. the rebuild, once per compaction
+grep 'rebuilt from 0' /tmp/rh20/run.log
 ```
 
-Expected signal: (1) `rewind_horizon=208`. (2) exit 0 — a rewind past the
-horizon is a slower path, not an error, and a run that fails here means the
-floor is being enforced as a refusal rather than as a rebuild. (3) at least two
-compaction records. (4) **one `rewind past the sliding window: clearing and
-re-prefilling` line per compaction, each naming `floor=208` and a `keep` below
-it.** That line is the entry: it is the only evidence that compaction crossed
-the horizon rather than staying inside a window where the cheap rewind
-suffices, and a run with two compactions and no such line has not tested the
-path this entry exists for.
+Expected signal: (1) exit 0 — a rewind past the floor is a slower path, not
+an error, and a run that fails here means the floor is being enforced as a
+refusal rather than as a rebuild. (2) `Rewind horizon: 208 tokens behind the
+tip`. (3) at least two `compaction` records. (4) **one `Prefill: N tokens in
+S s (R tok/s); rebuilt from 0: a rewind to C fell below the window floor at
+F` line per compaction, each with `C` at least 1 and below `F`, and `N`
+above `C`.** That line is the entry: it is the only evidence that compaction
+crossed the floor rather than staying inside a window where the cheap rewind
+suffices. A run with two compactions and fewer such lines has not tested the
+path this entry exists for; record it as a finding (the threshold sat below
+eviction, or the kept head was longer than the floor) rather than as a pass.
 
-If (4) is empty, lower `--compact-at` or lengthen the session and re-run rather
-than recording a pass.
+Asserted by `tests/hardware/test_compaction.py`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| The `Rewind horizon` line, with a positive count | `test_the_header_reports_the_horizon` |
+| Exit 0 and at least two `compaction` records, every turn reporting its prefill | `test_the_session_compacts_more_than_once` |
+| As many rebuilt `Prefill:` lines as compaction records, each with `1 <= C < F` and `N > C` | `test_every_compaction_rebuilds_the_cache_past_the_floor` |
+
+```bash
+cd ~/workspace/ai-experiments
+HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B \
+  uv run pytest -m hw_e4b tests/hardware/test_compaction.py -v
+echo "exit=$?"
+```
+
+The same test runs under
+`make quality-full HW=e4b HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B`.
+The horizon's value is read into the failure message and not pinned: it is a
+property of the checkpoint the header reports, and this entry records it.
 
 Observed:
 
