@@ -15,10 +15,17 @@ the conftest rule for real-model loads. Anything the binary reports once it
 runs is a verdict, and a rung skipped inside the run is a failure here even
 though the binary exits 0 for it: after the generators ran, a skip means one
 wrote somewhere other than where the climb read.
+
+The L5 detail line is read as well, for RH.17: the window this run's loader
+read has to equal the window the reference generator recorded, because both
+sides derive the scored positions from their own window and the rows are
+paired by index. Agreement there is what makes L5's row comparison a
+comparison at all, and the binary's verdict line does not carry it.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -37,6 +44,19 @@ SIZE = "quick"
 VERDICT = re.compile(
     r"^\[OK\] Ladder: every rung within tolerance \((\d+) skipped\)", re.M
 )
+
+# L5's detail line: the schedule size, and the window this run's loader read.
+WINDOW_LINE = re.compile(
+    r"^\s+(\d+) positions across a (\d+)-token window over (\d+) tokens", re.M
+)
+# The artifact `make ladder` generates and reads for SIZE=quick; its
+# `sliding_window` is what transformers attended under when the rows were
+# written (fixtures/reference_long_context.py).
+LONG_CONTEXT = os.path.join(
+    HARNESS, "fixtures", "reference", "e4b", SIZE, "long_context.json"
+)
+# ladder.rs fixes the schedule at six anchors (LONG_CONTEXT_POSITIONS).
+LONG_CONTEXT_POSITIONS = 6
 
 # A cold run is five generator passes through transformers on the CPU (the
 # perplexity and long-context ones dominate) and then six model loads and a
@@ -81,3 +101,18 @@ def test_the_ladder_passes_every_rung_at_tier_e():
         f"{skipped} rung(s) skipped after the generators ran; a skipped rung is"
         f" missing evidence, not a pass\n{transcript}"
     )
+
+    # RH.17's half of L5. The run's window comes from the loader's config read
+    # and the artifact's from transformers' config read of the same checkpoint;
+    # a run reading a different window scores different positions and compares
+    # rows computed at different places, which diverges rather than mislabels.
+    detail = WINDOW_LINE.search(transcript)
+    assert detail is not None, f"no L5 detail line in the transcript\n{transcript}"
+    positions, reported = int(detail.group(1)), int(detail.group(2))
+    with open(LONG_CONTEXT, encoding="utf-8") as handle:
+        recorded = int(json.load(handle)["sliding_window"])
+    assert reported == recorded, (
+        f"the run reports a {reported}-token window; the reference at "
+        f"{LONG_CONTEXT} was written under {recorded}"
+    )
+    assert positions == LONG_CONTEXT_POSITIONS, detail.group(0)
