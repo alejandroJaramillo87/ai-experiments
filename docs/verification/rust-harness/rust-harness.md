@@ -4596,26 +4596,39 @@ cargo run --release -q -p harness -- --model "$MODEL" --text-only \
   "The three states of matter are"
 echo "exit=$?"
 
-# 1. the header, then the role histogram
-head -1 /tmp/rh19/align.jsonl | jq .
+# 1. the header without its text, then the role histogram
+head -1 /tmp/rh19/align.jsonl | jq 'del(.text)'
 tail -n +2 /tmp/rh19/align.jsonl | jq -r .role | sort | uniq -c
 
-# 2. the scaffold rows and the bytes they claim
+# 2. the scaffold rows and the bytes they claim (a row carries byte offsets
+#    into the header's text, not the text itself)
 tail -n +2 /tmp/rh19/align.jsonl \
-  | jq -c 'select(.role == "scaffold") | {pos, span, text}'
+  | jq -c 'select(.role == "scaffold") | {position, byte_start, byte_end}'
 
-# 3. the round trip: concatenated spans reproduce the text
-tail -n +2 /tmp/rh19/align.jsonl | jq -r .text | tr -d '\n' | wc -c
-head -1 /tmp/rh19/align.jsonl | jq .text_bytes
+# 3. the round trip: the spans tile the header's text from 0 to its byte
+#    length with no gap or overlap
+head -1 /tmp/rh19/align.jsonl | jq -j .text | wc -c
+tail -n +2 /tmp/rh19/align.jsonl | jq -s \
+  '{rows: length, first: .[0].byte_start, last: .[-1].byte_end,
+    gaps: [range(1; length) as $i | select(.[$i].byte_start != .[$i-1].byte_end)] | length}'
 ```
 
-Expected signal: (1) positions dense from zero, counted in the header, and at
-least one row marked `scaffold`. (2) **On the real vocabulary every scaffold
-row carries an empty span** — the marker is a piece `decode` drops, so the
-position exists in the artifact and contributes no bytes. This is the clause
-the fixtures invert. (3) The concatenated spans reproduce the written text
-byte for byte, which is the property the artifact would break if it suppressed
-bytes to satisfy the rule rather than marking the role.
+Expected signal: (1) positions dense from zero, counted in the header's
+`positions`, and at least one row marked `scaffold` (the task prompt is
+rendered through the chat template, `<bos>` and the turn markers included).
+(2) **On the real vocabulary every scaffold row carries an empty span**,
+`byte_start` equal to `byte_end` — the marker is a piece `decode` drops, so
+the position exists in the artifact and contributes no bytes. This is the
+clause the fixtures invert. (3) The spans tile the header's `text`: the first
+row starts at 0, the last ends at the text's byte length, and no row starts
+anywhere but where the previous one ended, which is the property the
+artifact would break if it suppressed bytes to satisfy the rule rather than
+marking the role.
+
+The first draft of this block read `pos`, `span` and `text` off the rows and
+`text_bytes` off the header; none of those keys exists
+(`schemas/alignment.json`), so it would have printed nulls and
+compared nothing.
 
 Record the scaffold rows verbatim. If any of them carries a non-empty span,
 the fork in the header block is wrong about the real vocabulary and the note
