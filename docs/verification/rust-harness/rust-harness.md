@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 28 verified, 0 blocked, 10 pending, of 38.** RH.11 was blocked
+**Entries: 29 verified, 0 blocked, 9 pending, of 38.** RH.11 was blocked
 until 2026-09-05 on an instruction-tuned checkpoint; gemma-4-E2B-it unblocked
 it, and it closed on that checkpoint on 2026-09-06. RH.9d and RH.15 were
 blocked until the same day on a control vector this repository could not
@@ -14,12 +14,11 @@ and the entry records the install step. RH.8 was blocked until the same day
 on the absence of an instruction-tuned checkpoint; gemma-4-E2B-it now closes
 it, and its entry records the two harness defects the first runs exposed.
 
-Of the 10 pending, RH.22 is a new full entry from the surface
-inventory, needing a human, the GPU host, or the real E4B checkpoint.
-RH.23 through RH.31 are **gate-backed**: each names the test function that
-asserts its expected signal, and one `cargo test --workspace` run closes all
-nine. Everything the inventory found that is neither is listed in the coverage
-roster at the end of this file, against the test that pins it.
+The 9 pending, RH.23 through RH.31, are all **gate-backed**: each names the
+test function that asserts its expected signal, and one `cargo test
+--workspace` run closes all nine. Everything the inventory found that is
+neither a full entry nor gate-backed is listed in the coverage roster at the
+end of this file, against the test that pins it.
 
 Workstation verification for the `rust-harness/` workspace: the CPU
 inference backend on the real Gemma 4 E4B checkpoint, the observability stack
@@ -5464,7 +5463,39 @@ figures RH.16's preflight and RH.1's summary report. The audio block also
 declares `max_position_embeddings` 131072, so that figure alone would not
 have told the blocks apart.
 
-Status: PENDING (the gate is owed; the four steps by hand are recorded above)
+Observed (2026-09-11, the gate):
+
+```
+➜  rust-harness git:(rust-harness-verification) ✗ cd ~/workspace/ai-experiments
+HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B \
+  uv run pytest -m hw_e4b tests/hardware/test_checkpoint_info.py -v
+echo "exit=$?"
+=============================================================================== test session starts ===============================================================================
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /home/alejandro/workspace/ai-experiments/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/alejandro/workspace/ai-experiments
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, mock-3.15.1, jaxtyping-0.3.11, cov-7.1.0, hydra-core-1.3.2, anyio-4.14.2, xdist-3.8.0, typeguard-4.6.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 4 items
+
+tests/hardware/test_checkpoint_info.py::test_the_report_exits_zero_and_reports_the_multimodal_verdict PASSED                                                                [ 25%]
+tests/hardware/test_checkpoint_info.py::test_the_config_echo_carries_the_preflight_figures PASSED                                                                           [ 50%]
+tests/hardware/test_checkpoint_info.py::test_check_exits_one_on_the_multimodal_file_and_zero_with_text_only PASSED                                                          [ 75%]
+tests/hardware/test_checkpoint_info.py::test_a_missing_checkpoint_exits_one_not_two PASSED                                                                                  [100%]
+
+[TIER] full: torch present, the whole suite was in scope.
+================================================================================ 4 passed in 0.03s ================================================================================
+exit=0
+```
+
+Four of four, in 0.03 s: the tool reads the config and the safetensors
+header and never the payload, which is why the test carries no `ram` marker.
+The third function held the towers section and the verdict to one count and
+the prefixes to the four in `NON_TEXT_PREFIXES`, and the second compared the
+echo's `text_config` block with the file rather than with a pinned figure.
+
+Status: VERIFIED 2026-09-11 (gate-backed by `tests/hardware/test_checkpoint_info.py`)
 
 ## Gate-backed entries
 
