@@ -94,7 +94,7 @@ impl Rung {
             Rung::L3Perplexity => "perplexity",
             Rung::L4Greedy => "greedy continuation",
             Rung::L5LongContext => "logits past the window",
-            Rung::L6Attention => "attention past the window",
+            Rung::L6Attention => "attention past window",
         }
     }
 
