@@ -4027,7 +4027,33 @@ comparison from one that hashes the weights and discards the answer.
 
 Record the elapsed times from (1) and (4c). The gap between them is the entire
 argument for `--deep` being opt-in rather than the default, and this is the
-only place it is measured against real weights.
+only place it is measured against real weights. The gate test below prints
+both on every run, beside hashlib's time over the same file.
+
+Asserted by `tests/hardware/test_preflight.py`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| (1) exit 0, `[OK] backend compatibility: supported`, a config line with a positive layer count, well under a second | `test_the_shallow_preflight_passes_and_names_the_checkpoint_it_read` |
+| (2) nothing on stdout | `test_the_report_is_a_verdict_not_payload` |
+| (3) exit 1 with one `[ERROR] model directory` line and every other check `[SKIP]` | `test_an_absent_checkpoint_exits_one_not_two` |
+| (4c) exit 0, `[OK] probe identity` naming a digest equal to hashlib's over the same file, `[OK] probe geometry` | `test_deep_matches_the_served_weights_when_the_probe_records_their_digest` |
+| (4d) one hex digit changed: exit 1, `[ERROR] probe identity` naming both hashes | `test_deep_decides_rather_than_merely_hashes` |
+| `--deep` outlasts the shallow run; the three elapsed times are printed, the ratio is not asserted | `test_deep_reads_the_weights_once_and_reports_what_it_cost` |
+
+```bash
+cd ~/workspace/ai-experiments
+uv run pytest -m hw_smoke tests/hardware/test_preflight.py -v -s
+```
+
+The test builds its probe in memory and writes it with
+`interp.probes.export.write_probe_from_probe` at the width the preflight's
+own config line reports, so no registered probe is needed on the host. It
+skips when the E4B checkpoint is absent and fails, rather than skips, when
+the release binary is. `hw_smoke` rather than `hw_full` because it loads no
+model and writes only under `tmp_path`; about 80 s, two `--deep` passes and
+one hashlib pass. `hw_e4b` alongside, so `make quality-full HW=e4b` runs it
+against the checkpoint that variable names.
 
 Observed, steps 1-3, 2026-08-15:
 
@@ -4137,15 +4163,56 @@ timing alone could never show. The digest the preflight computed is the one
 `sha256sum` reported in 4a, so the two independent readers of the same 15 GB
 agree.
 
-**4c's elapsed time is not the isolated figure the entry asked for.** 36.762s
-against 4a's 6.153s, at 112% CPU and 40.61s user: this run rebuilt the release
-binary after the `--deep` fix, and the build is the difference. The two
-deciding signals are unaffected, but the "close to 4a's" sub-signal is
-unconfirmed rather than observed — a repeat against a warm target directory
-would settle it, and until then the honest statement is that `--deep` reads the
-weights once, evidenced by the matching digest rather than by the clock.
+**4c's elapsed time is not the isolated figure the entry asked for, and the
+first explanation for it was wrong.** 36.762s against 4a's 6.153s, at 112% CPU
+and 40.61s user, was read on 2026-08-15 as the release rebuild after the
+`--deep` fix. The 2026-09-11 repeat below, with the binary built beforehand,
+measured 34.960s at 99% CPU and 34.51s user against 5.991s for `sha256sum`:
+the build was never the difference. `--deep` hashes about six times slower
+than coreutils because `runtime/src/digest.rs` is an in-tree scalar SHA-256
+with no hardware instructions and one extra copy per block, written that way
+on the dependency posture in `.styles/RUST_STYLE.md`. The "close to 4a's"
+sub-signal is refuted, not unconfirmed. The two deciding signals stand: the
+digest the preflight computed is `sha256sum`'s, so `--deep` reads the weights
+once and reads them correctly, evidenced by the match rather than by the
+clock. The hasher is kept as is; the gate test prints the cost on every run so
+the decision can be revisited on evidence.
 
-Status: VERIFIED 2026-08-15
+Observed (2026-09-11, steps 4a and 4c on a warm target directory; 4d was
+not repeated, its 2026-08-15 record stands):
+
+```
+➜  rust-harness git:(rust-harness-verification) ✗ python3 - "$DIGEST" <<'PY'
+import json, sys
+p = "/tmp/rh16/probe.json"
+d = json.load(open(p))
+d["model_hash"] = sys.argv[1]
+json.dump(d, open(p, "w"))
+PY
+time sha256sum "$MODEL/model.safetensors"
+43fb96cec3045b72852c787540300dc5b258634b7a025f7c80355ac0788b9651  /mnt/ai-data/models/hf/gemma-4-E4B/model.safetensors
+sha256sum "$MODEL/model.safetensors"  5.58s user 0.41s system 99% cpu 5.991 total
+➜  rust-harness git:(rust-harness-verification) ✗ time cargo run --release -q -p harness -- --model "$MODEL" --text-only \
+  --probe /tmp/rh16/probe.safetensors --status --deep
+echo "exit=$?"
+[OK] model directory: /mnt/ai-data/models/hf/gemma-4-E4B
+[OK] checkpoint files: config.json and model.safetensors present, header names 2130 tensors
+[OK] config.json: 42 layers, hidden size 2560, context 131072
+[OK] backend compatibility: supported
+[OK] probe: rust-e4b-verify-probe, layer 8, site LayerOutput, width 2560
+[OK] probe geometry: width 2560 and layer 8 fit the model
+[OK] probe identity: matches the served weights, sha256 43fb96cec3045b72852c787540300dc5b258634b7a025f7c80355ac0788b9651
+[SKIP] control vector: no --control-vector given
+[SKIP] control vector identity: no --control-vector given
+[SKIP] interp log directory: no --interp-log given
+[OK] obs log directory: /mnt/ai-data/logs/harness is writable
+cargo run --release -q -p harness -- --model "$MODEL" --text-only --probe     34.51s user 0.41s system 99% cpu 34.960 total
+exit=0
+```
+
+Status: VERIFIED 2026-08-15 (gate-backed 2026-09-11 by
+`tests/hardware/test_preflight.py`; the 4c timing sub-signal was refuted the
+same day and is recorded above, not asserted)
 
 ## RH.17 The CPU backend past E4B's real sliding window
 
