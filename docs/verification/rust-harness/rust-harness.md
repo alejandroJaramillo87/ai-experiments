@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 23 verified, 0 blocked, 15 pending, of 38.** RH.11 was blocked
+**Entries: 24 verified, 0 blocked, 14 pending, of 38.** RH.11 was blocked
 until 2026-09-05 on an instruction-tuned checkpoint; gemma-4-E2B-it unblocked
 it, and it closed on that checkpoint on 2026-09-06. RH.9d and RH.15 were
 blocked until the same day on a control vector this repository could not
@@ -14,7 +14,7 @@ and the entry records the install step. RH.8 was blocked until the same day
 on the absence of an instruction-tuned checkpoint; gemma-4-E2B-it now closes
 it, and its entry records the two harness defects the first runs exposed.
 
-Of the 15 pending, RH.17 through RH.22 are new full entries from the surface
+Of the 14 pending, RH.18 through RH.22 are new full entries from the surface
 inventory, each needing a human, the GPU host, or the real E4B checkpoint.
 RH.23 through RH.31 are **gate-backed**: each names the test function that
 asserts its expected signal, and one `cargo test --workspace` run closes all
@@ -602,7 +602,8 @@ Expected signal: six rows, each `PASS`, and `0 skipped`. **A `skipped` rung is
 missing evidence, not a pass** — read the count in the closing `[OK]` line
 rather than the exit code. A skip after the generators ran means one wrote
 somewhere other than where the climb read. The first run recorded below
-predates L5 and shows five rows; L5's first pass is RH.17's Observed block.
+predates L5 and shows five rows; L5's first pass is the 2026-09-04 block
+below, which RH.17 also records.
 
 Observed:
 
@@ -4261,26 +4262,22 @@ the binary that writes it is the engine it guards.
 
 **`make ladder` now carries L5 as a standing rung, so this entry is a rung of
 the routine climb rather than a bespoke command.** The reference artifact is
-not committed and has to be generated on the workstation by
-`rust-harness/fixtures/reference_long_context.py`, which needs the checkpoint
-and `transformers`. Both sides derive the scored positions from the
-checkpoint's `sliding_window`, so which positions were scored is itself part of
-what L5 asserts.
+not committed; `make ladder` generates it on the workstation through
+`rust-harness/fixtures/reference_long_context.py` when it is missing, as it
+does every other artifact (`make ladder-reference` regenerates them all), and
+the generator needs the checkpoint and `transformers`. Both sides derive the
+scored positions from the checkpoint's `sliding_window`, so which positions
+were scored is itself part of what L5 asserts.
 
 ```bash
 cd ~/workspace/ai-experiments/rust-harness
 MODEL=<the gemma-4-E4B checkpoint directory>
 
-# 1. generate the reference. It writes long_context.json into the reference
-#    directory the ladder reads for this SIZE.
-uv run python fixtures/reference_long_context.py --model "$MODEL" \
-  --out fixtures/reference/e4b/quick/long_context.json
-
-# 2. the whole climb, L5 included
+# 1. the whole climb, L5 included; a missing long_context.json is generated first
 make ladder SIZE=quick MODEL="$MODEL"
 echo "exit=$?"
 
-# 3. L5 alone, for a re-run that does not pay for the first five rungs
+# 2. L5 alone, for a re-run that does not pay for the first five rungs
 cargo run --release -q -p runtime --bin ladder -- --text-only \
   --size quick --model "$MODEL" --reference fixtures/reference/e4b/quick \
   --rung L5
@@ -4293,18 +4290,69 @@ anchors L5 scores are `window - 1`, `window`, `window + 1`, `2*window + 1`,
 the run reports that window. It must be 512 — the same figure the reference
 generator recorded — because a run whose loader read a different window scores
 different positions and compares rows computed at different places. A skipped
-L5 means step 1 did not write where step 2 reads, and is a failure of this
-entry rather than a pass with an absence.
+L5 means the generator did not write where the climb reads, and is a failure
+of this entry rather than a pass with an absence.
 
 Record the reported window alongside the verdict. The window agreeing across
 the two independently written sides is half of what the rung measures.
 
-Observed:
+Asserted by `tests/hardware/test_ladder.py`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| Six rungs, `0 skipped`, the L5 detail line reporting six positions and a window equal to the `sliding_window` the reference artifact recorded | `test_the_ladder_passes_every_rung_at_tier_e` |
+
+```bash
+cd ~/workspace/ai-experiments
+make quality-full HW=e4b HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B
+```
+
+The test is RH.1b's, under `hw_full` and `hw_e4b`; it drives the same
+`make ladder SIZE=quick` as step 1 and reads the window off the L5 detail
+line, since the closing verdict line does not carry it.
+
+Observed (2026-09-04, the six-rung climb recorded in full under RH.1b; the L5
+rows and the closing lines are repeated here so the entry stands alone):
 
 ```
+L5    logits past the window                                PASS
+      scheduled positions agree  1.000000      >= 1.000000     ok
+      worst kl inside window  0.000000      <= 0.005000     ok
+      worst kl past window    0.000000      <= 0.005000     ok
+      worst top-50 overlap    1.000000      >= 0.980000     ok
+      argmax agreement        1.000000      >= 0.980000     ok
+      6 positions across a 512-token window over 2052 tokens; worst at position 1025
+
+timing (not compared; expected to differ between runs)
+  L0        0.48s
+  L1        0.70s
+  L2        0.83s
+  L3       52.70s
+  L4       23.70s
+  L5      268.92s
+  sum     347.33s  (rung bodies only, excludes model load)
+[OK] Ladder: every rung within tolerance (0 skipped)
+[INFO] Peak RSS at exit: 16.13 GiB
 ```
 
-Status: PENDING
+The generator's own output that day recorded the L5 schedule
+`[511, 512, 513, 1025, 1026, 2051]` of 2052 (quoted under RH.1b).
+
+Every signal is in that run. The window the loader read is 512, and the
+generator's schedule is `window - 1`, `window`, `window + 1`, `2*window + 1`,
+`2052 // 2` and `2052 - 1` for that window, so the two independently written
+sides agree on where to look; `scheduled positions agree 1.000000` is the
+run's schedule matching the artifact's at every index. Worst KL past the
+window is 0.000000 at the tolerance's precision, so the eviction, the mask
+and the shared-KV tail, the three things that engage nowhere else in the
+ladder, agree with `transformers`. The rung took 268.92 s of the 347.33 s
+climb, and the 2052-token forward pass is the 1.86 GiB of peak RSS the five-
+rung run never allocated. The entry stayed pending for a week with its
+evidence already in this file under RH.1b, which is why the hardware test now
+reads the window and why the block above is repeated rather than pointed to.
+
+Status: VERIFIED 2026-09-04 (on RH.1b's climb; recorded here 2026-09-11 and
+gate-backed by `tests/hardware/test_ladder.py`)
 
 ## RH.18 Attention capture on real weights
 
