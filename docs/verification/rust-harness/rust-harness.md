@@ -14,7 +14,7 @@ and the entry records the install step. RH.8 was blocked until the same day
 on the absence of an instruction-tuned checkpoint; gemma-4-E2B-it now closes
 it, and its entry records the two harness defects the first runs exposed.
 
-Of the 16 pending, RH.17 through RH.22 are new full entries from the surface
+Of the 15 pending, RH.17 through RH.22 are new full entries from the surface
 inventory, each needing a human, the GPU host, or the real E4B checkpoint.
 RH.23 through RH.31 are **gate-backed**: each names the test function that
 asserts its expected signal, and one `cargo test --workspace` run closes all
@@ -3945,8 +3945,9 @@ times on 2026-09-06 before the sweep completed).
 ## RH.16 The preflight answers before the model loads
 
 `harness --status` exists because every artifact check a run makes happens
-after `CpuModel::load` — ninety seconds and 14 GiB on E4B — so a missing probe
-sidecar or an unwritable log directory costs a full load to discover. The
+after `CpuModel::load` — six seconds warm and tens of seconds cold on E4B, at
+14 GiB resident (RH.2's run headers) — so a missing probe sidecar or an
+unwritable log directory costs a full load to discover. The
 preflight reads `config.json` and the safetensors header only. This entry says
 its answers are the ones a run would give, on real weights rather than on the
 16-dimension fixture the sandbox uses.
@@ -3954,9 +3955,11 @@ its answers are the ones a run would give, on real weights rather than on the
 Steps 1-3 are the preflight itself. Step 4 exercises `--deep`, and needs an
 artifact for the digest to be compared against — `compare_identity` is what
 consumes the hash, so a `--deep` with no probe and no control vector reads
-nothing at all. There is no probe on this workstation at a stable path today
-(RH.9c wrote its own to `/tmp/rh9` behind an `rm -rf`, and no control vector
-exists at all), so step 4 builds one from a copy.
+nothing at all. There was no probe on this workstation at a stable path when
+this ran (RH.9c wrote its own to `/tmp/rh9` behind an `rm -rf`), and no
+control vector existed; the one RH.9d has since produced, `refusal-e2b-it`,
+records E2B-it's digest and could not match E4B in any case. So step 4 builds
+its artifact from a copy.
 
 Substitute the E4B checkpoint directory for `$MODEL`.
 
