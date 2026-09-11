@@ -5284,46 +5284,119 @@ Status: VERIFIED 2026-09-11 (gate-backed by `tests/hardware/test_layer_diff.py`)
 
 ## RH.22 checkpoint-info --check against the real E4B
 
-Implementation: `rust-harness/runtime/src/bin/checkpoint-info.rs`.
+Implementation: `rust-harness/runtime/src/bin/checkpoint-info.rs`;
+`rust-harness/runtime/src/model/cpu.rs` (`check_supported_checkpoint`,
+`non_text_families`, `NON_TEXT_PREFIXES`); the cross-check is
+`rust-harness/harness/src/preflight.rs`.
 
 `checkpoint-info` dumps a checkpoint's config and tensor table, then the
-architecture summary and the CPU backend's compatibility verdict. `--check`
-turns that verdict into an exit code: 1 when the checkpoint is unsupported,
-rather than reporting and exiting 0. The released E4B is
-`Gemma4ForConditionalGeneration` — a text tower beside a vision and an audio
-one — so it exercises **both** verdicts from one checkpoint depending on
-whether `--text-only` is given, and no fixture reproduces that.
+architecture summary and the CPU backend's compatibility verdict. The report
+exits 0 whatever the verdict, by design: an inspection run of a file the
+backend cannot load is not a failed command. `--check` turns the verdict into
+an exit code, 1 when the checkpoint is unsupported.
+
+**The tool has two refusal paths, and only one of them was gated.** A config
+the backend cannot validate fails in `checkpoint::parse`, before the tool has
+anything to describe; the sandbox test in
+`rust-harness/runtime/tests/checkpoint_info_check.rs` forced that path with a
+foreign activation and nothing else. A multimodal file parses, is described in
+full, and is refused at the end by `check_supported_checkpoint`, which names
+the towers and the flag that declines them. The released E4B is
+`Gemma4ForConditionalGeneration`, a text tower beside a vision and an audio
+one, so it takes the second path, and on that path the binary's own wiring
+(`--text-only` reaching the verdict, `--check` turning the verdict into exit
+1) had no test. It now has one in the same file, on a tiny checkpoint made
+multimodal by one tensor per tower, the recipe the `cpu.rs` unit tests use.
+What the real file adds is the released tower set against the code's own
+predictions: two comments in `cpu.rs` state that E4B carries 114 non-text
+tensor families and that its towers hold 1409 of its 2130 tensors, and RH.1
+recorded `BF16 x2130`. This entry is where those claims meet the artifact.
+
+**The three preflight figures are not printed as figures.** RH.16's preflight
+line reads `42 layers, hidden size 2560, context 131072` off
+`num_hidden_layers`, `hidden_size` and `max_position_embeddings`. Here the
+layer count is derived in the summary (`uniform 10240 across 42 layers`), and
+the other two appear only in the `=== config.json ===` echo, inside the
+`text_config` block; the vision and audio blocks carry a `hidden_size` of
+their own, so a bare grep finds three. The block is the one to read.
+
+Each of the three reports is about 2624 lines (RH.1's count), and the verdict
+goes to stderr, so every run captures both streams to a file and pastes the
+tail. Step 4 is sandbox-covered and kept so the paste holds all four codes
+side by side.
 
 ```bash
 cd ~/workspace/ai-experiments/rust-harness
 MODEL=<the gemma-4-E4B checkpoint directory>
+cargo build --release -p runtime --bin checkpoint-info
+mkdir -p /tmp/rh22
+set -o pipefail   # so $? after a tee is checkpoint-info's exit, in bash and zsh alike
 
 # 1. the report, no --check: exit 0 whatever the verdict
-cargo run --release -q -p runtime --bin checkpoint-info -- "$MODEL"
+./target/release/checkpoint-info "$MODEL" 2>&1 | tee /tmp/rh22/1.txt | tail -n 8
 echo "exit=$?"
+grep -n '"num_hidden_layers"\|"hidden_size"\|"max_position_embeddings"\|=== ' /tmp/rh22/1.txt
 
 # 2. --check without --text-only: multimodal, so unsupported
-cargo run --release -q -p runtime --bin checkpoint-info -- --check "$MODEL"
+./target/release/checkpoint-info --check "$MODEL" 2>&1 | tee /tmp/rh22/2.txt | tail -n 3
 echo "exit=$?"
 
 # 3. --check with --text-only: the text tower is supported
-cargo run --release -q -p runtime --bin checkpoint-info -- --check --text-only "$MODEL"
+./target/release/checkpoint-info --check --text-only "$MODEL" 2>&1 | tee /tmp/rh22/3.txt | tail -n 3
 echo "exit=$?"
 
 # 4. a directory that is not a checkpoint: an error, not a verdict
-cargo run --release -q -p runtime --bin checkpoint-info -- --check /absent
+./target/release/checkpoint-info --check /absent
 echo "exit=$?"
 ```
 
-Expected signal: (1) exit 0, with 42 layers, hidden size 2560 and context
-131072 — the same three figures RH.16's preflight and RH.2's run header report,
-which is what cross-checks that the three readers read one checkpoint. (2) exit
-**1**, with the verdict naming the towers it declined to serve. (3) exit **0**,
-supported. (4) an error naming the path; exit 1 for a missing checkpoint, and
-not exit 2, which would mean the command line was misread.
+Expected signal: (1) exit 0, and the tail ends in `[ERROR] CPU backend
+compatibility: checkpoint is multimodal: it carries N tensor families in
+<prefixes>, and this backend serves text only. Pass --text-only ...`, because
+the report exits 0 whatever the verdict. The grep shows the section headers
+with their line numbers, `=== Tensors (2130) ===` and `=== Non-text towers (N)
+===` among them, and the three fields; the ones under `text_config` read 42,
+2560 and 131072, the figures RH.16's preflight and RH.1's summary report, which
+is what cross-checks that the three readers read one checkpoint. (2) exit
+**1**, the same verdict, with N equal to the towers section's count and every
+prefix one of the four in `NON_TEXT_PREFIXES`. (3) exit **0**, `[OK] CPU
+backend compatibility: supported`, and the towers section still printed:
+declining the towers does not hide them. (4) exit 1 with `[ERROR] Read
+/absent: no checkpoint at /absent: ...`, and not exit 2, which would mean the
+command line was misread.
 
 The pair (2) and (3) is the entry. One of them alone shows the exit code moved,
-not that it tracks the verdict.
+not that it tracks the verdict. N and the prefixes are recorded as measured,
+not pinned: the comments predict 114 and the file decides.
+
+Asserted by `rust-harness/runtime/tests/checkpoint_info_check.rs` in the
+sandbox:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| A multimodal file: exit 0 with the verdict, 1 under `--check`, 0 under `--check --text-only`, towers section either way | `check_tracks_the_multimodal_verdict_and_text_only_flips_it` |
+| A missing path: exit 1 with the read error, with or without `--check` | `a_missing_checkpoint_is_a_failed_run_not_a_usage_error` |
+
+Asserted by `tests/hardware/test_checkpoint_info.py` on the workstation:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| Exit 0, the multimodal verdict, the three sections | `test_the_report_exits_zero_and_reports_the_multimodal_verdict` |
+| The echo's `text_config` block and the summary's layer count match the file | `test_the_config_echo_carries_the_preflight_figures` |
+| `--check` exits 1 naming N and the four prefixes at most; `--check --text-only` exits 0 supported | `test_check_exits_one_on_the_multimodal_file_and_zero_with_text_only` |
+| A missing path exits 1, not 2 | `test_a_missing_checkpoint_exits_one_not_two` |
+
+```bash
+cd ~/workspace/ai-experiments
+HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B \
+  uv run pytest -m hw_e4b tests/hardware/test_checkpoint_info.py -v
+echo "exit=$?"
+```
+
+The same test runs under
+`make quality-full HW=e4b HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B`.
+It reads the figures from the checkpoint's own `config.json` rather than
+pinning them, so the test is the cross-check and not a second copy of it.
 
 Observed:
 
