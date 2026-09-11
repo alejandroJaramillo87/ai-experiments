@@ -4993,51 +4993,111 @@ Status: VERIFIED 2026-09-11 (gate-backed by `tests/hardware/test_compaction.py`)
 
 ## RH.21 Layer diff against a real reference capture
 
-Implementation: `rust-harness/runtime/src/bin/layer-diff.rs`.
+Implementation: `rust-harness/runtime/src/bin/layer-diff.rs`,
+`rust-harness/fixtures/reference_capture.py`; the sibling comparison is the
+ladder's L1 rung, `rust-harness/runtime/src/ladder.rs` (`rung_layers`).
 
-`layer-diff` runs the checkpoint, compares the residual stream layer by layer
-against a reference capture, and passes or fails against `--cosine-floor` and
-`--rel-l2-ceiling`. Its numerics are now bracketed in the sandbox against a
-synthetic capture (RH.23), including that the verdict names the *first*
-diverging layer and not the worst. What the sandbox cannot supply is a
-reference capture from `transformers` over the real 42-layer stack, where the
-per-layer figures are the ones a reader would quote.
+`layer-diff` prefills the token ids a `transformers` capture recorded,
+compares the residual stream row by row against the capture, and passes or
+fails each row against `--cosine-floor` and `--rel-l2-ceiling`. Its verdict
+names the *first* row over tolerance, not the worst: once layer k diverges
+every later layer is downstream of it, and a table read by magnitude points at
+the end of the stack. RH.23 brackets both tolerances in the sandbox around
+perturbed rows of the tiny capture (`transformers`' own output over the
+committed `tiny-hf-gemma4` fixture); it is gate-backed and pending in this
+runbook like the rest of its block.
+
+**The residual stream has been measured on real weights already.** The
+ladder's L1 rung makes this same comparison with the same capture script, the
+same `vec_diff` metrics and the same Tier E floor and ceiling (0.9999 and
+1e-3), and RH.1b records it passing on E4B: worst cosine 1.000000, worst
+rel-L2 0.000005, 42 layers within tolerance. L1 prints that worst pair and
+nothing else. `layer-diff` prints every row, and the per-row table across the
+stack, the shape of the drift with depth, is what this entry produces and no
+other entry reports.
+
+**The first draft's step 3 proved nothing, and this one is built so that it
+can.** It closed the ceiling to just under the worst row, so that one row was
+over it, and expected the verdict to name "the first row over, not the
+largest"; with one row over, those are the same row. The corrected step puts
+the ceiling between the second- and third-largest layer figures, so exactly
+two rows exceed it and the verdict has to choose. Two more facts the draft
+missed: the table is not 42 rows but 46, because the tool prints the four
+prelude stages the capture records (`embed`, `ple_identity`, `ple_context`,
+`ple`; `PRELUDE_STAGES` in `rust-harness/runtime/src/model/cpu.rs`) before
+the layer rows, and a stage over the
+ceiling displaces the layer verdict with the "stack's input diverges" message,
+by design. So the closed ceiling must sit above every stage row, and a stage
+row that would not allow it is a finding about that stage's magnitude.
+
+The capture already exists. `make ladder` writes `layers.json` into the
+ladder's reference directory through `reference_capture.py` over "The capital
+of France is" (the Makefile's `$(REFERENCE)/layers.json` rule, which the gate
+below invokes directly when the file is absent), RH.18's climb on 2026-09-11
+left it on the workstation, and reusing it saves a second float32 load of E4B (about 30 GB)
+and makes this table directly comparable with the L1 figures above. The
+tool's independence is in the oracle, not in the prompt. The header and the
+verdict go to stderr and the table to stdout, so the paste needs `2>&1`.
 
 ```bash
 cd ~/workspace/ai-experiments/rust-harness
 MODEL=<the gemma-4-E4B checkpoint directory>
+cargo build --release -p runtime --bin layer-diff
 mkdir -p /tmp/rh21
 
-# 1. the reference capture, from transformers. --prompt is required: the
-#    residual stream is per-position, so the capture is only defined against
-#    a stated input, and the same text must reach layer-diff.
-uv run python fixtures/reference_capture.py --model "$MODEL" \
-  --prompt "The three states of matter are" \
-  --out /tmp/rh21/capture.json
+# 1. the ladder's capture, present since RH.18's climb; the climb writes
+#    it when absent
+test -f fixtures/reference/e4b/quick/layers.json \
+  || make ladder SIZE=quick MODEL="$MODEL"
 
-# 2. the comparison at the defaults
-cargo run --release -q -p runtime --bin layer-diff -- --text-only \
-  --model "$MODEL" --reference /tmp/rh21/capture.json
-echo "exit=$?"
+# 2. the comparison at the defaults: 4 stage rows, 42 layer rows, the verdict
+./target/release/layer-diff --text-only --model "$MODEL" \
+  --reference fixtures/reference/e4b/quick/layers.json \
+  2>&1 | tee /tmp/rh21/defaults.txt
+echo "exit=${PIPESTATUS[0]}"
 
-# 3. the same comparison with the tolerances closed to just under the
-#    measured worst row, so the tool has to fail and name a layer
-cargo run --release -q -p runtime --bin layer-diff -- --text-only \
-  --model "$MODEL" --reference /tmp/rh21/capture.json \
-  --rel-l2-ceiling <just under the worst rel-L2 from step 2>
+# 3. the ceiling closed between the second- and third-largest rel_l2 among
+#    the LAYER rows of step 2 (read them off the table; every stage row must
+#    be below the value chosen), so exactly two rows are over it
+./target/release/layer-diff --text-only --model "$MODEL" \
+  --reference fixtures/reference/e4b/quick/layers.json \
+  --rel-l2-ceiling <between the second- and third-largest layer rel_l2> \
+  2>&1 | tee /tmp/rh21/closed.txt
+echo "exit=${PIPESTATUS[0]}"
+```
+
+Expected signal: (2) exit 0; a table of 4 stage rows then 42 layer rows, none
+marked `<--`, every cosine at or above 0.9999 and every rel_l2 at or below
+1e-3; then `[OK] Residual stream: all 42 layers within tolerance`. Record the
+whole table: it is the measurement. (3) exit 1; exactly two rows marked
+`<-- diverges (magnitude)`, and the verdict `[ERROR] Residual stream: first
+divergence at layer N (...)` with **N the earlier of the two marked layers,
+whichever of them carries the larger figure**. A verdict naming the later
+layer when it is the larger is the failure this step exists to catch. A run
+whose closed ceiling falls under a stage row prints `the stack's input
+diverges at '<stage>'` instead; that is the tool behaving as designed and a
+finding about the stage's magnitude, recorded under this entry rather than
+worked around by moving the ceiling.
+
+Asserted by `tests/hardware/test_layer_diff.py`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| Exit 0, the verdict line, no row marked, the stage rows then every layer in order | `test_the_defaults_pass_every_row` |
+| Every stage and layer row within the Tier E floor and ceiling | `test_every_row_is_within_the_tier_e_tolerances` |
+| A ceiling between the second- and third-largest layer figures marks exactly those two and the verdict names the earlier | `test_a_closed_ceiling_names_the_first_row_over_it_not_the_worst` |
+
+```bash
+cd ~/workspace/ai-experiments
+HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B \
+  uv run pytest -m hw_e4b tests/hardware/test_layer_diff.py -v
 echo "exit=$?"
 ```
 
-Expected signal: (2) exit 0, a table of 42 rows, cosine at or above the floor
-and relative L2 at or below the ceiling on every one. Record the whole table:
-the shape of the drift across depth is the measurement this entry exists to
-produce, and no other entry reports it. (3) exit 1, with the verdict naming
-**the first row over the closed ceiling, not the largest** — the tool states
-that every later layer is downstream of this one, so a verdict naming the worst
-row would send a reader to the wrong layer.
-
-Step 3 is what makes step 2 mean anything. A pass with tolerances no run can
-fail is not a measurement.
+The same test runs under
+`make quality-full HW=e4b HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B`.
+It reads the bracket off the tool's own table rather than pinning any figure:
+the drift is a property of the checkpoint, and this entry records it.
 
 Observed:
 
