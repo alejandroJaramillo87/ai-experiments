@@ -4055,6 +4055,37 @@ model and writes only under `tmp_path`; about 80 s, two `--deep` passes and
 one hashlib pass. `hw_e4b` alongside, so `make quality-full HW=e4b` runs it
 against the checkpoint that variable names.
 
+Observed (2026-09-11, the gate test on the workstation, after
+`make harness-build`):
+
+```
+[+] build 1/1
+ ✔ Image rust-harness:latest Built                                                                                                                                             1.7s
+rust-harness image built.
+=============================================================================== test session starts ===============================================================================
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /home/alejandro/workspace/ai-experiments/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/alejandro/workspace/ai-experiments
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, mock-3.15.1, jaxtyping-0.3.11, cov-7.1.0, hydra-core-1.3.2, anyio-4.14.2, xdist-3.8.0, typeguard-4.6.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 6 items
+
+tests/hardware/test_preflight.py::test_the_shallow_preflight_passes_and_names_the_checkpoint_it_read PASSED
+tests/hardware/test_preflight.py::test_the_report_is_a_verdict_not_payload PASSED
+tests/hardware/test_preflight.py::test_an_absent_checkpoint_exits_one_not_two PASSED
+tests/hardware/test_preflight.py::test_deep_matches_the_served_weights_when_the_probe_records_their_digest PASSED
+tests/hardware/test_preflight.py::test_deep_decides_rather_than_merely_hashes PASSED
+tests/hardware/test_preflight.py::test_deep_reads_the_weights_once_and_reports_what_it_cost [INFO] preflight cost: shallow 0.003 s, hashlib sha256 6.354 s, --deep 34.959 s
+PASSED
+
+[TIER] full: torch present, the whole suite was in scope.
+========================================================================== 6 passed in 76.25s (0:01:16) ===========================================================================
+```
+
+The printed cost line is the hand run's 35 s against 6 s, now reproduced by
+the gate on every `make quality-full`.
+
 Observed, steps 1-3, 2026-08-15:
 
 ```
