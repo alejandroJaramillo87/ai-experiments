@@ -4634,7 +4634,126 @@ Record the scaffold rows verbatim. If any of them carries a non-empty span,
 the fork in the header block is wrong about the real vocabulary and the note
 needs correcting, not the artifact.
 
-Observed:
+Observed (2026-09-11, the manual run):
+
+```
+➜  rust-harness git:(rust-harness-verification) ✗ cd ~/workspace/ai-experiments/rust-harness
+MODEL=/mnt/ai-data/models/hf/gemma-4-E4B
+mkdir -p /tmp/rh19
+
+cargo run --release -q -p harness -- --model "$MODEL" --text-only \
+  --seed 7 --max-tokens 48 --alignment-out /tmp/rh19/align.jsonl \
+  "The three states of matter are"
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E4B hash=e376216f8b693aff layers=42
+[INFO] Weights: 13.90 GiB resident at bf16
+[INFO] Peak RSS after load: 14.03 GiB
+[INFO] KV cache: 131072 tokens, 4.05 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=7 temperature=0.8 max_tokens=48
+[INFO] Build: 0.1.0 git 547695b3230fc94969d7b042461c4a74d4d9bf61
+[WARN] KV cache above 2 GiB: consider --context to cap it (compaction keeps long sessions inside the cap)
+[INFO] Model load: 5.88 s
+[INFO] Prefill: 251 tokens in 22.95 s (11 tok/s)
+I understand. Let's proceed with reading the current directory.
+[{"role": "user", "content": "The three states of matter are"}]
+{'tool': 'read', 'args': {'path': '.'}}
+[INFO] Session snapshot: 299 cached tokens at /home/alejandro/workspace/ai-experiments/rust-harness/session.kv
+[INFO] Alignment: 299 positions, 52 passes -> /tmp/rh19/align.jsonl
+
+
+➜  rust-harness git:(rust-harness-verification) ✗ head -1 /tmp/rh19/align.jsonl | jq 'del(.text)'
+tail -n +2 /tmp/rh19/align.jsonl | jq -r .role | sort | uniq -c
+{
+  "artifact": "alignment",
+  "created": "2026-09-11T18:06:51Z",
+  "git_sha": "547695b3230fc94969d7b042461c4a74d4d9bf61",
+  "model_hash": "e376216f8b693aff",
+  "positions": 299,
+  "run_id": "R-20260911-180613-765fa9",
+  "schema_version": 1
+}
+    293 content
+      6 scaffold
+➜  rust-harness git:(rust-harness-verification) ✗ tail -n +2 /tmp/rh19/align.jsonl \
+  | jq -c 'select(.role == "scaffold") | {position, byte_start, byte_end}'
+{"position":0,"byte_start":0,"byte_end":0}
+{"position":1,"byte_start":0,"byte_end":0}
+{"position":235,"byte_start":862,"byte_end":862}
+{"position":237,"byte_start":863,"byte_end":863}
+{"position":246,"byte_start":898,"byte_end":898}
+{"position":248,"byte_start":899,"byte_end":899}
+➜  rust-harness git:(rust-harness-verification) ✗ head -1 /tmp/rh19/align.jsonl | jq -j .text | wc -c
+tail -n +2 /tmp/rh19/align.jsonl | jq -s \
+  '{rows: length, first: .[0].byte_start, last: .[-1].byte_end,
+    gaps: [range(1; length) as $i | select(.[$i].byte_start != .[$i-1].byte_end)] | length}'
+1072
+{
+  "rows": 299,
+  "first": 0,
+  "last": 1072,
+  "gaps": 0
+}
+```
+
+All three signals are in that run. The six-word task became a 251-token
+prefill because the positional task renders the coding-agent scaffold, and
+the six scaffold rows read as that render: position 0 is `<bos>`, 1 opens the
+memory turn, 235 closes it, 237 opens the user turn one byte later (the
+newline at 236 is content), 246 closes it and 248 opens the model turn, whose
+`model\n` at 249 and 250 is content by the range rule. Every one is
+zero-width, so the fork in the header block is right about the real
+vocabulary: the marker positions exist and contribute no bytes. The 299 spans
+tile the 1072-byte text with 0 gaps, and the 52 passes are four prefill
+batches of 64 and 48 decodes.
+
+**What that run did not show.** The tiling check is a partition check. It
+proves the spans divide the text consistently, not that position k's span
+holds the bytes token k produced: a partition shifted by one token inside a
+run of content passes every line above. Closing that needs the ids, which the
+artifact did not record. Since this entry each row carries `token_id`
+(`schemas/alignment.json`, optional so the schema version stays 1), and the
+gate below decodes each row's id with `transformers`' tokenizer for the same
+checkpoint and holds the span to those bytes. Rows are grouped the way
+`runtime/src/align.rs` attributes them: a codepoint spread across
+byte-fallback ids lands whole on the id that completes it, so a group is a run
+of empty spans plus the non-empty one that ends it. Two limits remain. The
+harness and the test decode through the same `tokenizers` library over the
+same tokenizer.json, so the check is independent of the harness's span
+arithmetic and not of the library. And the rendered prompt is not in the
+artifact, so the prompt's ids are held to what can be seen without it: the
+first is `<bos>`, every scaffold id is a special piece, and the generated ids
+re-encode from their own text.
+
+Asserted by `tests/hardware/test_alignment.py`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| Header `positions` equals the row count, positions dense from 0, rows past the prompt | `test_the_artifact_covers_every_position` |
+| Both roles present; every scaffold row zero-width and carrying a special id; the first row `<bos>`; no scaffold past the prompt | `test_scaffold_rows_are_zero_width_on_the_real_vocabulary` |
+| First span at 0, last at the text's byte length, no gap, no span ending inside a codepoint | `test_the_spans_tile_the_text` |
+| The run's ids decode to the header's text, and each attribution group's ids decode to exactly its span's bytes | `test_each_span_holds_its_tokens_bytes` |
+| The generated ids re-encode from their decoded text | `test_the_generated_ids_round_trip_through_transformers` |
+
+```bash
+cd ~/workspace/ai-experiments
+(cd rust-harness && cargo build --release -p harness)
+HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B \
+  uv run pytest -m hw_e4b tests/hardware/test_alignment.py -v
+echo "exit=$?"
+```
+
+The test runs the harness once in a directory of its own (the harness
+resumes `session.kv` from where it starts, and a resumed session prefills
+nothing), with the same task, seed and token budget as the run above, then
+loads the checkpoint's tokenizer through `AutoTokenizer`. Expected signal:
+five passes. A failure in the fourth function names the first group whose ids
+decode to different bytes than its span holds, which is the shifted-partition
+case; record it as a finding under this entry rather than loosening the
+check. The same test runs under
+`make quality-full HW=e4b HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B`.
+
+Observed (the gate):
 
 ```
 ```
