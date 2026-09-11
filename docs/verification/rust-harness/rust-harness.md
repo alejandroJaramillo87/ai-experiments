@@ -5398,12 +5398,73 @@ The same test runs under
 It reads the figures from the checkpoint's own `config.json` rather than
 pinning them, so the test is the cross-check and not a second copy of it.
 
-Observed:
+Observed (2026-09-11, the four steps by hand; step 1 was run a second time
+to open the file in an editor and that rerun's prompt lines are omitted):
 
 ```
+➜  rust-harness git:(rust-harness-verification) ✗ cargo build --release -p runtime --bin checkpoint-info
+mkdir -p /tmp/rh22
+set -o pipefail
+   Compiling runtime v0.1.0 (/home/alejandro/workspace/ai-experiments/rust-harness/runtime)
+    Finished `release` profile [optimized] target(s) in 0.26s
+➜  rust-harness git:(rust-harness-verification) ✗ ./target/release/checkpoint-info "$MODEL" 2>&1 | tee /tmp/rh22/1.txt | tail -n 8
+echo "exit=$?"
+grep -n '"num_hidden_layers"\|"hidden_size"\|"max_position_embeddings"\|=== ' /tmp/rh22/1.txt
+  layers 24-28: SlidingWindow(512), head 256, ffn 10240, rope base 10000
+  layer 29: Global, head 512, ffn 10240, rope base 1000000
+  layers 30-34: SlidingWindow(512), head 256, ffn 10240, rope base 10000
+  layer 35: Global, head 512, ffn 10240, rope base 1000000
+  layers 36-40: SlidingWindow(512), head 256, ffn 10240, rope base 10000
+  layer 41: Global, head 512, ffn 10240, rope base 1000000
+
+[ERROR] CPU backend compatibility: checkpoint is multimodal: it carries 114 tensor families in model.audio_tower., model.embed_audio., model.embed_vision., model.vision_tower., and this backend serves text only. Pass --text-only to load the text stack and decline the rest
+exit=0
+1:=== config.json ===
+19:    "hidden_size": 1024,
+32:    "num_hidden_layers": 12,
+69:    "hidden_size": 2560,
+117:    "max_position_embeddings": 131072,
+122:    "num_hidden_layers": 42,
+161:    "hidden_size": 768,
+173:    "max_position_embeddings": 131072,
+176:    "num_hidden_layers": 16,
+196:=== Tensors (2130) ===
+2328:=== Non-text towers (114) ===
+2445:=== Architecture summary ===
+➜  rust-harness git:(rust-harness-verification) ✗ ./target/release/checkpoint-info --check "$MODEL" 2>&1 | tee /tmp/rh22/2.txt | tail -n 3
+echo "exit=$?"
+  layer 41: Global, head 512, ffn 10240, rope base 1000000
+
+[ERROR] CPU backend compatibility: checkpoint is multimodal: it carries 114 tensor families in model.audio_tower., model.embed_audio., model.embed_vision., model.vision_tower., and this backend serves text only. Pass --text-only to load the text stack and decline the rest
+exit=1
+➜  rust-harness git:(rust-harness-verification) ✗ ./target/release/checkpoint-info --check --text-only "$MODEL" 2>&1 | tee /tmp/rh22/3.txt | tail -n 3
+echo "exit=$?"
+  layer 41: Global, head 512, ffn 10240, rope base 1000000
+
+[OK] CPU backend compatibility: supported
+exit=0
+➜  rust-harness git:(rust-harness-verification) ✗ ./target/release/checkpoint-info --check /absent
+echo "exit=$?"
+[ERROR] Read /absent: no checkpoint at /absent: expected a directory holding config.json and model.safetensors, or a path to the weights file itself
+exit=1
 ```
 
-Status: PENDING
+Exit 0, 1, 0, 1, as expected, and the verdict in (1) and (2) is the same
+line, so (2) shows the flag turning the verdict into a code and (3) shows
+`--text-only` moving the verdict rather than the code. The verdict names 114
+families in all four `NON_TEXT_PREFIXES`, and the towers section counts the
+same 114: the `cpu.rs` comment's figure is the artifact's. Its other figure,
+1409 tower tensors of 2130, is not decidable from this paste, because the
+section lists families and the tool prints no per-tower tensor count; the
+2130 agrees with RH.1's `BF16 x2130`. The grep shows the three `hidden_size`
+lines the entry warned of: 1024 at line 19 is the vision block (12 layers),
+768 at line 161 the audio block (16 layers), and 2560 at line 69 is
+`text_config`, whose 42 layers at line 122 and 131072 at line 117 are the
+figures RH.16's preflight and RH.1's summary report. The audio block also
+declares `max_position_embeddings` 131072, so that figure alone would not
+have told the blocks apart.
+
+Status: PENDING (the gate is owed; the four steps by hand are recorded above)
 
 ## Gate-backed entries
 
