@@ -21,9 +21,17 @@ Arithmetic the settings rest on, all read from the run header rather than
 assumed: window 512 and a batch group of 64 give a window capacity of 719
 positions, so eviction begins past 719 and the horizon is 208 behind the tip.
 `--context 2048 --compact-at 0.4` fires compaction near 819 rendered tokens,
-past 719, so at the sync after each compaction the floor is several hundred
-while the common prefix is the rendered memory turn plus the one head entry
-the compactor keeps verbatim.
+past 719, so the floor is several hundred at every sync a compaction causes.
+
+A compaction causes two such syncs, not one, and the first run of this test
+by hand (2026-09-11, entry RH.20) is what showed it. The compactor renders its
+summarization prompt as BOS plus the middle entries, which begin at the first
+model reply; the chat prompt is BOS plus the head user entry. The two diverge
+at their third token, so the summarization sync shares two positions with the
+cache and rebuilds the whole transcript. The post-compaction prompt then
+shares those same two positions with the summarization prompt the cache holds
+and rebuilds again, this time the short compacted prompt. Large then small,
+once per compaction, is the shape asserted below.
 """
 
 from __future__ import annotations
@@ -164,13 +172,13 @@ def test_the_session_compacts_more_than_once(run):
 def test_every_compaction_rebuilds_the_cache_past_the_floor(run):
     compactions = run.compactions()
     rebuilt = run.rebuilt()
-    # One rebuild per compaction: the sync after each is the one whose common
-    # prefix the floor refuses. Fewer means a compaction fired inside a window
-    # the cheap rewind still covered, which is not the path this test exists
-    # for; more means a rewind past the floor with no compaction to cause it.
-    assert len(rebuilt) == len(compactions), (
+    # Two rebuilds per compaction, the summarization sync and the sync after
+    # it (module doc). Fewer means a compaction fired inside a window the
+    # cheap rewind still covered, which is not the path this test exists for;
+    # more means a rewind past the floor with no compaction to cause it.
+    assert len(rebuilt) == 2 * len(compactions), (
         f"{len(rebuilt)} rebuilt prefill(s) against {len(compactions)} "
-        f"compaction(s)\n{run.transcript}"
+        f"compaction(s), two expected each\n{run.transcript}"
     )
     for prefilled, common, floor in rebuilt:
         assert 1 <= common < floor, (
@@ -179,3 +187,10 @@ def test_every_compaction_rebuilds_the_cache_past_the_floor(run):
         # Rebuilt from zero: the prefill is the whole prompt, so it is longer
         # than the prefix that was refused.
         assert prefilled > common, (prefilled, common, floor)
+    # In order: the summarization prompt is the whole transcript at the
+    # threshold, the compacted prompt that follows it is a fraction of that.
+    for summarize, compacted in zip(rebuilt[0::2], rebuilt[1::2], strict=True):
+        assert summarize[0] > compacted[0], (
+            f"a compaction's rebuilds are not large then small: {summarize} "
+            f"then {compacted}"
+        )
