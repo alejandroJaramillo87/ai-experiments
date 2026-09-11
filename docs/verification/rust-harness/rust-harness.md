@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 25 verified, 0 blocked, 13 pending, of 38.** RH.11 was blocked
+**Entries: 26 verified, 0 blocked, 12 pending, of 38.** RH.11 was blocked
 until 2026-09-05 on an instruction-tuned checkpoint; gemma-4-E2B-it unblocked
 it, and it closed on that checkpoint on 2026-09-06. RH.9d and RH.15 were
 blocked until the same day on a control vector this repository could not
@@ -14,7 +14,7 @@ and the entry records the install step. RH.8 was blocked until the same day
 on the absence of an instruction-tuned checkpoint; gemma-4-E2B-it now closes
 it, and its entry records the two harness defects the first runs exposed.
 
-Of the 13 pending, RH.19 through RH.22 are new full entries from the surface
+Of the 12 pending, RH.20 through RH.22 are new full entries from the surface
 inventory, each needing a human, the GPU host, or the real E4B checkpoint.
 RH.23 through RH.31 are **gate-backed**: each names the test function that
 asserts its expected signal, and one `cargo test --workspace` run closes all
@@ -4753,12 +4753,44 @@ case; record it as a finding under this entry rather than loosening the
 check. The same test runs under
 `make quality-full HW=e4b HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B`.
 
-Observed (the gate):
+Observed (2026-09-11, the gate):
 
 ```
+➜  rust-harness git:(rust-harness-verification) ✗ cd ~/workspace/ai-experiments
+(cd rust-harness && cargo build --release -p harness)
+HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B \
+  uv run pytest -m hw_e4b tests/hardware/test_alignment.py -v
+echo "exit=$?"
+   Compiling harness v0.1.0 (/home/alejandro/workspace/ai-experiments/rust-harness/harness)
+    Finished `release` profile [optimized] target(s) in 1.56s
+=============================================================================== test session starts ===============================================================================
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /home/alejandro/workspace/ai-experiments/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/alejandro/workspace/ai-experiments
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, mock-3.15.1, jaxtyping-0.3.11, cov-7.1.0, hydra-core-1.3.2, anyio-4.14.2, xdist-3.8.0, typeguard-4.6.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 5 items
+
+tests/hardware/test_alignment.py::test_the_artifact_covers_every_position PASSED                                                                                            [ 20%]
+tests/hardware/test_alignment.py::test_scaffold_rows_are_zero_width_on_the_real_vocabulary PASSED                                                                           [ 40%]
+tests/hardware/test_alignment.py::test_the_spans_tile_the_text PASSED                                                                                                       [ 60%]
+tests/hardware/test_alignment.py::test_each_span_holds_its_tokens_bytes PASSED                                                                                              [ 80%]
+tests/hardware/test_alignment.py::test_the_generated_ids_round_trip_through_transformers PASSED                                                                             [100%]
+
+[TIER] full: torch present, the whole suite was in scope.
+=============================================================================== 5 passed in 38.64s ================================================================================
+exit=0
 ```
 
-Status: PENDING
+Five of five in 38.64 s, the checkpoint loaded once. The fourth function is
+the one the manual run could not stand in for: every attribution group's
+ids, decoded by `transformers`, equal the bytes the group's span selects, so
+the partition is not shifted anywhere in the 299 rows, and the fifth found
+the generated ids re-encoding from their own text. The `[TIER] full` line is
+the suite's own statement that torch was present and nothing skipped.
+
+Status: VERIFIED 2026-09-11 (gate-backed by `tests/hardware/test_alignment.py`)
 
 ## RH.20 Compaction past the rewind horizon
 
