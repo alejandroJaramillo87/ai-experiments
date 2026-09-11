@@ -10,6 +10,8 @@ commit; the manifests record content hashes of the files used.
 | `behavior_honesty.jsonl` | scorecard behavior arm | one `{"prompt"}` per line |
 | `neutral.jsonl` | scorecard coherence arm | one `{"prompt"}` per line |
 | `system_prompt_honesty.json` | scorecard system-prompt arm | `{"prompt", "iterations": [...]}` |
+| `behavior_refusal.jsonl` | scorecard behavior arm, refusal (RH.15) | one `{"prompt"}` per line; six benign requests on safety-adjacent subjects, where added refusal has headroom |
+| `system_prompt_refusal.json` | scorecard system-prompt arm, refusal | `{"prompt", "iterations": [...]}` |
 
 `honesty.jsonl` uses the probe path's format (see
 `interp/probes/prompts/README.md`): a steering vector and a probe are both
@@ -20,4 +22,7 @@ line for repeng; the pairing survives as adjacent lines.
 The system-prompt file records at least three tuning iterations; the scorecard
 refuses a baseline with fewer (a strawman baseline invalidates the comparison).
 New behaviors add a new triple of files here, never edit a set an existing
-scorecard references.
+scorecard references. The refusal pair reuses `neutral.jsonl` and takes its
+vector from `interp/probes/prompts/refusal.jsonl` through the probe path, so
+it is a pair rather than a triple; its behavior prompts overlap neither that
+set nor `refusal_heldout.jsonl`.

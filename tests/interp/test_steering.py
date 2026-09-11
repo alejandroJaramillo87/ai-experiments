@@ -235,6 +235,60 @@ class TestExtractInputs:
         record = json.loads((prompts / "system_prompt_honesty.json").read_text())
         assert len(record["iterations"]) >= 3
 
+    def test_refusal_prompt_pair_parses(self, repo_root):
+        # RH.15's set: benign prompts, where added refusal has headroom, and
+        # a system prompt with the three iterations the scorecard requires.
+        from interp.steering.scorecard import load_prompts, load_system_prompt
+
+        prompts = repo_root / "interp" / "steering" / "prompts"
+        behavior = load_prompts(str(prompts / "behavior_refusal.jsonl"))
+        assert len(behavior) == 6
+        record = load_system_prompt(str(prompts / "system_prompt_refusal.json"))
+        assert record["iterations"][-1] == record["prompt"]
+
+
+class TestMakeServiceController:
+    """The make invocation, with subprocess faked: what steer-up is told."""
+
+    def _calls(self, monkeypatch, layer_range):
+        from interp.steering import scorecard as sc
+
+        calls: list[list[str]] = []
+
+        class Done:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        monkeypatch.setattr(
+            sc.subprocess, "run", lambda argv, **kw: calls.append(argv) or Done()
+        )
+        controller = sc.MakeServiceController(
+            "make",
+            "/mnt/ai-data/interp/vectors/v1",
+            health_wait=lambda: None,
+            layer_range=layer_range,
+        )
+        controller.steer(0.5)
+        controller.unsteer()
+        return calls
+
+    def test_band_reaches_steer_up_as_one_variable(self, monkeypatch):
+        up, down = self._calls(monkeypatch, (10, 16))
+        assert up == [
+            "make",
+            "steer-up",
+            "VECTOR=/mnt/ai-data/interp/vectors/v1",
+            "SCALE=0.5",
+            "STEER_SERVICE=harness-serve",
+            "LAYER_RANGE=10 16",
+        ]
+        assert down == ["make", "steer-down", "STEER_SERVICE=harness-serve"]
+
+    def test_no_band_passes_no_variable(self, monkeypatch):
+        up, _ = self._calls(monkeypatch, None)
+        assert not any(arg.startswith("LAYER_RANGE") for arg in up)
+
 
 class FakeController:
     def __init__(self, fail_on_scale: float | None = None):
@@ -421,3 +475,106 @@ class TestScorecard:
             post=fake_post,
         )
         assert verdict == {"score": 8.0, "reason": "ok"}
+
+    def test_judge_score_names_budget_when_thought_exhausts_it(self):
+        # llama-server's shape for a reasoning model cut off mid-thought:
+        # empty content, finish_reason length, the thought in a field this
+        # parser never reads. The error names the budget, not the parse, and
+        # the request asks the server for no thought at all.
+        from interp.steering.scorecard import (
+            JUDGE_BEHAVIOR_TEMPLATE,
+            JUDGE_VERDICT_SCHEMA,
+            ScorecardError,
+            judge_score,
+        )
+
+        seen = {}
+
+        def fake_post(url, payload):
+            seen["max_tokens"] = payload["max_tokens"]
+            seen["thinking_budget_tokens"] = payload["thinking_budget_tokens"]
+            seen["response_format"] = payload["response_format"]
+            return {
+                "choices": [
+                    {
+                        "finish_reason": "length",
+                        "message": {"content": "", "reasoning_content": "Thinking"},
+                    }
+                ]
+            }
+
+        with pytest.raises(ScorecardError, match="128-token budget"):
+            judge_score(
+                "http://judge",
+                JUDGE_BEHAVIOR_TEMPLATE,
+                "refusal",
+                "prompt",
+                "response",
+                max_tokens=128,
+                post=fake_post,
+            )
+        assert seen["max_tokens"] == 128
+        assert seen["thinking_budget_tokens"] == 0
+        assert seen["response_format"] == {
+            "type": "json_object",
+            "schema": JUDGE_VERDICT_SCHEMA,
+        }
+
+    def test_judge_score_parses_the_fenced_verdict_the_grammar_emits(self):
+        # The Gemma 4 grammar in llama-server wraps the schema-constrained
+        # object in a json fence; the client side of that contract is that
+        # the fence parses.
+        from interp.steering.scorecard import JUDGE_BEHAVIOR_TEMPLATE, judge_score
+
+        def fake_post(url, payload):
+            return {
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {
+                            "content": '```json\n{"score": 0, "reason": "It answered."}\n```'
+                        },
+                    }
+                ]
+            }
+
+        verdict = judge_score(
+            "http://judge",
+            JUDGE_BEHAVIOR_TEMPLATE,
+            "refusal",
+            "prompt",
+            "response",
+            post=fake_post,
+        )
+        assert verdict == {"score": 0.0, "reason": "It answered."}
+
+    def test_judge_score_names_budget_when_verdict_is_cut_mid_string(self):
+        # RH.15's second run, 2026-09-06: the thought fit but the verdict did
+        # not, so content held a fragment with no closing brace. That is the
+        # same budget failure, not an unparseable reply.
+        from interp.steering.scorecard import (
+            JUDGE_FLUENCY_TEMPLATE,
+            ScorecardError,
+            judge_score,
+        )
+
+        fragment = (
+            '```json\n{"score": 10, "reason": "The response is highly fluent, logically'
+        )
+
+        def fake_post(url, payload):
+            return {
+                "choices": [
+                    {"finish_reason": "length", "message": {"content": fragment}}
+                ]
+            }
+
+        with pytest.raises(ScorecardError, match="512-token budget"):
+            judge_score(
+                "http://judge",
+                JUDGE_FLUENCY_TEMPLATE,
+                "refusal",
+                "prompt",
+                "response",
+                post=fake_post,
+            )

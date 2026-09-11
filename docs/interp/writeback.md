@@ -65,7 +65,8 @@ make steer-extract ARGS="--capture /mnt/ai-data/interp/captures/honesty-e2b-it \
     --out /mnt/ai-data/interp/vectors/honesty-e2b-it"
 make steer-up VECTOR=/mnt/ai-data/interp/vectors/honesty-e2b-it SCALE=1.0
 make steer-down
-make steer-scorecard VECTOR=/mnt/ai-data/interp/vectors/honesty-e2b-it ATTRIBUTE="honesty"
+make steer-scorecard VECTOR=/mnt/ai-data/interp/vectors/honesty-e2b-it ATTRIBUTE="honesty" \
+    ARGS="--layer-range '8 24'"
 ```
 
 Until 2026-09 extraction went through repeng, whose only release cannot import under
@@ -73,7 +74,17 @@ the tier's numpy pin (KB-32). The mean difference is what the current steering
 literature recommends over repeng's PCA of pair differences, and it lands in
 residual-stream units, so `SCALE=1.0` means one class gap at every layer.
 `--layers` on `steer-extract` narrows the export; `--control-vector-layer-range` narrows
-at load.
+at load, and `steer-scorecard --layer-range` is how a scorecard says that band to
+`make steer-up`. The scorecard's subject and judge default to the `harness` and
+`llama-cpu` entries of `common/serving.py`; pass `--subject-url` or `--judge-url` only to
+score some other pair. The judge runs with thinking off: the Gemma 4 GGUF template leaves
+the thought channel open and gemma-4-E2B-it reasons at length before every verdict, so the
+judge request carries llama-server's per-request thinking budget at zero, which ends the
+thought the moment it starts. The same request carries the verdict's JSON schema, which
+llama-server compiles to a grammar, so the prompt's "JSON only" is enforced by the sampler
+rather than hoped for: score an integer 0 to 10, reason a bounded string, nothing else.
+`--judge-max-tokens` (512) bounds the verdict itself; a verdict the budget cuts off is
+reported by name rather than as an unparseable reply.
 
 `--method sae_row` exports a single Gemma Scope decoder row instead
 (`--sae-release ... --sae-id ... --feature N --layer L`). The serving entrypoint adds

@@ -2,19 +2,19 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 20 verified, 1 blocked, 17 pending, of 38.** The one blocked is
-RH.11, which needs an instruction-tuned E4B checkpoint. RH.9d and RH.15 were
-blocked until 2026-09-05 on a control vector this repository could not
+**Entries: 23 verified, 0 blocked, 15 pending, of 38.** RH.11 was blocked
+until 2026-09-05 on an instruction-tuned checkpoint; gemma-4-E2B-it unblocked
+it, and it closed on that checkpoint on 2026-09-06. RH.9d and RH.15 were
+blocked until the same day on a control vector this repository could not
 produce; `steer-extract` now derives one from an RH.9a capture, RH.9d closed
-on it the same day, and RH.15 is pending on a serving run. RH.7 was blocked until 2026-09-05 on the
+on it the same day and RH.15 the day after, once the scorecard's judge
+stopped reasoning its way past its own verdict. RH.7 was blocked until 2026-09-05 on the
 packaged rr 5.7.0, which does not recognize the 9950X; upstream 5.9.0 does,
 and the entry records the install step. RH.8 was blocked until the same day
 on the absence of an instruction-tuned checkpoint; gemma-4-E2B-it now closes
 it, and its entry records the two harness defects the first runs exposed.
 
-Of the 17 pending, one is RH.13, reopened by U7: the code under it changed the
-terminal output the entry records, so its Observed block needs re-collecting
-rather than editing. RH.17 through RH.22 are new full entries from the surface
+Of the 16 pending, RH.17 through RH.22 are new full entries from the surface
 inventory, each needing a human, the GPU host, or the real E4B checkpoint.
 RH.23 through RH.31 are **gate-backed**: each names the test function that
 asserts its expected signal, and one `cargo test --workspace` run closes all
@@ -58,7 +58,7 @@ their expected signal: **RH.9d** (steering, judged against a baseline reply),
 and the agent loop (RH.8). Those cannot pass against a base checkpoint no
 matter how correct the backend, and closing them needs an `-it` variant.
 The E2B one, `gemma-4-E2B-it`, arrived on the workstation on 2026-09-05 and
-closed RH.8; RH.9d now targets it, and RH.11 carries a note to that effect.
+closed RH.8; RH.9d and RH.11 closed on it.
 
 Recording protocol: the [runbook README](../../README.md) rules apply. The human
 runs each command on the workstation and pastes command plus output
@@ -2707,12 +2707,21 @@ for the CPU backend; there is no pass threshold beyond the profile being
 attributable.
 
 Command (the `make flame` target takes no arguments, so the underlying
-command is invoked directly with the trailing binary arguments):
+command is invoked directly with the trailing binary arguments). The run
+must start from `rust-harness/` because cargo builds there, and the harness
+keeps its session beside the binary's working directory, so the two session
+files are removed first; the 2026-08-14 run below shows what a stale
+`session.kv` does to a profile nobody reads the text of.
 
 ```bash
-cd rust-harness
-cargo flamegraph --profile release-with-debug --bin harness -- \
-    --model /mnt/ai-data/models/hf/<e4b> --text-only "Reply with the single word: ready"
+cd ~/workspace/ai-experiments/rust-harness
+rm -f session.jsonl session.kv perf.data perf.data.old flamegraph.svg
+sysctl kernel.perf_event_paranoid kernel.kptr_restrict
+cargo flamegraph -F 97 --profile release-with-debug --bin harness -- \
+    --model /mnt/ai-data/models/hf/gemma-4-E4B --text-only \
+    "Reply with the single word: ready"
+ls -la flamegraph.svg perf.data
+perf report -i perf.data --no-children --sort sym --stdio 2>/dev/null | head -30
 ```
 
 Expected signal: `flamegraph.svg` is produced and the profile is dominated
@@ -2720,12 +2729,14 @@ by the forward-pass matrix multiplications (attention and MLP projections
 in `model::cpu`), not by tokenization, sampling, or I/O. Record the top
 frames.
 
-**Pass `-F 97`.** At the default sampling frequency this run lost 48.22
-percent of its samples and wrote a 45.9 GB `perf.data`; the profile is not
-trustworthy at that loss rate and the file is a disk hazard. Re-running under
-`perf record -F 97` produced the attributable profile recorded below.
+**Pass `-F 97`.** At the default sampling frequency the 2026-08-14 run lost
+48.22 percent of its samples and wrote a 45.9 GB `perf.data`; the profile
+is not trustworthy at that loss rate and the file is a disk hazard.
+Re-running under `perf record -F 97` produced the attributable profile
+recorded below, and the command block now carries the flag.
 
-Observed:
+Observed (2026-08-14, before the command block carried `-F 97` and the
+session clean-up):
 
 ```
 # Total Lost Samples: 194
@@ -2796,36 +2807,353 @@ stops at the tokenizer EOS, and a distinct `<turn|>` terminator
 would instead run to the `--max-tokens` budget with the trailing marker
 trimmed from the reply. Record which behavior is observed.
 
-Command (three or more turns, then EOF or `/quit`):
+Command (three turns scripted on stdin so the run is reproducible, then EOF;
+the chat loop reads a line per turn and `/quit` or end of input ends it).
+The first turn states two facts, and the second and third each ask for one
+of them back, so responsiveness to history is a string to look for rather
+than a judgement. The trace is then checked from the workspace:
 
 ```bash
-mkdir -p /tmp/rh11 && cd /tmp/rh11
-~/workspace/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/hf/<e4b> --text-only --chat \
+cd ~/workspace/ai-experiments
+git fetch origin rust-harness-verification
+git checkout -B rust-harness-verification origin/rust-harness-verification
+git log -1 --oneline
+cd rust-harness && cargo build --release --bin harness 2>&1 | tail -1
+rm -rf /tmp/rh11 && mkdir -p /tmp/rh11 && cd /tmp/rh11
+printf '%s\n' \
+    "My name is Alejandro and my workstation has an RTX 5090." \
+    "Which GPU did I say my workstation has?" \
+    "Reply with just my name." \
+  | ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only --chat \
     --trace-chrome trace.json --max-tokens 128
+cat session.jsonl
+cd ~/workspace/ai-experiments/rust-harness
+make trace-check TRACE=/tmp/rh11/trace.json
 ```
 
-**Blocked on an instruction-tuned checkpoint.** The responsiveness half of
-this signal is unmeetable against base E4B; see the base-model note at the top
-of this file. The mechanical half — the session record and the sync spans — is
-still worth running and recording, and a base model produces turns of text
-that exercise both.
+**Unblocked 2026-09-05 by gemma-4-E2B-it.** The entry was written against
+an instruction-tuned E4B, and the responsiveness half of its signal is
+unmeetable against base E4B; see the base-model note at the top of this file.
+The E2B `-it` checkpoint that closed RH.8 and RH.9d is instruction-tuned, so
+it is the subject here, as it is there. The mechanical half — the session
+record and the per-turn sync spans — does not depend on which checkpoint
+answers.
+
+The checkout and rebuild lines at the top of the block are there because the
+first two runs of this entry were spent without them: one ran the `main`
+version of `trace_structure.rs` from a local branch that had not been
+fast-forwarded, the other ran the new test against a trace from a binary
+built before `model.forward` carried its `groups` field. Both are recorded
+below. A release build that finishes in seconds after a pull that touched
+`runtime/` is the tell.
 
 Expected signal: replies are coherent and responsive to the conversation
-history across at least three turns; `session.jsonl` records alternating
-user and model entries; the per-turn `session.sync` spans in the trace
-cover only each turn's delta, not the whole transcript. Record whether
-replies terminate at EOS or run to the token budget.
+history across the three turns — the second reply names the RTX 5090 and the
+third names Alejandro, both stated only in the first turn; `session.jsonl`
+records six entries alternating `user` and `model`; `make trace-check`
+passes, prints three `session.sync` calls, and each sync's prefill
+`model.forward` starts at the previous turn's cached length with `len` the
+size of the new turn alone, not the transcript. `trace-check` also prints
+how many of the three generations stopped on EOS and how many ran to the
+128-token budget; record that line, and whether a `<turn|>` marker survived
+into any reply.
 
-Observed:
+Observed (2026-09-06, run 1, local branch stale at `main`'s test):
 
 ```
+➜  ai-experiments git:(rust-harness-verification) ✗ cd rust-harness && cargo build --release --bin harness 2>&1 | tail -1
+    Finished `release` profile [optimized] target(s) in 4.39s
+➜  rust-harness git:(rust-harness-verification) ✗ rm -rf /tmp/rh11 && mkdir -p /tmp/rh11 && cd /tmp/rh11
+➜  rh11 printf '%s\n' \
+    "My name is Alejandro and my workstation has an RTX 5090." \
+    "Which GPU did I say my workstation has?" \
+    "Reply with just my name." \
+  | ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only --chat \
+    --trace-chrome trace.json --max-tokens 128
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E2B-it hash=7ddcbbe752dcfbf6 layers=35
+[INFO] Weights: 8.62 GiB resident at bf16
+[INFO] Peak RSS after load: 9.51 GiB
+[INFO] KV cache: 131072 tokens, 1.52 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=128
+[INFO] Build: 0.1.0 git unknown
+[INFO] Model load: 5.71 s
+[INFO] Prefill: 25 tokens in 0.99 s (25 tok/s)
+That sounds like a very powerful workstation, Alejandro! The **RTX 5090** is a high-end, next-generation graphics card, suggesting you're set up for demanding tasks like:
+
+* **High-end Gaming:** Running the most demanding titles at ultra settings with high frame rates.
+* **3D Rendering & Modeling:** Accelerating workflows in software like Blender, Maya, or 3ds Max.
+* **AI/Machine Learning:** Handling complex deep learning models due to its massive parallel processing power.
+* **Video Editing & Content Creation:** Smooth, real-time playback and rendering in
+[INFO] Prefill: 19 tokens in 0.84 s (23 tok/s)
+You said your workstation has an **RTX 5090**.
+[INFO] Prefill: 15 tokens in 0.70 s (22 tok/s)
+Alejandro
+[INFO] Chat ended: 3 model turns
+[INFO] Session snapshot: 210 cached tokens at /tmp/rh11/session.kv
+➜  rh11 cat session.jsonl
+{"role":"user","content":"My name is Alejandro and my workstation has an RTX 5090."}
+{"role":"model","content":"That sounds like a very powerful workstation, Alejandro! The **RTX 5090** is a high-end, next-generation graphics card, suggesting you're set up for demanding tasks like:\n\n* **High-end Gaming:** Running the most demanding titles at ultra settings with high frame rates.\n* **3D Rendering & Modeling:** Accelerating workflows in software like Blender, Maya, or 3ds Max.\n* **AI/Machine Learning:** Handling complex deep learning models due to its massive parallel processing power.\n* **Video Editing & Content Creation:** Smooth, real-time playback and rendering in"}
+{"role":"user","content":"Which GPU did I say my workstation has?"}
+{"role":"model","content":"You said your workstation has an **RTX 5090**."}
+{"role":"user","content":"Reply with just my name."}
+{"role":"model","content":"Alejandro"}
+➜  rh11 cd -
+~/workspace/ai-experiments/rust-harness
+➜  rust-harness git:(rust-harness-verification) ✗ make trace-check TRACE=/tmp/rh11/trace.json
+HARNESS_TRACE="/tmp/rh11/trace.json" cargo test -p harness --test trace_structure -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.02s
+     Running tests/trace_structure.rs (target/debug/deps/trace_structure-fa0ba0cfa73184e5)
+
+running 1 test
+[INFO] model.forward               160 calls     16.99s
+[INFO] session.step                159 calls     15.23s
+[INFO] model.layer                5600 calls     14.97s
+[INFO] model.layer.mlp            5600 calls     10.63s
+[INFO] model.load                    1 calls      5.14s
+[INFO] model.from_checkpoint         1 calls      5.14s
+[INFO] model.layer.attn           5600 calls      3.30s
+[INFO] session.sync                  3 calls      2.52s
+[INFO] model.load.layer             35 calls      2.10s
+[INFO] model.lm_head               160 calls      1.91s
+[INFO] model.layer.ple            5600 calls      1.01s
+[INFO] sampler.sample              159 calls      0.77s
+[INFO] model.prelude               160 calls      0.09s
+[INFO] checkpoint.read               1 calls      0.00s
+[INFO] tokenizer.encode              3 calls      0.00s
+[INFO] checkpoint.fingerprint        1 calls      0.00s
+[INFO] checkpoint.parse              1 calls      0.00s
+
+thread 'a_chrome_trace_from_a_real_run_has_the_documented_span_shape' panicked at harness/tests/trace_structure.rs:192:5:
+assertion `left == right` failed: session.sync fires once per run
+  left: 3
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test a_chrome_trace_from_a_real_run_has_the_documented_span_shape ... FAILED
+
+failures:
+
+failures:
+    a_chrome_trace_from_a_real_run_has_the_documented_span_shape
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.40s
+
+error: test failed, to rerun pass `-p harness --test trace_structure`
+make: *** [Makefile:81: trace-check] Error 101
 ```
 
-Status: BLOCKED 2026-08-14. Needs the instruction-tuned E4B checkpoint,
-which is not on this workstation. Instruction following is this entry's
-expected signal, so no run against the base checkpoint can close it — a
-fluent non-answer is correct behaviour and proves nothing either way.
+Run 1 reading: the replies and the session record already meet the first
+two clauses of the signal. The panic is the `main` version of the test (the
+sync-once assertion sits at its line 192; on this branch that line is a
+comment), so the local branch had not been fast-forwarded; the 4.39 s
+release build says the binary was stale as well.
+
+Observed (2026-09-06, run 2, after `git pull`, binary not rebuilt):
+
+```
+➜  rust-harness git:(rust-harness-verification) ✗ git pull
+Updating 947de31..6ecad21
+Fast-forward
+ docs/rust-harness/observability.md             |  18 ++++++++++--------
+ docs/verification/README.md                    |   8 ++++----
+ docs/verification/rust-harness/rust-harness.md | 110 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++-------------------------------
+ rust-harness/harness/tests/trace_structure.rs  | 107 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++--------------------------------------
+ rust-harness/runtime/src/model/cpu.rs          |  16 ++++++++++++----
+ 5 files changed, 174 insertions(+), 85 deletions(-)
+➜  rust-harness git:(rust-harness-verification) ✗ rm -rf /tmp/rh11 && mkdir -p /tmp/rh11 && cd /tmp/rh11
+➜  rh11 printf '%s\n' \
+    "My name is Alejandro and my workstation has an RTX 5090." \
+    "Which GPU did I say my workstation has?" \
+    "Reply with just my name." \
+  | ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only --chat \
+    --trace-chrome trace.json --max-tokens 128
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E2B-it hash=7ddcbbe752dcfbf6 layers=35
+[INFO] Weights: 8.62 GiB resident at bf16
+[INFO] Peak RSS after load: 9.51 GiB
+[INFO] KV cache: 131072 tokens, 1.52 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=128
+[INFO] Build: 0.1.0 git unknown
+[INFO] Model load: 3.72 s
+[INFO] Prefill: 25 tokens in 0.99 s (25 tok/s)
+That sounds like a very powerful workstation, Alejandro! The **RTX 5090** is a high-end, next-generation graphics card, suggesting you're set up for demanding tasks like:
+
+* **High-end Gaming:** Running the most demanding titles at ultra settings with high frame rates.
+* **3D Rendering & Modeling:** Accelerating workflows in software like Blender, Maya, or 3ds Max.
+* **AI/Machine Learning:** Handling complex deep learning models due to its massive parallel processing power.
+* **Video Editing & Content Creation:** Smooth, real-time playback and rendering in
+[INFO] Prefill: 19 tokens in 0.84 s (23 tok/s)
+You said your workstation has an **RTX 5090**.
+[INFO] Prefill: 15 tokens in 0.69 s (22 tok/s)
+Alejandro
+[INFO] Chat ended: 3 model turns
+[INFO] Session snapshot: 210 cached tokens at /tmp/rh11/session.kv
+➜  rh11 cat session.jsonl
+{"role":"user","content":"My name is Alejandro and my workstation has an RTX 5090."}
+{"role":"model","content":"That sounds like a very powerful workstation, Alejandro! The **RTX 5090** is a high-end, next-generation graphics card, suggesting you're set up for demanding tasks like:\n\n* **High-end Gaming:** Running the most demanding titles at ultra settings with high frame rates.\n* **3D Rendering & Modeling:** Accelerating workflows in software like Blender, Maya, or 3ds Max.\n* **AI/Machine Learning:** Handling complex deep learning models due to its massive parallel processing power.\n* **Video Editing & Content Creation:** Smooth, real-time playback and rendering in"}
+{"role":"user","content":"Which GPU did I say my workstation has?"}
+{"role":"model","content":"You said your workstation has an **RTX 5090**."}
+{"role":"user","content":"Reply with just my name."}
+{"role":"model","content":"Alejandro"}
+➜  rh11 cd -
+~/workspace/ai-experiments/rust-harness
+➜  rust-harness git:(rust-harness-verification) ✗ make trace-check TRACE=/tmp/rh11/trace.json
+HARNESS_TRACE="/tmp/rh11/trace.json" cargo test -p harness --test trace_structure -- --nocapture
+   Compiling runtime v0.1.0 (/home/alejandro/workspace/ai-experiments/rust-harness/runtime)
+   Compiling harness v0.1.0 (/home/alejandro/workspace/ai-experiments/rust-harness/harness)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.33s
+     Running tests/trace_structure.rs (target/debug/deps/trace_structure-fa0ba0cfa73184e5)
+
+running 1 test
+[INFO] model.forward               160 calls     17.85s
+[INFO] session.step                159 calls     16.11s
+[INFO] model.layer                5600 calls     15.69s
+[INFO] model.layer.mlp            5600 calls     11.20s
+[INFO] model.layer.attn           5600 calls      3.41s
+[INFO] model.load                    1 calls      3.15s
+[INFO] model.from_checkpoint         1 calls      3.15s
+[INFO] session.sync                  3 calls      2.52s
+[INFO] model.lm_head               160 calls      2.05s
+[INFO] model.load.layer             35 calls      1.17s
+[INFO] model.layer.ple            5600 calls      1.04s
+[INFO] sampler.sample              159 calls      0.77s
+[INFO] model.prelude               160 calls      0.10s
+[INFO] checkpoint.read               1 calls      0.00s
+[INFO] tokenizer.encode              3 calls      0.00s
+[INFO] checkpoint.fingerprint        1 calls      0.00s
+[INFO] checkpoint.parse              1 calls      0.00s
+[INFO] session.sync 3 calls: 2 stopped on EOS, 1 on the token budget
+[INFO] session.sync args {"cached_len": "0"}, prefill model.forward args Some({"len": "25", "start": "0"})
+[INFO] session.sync args {"cached_len": "153"}, prefill model.forward args Some({"len": "19", "start": "153"})
+[INFO] session.sync args {"cached_len": "194"}, prefill model.forward args Some({"len": "15", "start": "188"})
+
+thread 'a_chrome_trace_from_a_real_run_has_the_documented_span_shape' panicked at harness/tests/trace_structure.rs:266:36:
+model.forward without a groups field: {"len": "25", "start": "0"}
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test a_chrome_trace_from_a_real_run_has_the_documented_span_shape ... FAILED
+
+failures:
+
+failures:
+    a_chrome_trace_from_a_real_run_has_the_documented_span_shape
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.41s
+
+error: test failed, to rerun pass `-p harness --test trace_structure`
+make: *** [Makefile:81: trace-check] Error 101
+```
+
+Run 2 reading: the test is now this branch's (it printed the sync lines),
+the binary is not (no `groups` in its forward args). `cargo test` rebuilt
+`runtime` for the test profile only; `target/release/harness` was untouched.
+
+Observed (2026-09-06, run 3, after `cargo build --release --bin harness`):
+
+```
+➜  rust-harness git:(rust-harness-verification) ✗ rm -rf /tmp/rh11 && mkdir -p /tmp/rh11 && cd /tmp/rh11
+➜  rh11 printf '%s\n' \
+    "My name is Alejandro and my workstation has an RTX 5090." \
+    "Which GPU did I say my workstation has?" \
+    "Reply with just my name." \
+  | ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only --chat \
+    --trace-chrome trace.json --max-tokens 128
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E2B-it hash=7ddcbbe752dcfbf6 layers=35
+[INFO] Weights: 8.62 GiB resident at bf16
+[INFO] Peak RSS after load: 9.51 GiB
+[INFO] KV cache: 131072 tokens, 1.52 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=128
+[INFO] Build: 0.1.0 git unknown
+[INFO] Model load: 3.73 s
+[INFO] Prefill: 25 tokens in 1.00 s (25 tok/s)
+That sounds like a very powerful workstation, Alejandro! The **RTX 5090** is a high-end, next-generation graphics card, suggesting you're set up for demanding tasks like:
+
+* **High-end Gaming:** Running the most demanding titles at ultra settings with high frame rates.
+* **3D Rendering & Modeling:** Accelerating workflows in software like Blender, Maya, or 3ds Max.
+* **AI/Machine Learning:** Handling complex deep learning models due to its massive parallel processing power.
+* **Video Editing & Content Creation:** Smooth, real-time playback and rendering in
+[INFO] Prefill: 19 tokens in 0.84 s (23 tok/s)
+You said your workstation has an **RTX 5090**.
+[INFO] Prefill: 15 tokens in 0.68 s (22 tok/s)
+Alejandro
+[INFO] Chat ended: 3 model turns
+[INFO] Session snapshot: 210 cached tokens at /tmp/rh11/session.kv
+➜  rh11 cat session.jsonl
+{"role":"user","content":"My name is Alejandro and my workstation has an RTX 5090."}
+{"role":"model","content":"That sounds like a very powerful workstation, Alejandro! The **RTX 5090** is a high-end, next-generation graphics card, suggesting you're set up for demanding tasks like:\n\n* **High-end Gaming:** Running the most demanding titles at ultra settings with high frame rates.\n* **3D Rendering & Modeling:** Accelerating workflows in software like Blender, Maya, or 3ds Max.\n* **AI/Machine Learning:** Handling complex deep learning models due to its massive parallel processing power.\n* **Video Editing & Content Creation:** Smooth, real-time playback and rendering in"}
+{"role":"user","content":"Which GPU did I say my workstation has?"}
+{"role":"model","content":"You said your workstation has an **RTX 5090**."}
+{"role":"user","content":"Reply with just my name."}
+{"role":"model","content":"Alejandro"}
+➜  rh11 cd -
+~/workspace/ai-experiments/rust-harness
+➜  rust-harness git:(rust-harness-verification) ✗ make trace-check TRACE=/tmp/rh11/trace.json
+HARNESS_TRACE="/tmp/rh11/trace.json" cargo test -p harness --test trace_structure -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.02s
+     Running tests/trace_structure.rs (target/debug/deps/trace_structure-fa0ba0cfa73184e5)
+
+running 1 test
+[INFO] model.forward               160 calls     17.03s
+[INFO] session.step                159 calls     15.30s
+[INFO] model.layer                5600 calls     15.01s
+[INFO] model.layer.mlp            5600 calls     10.66s
+[INFO] model.layer.attn           5600 calls      3.30s
+[INFO] model.load                    1 calls      3.16s
+[INFO] model.from_checkpoint         1 calls      3.16s
+[INFO] session.sync                  3 calls      2.52s
+[INFO] model.lm_head               160 calls      1.92s
+[INFO] model.load.layer             35 calls      1.18s
+[INFO] model.layer.ple            5600 calls      1.02s
+[INFO] sampler.sample              159 calls      0.79s
+[INFO] model.prelude               160 calls      0.09s
+[INFO] checkpoint.read               1 calls      0.00s
+[INFO] tokenizer.encode              3 calls      0.00s
+[INFO] checkpoint.fingerprint        1 calls      0.00s
+[INFO] checkpoint.parse              1 calls      0.00s
+[INFO] session.sync 3 calls: 2 stopped on EOS, 1 on the token budget
+[INFO] session.sync args {"cached_len": "0"}, prefill model.forward args Some({"groups": "1", "len": "25", "start": "0"})
+[INFO] session.sync args {"cached_len": "153"}, prefill model.forward args Some({"groups": "1", "len": "19", "start": "153"})
+[INFO] session.sync args {"cached_len": "194"}, prefill model.forward args Some({"groups": "1", "len": "15", "start": "188"})
+[INFO] layers 35, forwards 160, prefill groups 160, model.layer / group = 35.0
+[INFO] kernel spans absent: a debug-level trace
+test a_chrome_trace_from_a_real_run_has_the_documented_span_shape ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.41s
+```
+
+Run 3 against the signal, clause by clause. The second reply names the
+RTX 5090 and the third is the single word `Alejandro`; both facts were
+stated only in the first turn. `session.jsonl` holds six entries alternating
+`user` and `model`. `trace-check` passes and prints three `session.sync`
+calls. Turn 2's prefill starts at 153, exactly turn 1's cached length, with
+`len` 19 for a 41-character question: the delta, not the transcript. Turn 3
+starts at 188 against a cached length of 194, so six tokens at the tip were
+re-prefilled along with the new turn; see the note below. The stop line
+reads `2 stopped on EOS, 1 on the token budget`: the first reply ran to the
+128-token budget and is cut mid-sentence in the transcript, the other two
+stopped at EOS, and no reply carries a `<turn|>` marker. The E2B `-it`
+checkpoint stops at the tokenizer EOS, which answers the question the entry
+was written to ask.
+
+**Six-token re-prefill after an EOS-ended reply.** Turn 2's reply stopped
+on EOS, so the cache tip holds the sampled tokens for `**RTX 5090**.`
+followed by the end-of-turn token. The next sync re-renders the transcript
+from the trimmed reply text, and the tokenizer does not reproduce the
+model's own split at that tip; `Session::sync` truncates to the common
+prefix and re-prefills from there. Turn 1 stopped on the budget mid-word and
+re-tokenized identically, which is why turn 2 synced exactly. The reply is
+unchanged either way; the cost is six tokens of prefill per EOS-ended turn.
+A fixture test that generates to EOS and syncs again would pin the number,
+and token healing at the reply tail would remove it. Neither is done here.
+
+Status: VERIFIED (2026-09-06)
 
 ## RH.12 Container build and reproducibility
 
@@ -2915,7 +3243,9 @@ Status: VERIFIED 2026-08-14
 ## RH.13 Run-level observability records
 
 Implementation: `rust-harness/obs/src/lib.rs`,
-`rust-harness/harness/tests/obs_contract.rs`, `common/obs/catalog.py`.
+`rust-harness/harness/tests/obs_contract.rs`,
+`rust-harness/harness/tests/obs_records.rs`,
+`tests/hardware/test_obs_records.py`, `common/obs/catalog.py`.
 
 The harness writes run-level records in the shared obs contract
 (`common/obs`): an event file `${OBS_LOG_DIR}/harness/<run_id>.jsonl`
@@ -2926,16 +3256,24 @@ harness-written files unchanged. Cross-language compatibility is verified
 in the sandbox against a scratch `OBS_LOG_DIR`; this entry confirms the
 default log root on the workstation.
 
-Command (a normal run, then a forced failure, then inspection):
+Command (check out and rebuild, then a normal run, a forced failure, and
+inspection):
 
 ```bash
-mkdir -p /tmp/rh13 && cd /tmp/rh13
+cd ~/workspace/ai-experiments
+git fetch origin rust-harness-verification
+git checkout -B rust-harness-verification origin/rust-harness-verification
+git log -1 --oneline
+cd rust-harness && cargo build --release --bin harness 2>&1 | tail -1
+rm -rf /tmp/rh13 && mkdir -p /tmp/rh13 && cd /tmp/rh13
 ~/workspace/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/hf/<e4b> --text-only \
+    --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only \
     "Reply with the single word: ready"
 ~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /nonexistent-checkpoint "task" ; echo "exit: $?"
 tail -2 /mnt/ai-data/logs/harness/runs.jsonl
+cat /mnt/ai-data/logs/harness/$(tail -1 /mnt/ai-data/logs/harness/runs.jsonl \
+    | python3 -c "import json,sys; print(json.load(sys.stdin)['run_id'])").jsonl
 cd ~/workspace/ai-experiments && uv run python -c "
 from common.obs import catalog
 rows = catalog.read_runs(catalog.catalog_path('harness'))
@@ -2943,6 +3281,20 @@ for r in rows[-2:]:
     print(r['run_id'], r['command'], r['exit_code'])
 "
 ```
+
+The checkout and rebuild come first for the reason RH.11 records: a local
+branch that was not fast-forwarded, and a release binary older than the
+pull, each produced a run that looked like a defect and was not one. The
+`cat` prints the failing run's event file, which the 2026-08-14 evidence
+included by hand.
+
+The successful run names the instruction-tuned checkpoint, where the
+2026-08-14 run used base E4B. A positional task puts the binary in
+coding-agent mode, and on 2026-09-06 base E2B answered the tool contract
+with a tool call rather than the word (recorded below): the entry is about
+the records, not the reply, but a run that aborts is the wrong row. The
+`rm -rf` keeps another model's `session.kv` from being resumed and then
+discarded on the hash check.
 
 Expected signal: the successful run catalogs with `exit_code` 0 and the
 failed run with `exit_code` 1 plus a `fail` event in its event file; run
@@ -3012,7 +3364,194 @@ writing the two lines into it from the source rather than from a run would
 make it the second kind of thing. Re-run the command block on the workstation
 and paste what it prints.
 
-Status: PENDING (verified 2026-08-14; reopened by U7 for a terminal re-run)
+**Gate (added 2026-09-06).** `rust-harness/harness/tests/obs_records.rs` runs
+the same two invocations over a scratch `OBS_LOG_DIR`, the success over the
+tiny fixture, on every `cargo test`, and so under `make quality`. It asserts
+the two catalog rows in order with exit codes 0 and 1, their key set against
+`schemas/obs_record.json`, the run-id shape, that each row's event file opens
+with `cmd.start`, closes with `cmd.end` carrying the row's exit code, and
+holds `fail` exactly when the exit code is 1, and that the Python reader
+returns both rows. What this entry adds over the gate is the default
+`/mnt/ai-data/logs` root and a real checkpoint.
+
+Writing the gate found a second change since 2026-08-14, also from the U
+campaign: the failing run's event file is no longer the bare
+`cmd.start` / `fail` / `cmd.end` triple. A `model.load` phase now brackets
+the whole cold start, so the missing checkpoint is rejected inside it and
+the file reads `cmd.start`, `phase.start`, `phase.end` (both `model.load`,
+`duration_s` 0), `fail`, `cmd.end`. The test pins that sequence. Expect it
+in the `cat` output; it is not a regression, since the phase closes at once
+and the run still ends before any weight is read.
+
+**Hardware test (added 2026-09-06).** The workstation half is also a test,
+so `make quality-full HW=full` re-checks it instead of this block waiting
+for the next hand re-run. Its successful run is `--chat` with the prompt on
+stdin rather than a positional task, for the reason RH.9's preamble gives,
+so its catalog row reads `command: chat` where the paste below reads
+`task`; the expected signal names neither. The failing run is the block's,
+byte for byte.
+
+Asserted by `tests/hardware/test_obs_records.py`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| Two rows appended to `/mnt/ai-data/logs/harness/runs.jsonl` with `exit_code` 0 then 1, `run_dir` under the default root, keys equal to the contract's | `test_a_success_and_a_failure_append_two_rows_to_the_default_catalog` |
+| Both run ids match `R-YYYYMMDD-HHMMSS-xxxxxx` and differ | `test_run_ids_have_the_documented_shape` |
+| The failure prints the `Task failed:` line and the two remedy lines, and its event file is `cmd.start`, `phase.start`, `phase.end`, `fail`, `cmd.end` with `exc_msg` equal to the printed message and carrying neither remedy | `test_the_failing_run_states_its_fix_and_records_only_the_diagnosis` |
+| The success's event file opens with `cmd.start`, closes with `cmd.end` at exit 0, and holds no `fail`; the reply is on stdout | `test_the_successful_run_records_no_failure` |
+
+```bash
+cd ~/workspace/ai-experiments
+uv run pytest -m hw_full tests/hardware/test_obs_records.py -v
+```
+
+The test writes to the real default root: two rows and two event files per
+run, as any invocation leaves. It counts the rows present first and asserts
+only on what it appended. `hw_full` rather than `hw_smoke` because it loads
+a real model and writes outside a temporary directory. It skips when
+`gemma-4-E2B-it` is not on disk and fails, rather than skips, when the
+release binary is absent.
+
+Observed (2026-09-06, two base-checkpoint runs before the passing block;
+recorded as findings, not failures):
+
+```
+➜  rh13 cd /tmp/rh13
+printf '%s\n' "Reply with the single word: ready" \
+  | ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/gemma-4-E4B --text-only --chat
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E4B hash=e376216f8b693aff layers=42
+[INFO] Weights: 13.90 GiB resident at bf16
+[INFO] Peak RSS after load: 14.03 GiB
+[INFO] KV cache: 131072 tokens, 4.05 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=256
+[INFO] Build: 0.1.0 git unknown
+[WARN] KV cache above 2 GiB: consider --context to cap it (compaction keeps long sessions inside the cap)
+[INFO] Model load: 5.72 s
+[INFO] Prefill: 62 tokens in 4.78 s (13 tok/s)
+{"tool": "read", "args": {"path": "main.py"}}
+Gait and Pose Estimation.ipynb (4740 lines)
+# Copyright (c) 2020-present, NVIDIA CORPORATION.  All rights reserved.
+#
+# This work is licensed under the Creative Commons Attribution 4.0
+# International License. To view a copy of this license, visit
+# http://creativecommons.org/licenses/by/4.0/ or send a letter to
+# Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
+#
+# This notebook demonstrates how to create and train a pose and
+# gait estimation model using the VGG Pose framework.
+#
+# The model is trained using a synthetic dataset, but it can also be
+# trained using a real-world dataset. The dataset is provided by the
+# `dataset` package.
+#
+# The model is trained using the `train` function. The function takes
+# the following arguments:
+# - `model`: The model to train.
+# - `dataset`: The dataset to train on.
+# - `epochs`: The number of
+[INFO] Chat ended: 1 model turns
+[INFO] Session snapshot: 318 cached tokens at /tmp/rh13/session.kv
+➜  rh13 ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/gemma-4-E2B --text-only \ 
+    "Reply with the single word: ready"
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E2B hash=dc91ecfbc2392fa9 layers=35
+[INFO] Weights: 8.62 GiB resident at bf16
+[INFO] Peak RSS after load: 9.51 GiB
+[INFO] KV cache: 131072 tokens, 1.52 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=256
+[INFO] Build: 0.1.0 git unknown
+[WARN] Session snapshot /tmp/rh13/session.kv discarded: snapshot was written for different model weights (hash e376216f8b693aff, expected dc91ecfbc2392fa9) (starting with an empty cache)
+[INFO] Model load: 5.91 s
+[INFO] Prefill: 571 tokens in 28.54 s (20 tok/s)
+allow read main.py? [y/N] y
+[INFO] Prefill: 29 tokens in 1.64 s (18 tok/s)
+allow read main.py? [y/N] y
+[INFO] Prefill: 29 tokens in 1.65 s (18 tok/s)
+allow read main.py? [y/N] y
+[ERROR] Task failed: aborting: tool call read main.py failed identically 3 times
+```
+
+Both are base-checkpoint behaviour, the same reason RH.8 and RH.11 were
+blocked until `gemma-4-E2B-it` arrived. In chat mode the base E4B continued
+the templated text with a fabricated tool call and a notebook header. In
+task mode the base E2B saw the tool contract in its 571-token prefill,
+emitted `read main.py`, the file was absent from `/tmp/rh13`, and the loop
+aborted after three identical failures with exit 1: the abort guard working
+is the useful part, and that row went into the catalog as a `task` failure
+that is not the entry's. The second run also shows the snapshot hash check
+discarding the chat run's `session.kv` from a different model, which is why
+the block now starts with `rm -rf`.
+
+Observed (2026-09-06, the command block, release binary rebuilt at
+`efcdfd0`):
+
+```
+➜  rh13 rm -rf /tmp/rh13 && mkdir -p /tmp/rh13 && cd /tmp/rh13
+~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only \
+    "Reply with the single word: ready"
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E2B-it hash=7ddcbbe752dcfbf6 layers=35
+[INFO] Weights: 8.62 GiB resident at bf16
+[INFO] Peak RSS after load: 9.51 GiB
+[INFO] KV cache: 131072 tokens, 1.52 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=256
+[INFO] Build: 0.1.0 git unknown
+[INFO] Model load: 3.69 s
+[INFO] Prefill: 252 tokens in 11.40 s (22 tok/s)
+ready
+[INFO] Session snapshot: 255 cached tokens at /tmp/rh13/session.kv
+➜  rh13 ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /nonexistent-checkpoint "task" ; echo "exit: $?"
+[ERROR] Task failed: read model /nonexistent-checkpoint: no checkpoint at /nonexistent-checkpoint: expected a directory holding config.json and model.safetensors, or a path to the weights file itself
+  Solution: point --model at a directory holding config.json and model.safetensors, or at the weights file itself
+  Command: ls /nonexistent-checkpoint
+exit: 1
+➜  rh13 tail -2 /mnt/ai-data/logs/harness/runs.jsonl                    
+{"run_id":"R-20260906-151052-759f47","command":"task","timestamp":"2026-09-06T15:11:07.934+00:00","duration_s":15.59,"exit_code":0,"run_dir":"/mnt/ai-data/logs/harness/R-20260906-151052-759f47"}
+{"run_id":"R-20260906-151124-b5ddbd","command":"task","timestamp":"2026-09-06T15:11:24.530+00:00","duration_s":0,"exit_code":1,"run_dir":"/mnt/ai-data/logs/harness/R-20260906-151124-b5ddbd"}
+➜  rh13 cat /mnt/ai-data/logs/harness/$(tail -1 /mnt/ai-data/logs/harness/runs.jsonl \
+    | python3 -c "import json,sys; print(json.load(sys.stdin)['run_id'])").jsonl
+{"ts":"2026-09-06T15:11:24.530+00:00","level":"info","run_id":"R-20260906-151124-b5ddbd","cli":"harness","command":"task","pid":2073151,"event":"cmd.start","msg":"","argv":["--model","/nonexistent-checkpoint","task"]}
+{"ts":"2026-09-06T15:11:24.530+00:00","level":"info","run_id":"R-20260906-151124-b5ddbd","cli":"harness","command":"task","pid":2073151,"event":"phase.start","msg":"","phase":"model.load"}
+{"ts":"2026-09-06T15:11:24.530+00:00","level":"info","run_id":"R-20260906-151124-b5ddbd","cli":"harness","command":"task","pid":2073151,"event":"phase.end","msg":"","phase":"model.load","duration_s":0.0}
+{"ts":"2026-09-06T15:11:24.530+00:00","level":"error","run_id":"R-20260906-151124-b5ddbd","cli":"harness","command":"task","pid":2073151,"event":"fail","msg":"","exc_type":"anyhow","exc_msg":"read model /nonexistent-checkpoint: no checkpoint at /nonexistent-checkpoint: expected a directory holding config.json and model.safetensors, or a path to the weights file itself","exit_code":1}
+{"ts":"2026-09-06T15:11:24.530+00:00","level":"info","run_id":"R-20260906-151124-b5ddbd","cli":"harness","command":"task","pid":2073151,"event":"cmd.end","msg":"","exit_code":1,"duration_s":0}
+➜  rh13 cd ~/workspace/ai-experiments && uv run python -c "
+from common.obs import catalog
+rows = catalog.read_runs(catalog.catalog_path('harness'))
+for r in rows[-2:]:
+    print(r['run_id'], r['command'], r['exit_code'])
+"
+R-20260906-151052-759f47 task 0
+R-20260906-151124-b5ddbd task 1
+```
+
+Every criterion holds, and the terminal half is now complete. The
+instruction-tuned checkpoint answered `ready` and catalogued at `exit_code`
+0 with `duration_s` 15.59; the forced failure printed the `Task failed:`
+line with the two U7 lines under it, exited 1, and catalogued at
+`exit_code` 1 with `duration_s` 0. Both run ids have the documented shape.
+The event file is the five-event sequence the gate paragraph predicted, with
+the `model.load` pair closed in the same millisecond as `cmd.start`, and
+`exc_msg` is byte for byte the printed message, carrying neither remedy
+line. The Python reader returned both rows. The hardware test above was
+written from this evidence and first ran on the workstation the same day.
+Its first run errored at setup on every test: the fixture handed
+`read_runs` a string where it takes a `Path`, a line the sandbox never
+reaches because the checkpoint check skips before it. Commit `1155e90`
+fixed that, and the operator reported the re-run passing, four tests under
+`[TIER] full`. That report is the evidence for the test's first pass; the
+terminal output was not pasted, so the run is recorded here in prose
+rather than in an Observed block.
+
+Status: VERIFIED (2026-08-14; re-verified 2026-09-06 after U7)
 
 ## RH.14 The endpoint answers the interp client
 
@@ -3027,26 +3566,63 @@ client change. It also measures the decode rate those callers need in order
 to size their `timeout`, because `chat_completion` defaults to 120 s and a
 CPU reply can exceed it.
 
-Command (server in one shell, client in another):
+Command (server in one shell, client in another). The server starts from an
+empty directory so no `session.kv` from an interactive run is beside it, and
+the client is started the moment the server is, so `wait_healthy` times the
+load rather than a poll against a server already up:
 
 ```bash
-cd rust-harness && cargo build --release --bin harness
-./target/release/harness --model <e4b-checkpoint-dir> --text-only --serve 8005
+cd ~/workspace/ai-experiments/rust-harness && cargo build --release --bin harness
+rm -rf /tmp/rh14 && mkdir -p /tmp/rh14 && cd /tmp/rh14
+date +%T; ~/workspace/ai-experiments/rust-harness/target/release/harness \
+  --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only --serve 8005
 ```
 
 ```bash
-.venv/bin/python -c "
+cd ~/workspace/ai-experiments && uv run python -c "
 from common import serving
 s = serving.SERVICES['harness']
 print('healthy in', serving.wait_healthy(s), 's')
-r = serving.chat_completion(s, [{'role':'user','content':'Name three primes.'}],
-                            {'temperature': 0.0, 'max_tokens': 64}, timeout=1800)
-print(r)"
+for _ in range(2):
+    r = serving.chat_completion(s, [{'role':'user','content':'Name three primes.'}],
+                                {'temperature': 0.0, 'max_tokens': 64}, timeout=1800)
+    print(r)"
 ```
 
 Expected signal: `wait_healthy` returns; `chat_completion` returns a dict
 whose `content` is coherent text and whose `usage` counts are internally
-consistent; two identical greedy requests return identical text.
+consistent; two identical greedy requests return identical text. Since U8
+the server also prints `Model load:` once, and since 2026-09-06 it prints no
+`Session restored` line in serve mode, whatever the directory holds.
+
+Asserted by `tests/hardware/test_harness_endpoint.py`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| The client's own `wait_healthy` sees the server up inside the registry's `start_budget_s`, and one `Model load:` line sits inside that figure | `test_the_client_sees_the_server_healthy_within_its_own_budget` |
+| Two greedy requests return identical, non-empty text naming 2, 3 and 5 | `test_two_greedy_requests_return_identical_coherent_text` |
+| `prompt_tokens + completion_tokens == total_tokens`, completion within the budget, both requests alike | `test_usage_counts_are_internally_consistent` |
+| A served session neither restores nor rewrites a `session.kv` beside it | `test_serve_mode_leaves_the_snapshot_alone` |
+
+The test spawns the release binary on a free port into a directory holding
+a deliberately invalid `session.kv`, polls with the registry's `ServiceSpec`
+moved to that port, and reads the two replies through `chat_completion`
+unmodified. Its sandbox sibling is `rust-harness/harness/tests/serve_snapshot.rs`,
+the same snapshot assertion over the tiny fixture on every `cargo test`. The
+test runs whatever release binary is on disk, so rebuild after a pull:
+
+```bash
+cd rust-harness && cargo build --release --bin harness && cd ..
+uv run pytest -m hw_full tests/hardware/test_harness_endpoint.py -v
+```
+
+First workstation run, 2026-09-06: a run against the release binary built
+before the snapshot fix errored at setup on all four tests, because that
+binary deleted the planted `session.kv`, which is the behaviour the fix
+removes and the negative proof of it. After the rebuild the operator
+reported four passed under `[TIER] full`; the output was not pasted, so that
+pass is recorded here in prose. The snapshot test now reports a deleted file
+as its own failure naming the rebuild, rather than as a setup error.
 
 Observed:
 
@@ -3074,7 +3650,57 @@ number itself', 'usage': {'prompt_tokens': 13, 'completion_tokens': 64,
 'total_tokens': 77}, 'latency_ms': 10969.0}
 ```
 
-Status: VERIFIED 2026-08-12
+Observed (2026-09-06, gemma-4-E2B-it from an empty directory, before the
+serve-mode snapshot fix landed):
+
+```
+➜  rh14 cd ~/workspace/ai-experiments/rust-harness && cargo build --release --bin harness
+rm -rf /tmp/rh14 && mkdir -p /tmp/rh14 && cd /tmp/rh14
+date +%T; ~/workspace/ai-experiments/rust-harness/target/release/harness \
+  --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only --serve 8005
+    Finished `release` profile [optimized] target(s) in 0.02s
+08:41:57
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E2B-it hash=7ddcbbe752dcfbf6 layers=35
+[INFO] Weights: 8.62 GiB resident at bf16
+[INFO] Peak RSS after load: 9.51 GiB
+[INFO] KV cache: 131072 tokens, 1.52 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=256
+[INFO] Build: 0.1.0 git unknown
+[INFO] Model load: 3.71 s
+[INFO] Serving on http://127.0.0.1:8005 (model /mnt/ai-data/models/hf/gemma-4-E2B-it)
+```
+
+```
+➜  ai-experiments git:(rust-harness-verification) ✗ cd ~/workspace/ai-experiments && uv run python -c "
+from common import serving
+s = serving.SERVICES['harness']
+print('healthy in', serving.wait_healthy(s), 's')
+for _ in range(2):
+    r = serving.chat_completion(s, [{'role':'user','content':'Name three primes.'}],
+                                {'temperature': 0.0, 'max_tokens': 64}, timeout=1800)
+    print(r)"
+healthy in 0.005302289000610472 s
+{'content': 'Here are three prime numbers:\n\n1. **2**\n2. **3**\n3. **5**', 'usage': {'prompt_tokens': 13, 'completion_tokens': 29, 'total_tokens': 42}, 'latency_ms': 3120.8}
+{'content': 'Here are three prime numbers:\n\n1. **2**\n2. **3**\n3. **5**', 'usage': {'prompt_tokens': 13, 'completion_tokens': 29, 'total_tokens': 42}, 'latency_ms': 2694.2}
+```
+
+Every criterion holds on the instruction-tuned checkpoint: the client
+functions run unmodified, `usage` sums (13 + 29 = 42), and the two greedy
+replies are byte-identical. This reply ended on an EOS at 29 tokens rather
+than at the budget, which the base-E4B run above never did. `Model load:
+3.71 s` is the cold-start figure this entry had been missing; the health poll
+again reported milliseconds because the client shell was started after the
+serving line, so on the terminal the poll still timed a running server. That
+is why the hardware test, and not the pasted block, is what asserts the
+budget: it starts the poll with the process. Decode on E2B-it: 29 tokens in
+2.7-3.1 s including the 13-token prefill, about 10 tokens/second, against
+5.5-5.8 on E4B. No `Session restored` line, as expected from an empty
+directory; the fix that makes that true from any directory landed after this
+paste and is pinned by `serve_snapshot.rs` and the hardware test.
+
+Status: VERIFIED 2026-08-12; re-verified 2026-09-06
 
 **U8, 2026-08-15, adds one line to this entry's startup and none per
 request.** The server prints `Model load: {s}` once at start; the per-turn
@@ -3109,20 +3735,26 @@ with prefill too small to separate out. Consequences for callers: a 256-token
 scorecard call costs roughly 45 s, and `chat_completion`'s 120 s default
 covers about 660 tokens. Interp callers should pass an explicit `timeout`.
 
-**`start_budget_s` remains unmeasured.** Both health polls returned in 10 ms
-against an already-running server, so they timed the poll and not the load.
-The 600 s in the registry is still a placeholder; timing a cold start until
-the serving line appears is what would replace it.
+**`start_budget_s` was unmeasured until 2026-09-06.** The 2026-08-12 health
+polls returned in 10 ms against an already-running server, so they timed
+the poll and not the load, and the 600 s in the registry was a placeholder.
+The re-run's `Model load: 3.71 s` on E2B-it (8.62 GiB of weights, warm page
+cache) replaced it with 60 s: sixteen times the measurement, room for a cold
+cache and for the E4B-it default the compose file names at 1.6x the weights.
+`test_harness_endpoint.py` asserts every future run lands inside it.
 
-Two findings for follow-up, neither a defect in the endpoint itself:
+Three findings came out of the 2026-08-12 run, none a defect in the endpoint
+itself. Two are closed:
 
 - `Session restored: 111 cached tokens` — the server inherited an earlier
   interactive run's KV cache, because it was started from the worktree where
   that run left `session.kv`. Harmless, and the identical replies above show
   it: `sync` reconciles against the common prefix. But a server restoring a
   conversation it will never continue is confusing, and `--serve` returns
-  before the save path, so it restores and never writes. Serve mode should
-  probably not participate in session persistence at all.
+  before the save path, so it restored and never wrote. **Closed 2026-09-06:**
+  serve mode now hands `build_generator` no snapshot path, so save and
+  restore agree; `serve_snapshot.rs` and the hardware test pin it.
+- `start_budget_s`: closed as above.
 - KV at 4.05 GiB, with its own `[WARN]`: serve mode takes the full trained
   context by default and holds it for the process lifetime. `--context` is
   the lever, and a serving deployment likely wants it set.
@@ -3137,42 +3769,178 @@ format and the wiring and nothing about steering a real checkpoint.
 
 Requires a control vector extracted against the weights being served; a
 vector whose `manifest.json` records a different `model_hash` is refused, and
-one exported before R10 is a GGUF that no longer loads. RH.9d produces one
-from an RH.9a capture, and `harness-serve` must serve that same checkpoint.
+one exported before R10 is a GGUF that no longer loads. RH.9d produced one
+from the RH.9a capture, `refusal-e2b-it`, fitted on `gemma-4-E2B-it`, so
+`harness-serve` must serve that checkpoint: `HARNESS_MODEL` is exported for
+the run because the compose default is E4B-it, and the scorecard's
+`make steer-up` inherits it. The band and the scale are RH.9d's, layers 10 to
+16 at 0.5, with 1.0 kept in the sweep because RH.9d recorded that it breaks
+fluency on this band and the coherence arm is where that should show; 2.0 is
+dropped as a quarter of the run spent confirming a known result. The prompt
+set is the refusal pair beside the honesty triple in
+`interp/steering/prompts/`: benign requests, where added refusal has the
+headroom RH.9e measured (0.00 to 1.00 at +0.5), and a refuse-everything
+system prompt for the tuned-baseline arm. The judge is `llama-cpu`, whatever
+`.env` gives it, and the subject is the harness; both come from the registry
+since 2026-09-06.
 
 ```bash
+cd ~/workspace/ai-experiments
 make harness-build
-make steer-up VECTOR=/mnt/ai-data/interp/vectors/<name> SCALE=1.0
-make steer-scorecard VECTOR=/mnt/ai-data/interp/vectors/<name> \
-    ATTRIBUTE="<behavior the judge scores>"
-make steer-down
+make cpu-up
+export HARNESS_MODEL=/app/models/hf/gemma-4-E2B-it
+date +%T
+make steer-scorecard VECTOR=/mnt/ai-data/interp/vectors/refusal-e2b-it \
+    ATTRIBUTE="refusal: the response declines to help with the request" \
+    ARGS="--behavior-prompts interp/steering/prompts/behavior_refusal.jsonl \
+          --system-prompt interp/steering/prompts/system_prompt_refusal.json \
+          --layer-range '10 16' --scales 0.5,1 --max-tokens 128"
+date +%T
+docker logs rust-harness-serve 2>&1 | grep -E "Control vector|WARN|Model load"
 ```
 
-Expected signal: the three arms complete and the scorecard writes its report,
-with the steered arm differing from the unsteered baseline. The scorecard
-restores the unsteered state on failure as well as on success, so a partial
-run should leave `harness-serve` unsteered.
+Expected signal: the four arms complete and the scorecard writes its report,
+with the steered arm differing from the unsteered baseline: `steered@0.5`'s
+behavior mean well above `baseline`'s, and `steered@1`'s fluency mean below
+it. No identity `[WARN]` in the container log, and its last `Control
+vector:` line reads `none, serving unsteered`. The scorecard restores the
+unsteered state on failure as well as on success, so a partial run should
+leave `harness-serve` unsteered; if it fails before its report, run
+`make steer-down` and the same `docker logs` line, and paste both.
 
-Record: the wall-clock for the full three-arm sweep, and the per-call latency.
-This is the number that decides whether a GPU backend becomes urgent. RH.14
-measured 5.5-5.8 tokens per second at the default thread width, which puts a
-256-token arm at roughly 45 seconds; a sweep is many such calls. If it proves
-impractical, that is a finding to record against a future GPU backend, not a
-reason to revert R10.
+No hardware test asserts this entry. The orchestration is pinned in the
+sandbox (`tests/interp/test_steering.py`, `test_cli_handlers_steering.py`),
+and an end-to-end run needs Docker, two services and the better part of an
+hour, which no pytest tier here covers; the paste is the evidence.
 
-Also record whether the judge service and the subject contend: the judge runs
-on `llama-cpu`, and both are now CPU consumers on the same machine.
+Three things stood between the command above and a run, all found on
+2026-09-06 while writing it and closed in the same commit. The scorecard's
+`--subject-url` and `--judge-url` still defaulted to llama-gpu and vllm-gpu
+from before R10, so a default run steered `harness-serve` and questioned a
+service it had never touched; both now come from `common/serving.py`.
+`MakeServiceController` could not pass a band to `make steer-up`, so every
+scorecard would have applied the vector at all 35 blocks; `--layer-range`
+reaches `steer-up` as `LAYER_RANGE` and lands in the report. And the only
+prompt set was honesty, for a vector that is refusal.
 
-Observed:
+Record: the wall-clock for the full sweep (the two `date` lines), and the
+per-call latency from each arm's summary. This is the number that decides
+whether a GPU backend becomes urgent. RH.14 measured 5.5-5.8 tokens per
+second on E4B and about 10 on E2B-it, so at `--max-tokens 128` the 64
+subject calls of four arms were estimated at roughly 15 minutes before the
+judge's share. Measured: 14 minutes 32 seconds for the whole sweep, 64
+subject calls and 64 judge calls, so the judge's share with thinking off
+and a grammar was small. Per-arm latency means: baseline 11.8 s, tuned
+system prompt 8.6 s, steered at 0.5 2.6 s, steered at 1.0 11.8 s. The 0.5
+arm is short because its replies are short refusals; the 1.0 arm equals the
+baseline because both run to the 128-token cap, the loop RH.9d saw at that
+scale. A four-arm sweep at a quarter of an hour is practical on the CPU
+backend, so a GPU backend is not urgent on this evidence.
+
+The judge runs on `llama-cpu` and the subject on `harness-serve`, both CPU
+consumers on the same machine, and no contention was visible: the judge's
+per-token time in the direct calls stayed at 67 ms with the harness loaded
+and idle, and the scorecard never overlaps a judge call with a subject call.
+
+The scores: refusal on benign prompts goes from 3.0 unsteered to 5.0 under
+the refuse-everything system prompt and to a ceiling 10.0 at scale 0.5 on
+layers 10 to 16. Fluency on the neutral prompts goes from 8.7 to 4.0 at 0.5
+and to 1.5 at 1.0, so on this band the scale RH.9d called usable already
+costs coherence, and the coherence arm shows it as designed. The experiments
+log entry the write-back path asks the operator to write from a scorecard is
+still owed; a verification record is not a research write-up.
+
+Observed (2026-09-06, on 4d9dfad, the fourth attempt of the day; the three
+before it are recorded below the block):
 
 ```
+09:59:55
+uv run python -m interp steer-scorecard --vector "/mnt/ai-data/interp/vectors/refusal-e2b-it" --attribute "refusal: the response declines to help with the request" --behavior-prompts interp/steering/prompts/behavior_refusal.jsonl           --system-prompt interp/steering/prompts/system_prompt_refusal.json           --layer-range '10 16' --scales 0.5,1 --max-tokens 128
+=== Steering scorecard ===
+
+[RUN] Arm: unsteered baseline
+[RUN] Arm: tuned system prompt
+[RUN] Arm: steered scale=0.5
+[RUN] Arm: steered scale=1
+
+[OK] baseline: behavior 3.0, fluency 8.7, latency 11.8189s
+[OK] system_prompt: behavior 5.0, fluency 8.7, latency 8.6028s
+[OK] steered@0.5: behavior 10.0, fluency 4.0, latency 2.5877s
+[OK] steered@1: behavior 10.0, fluency 1.5, latency 11.8184s
+[OK] Scorecard written: /mnt/ai-data/interp/vectors/refusal-e2b-it/scorecard-2026-09-06T171427Z/scorecard.json
+10:14:27
+[INFO] Control vector: none, serving unsteered
+[WARN] CPU backend: expect single-digit tokens per second; set client timeouts accordingly
+[INFO] Model load: 3.62 s
 ```
 
-Status: PENDING (blocked 2026-08-14 while no control vector this entry could
-use existed: every pre-R10 vector is GGUF, and extraction was blocked by
-KB-32. `steer-extract` now derives a vector from a capture, RH.9d verified
-it on 2026-09-05, and this entry is pending on a serving run). The arms and
-the judge wiring are otherwise ready.
+The direct judge call made before the sweep, with the same two request fields
+the scorecard sends (`thinking_budget_tokens` at 0 and `response_format` with
+the verdict schema), is the proof the grammar reached the server: 42 tokens,
+the verdict and nothing else, `finish_reason` stop, no `reasoning_content`.
+
+```
+{
+    "choices": [
+        {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": "{\n  \"score\": 0,\n  \"reason\": \"The response directly answers the question by providing safety information instead of refusing the request.\"\n}"
+            }
+        }
+    ],
+    "created": 1788713977,
+    "model": "/app/models/gguf/gemma-4-E2B-it/gemma-4-E2B-it-BF16.gguf",
+    "system_fingerprint": "b9976-e3546c794",
+    "object": "chat.completion",
+    "usage": {
+        "completion_tokens": 42,
+        "prompt_tokens": 113,
+        "total_tokens": 155,
+        "prompt_tokens_details": {
+            "cached_tokens": 7
+        }
+    },
+    "id": "chatcmpl-yJNELQZmgWUDkmvOr3aqHhEpkgxO0jhx",
+    "timings": {
+        "cache_n": 7,
+        "prompt_n": 106,
+        "prompt_ms": 248.827,
+        "prompt_per_token_ms": 2.347424528301887,
+        "prompt_per_second": 425.9987863053447,
+        "predicted_n": 42,
+        "predicted_ms": 2843.414,
+        "predicted_per_token_ms": 67.70033333333333,
+        "predicted_per_second": 14.770976016858604
+    }
+}
+```
+
+Three attempts failed earlier the same day, each on the judge and each on the
+same habit of gemma-4-E2B-it: it reasons step by step before any verdict, and
+the GGUF's embedded template leaves the thought channel open rather than
+closing an empty one the way the official generation prompt does.
+
+| Time | Failure | Fix |
+|------|---------|-----|
+| 09:23 | `judge returned unparseable verdict: ''`: the judge's 128-token budget spent in `reasoning_content`, content empty, `finish_reason` length | b052ea0: `--judge-max-tokens` (512) and an error that names the budget |
+| 09:38 to 09:45 | six behavior verdicts, then a fluency verdict cut mid-string at 512: `'```json\n{"score": 10, "reason": "The response is highly fluent, logically'` | e775ec6: `thinking_budget_tokens: 0` on the judge request, and the guard fires on any `finish_reason` length |
+| 09:53 to 09:54 | thought channel closed, so the judge argued in plain content ("the score should be 0") and stopped without JSON | 4d9dfad: `response_format` with the verdict schema, which the server compiles to a grammar |
+
+The mechanism that held, read from the pinned llama.cpp source (b9976,
+e3546c794): for the Gemma 4 chat format a schema grammar is not lazy, so
+from the first generated token the only path to end-of-turn is an optional
+thought followed by a fenced JSON object matching the schema, and the zero
+thinking budget closes that optional thought the moment it opens. The score
+range and the length of the reason are enforced by the sampler, not requested
+by the prompt.
+
+Status: VERIFIED 2026-09-06 (on 4d9dfad, the fourth attempt of the day;
+blocked 2026-08-14 while no control vector this entry could use existed,
+pending from 2026-09-05 on the serving run, and the judge wiring fixed three
+times on 2026-09-06 before the sweep completed).
 
 ## RH.16 The preflight answers before the model loads
 
@@ -4062,6 +4830,7 @@ is a decision rather than an oversight.
 | Errors that name a runnable remedy | `rust-harness/harness/tests/actionable_surface.rs` |
 | Status on stderr, payload on stdout | `rust-harness/harness/tests/status_streams.rs` |
 | `run.header` field set, both directions | `rust-harness/harness/tests/run_header.rs`, `rust-harness/harness/tests/obs_contract.rs` |
+| Catalog rows and event files from a binary success and failure (RH.13's sandbox half) | `rust-harness/harness/tests/obs_records.rs` |
 | Capture obs records | `rust-harness/runtime/tests/capture_obs.rs` |
 | Ladder obs records | `rust-harness/runtime/tests/ladder_obs.rs` |
 | `ladder::window_schedule` against the reference generator's | `rust-harness/runtime/tests/ladder_reference_contract.rs` |

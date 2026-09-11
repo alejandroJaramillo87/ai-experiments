@@ -3284,13 +3284,21 @@ impl CpuModel {
         for &t in tokens {
             self.check_token(t)?;
         }
-        let span =
-            tracing::info_span!("model.forward", start = self.cached_len, len = tokens.len());
+        let chunk = self.batch.chunk(tokens.len());
+        let groups = tokens.len().div_ceil(chunk);
+        // `groups` is on the span because the spans inside it are per group,
+        // not per forward: a prefill wider than the batch runs the layer
+        // stack once per group, and a trace reader relating `model.layer` to
+        // `model.forward` needs the count without knowing the batch width.
+        let span = tracing::info_span!(
+            "model.forward",
+            start = self.cached_len,
+            len = tokens.len(),
+            groups
+        );
         let _enter = span.enter();
         let entry = self.cached_len;
-        let chunk = self.batch.chunk(tokens.len());
         let mut rows = Vec::with_capacity(tokens.len() - first);
-        let groups = tokens.len().div_ceil(chunk);
         for (g, group) in tokens.chunks(chunk).enumerate() {
             let start = self.cached_len;
             // `first` is an index into the whole call; each group needs it

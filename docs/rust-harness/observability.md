@@ -112,7 +112,7 @@ existing stack is instrumented with structured spans:
 | `checkpoint.read`, `checkpoint.parse`, `model.from_checkpoint`, `checkpoint.fingerprint` | debug | `runtime/src/model/cpu.rs` | — (sequential children of `model.load`) |
 | `model.load.layer` | debug | `runtime/src/model/cpu.rs` | layer, owns_kv (one per layer read) |
 | `tokenizer.encode` | info | `runtime/src/tokenizer.rs` | bytes, token count |
-| `model.forward` | info | `runtime/src/model/cpu.rs` | start (cached length), len (tokens in the call) |
+| `model.forward` | info | `runtime/src/model/cpu.rs` | start (cached length), len (tokens in the call), groups (prefill groups the call split into; the spans below run once per group) |
 | `model.prelude` | debug | `runtime/src/model/cpu.rs` | n, ple (embedding and the per-layer-embedding stages) |
 | `model.layer` | debug | `runtime/src/model/cpu.rs` | layer, n, kv_source, owns_kv |
 | `model.layer.attn` | debug | `runtime/src/model/cpu.rs` | owns_kv, kv_len (cache length after the append) |
@@ -167,11 +167,17 @@ two ways: in Perfetto's query view,
 `select name, count(*), sum(dur) from slice group by name order by 3 desc`
 is the table RH.6 built by hand, and `make trace-check TRACE=<file>` prints
 the same table from the terminal and asserts the count relations in the table
-above (one `model.layer` per layer per forward, the blocks equal to it, one
-load with its stages, the prefill forward without a step), skipping when no
-file is named. The `session.sync` delta-length field makes
-the phase B acceptance property (turn latency scales with delta size, not
-transcript size) directly visible in a trace timeline.
+above (one `model.layer` per layer per prefill group, summed from each
+forward's `groups` field, the blocks equal to it, one load with its stages,
+the prefill forward inside its `session.sync` and outside any step),
+skipping when no file is named. The same checker also runs on every
+`cargo test`, and so under `make quality`, against a trace the test writes
+itself: three `--chat` turns of the harness binary over the tiny fixture.
+That is the trace that holds the relations to the schema between
+workstation runs; the workstation trace is the runbook's evidence. The
+`session.sync` delta-length field makes the phase B acceptance property (turn
+latency scales with delta size, not transcript size) directly visible in a
+trace timeline.
 
 Subscriber selection lives in `main.rs`: no subscriber by default (spans
 compile to near-zero cost when disabled), `--trace-chrome <path>` writes a
@@ -188,8 +194,9 @@ mock-run Chrome trace loads in Perfetto.
 
 **There is no `prefill` or `decode` span, and this sentence used to promise a
 "prefill/decode timeline" that no span provides.** What a trace carries is
-`session.sync`, which fires exactly once per run and *is* the prefill, and
-`session.step`, one per decoded token. The timeline is readable, but by
+`session.sync`, which fires once per generation (once in a single-prompt run,
+once per turn under `--chat`) and *is* the prefill, and `session.step`, one
+per decoded token. The timeline is readable, but by
 reading those two rather than by finding spans under those names.
 
 ### Phases are a separate mechanism from spans
@@ -443,7 +450,15 @@ integration seam. That is now asserted rather than asserted about. The key
 sets live in `schemas/obs_record.json` and both writers are checked against
 them, and `harness/tests/obs_contract.rs` feeds a harness-written catalog to
 the real `common.obs.catalog.read_runs` and requires the record back with its
-fields intact. The check matters because the reader is permissive by design:
+fields intact. `harness/tests/obs_records.rs` does the same with a catalog the
+binary itself wrote, across a run that answers over the tiny fixture and one
+that fails on a missing checkpoint: two rows with exit codes 0 and 1, run ids
+of the documented shape, and each row's event file bracketed by `cmd.start`
+and `cmd.end` with `fail` present exactly when the row's exit code says so.
+That is runbook entry RH.13's claim, asserted against a scratch
+`${OBS_LOG_DIR}` on every `cargo test`; `tests/hardware/test_obs_records.py`
+asserts it against the default root and a real checkpoint on the workstation,
+in the `hw_full` tier. The check matters because the reader is permissive by design:
 `read_runs` skips a line it cannot parse, so a drifted writer would show an
 empty runs table rather than an error. The catalog line is also formatted by
 hand rather than through serde, so nothing in the type system holds it to the

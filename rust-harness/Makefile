@@ -74,7 +74,10 @@ replay-check: ## Replay a --record file as a MockModel script and state its sele
 
 # The same shape for a Chrome trace: a workstation artifact of a run against
 # the real checkpoint, checked for the documented span relations and summed
-# per name, which is what the runbook's RH.4 and RH.6 read.
+# per name, which is what the runbook's RH.4 and RH.6 read. Filtered to the
+# HARNESS_TRACE test: the same file also checks a fixture chat trace on
+# every cargo test, and its lines would otherwise interleave with the
+# workstation's in the runbook's pasted output.
 .PHONY: trace-check
 trace-check: ## Check a --trace-chrome file for the documented span shape and print its per-name totals (TRACE=<file>)
 	@if [ -z "$(TRACE)" ]; then \
@@ -83,7 +86,7 @@ trace-check: ## Check a --trace-chrome file for the documented span shape and pr
 	  printf '  Command: make trace-check TRACE=/tmp/rh6/trace.json\n'; \
 	  exit 1; \
 	fi
-	HARNESS_TRACE="$(abspath $(TRACE))" cargo test -p harness --test trace_structure -- --nocapture
+	HARNESS_TRACE="$(abspath $(TRACE))" cargo test -p harness --test trace_structure -- --nocapture a_chrome_trace_from_a_real_run
 
 # The correctness ladder (workstation only): the six rungs against the real
 # checkpoint and reference artifacts generated from transformers.

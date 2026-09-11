@@ -524,7 +524,15 @@ fn run(
             sampling,
             max_tokens,
             context,
-            Some(&snapshot_path),
+            // Serve mode neither saves a snapshot (the save below is
+            // unreachable there) nor restores one: a served session's KV is
+            // unrelated callers' traffic, and RH.14 found a server resuming a
+            // conversation it would never continue. Save and restore agree.
+            if serve.is_some() {
+                None
+            } else {
+                Some(&snapshot_path)
+            },
             text_only,
             single_thread,
             alignment_out.is_some(),

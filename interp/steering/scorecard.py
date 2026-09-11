@@ -11,6 +11,21 @@ recorded verbatim, and per-request latency. Output is one JSON file following
 the benchmark-schema conventions, written to the run directory and summarized
 in the experiments log by the operator.
 
+The subject is the harness on 8005 and the judge is llama-cpu on 8001, both
+read from the registry in common/serving.py rather than spelled here. The
+band the vector is applied in is a config field, because a diff-means vector
+added at every block compounds: RH.9d found seven blocks at scale 1.0 already
+too strong on gemma-4-E2B-it, so a scorecard has to be able to say the band.
+The judge runs with thinking off: the Gemma 4 GGUF template leaves the thought
+channel open, so gemma-4-E2B-it reasons at length before every verdict, and a
+verdict that arrives after a thought of unbounded length is one that a token
+budget cuts off sooner or later. llama-server's per-request thinking budget
+ends the thought as soon as it starts, and the judge request carries it.
+With the thought closed the model argues in the open instead and stops
+without a verdict, so the request also carries the verdict's JSON schema,
+which llama-server compiles to a grammar: the verdict is then the only
+legal continuation.
+
 The service recreates between arms; the controller is injectable so tests can
 run the orchestration without Docker, and the default controller shells out to
 the make steer-up/steer-down targets. A finally block restores the unsteered
@@ -29,6 +44,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 
+from common.serving import SERVICES
 from interp.manifest import git_sha, text_sha256, utc_now
 from interp.steering.wiring import validate_vector_dir
 
@@ -51,6 +67,41 @@ JUDGE_FLUENCY_TEMPLATE = (
 )
 
 
+# What a verdict may be. llama-server compiles this to a grammar
+# (common/json-schema-to-grammar.cpp honors minimum/maximum and maxLength),
+# so the score range and the length of the reason are enforced by the
+# sampler; the range check in judge_score stays for a judge that ignores
+# response_format. The bound on reason is what keeps a verdict inside
+# --judge-max-tokens.
+JUDGE_VERDICT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "score": {"type": "integer", "minimum": 0, "maximum": 10},
+        "reason": {"type": "string", "maxLength": 300},
+    },
+    "required": ["score", "reason"],
+    "additionalProperties": False,
+}
+
+# Two request fields llama-server (b9976, commit e3546c794) reads beyond the
+# OpenAI shape, layered against gemma-4-E2B-it's habit of reasoning step by
+# step before any verdict (three RH.15 runs on 2026-09-06):
+#   thinking_budget_tokens: read wherever the chat format declares thinking
+#     tags, which the Gemma 4 format does (common/chat.cpp,
+#     <|channel>thought ... <channel|>); 0 forces the end tag the moment the
+#     start tag is generated. Without it the thought consumed 128 and then
+#     512 tokens. With it alone the model argued in plain content and
+#     stopped without a verdict.
+#   response_format: for the Gemma 4 format the grammar is not lazy, so
+#     from the first token the only path to end-of-turn is an optional
+#     thought (closed at once by the budget above) and then a fenced JSON
+#     object matching the schema.
+JUDGE_REQUEST_EXTRA = {
+    "thinking_budget_tokens": 0,
+    "response_format": {"type": "json_object", "schema": JUDGE_VERDICT_SCHEMA},
+}
+
+
 class ScorecardError(Exception):
     """Configuration, lock, or judge failure that invalidates the run."""
 
@@ -62,11 +113,16 @@ class ScorecardConfig:
     behavior_prompts: str  # JSONL: {"prompt": ...}
     neutral_prompts: str  # JSONL: {"prompt": ...}
     system_prompt_file: str  # JSON: {"prompt": ..., "iterations": [...]}
-    subject_url: str = "http://127.0.0.1:8002"
-    judge_url: str = "http://127.0.0.1:8003"
+    subject_url: str = SERVICES["harness"].base_url
+    judge_url: str = SERVICES["llama-cpu"].base_url
     judge_model: str = "default"
     scales: tuple[float, ...] = (0.5, 1.0, 2.0)
+    layer_range: tuple[int, int] | None = None  # inclusive 0-based block band
     max_tokens: int = 256
+    # The judge's own budget, separate from the subject's, bounding the JSON
+    # verdict; the judge runs with thinking off (JUDGE_REQUEST_EXTRA), so a
+    # verdict that exceeds it is a judge fault, not a thought that ran long.
+    judge_max_tokens: int = 512
     temperature: float = 0.0
     perplexity_cmd: str | None = None  # recorded verbatim when set
     out_dir: str = "/mnt/ai-data/interp/vectors"
@@ -139,10 +195,12 @@ class MakeServiceController:
         vector_dir: str,
         service: str = "harness",
         health_wait=None,
+        layer_range: tuple[int, int] | None = None,
     ) -> None:
         self.make = make
         self.vector_dir = vector_dir
         self.service = service
+        self.layer_range = layer_range
         self._health_wait = (
             health_wait if health_wait is not None else self._default_health_wait
         )
@@ -157,7 +215,7 @@ class MakeServiceController:
     def _default_health_wait(self) -> None:
         # A force-recreate returns before the model finishes loading;
         # issuing arm requests immediately would fail on every real run.
-        from common.serving import SERVICES, wait_healthy
+        from common.serving import wait_healthy
 
         wait_healthy(SERVICES[self.service])
 
@@ -169,17 +227,21 @@ class MakeServiceController:
         cannot drift apart. They are spelled differently: the registry key is
         `harness`, and compose calls it `harness-serve`.
         """
-        from common.serving import SERVICES
-
         return SERVICES[self.service].service
 
     def steer(self, scale: float) -> None:
-        self._run(
+        args = [
             "steer-up",
             f"VECTOR={self.vector_dir}",
             f"SCALE={scale:g}",
             f"STEER_SERVICE={self._steer_service()}",
-        )
+        ]
+        if self.layer_range is not None:
+            # One make variable holding two numbers, the spelling
+            # steering_env emits and the harness flag parses.
+            start, end = self.layer_range
+            args.append(f"LAYER_RANGE={start} {end}")
+        self._run(*args)
         self._health_wait()
 
     def unsteer(self) -> None:
@@ -200,8 +262,13 @@ def chat(
     max_tokens: int = 256,
     temperature: float = 0.0,
     post=_post_chat,
+    extra: dict | None = None,
 ) -> dict:
-    """One chat completion; returns text, latency, and token usage."""
+    """One chat completion; returns text, latency, and token usage.
+
+    extra is merged into the request body for server-specific fields the
+    OpenAI shape does not carry.
+    """
     messages = []
     if system:
         messages.append({"role": "system", "content": system})
@@ -210,13 +277,20 @@ def chat(
         "messages": messages,
         "max_tokens": max_tokens,
         "temperature": temperature,
+        **(extra or {}),
     }
     start = time.monotonic()
     body = post(url, payload)
     latency = time.monotonic() - start
-    text = body["choices"][0]["message"]["content"]
+    choice = body["choices"][0]
+    text = choice["message"]["content"]
     usage = body.get("usage", {})
-    return {"text": text, "latency_s": round(latency, 3), "usage": usage}
+    return {
+        "text": text,
+        "latency_s": round(latency, 3),
+        "usage": usage,
+        "finish_reason": choice.get("finish_reason"),
+    }
 
 
 def parse_judge_json(text: str) -> dict:
@@ -239,17 +313,26 @@ def judge_score(
     attribute: str,
     prompt: str,
     response: str,
-    max_tokens: int = 128,
+    max_tokens: int = 512,
     post=_post_chat,
 ) -> dict:
-    verdict_text = chat(
+    completion = chat(
         judge_url,
         template.format(attribute=attribute, prompt=prompt, response=response),
         max_tokens=max_tokens,
         temperature=0.0,
         post=post,
-    )["text"]
-    verdict = parse_judge_json(verdict_text)
+        extra=JUDGE_REQUEST_EXTRA,
+    )
+    if completion["finish_reason"] == "length":
+        # A verdict cut off by the budget, whether nothing arrived or the
+        # JSON stopped mid-string, is the budget's failure: name it rather
+        # than report the fragment as unparseable.
+        raise ScorecardError(
+            f"judge spent its {max_tokens}-token budget without a complete "
+            f"verdict: {completion['text']!r}; raise --judge-max-tokens"
+        )
+    verdict = parse_judge_json(completion["text"])
     score = verdict.get("score")
     if not isinstance(score, int | float) or not 0 <= score <= 10:
         raise ScorecardError(f"judge score out of range: {verdict!r}")
@@ -292,6 +375,7 @@ def run_arm(
             cfg.attribute,
             prompt,
             completion["text"],
+            max_tokens=cfg.judge_max_tokens,
             post=post,
         )
         records.append({"prompt": prompt, **completion, "behavior": verdict})
@@ -311,6 +395,7 @@ def run_arm(
             cfg.attribute,
             prompt,
             completion["text"],
+            max_tokens=cfg.judge_max_tokens,
             post=post,
         )
         coherence.append({"prompt": prompt, **completion, "fluency": verdict})
@@ -349,7 +434,9 @@ def run_scorecard(
     neutral_prompts = load_prompts(cfg.neutral_prompts)
     system_record = load_system_prompt(cfg.system_prompt_file)
     if controller is None:
-        controller = MakeServiceController(cfg.make, cfg.vector_dir, cfg.service)
+        controller = MakeServiceController(
+            cfg.make, cfg.vector_dir, cfg.service, layer_range=cfg.layer_range
+        )
 
     def say(m: str) -> None:
         if printer is not None:
@@ -410,12 +497,16 @@ def run_scorecard(
             "subject_url": cfg.subject_url,
             "judge_url": cfg.judge_url,
             "judge_model": cfg.judge_model,
+            "judge_thinking": "off",
         },
         "vector_manifest": manifest,
         "config": {
             "attribute": cfg.attribute,
             "scales": list(cfg.scales),
+            "layer_range": list(cfg.layer_range) if cfg.layer_range else None,
             "max_tokens": cfg.max_tokens,
+            "judge_max_tokens": cfg.judge_max_tokens,
+            "judge_verdict_schema": JUDGE_VERDICT_SCHEMA,
             "temperature": cfg.temperature,
             "behavior_prompts": cfg.behavior_prompts,
             "behavior_prompts_sha256": _file_sha(cfg.behavior_prompts),

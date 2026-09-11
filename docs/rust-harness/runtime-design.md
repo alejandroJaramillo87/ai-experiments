@@ -299,6 +299,9 @@ built over the append-only prompt discipline the KV cache depends on:
   backend-defined cache payload. Header or fingerprint mismatch refuses
   loudly; a snapshot whose tokens no longer match the transcript degrades
   through prefix matching to re-prefill from the divergence point.
+  Serve mode neither writes nor restores one: a served session's KV is
+  unrelated callers' traffic, and RH.14 found a server announcing a
+  conversation it would never continue.
   Restored continuation logits are bit-identical to an unbroken run on the
   CPU backend. Real-model snapshots are gigabyte-scale at f32; the dtype
   tag reserves an f16 payload without a format break.
