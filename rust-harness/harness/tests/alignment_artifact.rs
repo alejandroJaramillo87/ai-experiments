@@ -4,8 +4,8 @@
  * The key sets are written out once here and once in schemas/alignment.json,
  * with no shared definition between them, so adding a field to the writer
  * without amending the contract fails here. This is the Rust half of the
- * guard; there is no Python reader yet, which the contract's own note records
- * as a gap rather than a decision.
+ * guard; the Python half is tests/hardware/test_alignment.py, which reads
+ * the artifact on the workstation against the real vocabulary.
  */
 
 use std::collections::BTreeSet;
@@ -201,6 +201,25 @@ fn positions_are_dense_from_zero_and_counted_in_the_header() {
     assert_eq!(rows.len(), a.rows.len());
     for (i, row) in rows.iter().enumerate() {
         assert_eq!(row["position"].as_u64().unwrap() as usize, i, "{row}");
+    }
+}
+
+/// The id is what lets a reader other than the harness check a span: the
+/// row's `token_id` is the id the run computed at that position, prompt and
+/// generation alike.
+#[test]
+fn every_row_carries_the_id_the_run_computed_at_its_position() {
+    let (_, rows, a) = artifact(false);
+    let tok = tokenizer();
+    let prompt = format!("{BOS}{TURN_OPEN}user\nabc{TURN_CLOSE}\n{TURN_OPEN}model\n");
+    let prompt_ids = tok.encode_prompt(&prompt, SPECIALS).unwrap();
+    assert_eq!(rows.len(), a.rows.len());
+    for (i, row) in rows.iter().enumerate() {
+        let id = row["token_id"].as_u64().expect("token_id is an integer") as u32;
+        assert_eq!(id, a.rows[i].token, "{row}");
+        if i < prompt_ids.len() {
+            assert_eq!(id, prompt_ids[i], "prompt position {i}: {row}");
+        }
     }
 }
 
