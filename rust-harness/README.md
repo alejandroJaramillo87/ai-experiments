@@ -106,6 +106,9 @@ figures are read off the obs phase that already records them, so the terminal
 and `<run_id>.jsonl` cannot disagree. The prefill count is the *delta* the
 forward pass actually ran, not the prompt length, which is what makes a second
 turn's small number the visible evidence that the KV cache is being reused.
+When a rewind fell below a sliding layer's floor, the same line says so and
+names the prefix it could not keep: the cache was rebuilt from zero, which is
+the routine path after a compaction.
 There is no progress animation and no terminal check: a pipe and a terminal get
 the same bytes, so a runbook's pasted output never carries a carriage return.
 
