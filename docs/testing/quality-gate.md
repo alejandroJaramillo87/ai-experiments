@@ -72,7 +72,11 @@ the rebuild off the `Prefill:` line each compaction leaves. And the residual str
 (RH.21): `layer_diff_numerics.rs` brackets `layer-diff`'s two tolerances around perturbed
 rows of the tiny capture, and `tests/hardware/test_layer_diff.py` under `hw_e4b` reads every
 row the tool prints over the real 42 layers, then closes the ceiling under two of them and
-holds the verdict to the earlier one.
+holds the verdict to the earlier one. And `checkpoint-info --check` (RH.22):
+`checkpoint_info_check.rs` reaches both refusal paths in the sandbox, a config the backend
+cannot validate and a tiny checkpoint made multimodal by one tensor per tower, and
+`tests/hardware/test_checkpoint_info.py` under `hw_e4b` runs the pair of verdicts on the
+released E4B and reads the tower count the code's comments predict off the file.
 
 Steps 5 and 6 are complementary rather than redundant. The reference check asks whether a
 cited path exists, which requires classifying a token as a path claim — and that classifier

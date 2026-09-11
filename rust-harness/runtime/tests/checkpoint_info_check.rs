@@ -86,3 +86,130 @@ fn an_unreadable_argument_still_exits_two_rather_than_reporting_incompatibility(
         .expect("checkpoint-info builds as a test binary");
     assert_eq!(out.status.code(), Some(2));
 }
+
+/// A tiny checkpoint carrying two one-element tensors under tower prefixes,
+/// written to `dir`.
+///
+/// The compatibility guard reads names and shapes, not values, so one element
+/// per tower tensor is enough to make the file multimodal in its eyes. Built
+/// from `tiny_tensors` rather than by patching a serialized image, because
+/// safetensors offsets are computed at serialization; and every tensor is
+/// written as F32, the loader's widest path, since dtype is not what this
+/// file is for.
+fn write_multimodal_checkpoint(dir: &Path) {
+    use safetensors::tensor::{Dtype, TensorView};
+
+    let spec = runtime::synth::TinySpec::default();
+    let mut payloads: Vec<(String, Vec<usize>, Vec<u8>)> = Vec::new();
+    for t in runtime::synth::tiny_tensors(&spec) {
+        let Some(name) = t.hf_name.clone() else {
+            continue;
+        };
+        // `values` carries Gemma's runtime `+1` for a norm; the file stores it
+        // without, as `build_tiny_safetensors` does.
+        let shift = if t.norm { 1.0f32 } else { 0.0 };
+        let bytes = t
+            .values
+            .iter()
+            .flat_map(|v| (v - shift).to_le_bytes())
+            .collect();
+        payloads.push((name, t.hf_shape(), bytes));
+    }
+    for name in [
+        "model.audio_tower.layers.0.norm_out.weight",
+        "model.vision_tower.layers.0.norm_out.weight",
+    ] {
+        payloads.push((name.to_string(), vec![1], 0.0f32.to_le_bytes().to_vec()));
+    }
+    let views: Vec<(&str, TensorView)> = payloads
+        .iter()
+        .map(|(n, shape, bytes)| {
+            (
+                n.as_str(),
+                TensorView::new(Dtype::F32, shape.clone(), bytes).unwrap(),
+            )
+        })
+        .collect();
+    std::fs::write(
+        dir.join(runtime::checkpoint::CONFIG_FILE),
+        runtime::synth::build_tiny_config_json(&spec).unwrap(),
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join(runtime::checkpoint::WEIGHTS_FILE),
+        safetensors::serialize(views, None).unwrap(),
+    )
+    .unwrap();
+}
+
+/// (exit code, stdout, stderr) of a checkpoint-info run over `path`.
+fn run_at(args: &[&str], path: &Path) -> (i32, String, String) {
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_checkpoint-info"))
+        .args(args)
+        .arg(path)
+        .output()
+        .expect("checkpoint-info builds as a test binary");
+    (
+        out.status.code().expect("not killed by a signal"),
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    )
+}
+
+#[test]
+fn check_tracks_the_multimodal_verdict_and_text_only_flips_it() {
+    // The other refusal path. The activation test above fails in
+    // `checkpoint::parse`, before the tool has a checkpoint to describe. A
+    // multimodal file parses, is described in full, and is refused only at the
+    // end by `check_supported_checkpoint` -- the path the released E4B takes,
+    // and the one on which `--text-only` has to reach the verdict through the
+    // binary's own wiring rather than the library's.
+    let dir = tempfile::tempdir().unwrap();
+    write_multimodal_checkpoint(dir.path());
+
+    let (code, stdout, stderr) = run_at(&[], dir.path());
+    assert_eq!(
+        code, 0,
+        "an inspection run is not a failed command: {stderr}"
+    );
+    assert!(
+        stderr.contains("[ERROR] CPU backend compatibility: checkpoint is multimodal"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("--text-only"), "{stderr}");
+    // The towers are named on stdout whether or not the caller declined them.
+    assert!(stdout.contains("=== Non-text towers (2) ==="), "{stdout}");
+
+    let (code, _, stderr) = run_at(&["--check"], dir.path());
+    assert_eq!(code, 1, "{stderr}");
+    assert!(stderr.contains("checkpoint is multimodal"), "{stderr}");
+
+    let (code, stdout, stderr) = run_at(&["--check", "--text-only"], dir.path());
+    assert_eq!(code, 0, "{stderr}");
+    assert!(
+        stderr.contains("[OK] CPU backend compatibility: supported"),
+        "{stderr}"
+    );
+    assert!(stdout.contains("=== Non-text towers (2) ==="), "{stdout}");
+
+    let (code, _, stderr) = run_at(&["--text-only"], dir.path());
+    assert_eq!(code, 0, "{stderr}");
+}
+
+#[test]
+fn a_missing_checkpoint_is_a_failed_run_not_a_usage_error() {
+    // The command line was answerable and the run failed: exit 1, the read
+    // error naming the path, and the same with or without --check, because a
+    // file that cannot be read has no verdict for the flag to turn into a code.
+    let dir = tempfile::tempdir().unwrap();
+    let absent = dir.path().join("absent");
+    for args in [&[][..], &["--check"][..]] {
+        let (code, _, stderr) = run_at(args, &absent);
+        assert_eq!(code, 1, "args {args:?}: {stderr}");
+        assert!(stderr.contains("[ERROR] Read "), "args {args:?}: {stderr}");
+        assert!(
+            stderr.contains("no checkpoint at"),
+            "args {args:?}: {stderr}"
+        );
+    }
+}
