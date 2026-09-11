@@ -68,7 +68,11 @@ bytes its own token produced; the sandbox half can only prove the spans partitio
 Compaction past the rewind floor (RH.20) splits the same way: `session.rs` reaches the floor on
 a four-position synthetic window in the sandbox, and `tests/hardware/test_compaction.py` under
 `hw_e4b` drives a chat session over the real 512-token window until it compacts twice and reads
-the rebuild off the `Prefill:` line each compaction leaves.
+the rebuild off the `Prefill:` line each compaction leaves. And the residual stream
+(RH.21): `layer_diff_numerics.rs` brackets `layer-diff`'s two tolerances around perturbed
+rows of the tiny capture, and `tests/hardware/test_layer_diff.py` under `hw_e4b` reads every
+row the tool prints over the real 42 layers, then closes the ceiling under two of them and
+holds the verdict to the earlier one.
 
 Steps 5 and 6 are complementary rather than redundant. The reference check asks whether a
 cited path exists, which requires classifying a token as a path claim — and that classifier
