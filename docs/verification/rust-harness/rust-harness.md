@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 29 verified, 0 blocked, 9 pending, of 38.** RH.11 was blocked
+**Entries: 38 verified, 0 blocked, 0 pending, of 38.** RH.11 was blocked
 until 2026-09-05 on an instruction-tuned checkpoint; gemma-4-E2B-it unblocked
 it, and it closed on that checkpoint on 2026-09-06. RH.9d and RH.15 were
 blocked until the same day on a control vector this repository could not
@@ -14,11 +14,11 @@ and the entry records the install step. RH.8 was blocked until the same day
 on the absence of an instruction-tuned checkpoint; gemma-4-E2B-it now closes
 it, and its entry records the two harness defects the first runs exposed.
 
-The 9 pending, RH.23 through RH.31, are all **gate-backed**: each names the
-test function that asserts its expected signal, and one `cargo test
---workspace` run closes all nine. Everything the inventory found that is
-neither a full entry nor gate-backed is listed in the coverage roster at the
-end of this file, against the test that pins it.
+RH.23 through RH.31 are **gate-backed**: each names the test function that
+asserts its expected signal, and one `cargo test --workspace` run, recorded in
+that section, closed all nine on 2026-09-11. Everything the inventory found
+that is neither a full entry nor gate-backed is listed in the coverage roster
+at the end of this file, against the test that pins it.
 
 Workstation verification for the `rust-harness/` workspace: the CPU
 inference backend on the real Gemma 4 E4B checkpoint, the observability stack
@@ -5518,6 +5518,12 @@ echo "exit=$?"
 Paste the summary lines for the named test binaries into each entry's Observed
 block, not the whole run.
 
+The run that closed the section was made on 2026-09-11 in the agent sandbox,
+from the worktree's `rust-harness/` directory rather than the workstation path
+above, with `--test-threads=1` as written: 61 test binaries, every one
+`0 failed`, no `[SKIP]` line, `exit=0`. Each entry below carries its own
+binary's block from that run.
+
 ### RH.23 layer-diff numerics are bracketed around a measured value
 
 Asserted by `rust-harness/runtime/tests/layer_diff_numerics.rs`:
@@ -5536,12 +5542,23 @@ non-empty: the test perturbs one row until the figure crosses, then runs the
 tool once on each side of the flag. RH.21 supplies what this cannot — the same
 tool against a `transformers` capture over 42 real layers.
 
-Observed:
+Observed (2026-09-11, the one sandbox run):
 
 ```
+     Running tests/layer_diff_numerics.rs (target/debug/deps/layer_diff_numerics-8aa8068bf6d81ab6)
+
+running 6 tests
+test a_divergence_before_the_stack_is_reported_instead_of_a_layer ... ok
+test a_reference_matching_the_checkpoint_passes_every_layer ... ok
+test a_reference_perturbed_at_one_layer_fails_and_names_that_layer ... ok
+test the_cosine_floor_moves_the_verdict_across_a_reoriented_row ... ok
+test the_rel_l2_ceiling_moves_the_verdict_across_a_scaled_row ... ok
+test the_verdict_names_the_first_diverging_layer_and_not_the_worst ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.47s
 ```
 
-Status: PENDING
+Status: VERIFIED 2026-09-11 (gate-backed by `rust-harness/runtime/tests/layer_diff_numerics.rs`)
 
 ### RH.24 The ladder table is invariant across the flags that may not change it
 
@@ -5578,12 +5595,23 @@ which crosses the threshold on both paths that split. The table test keeps the
 fixture: its subject is the printed table, and no reference capture exists at
 the wider shape.
 
-Observed:
+Observed (2026-09-11, the one sandbox run):
 
 ```
+     Running tests/ladder_flags.rs (target/debug/deps/ladder_flags-760954db91f0ce1e)
+
+running 6 tests
+test every_batch_mode_prints_the_same_ladder_table ... ok
+test every_bit_identical_dot_kind_prints_the_same_ladder_table ... ok
+test every_bit_identical_dot_kind_produces_the_same_logits_bits ... ok
+test every_thread_width_prints_the_same_ladder_table ... ok
+test every_thread_width_produces_the_same_logits_bits ... ok
+test rung_climbs_only_the_rung_it_names ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.81s
 ```
 
-Status: PENDING
+Status: VERIFIED 2026-09-11 (gate-backed by `rust-harness/runtime/tests/ladder_flags.rs`)
 
 ### RH.25 The fixture writers produce what they claim, reproducibly
 
@@ -5603,12 +5631,24 @@ The two byte-identity tests are what let a fixture be regenerated in review: a
 diff against the committed artifact is meaningful only if the writer is
 deterministic.
 
-Observed:
+Observed (2026-09-11, the one sandbox run):
 
 ```
+     Running tests/fixture_writers.rs (target/debug/deps/fixture_writers-d32c0a68ff6330fe)
+
+running 7 tests
+test long_context_golden_regenerates_byte_identical_bytes ... ok
+test long_context_golden_writes_the_rows_it_claims ... ok
+test tiny_model_bpe_writes_only_a_tokenizer ... ok
+test tiny_model_e4b_writes_a_different_architecture_from_the_default ... ok
+test tiny_model_regenerates_byte_identical_artifacts ... ok
+test tiny_model_writes_a_checkpoint_that_loads_and_prefills ... ok
+test tiny_model_writes_a_tokenizer_the_tokenizers_crate_reads ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.75s
 ```
 
-Status: PENDING
+Status: VERIFIED 2026-09-11 (gate-backed by `rust-harness/runtime/tests/fixture_writers.rs`)
 
 ### RH.26 --alignment-out reaches the same contract through the binary
 
@@ -5629,12 +5669,29 @@ share one `assert_conforms` helper with the library tests, so the flag cannot
 drift into writing a second dialect of the artifact. RH.19 covers the one
 clause this cannot: scaffold role on a vocabulary whose markers `decode` drops.
 
-Observed:
+Observed (2026-09-11, the one sandbox run):
 
 ```
+     Running tests/alignment_artifact.rs (target/debug/deps/alignment_artifact-f9aa521c1637e7c9)
+
+running 8 tests
+test a_scored_run_carries_the_score_channel_and_an_unscored_one_omits_it ... ok
+test concatenating_the_written_spans_reproduces_the_written_text ... ok
+test every_enumerated_field_holds_a_value_the_contract_lists ... ok
+test every_row_carries_the_id_the_run_computed_at_its_position ... ok
+test positions_are_dense_from_zero_and_counted_in_the_header ... ok
+test the_alignment_out_flag_writes_an_artifact_conforming_to_the_same_contract ... ok
+test the_flagged_run_records_every_pass_and_counts_its_positions_in_the_header ... ok
+test the_header_and_rows_carry_exactly_the_contract_key_sets ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.60s
 ```
 
-Status: PENDING
+Eight passed where the table names seven: the eighth,
+`every_row_carries_the_id_the_run_computed_at_its_position`, is a
+library-level row check the table does not claim, recorded as printed.
+
+Status: VERIFIED 2026-09-11 (gate-backed by `rust-harness/harness/tests/alignment_artifact.rs`)
 
 ### RH.27 Probe identity decides, and --probe-out writes where it names
 
@@ -5651,12 +5708,21 @@ RH.16 step 4d is the same comparison against 14 GiB of real weights; this is
 the same decision made in milliseconds, so both arms can be asserted on every
 gate run.
 
-Observed:
+Observed (2026-09-11, the one sandbox run):
 
 ```
+     Running tests/probe_identity.rs (target/debug/deps/probe_identity-9ab1eea8a8367f31)
+
+running 4 tests
+test a_probe_recording_a_different_model_hash_is_refused_naming_both_hashes ... ok
+test a_probe_recording_the_served_models_sha256_loads_and_the_run_completes ... ok
+test a_probe_recording_the_unknown_sentinel_loads_with_the_check_skipped ... ok
+test probe_out_puts_the_flag_file_where_it_names_and_leaves_the_default_unwritten ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.12s
 ```
 
-Status: PENDING
+Status: VERIFIED 2026-09-11 (gate-backed by `rust-harness/harness/tests/probe_identity.rs`)
 
 ### RH.28 The sampling and compaction thresholds are validated at the boundary
 
@@ -5674,12 +5740,22 @@ The last test is what makes `--compact-at` a threshold rather than a parsed
 number. RH.20 covers what it cannot: a session long enough that compaction
 rewinds past the horizon and forces the clear-and-re-prefill path.
 
-Observed:
+Observed (2026-09-11, the one sandbox run):
 
 ```
+     Running tests/sampling_flags.rs (target/debug/deps/sampling_flags-008f103b249e69fe)
+
+running 5 tests
+test a_compact_at_outside_the_unit_interval_is_refused_naming_the_range ... ok
+test a_low_compact_at_threshold_compacts_the_conversation_and_a_high_one_does_not ... ok
+test a_nucleus_under_greedy_decoding_warns_rather_than_refusing_the_run ... ok
+test a_top_p_inside_the_unit_interval_is_accepted_and_reaches_the_model ... ok
+test a_top_p_outside_the_unit_interval_is_refused_naming_the_range ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.10s
 ```
 
-Status: PENDING
+Status: VERIFIED 2026-09-11 (gate-backed by `rust-harness/harness/tests/sampling_flags.rs`)
 
 ### RH.29 --tokenizer overrides the one beside the checkpoint
 
@@ -5694,12 +5770,19 @@ The second is the one that matters: a flag that silently falls back to the
 checkpoint's own tokenizer on a typo produces a run that looks correct and was
 not the run that was asked for.
 
-Observed:
+Observed (2026-09-11, the one sandbox run):
 
 ```
+     Running tests/tokenizer_override.rs (target/debug/deps/tokenizer_override-4be6c3500417a83a)
+
+running 2 tests
+test a_tokenizer_that_does_not_exist_is_refused_rather_than_resolved_around ... ok
+test the_tokenizer_flag_overrides_the_one_beside_the_checkpoint ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.69s
 ```
 
-Status: PENDING
+Status: VERIFIED 2026-09-11 (gate-backed by `rust-harness/harness/tests/tokenizer_override.rs`)
 
 ### RH.30 --control-vector-layer-range decides which directions load
 
@@ -5714,12 +5797,20 @@ Asserted by `rust-harness/harness/tests/control_vector_range.rs`:
 The kept and dropped arms are asserted together; either alone is consistent
 with a flag that ignores its value.
 
-Observed:
+Observed (2026-09-11, the one sandbox run):
 
 ```
+     Running tests/control_vector_range.rs (target/debug/deps/control_vector_range-75daf8428db62049)
+
+running 3 tests
+test a_direction_inside_the_layer_range_is_kept ... ok
+test a_direction_outside_the_layer_range_is_dropped_at_load ... ok
+test a_malformed_layer_range_is_refused_naming_the_flag ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.37s
 ```
 
-Status: PENDING
+Status: VERIFIED 2026-09-11 (gate-backed by `rust-harness/harness/tests/control_vector_range.rs`)
 
 ### RH.31 --serve-addr binds where it names
 
@@ -5742,12 +5833,25 @@ address on the same port -- free if the harness took loopback, already held if
 it took the wildcard. That arm skips loudly on a host with no routable
 address.
 
-Observed:
+Observed (2026-09-11, the one sandbox run):
 
 ```
+     Running tests/serve_bind_addr.rs (target/debug/deps/serve_bind_addr-5662d9ac8869c926)
+
+running 3 tests
+test an_address_the_host_does_not_own_fails_the_bind_naming_it ... ok
+test the_default_bind_address_is_loopback ... ok
+test the_endpoint_answers_on_the_bind_address_and_not_on_the_default ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
 ```
 
-Status: PENDING
+No `[SKIP]` line anywhere in the run: the sandbox reports a routable
+address, so the wildcard-default arm of
+`the_default_bind_address_is_loopback` ran, and the second bind on that
+address succeeded.
+
+Status: VERIFIED 2026-09-11 (gate-backed by `rust-harness/harness/tests/serve_bind_addr.rs`)
 
 ## Known defects
 
