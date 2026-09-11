@@ -65,6 +65,10 @@ weights, where it also prints what the hash costs. And the alignment artifact (R
 and `tests/hardware/test_alignment.py` under `hw_e4b` runs the harness over the real
 vocabulary and decodes every row's `token_id` with `transformers`, holding each span to the
 bytes its own token produced; the sandbox half can only prove the spans partition the text.
+Compaction past the rewind floor (RH.20) splits the same way: `session.rs` reaches the floor on
+a four-position synthetic window in the sandbox, and `tests/hardware/test_compaction.py` under
+`hw_e4b` drives a chat session over the real 512-token window until it compacts twice and reads
+the rebuild off the `Prefill:` line each compaction leaves.
 
 Steps 5 and 6 are complementary rather than redundant. The reference check asks whether a
 cited path exists, which requires classifying a token as a path claim — and that classifier
