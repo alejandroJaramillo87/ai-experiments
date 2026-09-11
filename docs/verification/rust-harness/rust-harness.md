@@ -4277,7 +4277,7 @@ MODEL=<the gemma-4-E4B checkpoint directory>
 make ladder SIZE=quick MODEL="$MODEL"
 echo "exit=$?"
 
-# 2. L5 alone, for a re-run that does not pay for the first five rungs
+# 2. L5 alone, for a re-run that does not pay for the other rungs
 cargo run --release -q -p runtime --bin ladder -- --text-only \
   --size quick --model "$MODEL" --reference fixtures/reference/e4b/quick \
   --rung L5
@@ -4300,7 +4300,7 @@ Asserted by `tests/hardware/test_ladder.py`:
 
 | Expected signal | Test function |
 |-----------------|---------------|
-| Six rungs, `0 skipped`, the L5 detail line reporting six positions and a window equal to the `sliding_window` the reference artifact recorded | `test_the_ladder_passes_every_rung_at_tier_e` |
+| Every rung, `0 skipped`, the L5 detail line reporting six positions and a window equal to the `sliding_window` the reference artifact recorded | `test_the_ladder_passes_every_rung_at_tier_e` |
 
 ```bash
 cd ~/workspace/ai-experiments
@@ -4356,76 +4356,116 @@ gate-backed by `tests/hardware/test_ladder.py`)
 
 ## RH.18 Attention capture on real weights
 
-Implementation: `rust-harness/runtime/src/bin/attention-capture.rs`.
+Implementation: `rust-harness/runtime/src/ladder.rs` (`rung_attention`,
+`capture_attention`, `attention_layers`),
+`rust-harness/fixtures/reference_attention.py`; the tap under test is the one
+`rust-harness/runtime/src/bin/attention-capture.rs` writes from.
 
 `attention-capture` writes post-softmax attention weights for the requested
-layers and query heads over one prompt. Every assertion on it to date runs
-against the two-layer synthetic fixture, whose layers are all one kind: the
-fixture cannot show an interleaved sliding/global schedule because it does not
-have one. This entry is the first reading of the captured weights against the
-schedule the real checkpoint declares.
+layers and query heads over one prompt, and nothing under `make quality-full`
+has ever read attention weights off the real checkpoint. The sandbox pins the
+tool's structure: `rust-harness/runtime/tests/attention_capture.rs` runs it
+over the mixed `tiny-gemma4-e4b` fixture (two sliding layers, two global, a
+3-token window, a two-layer shared-KV tail) and asserts every row sums to one,
+every weight outside the row's span is exactly zero, and `span_first` matches
+the schedule the checkpoint declares.
 
-The prompt must be longer than the window for the sliding layers to differ
-from the global ones at all — under 512 tokens both attend to the whole prefix
-and the two are indistinguishable. Use the L5 corpus, which is 2052 tokens.
+**That is as far as a structural check goes, and the first draft of this
+entry stopped there.** Its deciding property was the exact zero outside the
+span, on the reasoning that a masked key is `-inf` before the softmax. The
+backend has no such mask: `cpu.rs` scores only the keys in `first..=position`
+and never computes a forbidden one, and the zeros in the capture are
+`dense_matrix`'s padding. A check that the padding is zero cannot fail on any
+checkpoint, and the draft's schedule check compared the loader's reading of
+`layer_types` with `checkpoint-info`'s reading of the same array. Neither
+could tell a correct capture from a wrong one.
+
+What can is the reference implementation, which is what every other rung
+uses. L6 is the seventh rung of `make ladder`. `reference_attention.py` runs
+the L5 prompt (the 2052-token corpus prefix) through `transformers` under
+eager attention with a forward hook on the chosen layers' attention modules,
+and records the dense post-softmax row over keys `0..=position` for every
+query head at L5's six positions. The reference computes those rows the
+masking way, so its forbidden keys are exact zeros by arithmetic; the rung
+captures ours in-process through the same `AttentionTap` the binary uses,
+pads them, and compares key for key. A key we wrongly allow carries weight
+where the reference has zero, and one we wrongly forbid has zero where the
+reference has weight. That is what makes the zeros a checked fact about the
+mask, on both sides, and the reason the backend keeps skipping forbidden keys
+rather than masking them: the two formulations produce the same row bit for
+bit, and scoring evicted keys would undo the windowed cache RH.17 verified.
+
+The layers come from a rule both sides share, `attention_layers`, applied to
+the checkpoint's `layer_types` rather than to an index list: the first two
+layers, the sliding layer nearest the middle of the stack, and the last global
+layer. On E4B that is 0, 1, 21 and 41; layer 41 is in the shared-KV tail
+(layers 24 to 41 read a donor's cache, RH.2), so the donor read is in the
+comparison. Every query head is compared, so the query-to-key-value head
+mapping is too. The rung recomputes the layers, the positions and the head
+count from its own config read and refuses the artifact's where they differ,
+in L5's spirit.
+
+Five measures, one `L6` row:
+
+| Measure | Threshold (Tier E) |
+|---------|--------------------|
+| `captured layers agree` | 1.0: the artifact's layers, positions and head count equal the run's |
+| `weight outside window` | 0.0, exact: the reference put no weight before our row's first visible key |
+| `worst row max abs diff` | 1e-3, PROVISIONAL |
+| `worst row mass` | 1e-5: each of our rows sums to one |
+| `worst top-10 overlap` | 0.9, PROVISIONAL |
+
+The two provisional bounds are `Tolerance::attention_max_abs` and
+`attention_overlap` in `ladder.rs`. No attention row of ours has been
+compared with `transformers` on real weights before this entry, so they were
+chosen from L5's precedent (bf16 weights widened to f32 on both sides, a
+2560-wide dot, a softmax over up to 2052 keys) and not from a run. A value
+that lands outside one is recorded as a finding under this entry, not
+absorbed by moving the bound.
 
 ```bash
 cd ~/workspace/ai-experiments/rust-harness
 MODEL=<the gemma-4-E4B checkpoint directory>
-mkdir -p /tmp/rh18
 
-# a prompt past the 512-token window: the first ~2100 words of the corpus
-PROMPT=$(head -c 12000 fixtures/reference/corpus.txt)
-
-# sliding layers 0, 1 and 20, global layer 41 (the schedule puts a global
-# layer at 5, 11, ..., 41); head 0 of each. --out is a directory: the tool
-# writes attention.npz and manifest.json into it.
-cargo run --release -q -p runtime --bin attention-capture -- --text-only \
-  --model "$MODEL" --prompt "$PROMPT" --layers 0,1,20,41 --heads 0 \
-  --out /tmp/rh18/attn
+# 1. the whole climb, L6 included; a missing attention.json is generated
+#    first (one more transformers pass over the L5 prompt, minutes)
+make ladder SIZE=quick MODEL="$MODEL"
 echo "exit=$?"
 
-# 1. the manifest, then row mass and the zeros outside each row's span.
-#    span_first_layer_<l> names the first visible key per query row; the
-#    matrix is dense, so everything left of it is a structural zero.
-cat /tmp/rh18/attn/manifest.json
-uv run python - <<'PY'
-import numpy as np
-z = np.load("/tmp/rh18/attn/attention.npz")
-for l in (0, 1, 20, 41):
-    m, first = z[f"layer_{l}_head_0"], z[f"span_first_layer_{l}"]
-    n = m.shape[0]
-    mass = np.abs(m.sum(axis=1) - 1.0).max()
-    outside = max(np.abs(m[i, :first[i]]).max(initial=0.0) for i in range(n))
-    width = int((np.arange(n) - first + 1).max())
-    print(f"layer {l}: rows {n}, worst |row sum - 1| {mass:.2e}, "
-          f"max weight outside span {outside}, widest span {width}")
-PY
-
-# 2. the per-layer sliding/global verdict the checkpoint declares
-cargo run --release -q -p runtime --bin checkpoint-info -- --text-only "$MODEL" \
-  | grep -i 'window\|sliding\|global' | head -50
+# 2. L6 alone, for a re-run that does not pay for the first six rungs
+cargo run --release -q -p runtime --bin ladder -- --text-only \
+  --size quick --model "$MODEL" --reference fixtures/reference/e4b/quick \
+  --rung L6
+echo "exit=$?"
 ```
 
-Expected signal: three properties, all of them checked against the same
-capture.
+Expected signal: seven rungs, `0 skipped`, the `L6 attention past the window`
+row `PASS` with all five measures within tolerance, `weight outside window`
+printed as `0.000000`, and the detail line `192 rows across 4 layers x 8 heads
+at 6 positions; window 512; worst at layer ...`. Record the five values: the
+max-abs and overlap figures are the first measurement of the two provisional
+bounds and belong beside them.
 
-| Property | Expected |
-|----------|----------|
-| Row mass | Every query row sums to 1.0 over the positions it may attend, within 1e-5 |
-| Outside the span | Every weight at a position outside the row's span is exactly 0.0, not merely small |
-| Schedule | The layers the capture marks sliding, and the span width it gives them, match what `checkpoint-info` reports for the same layer indices |
+A skipped L6 means the generator did not write where the climb reads. An `L6`
+error naming `captured no row` means the tap fired for none of the requested
+(layer, head, position) triples, which is a rung defect rather than a numerics
+one. A `captured layers agree` below 1.0 means the two sides chose different
+rows, and the note names both choices; treat the rung as unmet rather than
+reading the other four measures.
 
-The zero outside the span is the deciding property and it is exact, not
-approximate: a masked position is `-inf` before the softmax, so it comes out
-`0.0` bit-for-bit. A small-but-nonzero weight there means the mask was applied
-as a large negative number rather than an infinity, which is a different
-implementation with a different failure mode at long context.
+Asserted by `tests/hardware/test_ladder.py`:
 
-The widest span the script prints is the schedule verdict: 512 on a sliding
-layer, the full prompt length on a global one. If it disagrees with what
-`checkpoint-info` reports for the same layer index, record both and treat the
-schedule check as unmet rather than inferring it.
+| Expected signal | Test function |
+|-----------------|---------------|
+| Seven rungs, `0 skipped`, the L6 detail line reporting as many rows, layers, heads and positions as `attention.json` holds, at the window it recorded | `test_the_ladder_passes_every_rung_at_tier_e` |
+
+```bash
+cd ~/workspace/ai-experiments
+make quality-full HW=e4b HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B
+```
+
+The test is RH.1b's; L6 is one more row of the climb it already drives, and
+it reads the counts off the detail line the way it reads L5's window.
 
 Observed:
 
@@ -4983,6 +5023,8 @@ is a decision rather than an oversight.
 | Capture obs records | `rust-harness/runtime/tests/capture_obs.rs` |
 | Ladder obs records | `rust-harness/runtime/tests/ladder_obs.rs` |
 | `ladder::window_schedule` against the reference generator's | `rust-harness/runtime/tests/ladder_reference_contract.rs` |
+| `ladder::attention_layers` against the reference generator's | `rust-harness/runtime/tests/ladder_reference_contract.rs::the_attention_generator_chooses_the_layers_the_rung_recomputes` |
+| `attention-capture --layers` and `--heads`: distinct indices, range-checked, every requested pair written, row mass, exact zeros outside the span, `span_first` against the fixture's schedule | `rust-harness/runtime/tests/attention_capture.rs` |
 | Row-split bit-identity at every thread width | `rust-harness/runtime/src/model/cpu.rs::par_rows_is_bit_identical_at_every_width` |
 | `Lanes16` excluded from the bit-identical set | `rust-harness/runtime/src/model/cpu.rs` (the `DotKind::Lanes16` assertion at line 4252) |
 | Blocked-row folding against row-at-a-time | `rust-harness/runtime/src/tensor.rs::a_block_of_rows_is_bit_identical_to_the_rows_folded_one_at_a_time` |

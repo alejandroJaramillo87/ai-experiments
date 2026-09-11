@@ -222,7 +222,7 @@ then `prefill` and `decode` around the two halves of every generation. The
 three capture binaries write `model.load` and nothing else — they have one
 operation each worth bracketing, and it is the one they spend most of their
 wall clock on. The ladder writes `model.load` and one per rung attempted, `rung.L0` through
-`rung.L4` — which is what makes the per-rung wall clock visible outside the
+`rung.L6` — which is what makes the per-rung wall clock visible outside the
 run's own timing block; `render` deliberately keeps it out of the table,
 because it is the one figure in a result that is not reproducible.
 
@@ -421,7 +421,7 @@ What a run leaves behind:
   fields, then one record per step. Task and chat write one record per decoded
   token with `tokens_per_s` and `rss_gb`, bounded by `--max-tokens`; serve
   writes one per completed request, because a server has no run boundary to
-  bound a per-token file against; the ladder writes exactly five, one per rung,
+  bound a per-token file against; the ladder writes exactly seven, one per rung,
   with `rung`, `status`, `rung_duration_s` and the rung's own measures.
   Contracted in [`schemas/run_metrics.json`](../../schemas/run_metrics.json).
 
@@ -434,7 +434,7 @@ What a run leaves behind:
   consequence is not local to the line.
 
   `step` is an ordering key and nothing more. The generation modes make it a
-  token index and the ladder makes it a rung index — five ordered categories,
+  token index and the ladder makes it a rung index — seven ordered categories,
   not evenly spaced points — and no reader here assumes otherwise.
 
   The directory is created on the first metrics write rather than at run
