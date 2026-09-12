@@ -499,12 +499,52 @@ cannot be automated, so its `Observed` block will not be pasted output.
 The first line of `metrics.jsonl` is the report envelope. Record it: it is what makes the file
 readable by a tool written for a different tier.
 
-Observed:
+Observed (2026-09-12, on the run directory `tests/hardware/test_status_costs.py` wrote):
 
 ```
+➜  ai-experiments git:(rust-harness-ux-verification) ✗ cd ~/workspace/ai-experiments
+RUN_DIR=$(ls -dt /mnt/ai-data/logs/harness/R-*/ | head -1)
+echo "$RUN_DIR"
+head -1 "$RUN_DIR/metrics.jsonl"
+/mnt/ai-data/logs/harness/R-20260912-160320-91dad9/
+{"schema_version":1,"report":"run_metrics","timestamp":"2026-09-12T16:03:26.184+00:00","run_id":"R-20260912-160320-91dad9","cli":"harness","command":"chat","model":"/mnt/ai-data/models/hf/gemma-4-E4B","model_hash":"e376216f8b693aff","n_layers":42,"dtype":"bf16","weight_bytes":14924906496,"max_context":131072,"kv_bytes":4353867776,"kv_batch_group":64,"threads":8,"dot":"widen4","batch":"64","seed":7,"temperature":0.8,"max_tokens":32,"binary_version":"0.1.0","git_sha":"unknown","peak_rss_bytes":15069679616,"rewind_horizon":208}
+➜  ai-experiments git:(rust-harness-ux-verification) ✗ .venv/bin/python -m training report --run "$RUN_DIR"
+ls -la "$RUN_DIR/run.html"
+[OK] Wrote /mnt/ai-data/logs/harness/R-20260912-160320-91dad9/run.html
+-rw-rw-r-- 1 alejandro alejandro 80246 Sep 12 09:08 /mnt/ai-data/logs/harness/R-20260912-160320-91dad9//run.html
 ```
 
-Status: PENDING
+The page, opened from `file:///mnt/ai-data/logs/harness/R-20260912-160320-91dad9/run.html`
+(screenshot taken 2026-09-12 09:10 local):
+
+- Header strip: `run R-20260912-160320-91dad9  tier -  model -  recipe -  schedule -`. Neither
+  the model, the fold nor the build appears; every field but the run id is a dash.
+- Four empty bordered boxes, two above the throughput chart, one between the two charts, and
+  one below the memory chart: the Loss, Learning rate, Device memory and Rung duration groups,
+  which a chat run has no series for.
+- Throughput (tokens/s): populated, 64 steps, `tokens_per_s` ramping from 0 to about 2.4 over
+  the first 32 steps, dropping at step 32 where the second turn's prefill lands, and ramping
+  again to about 4.3 at step 64. Correct for two 32-token turns.
+- Process memory (GB): populated, flat near 14.24 GB with a step up at 32, but every one of the
+  six y-axis labels reads `14.242`: the axis formatter rounds to three decimals and the series
+  varies below that, so the labels are indistinguishable.
+- Run log: the run's twelve records, from `cmd.start` through `cmd.end` with `exit_code: 0`,
+  each phase's `duration_s` shown (`model.load` 5.83, two `prefill`, two `decode`).
+
+`report` wrote the file and exited 0, and both series U6 promised are present and populated.
+The header strip does not meet the expected signal, and this is the finding: `refreshHeader`
+in `common/obs/viewer.js` reads `tier`, `model_id`, `recipe_hash` and `schedule`, the
+training envelope's keys, and none of `model`, `dot`, `batch`, `threads`, `binary_version` or
+`git_sha` the harness envelope carries. `schemas/run_metrics.json` states that "the dashboard's
+header strip and the terminal's header state the same facts from the same struct"; the strip
+reads none of them. "No Python change" was true and insufficient: the page needed a viewer
+change and did not get one. Two smaller defects from the same screenshot: `render` appends a
+bordered `.chart` holder for every group and `refreshCharts` returns early for the empty ones,
+leaving the boxes, and the memory axis needs more precision than three decimals when its
+range is narrow.
+
+Status: PENDING (failed 2026-09-12 on the header strip; re-run after the viewer fix). The
+report, the throughput series and the memory series held; the strip did not.
 
 ## RHX.5 A capture is traceable to the invocation that made it
 
