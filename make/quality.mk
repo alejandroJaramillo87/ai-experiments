@@ -106,7 +106,7 @@ format: ## Format code with ruff
 # 210 blocks carried it until the 2026-09-04 sweep. Transcripts keep their prompt under a
 # `console` tag or an Observed heading, which the gate does not read.
 #
-# check_site_reference.py holds the committed copy of each binary's --help, under
+# check_site_reference.py holds the committed page rendered from each binary's --help, under
 # site/docs/rust-harness/reference/, to the flag table it was rendered from. The pages are
 # committed so the site builds without cargo, which is also how they go stale: a flag added
 # to the table ships in the binary and stays absent from its page until `make site-gen` is

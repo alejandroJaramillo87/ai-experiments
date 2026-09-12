@@ -3,7 +3,7 @@ title: Overview
 slug: /
 ---
 
-# rust harness
+# Rust Harness
 
 The rust harness is a local coding agent, a chat REPL, and an OpenAI-shaped HTTP server, built
 over an inference runtime that reads a Gemma 4 checkpoint and runs it on the CPU. The runtime is

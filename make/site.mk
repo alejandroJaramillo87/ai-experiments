@@ -15,12 +15,13 @@ site-install: ## Install the site's pinned node dependencies from site/package-l
 	npm ci --prefix site --no-fund --no-audit
 	@echo "$(GREEN)site/node_modules ready.$(RESET)"
 
-# The per-binary reference pages are the binaries' own --help, captured by
-# site/scripts/gen-cli-reference.sh. It builds the workspace, so the first run
-# takes as long as a cargo build; every binary answers --help before loading a
-# model, so no checkpoint and no GPU is involved.
+# The per-binary reference pages are rendered from the binaries' own --help by
+# scripts/docs/gen_site_reference.py: the usage line, then one table per help
+# section. It builds the workspace, so the first run takes as long as a cargo
+# build; every binary answers --help before loading a model, so no checkpoint
+# and no GPU is involved.
 site-gen: ## Regenerate site/docs/rust-harness/reference/<binary>.md from each binary's --help
-	./site/scripts/gen-cli-reference.sh
+	$(RUN_PY) python scripts/docs/gen_site_reference.py
 
 # Guarded rather than failing: `make quality` runs this, and a fresh sandbox
 # has no site/node_modules because installing them needs the network. The

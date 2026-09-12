@@ -30,6 +30,7 @@ the host-environment reporters in `scripts/utils/`.
 | `test_kb_refs.py` | `scripts/docs/check_kb_refs.py` | `extract_citations` including the reserved next identifier, `collect_defined` across both ledgers, `is_exempt`; then the full-tree gate |
 | `test_command_prompts.py` | `scripts/docs/check_command_prompts.py` | `find_prompts` against the constructs that start a line with `$` or `#` without being a prompt — a variable, a substitution, a comment, a commented-out command, a non-shell block, a `console` transcript — the Observed exemption and where it ends, `is_exempt` for frozen records; then the full-tree gate |
 | `test_check_site_reference.py` | `scripts/docs/check_site_reference.py` | `surface` enumeration including `harness`, the generated-marker classification that keeps hand-written reference pages out of the check, the three findings (a binary with no page, a page for no binary, a flag absent from its page) with whole-flag matching so `--control-vector-scale` does not satisfy `--control-vector`, and the empty-set guard; then the full-tree gate |
+| `test_gen_site_reference.py` | `scripts/docs/gen_site_reference.py` | the `--help` parser against a grouped harness-shaped fixture and a flat Spec-shaped fixture (section order, wrapped descriptions rejoined, prose split into summary and trailing), the rendered page (marker line, one fenced usage block, `\|` escaping of placeholders, escaped angle brackets, the binaries table linking siblings and not itself), and binary discovery |
 
 ## Notes
 

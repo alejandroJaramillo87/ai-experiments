@@ -8,12 +8,13 @@ One page per binary, plus the environment variables, the exit codes, and the per
 
 ## The binary pages are generated
 
-Each binary page holds that binary's `--help` output verbatim. `harness` renders its help from
-the same table its parser reads, and the seven runtime binaries do the same from their own
-tables, so the help cannot describe a flag the binary does not accept or omit one it does. The
-pages are written by `make site-gen` in the repository, which runs each binary with `--help`,
-and a check in the repository's quality gate fails when a page and its table disagree. To
-change a page, change the table and regenerate.
+Each binary page is rendered from that binary's `--help`: the usage line, then one table per
+help section, in the order the binary prints them. `harness` renders its help from the same
+table its parser reads, and the seven runtime binaries do the same from their own tables, so
+the help cannot describe a flag the binary does not accept or omit one it does. The pages are
+written by `make site-gen` in the repository, which runs each binary with `--help`, and a check
+in the repository's quality gate fails when a page and its table disagree. To change a page,
+change the table and regenerate.
 
 | Binary | Purpose |
 |--------|---------|

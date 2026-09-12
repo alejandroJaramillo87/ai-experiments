@@ -7,8 +7,9 @@ changing the repository, and the two do not overlap by design.
 ## What it consumes and what consumes it
 
 The site reads three things from the tree. The per-binary reference pages under
-`docs/rust-harness/reference/` are the binaries' own `--help`, captured by
-`scripts/gen-cli-reference.sh` and committed so the site builds without cargo. The Formats
+`docs/rust-harness/reference/` are rendered from the binaries' own `--help` by
+`../scripts/docs/gen_site_reference.py`, the usage line and then one table per help section,
+and committed so the site builds without cargo. The Formats
 pages restate the contract files under `../schemas/` in words. Everything else is written by
 hand against the binaries and the fixtures under `../rust-harness/fixtures/`.
 
@@ -36,8 +37,8 @@ is a no-op until the dependencies are installed.
 docusaurus.config.js   docs at the site root, no blog, broken links fail the build
 sidebars.js            the two sidebars, in reading order
 package.json           Docusaurus and React pinned exact; package-lock.json is the pin
-scripts/               gen-cli-reference.sh
-src/css/custom.css     the one theme override
+src/css/custom.css     the theme: accent, heading sizes, article width, fonts, sidebar weights
+static/img/logo.svg    the navbar mark and favicon, one monochrome SVG
 docs/index.md          the overview
 docs/rust-harness/     getting-started, guides, observability, reference, troubleshooting
 docs/formats/          the checkpoint layout, four artifacts, and the capture-to-probe guide
@@ -51,6 +52,10 @@ docs/formats/          the checkpoint layout, four artifacts, and the capture-to
 - **A new binary needs a sidebar line.** The generator discovers binaries from
   `../rust-harness/runtime/src/bin/`, so a new one gets a page on the next run; `sidebars.js`
   is explicit, and the build fails on the missing entry until it has one.
+- **The generator parses `--help` text.** Its three rules are the two renderers' shape: a
+  column-zero line ending in a colon opens a section, a two-space line is a term, a six-space
+  line continues a description. A renderer change that breaks that shape breaks the parse, and
+  `../tests/docs/test_gen_site_reference.py` pins it.
 - **Pages are CommonMark, not MDX.** `markdown.format` is `detect`, so `.md` files keep
   literal angle brackets and braces. An `.mdx` file would be parsed as MDX.
 - **`.gitignore` ignores every `package.json` and lockfile in the tree** for the browser

@@ -1,11 +1,80 @@
 /*
  * custom.css
  *
- * The one theme override: the generated reference pages hold --help output in
- * a fenced block whose longest usage line runs past the content column, so
- * code blocks scroll horizontally rather than wrapping a command mid-flag.
+ * The site's theme, as overrides of Infima's variables and a few of
+ * theme-classic's class names. Everything here is offline: no @import, no
+ * font fetch. The system UI stack stays for body text; the monospace stack
+ * prefers a coding font when the reader has one installed and falls back to
+ * the platform default.
  */
 
+:root {
+  /* One neutral slate-blue accent in place of the template green. The six
+   * shades follow Infima's convention, which theme-classic reads for hover,
+   * active, and contrast states. */
+  --ifm-color-primary: #3b5b7d;
+  --ifm-color-primary-dark: #355270;
+  --ifm-color-primary-darker: #324d6a;
+  --ifm-color-primary-darkest: #294057;
+  --ifm-color-primary-light: #41648a;
+  --ifm-color-primary-lighter: #446990;
+  --ifm-color-primary-lightest: #4d76a2;
+
+  --ifm-heading-font-weight: 600;
+  --ifm-h1-font-size: 2rem;
+  --ifm-h2-font-size: 1.5rem;
+  --ifm-h3-font-size: 1.2rem;
+
+  --ifm-font-family-monospace: ui-monospace, "JetBrains Mono", "Fira Code",
+    "Cascadia Code", Menlo, Consolas, monospace;
+  --ifm-code-font-size: 90%;
+
+  --ifm-menu-link-padding-vertical: 0.3rem;
+}
+
+[data-theme='dark'] {
+  /* Lighter on the dark ground so links keep their contrast. */
+  --ifm-color-primary: #8fb0d1;
+  --ifm-color-primary-dark: #79a1c8;
+  --ifm-color-primary-darker: #6e99c4;
+  --ifm-color-primary-darkest: #4d80b4;
+  --ifm-color-primary-light: #a5bfda;
+  --ifm-color-primary-lighter: #b0c7de;
+  --ifm-color-primary-lightest: #d1dde9;
+}
+
+/* The docs h1 is the page title, not a banner. */
+.markdown h1:first-child {
+  --ifm-h1-font-size: 2rem;
+}
+
+/* About 75 characters at the body size. The sidebar and the table of contents
+ * keep their columns; only the article narrows. Tables and code blocks scroll
+ * inside this width rather than widening it. */
+.markdown {
+  max-width: 46rem;
+}
+
+/* Category labels heavier than the pages under them, and the pages indented
+ * enough that the two levels read as levels. */
+.menu__link--sublist,
+.menu__list-item-collapsible > .menu__link {
+  font-weight: 600;
+}
+
+.menu__list .menu__list {
+  padding-left: 0.75rem;
+}
+
+/* A flag term in a reference table is a copyable unit; the description
+ * column absorbs the wrapping instead. */
+.markdown table td:first-child code {
+  white-space: nowrap;
+}
+
+/* The generated reference pages hold a usage line that runs past the content
+ * column, so code blocks scroll horizontally rather than wrapping a command
+ * mid-flag. */
 pre code {
   white-space: pre;
 }

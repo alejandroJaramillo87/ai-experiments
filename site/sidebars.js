@@ -2,6 +2,10 @@
 // so the order is the reading order: getting started before guides, guides
 // before the reference, and the generated reference pages in the order the
 // harness's own --help lists the binaries.
+//
+// Getting started is the one category open on a first visit; the other three
+// are collapsed so the sidebar shows the shape of the site rather than every
+// page, and the category holding the current page opens itself.
 
 // @ts-check
 
@@ -23,7 +27,7 @@ const sidebars = {
     {
       type: 'category',
       label: 'Guides',
-      collapsed: false,
+      collapsed: true,
       items: [
         'rust-harness/guides/agent-session',
         'rust-harness/guides/activation-capture',
@@ -37,7 +41,7 @@ const sidebars = {
     {
       type: 'category',
       label: 'Observability',
-      collapsed: false,
+      collapsed: true,
       link: {type: 'doc', id: 'rust-harness/observability/index'},
       items: [
         'rust-harness/observability/run-records',
@@ -49,7 +53,7 @@ const sidebars = {
     {
       type: 'category',
       label: 'Reference',
-      collapsed: false,
+      collapsed: true,
       link: {type: 'doc', id: 'rust-harness/reference/index'},
       items: [
         'rust-harness/reference/harness',
