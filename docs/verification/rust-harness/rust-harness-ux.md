@@ -63,6 +63,22 @@ the above and no entry observed: the permission prompt, a silently resumed sessi
 a chat with no prompt marker. RHX.10 through RHX.12 are those, and the first two come
 with a status line added the same day so the run announces what it is doing.
 
+## Table of contents
+
+- [Preconditions](#preconditions)
+- [RHX.1 The run header states the configuration a real run resolved](#rhx1-the-run-header-states-the-configuration-a-real-run-resolved)
+- [RHX.2 A run states what its two long operations cost](#rhx2-a-run-states-what-its-two-long-operations-cost)
+- [RHX.3 The ladder records the climb it actually ran](#rhx3-the-ladder-records-the-climb-it-actually-ran)
+- [RHX.4 The training dashboard renders a harness run](#rhx4-the-training-dashboard-renders-a-harness-run)
+- [RHX.5 A capture is traceable to the invocation that made it](#rhx5-a-capture-is-traceable-to-the-invocation-that-made-it)
+- [RHX.6 A failure states a remedy that runs as printed](#rhx6-a-failure-states-a-remedy-that-runs-as-printed)
+- [RHX.7 One catalog serves the whole workspace](#rhx7-one-catalog-serves-the-whole-workspace)
+- [RHX.8 Status output is coloured at a terminal and plain through a pipe](#rhx8-status-output-is-coloured-at-a-terminal-and-plain-through-a-pipe)
+- [RHX.9 The --dot help text describes the kernels the flag offers](#rhx9-the---dot-help-text-describes-the-kernels-the-flag-offers)
+- [RHX.10 A tool call the rules do not decide asks, and the run says so first](#rhx10-a-tool-call-the-rules-do-not-decide-asks-and-the-run-says-so-first)
+- [RHX.11 A resumed session says what it resumed](#rhx11-a-resumed-session-says-what-it-resumed)
+- [RHX.12 A chat at a terminal shows where the next turn goes](#rhx12-a-chat-at-a-terminal-shows-where-the-next-turn-goes)
+
 ## Preconditions
 
 **A real Gemma 4 E4B checkpoint** under `/mnt/ai-data/models/hf/`, named as `$MODEL` in every
