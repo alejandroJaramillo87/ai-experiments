@@ -806,9 +806,9 @@ with the 5.33 s and 5.70 s the ladder and the chat measured on the same warm pag
 the estimate was high and the distinction it draws, seconds against the fixture's
 milliseconds, holds.
 
-Status: VERIFIED 2026-09-12 by hand. Every signal present; the two mismatches above are in the
-expected signal's wording, not the run. The four test functions above were written from this
-transcript and await their first gate run.
+Status: VERIFIED 2026-09-12 by hand (gate-backed by `tests/hardware/test_capture_run_record.py`,
+4 passed on the workstation the same day). Every signal present; the two mismatches above are
+in the expected signal's wording, not the run.
 
 ## RHX.6 A failure states a remedy that runs as printed
 
@@ -836,6 +836,10 @@ echo "exit=$?"
 # 3. a probe of the wrong width against real weights: the E2B-it probe RH.9b
 #    exported, 1536 wide, against E4B's 2560. Named, not globbed: the E4B
 #    probe RH.16 step 4b built sits beside it and passes the width check.
+#    The registry directory holds the trained probe.npz; RH.9c exported its
+#    harness image to /tmp, so export in place first, as RH.16 step 4b did.
+(cd ~/workspace/ai-experiments && make probe-export \
+   ARGS="--probe /mnt/ai-data/interp/probes/rust-e2b-it-refusal-probe")
 cp /mnt/ai-data/interp/probes/rust-e2b-it-refusal-probe/probe.safetensors \
    /mnt/ai-data/interp/probes/rust-e2b-it-refusal-probe/probe.json /tmp/rhx6/
 ~/workspace/ai-experiments/rust-harness/target/release/harness \
@@ -858,6 +862,10 @@ reports the same fault the run hit. Record the remedy lines and the output of ru
 Step 1's three lines have been observed already, in RH.13 (2026-09-06) and RH.16 step 3 of
 [rust-harness.md](rust-harness.md); neither ran the `Command:` it printed. Steps 2 and 4 are
 this entry's claim.
+
+The first attempt on 2026-09-12 stopped at step 3's copy: the registry directory held only
+`manifest.json` and `probe.npz`, because RH.9c had exported the E2B-it image to `/tmp` and
+never into the directory, so the export step above was added to the command.
 
 If a `Command:` line fails to run, that is the finding and the entry is `FAILED` — the
 placeholder assertion passing while the command is unusable is exactly the gap this entry
