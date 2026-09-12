@@ -572,7 +572,9 @@ campaign has ever executed, `tool: "*"` allow, and RH.37 met the prompt three ti
 nothing announcing it: three minutes into a run that had printed only prefill lines, the
 terminal stopped, and the operator had to work out that a base model had invented a `read`.
 The sandbox pins the rule semantics (`permissions.rs` unit tests) and the loop's recovery from
-a denial (`agent_e2e.rs::denied_tool_call_returns_to_the_model_and_the_loop_recovers`); what
+a denial
+(`rust-harness/harness/tests/agent_e2e.rs::denied_tool_call_returns_to_the_model_and_the_loop_recovers`);
+what
 it cannot show is the prompt at a terminal, an answer typed at it, and a closed stdin.
 
 Since 2026-09-12 the run states its rule source before the loop starts:

@@ -6188,7 +6188,28 @@ after the capture, and differs from the sixteen-hex fingerprint the harness
 banner prints (RH.2), which `checkpoint::fingerprint` takes over the header
 and the config and which an in-place weight edit does not change.
 
-Status: VERIFIED 2026-09-12 on the three steps by hand. `tests/hardware/test_attention_capture.py` was written the same day and has not yet been run on the workstation; its first run belongs beside this block.
+Observed (2026-09-12, the hardware test's first run, a few hours after the
+steps above; the pytest plugin banner is omitted):
+
+```
+    Finished `release` profile [optimized] target(s) in 0.02s
+collected 3 items
+
+tests/hardware/test_attention_capture.py::test_the_capture_exits_zero_and_states_its_size_before_writing PASSED                                                             [ 33%]
+tests/hardware/test_attention_capture.py::test_the_manifest_names_the_request_and_the_shard PASSED                                                                          [ 66%]
+tests/hardware/test_attention_capture.py::test_every_row_is_a_distribution_over_its_own_span PASSED                                                                         [100%]
+
+[TIER] full: torch present, the whole suite was in scope.
+========================================================================== 3 passed in 98.86s (0:01:38) ===========================================================================
+exit=0
+```
+
+Three passes, exit 0, on a prompt past the 512 window, so the third test's
+span check ran on a moving sliding span and not on the all-zero schedule the
+eleven-token prompt above gives. The 99 seconds are three captures of E4B,
+each a full load.
+
+Status: VERIFIED 2026-09-12 on the three steps by hand and on `tests/hardware/test_attention_capture.py` (3 passed).
 
 ## RH.37 --trace-level info and trace on E4B
 
