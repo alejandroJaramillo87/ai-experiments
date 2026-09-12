@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 38 verified, 0 blocked, 0 pending, of 38.** RH.11 was blocked
+**Entries: 38 verified, 0 blocked, 4 pending, of 42.** RH.11 was blocked
 until 2026-09-05 on an instruction-tuned checkpoint; gemma-4-E2B-it unblocked
 it, and it closed on that checkpoint on 2026-09-06. RH.9d and RH.15 were
 blocked until the same day on a control vector this repository could not
@@ -14,11 +14,15 @@ and the entry records the install step. RH.8 was blocked until the same day
 on the absence of an instruction-tuned checkpoint; gemma-4-E2B-it now closes
 it, and its entry records the two harness defects the first runs exposed.
 
-RH.23 through RH.31 are **gate-backed**: each names the test function that
-asserts its expected signal, and one `cargo test --workspace` run, recorded in
-that section, closed all nine on 2026-09-11. Everything the inventory found
-that is neither a full entry nor gate-backed is listed in the coverage roster
-at the end of this file, against the test that pins it.
+RH.23 through RH.35 are **gate-backed**: each names the test function that
+asserts its expected signal, and one `cargo test --workspace` run closes the
+section. The run of 2026-09-11 closed RH.23 through RH.31. RH.32 through
+RH.35 came from a second surface audit on 2026-09-12, which crossed every
+flag of every binary against the runbook's command blocks and against every
+test that passes a flag: seven flags had been run by hand or never run, and
+none had a test of its behaviour. They are pending the next run. Everything
+the inventory found that is neither a full entry nor gate-backed is listed in
+the coverage roster at the end of this file, against the test that pins it.
 
 Workstation verification for the `rust-harness/` workspace: the CPU
 inference backend on the real Gemma 4 E4B checkpoint, the observability stack
@@ -5518,11 +5522,12 @@ echo "exit=$?"
 Paste the summary lines for the named test binaries into each entry's Observed
 block, not the whole run.
 
-The run that closed the section was made on 2026-09-11 in the agent sandbox,
-from the worktree's `rust-harness/` directory rather than the workstation path
-above, with `--test-threads=1` as written: 61 test binaries, every one
-`0 failed`, no `[SKIP]` line, `exit=0`. Each entry below carries its own
-binary's block from that run.
+The run that closed RH.23 through RH.31 was made on 2026-09-11 in the agent
+sandbox, from the worktree's `rust-harness/` directory rather than the
+workstation path above, with `--test-threads=1` as written: 61 test binaries,
+every one `0 failed`, no `[SKIP]` line, `exit=0`. Each of those entries
+carries its own binary's block from that run. RH.32 through RH.35 were added
+afterwards and wait on the next.
 
 ### RH.23 layer-diff numerics are bracketed around a measured value
 
@@ -5572,6 +5577,7 @@ Asserted by `rust-harness/runtime/tests/ladder_flags.rs`:
 | Every bit-identical `--dot` kind yields the same logits bits | `every_bit_identical_dot_kind_produces_the_same_logits_bits` |
 | Every `--threads` width yields the same logits bits | `every_thread_width_produces_the_same_logits_bits` |
 | `--rung` climbs only the rung it names, in both directions | `rung_climbs_only_the_rung_it_names` |
+| `--single-thread` beside `--threads` is a usage error naming both, in either order | `single_thread_beside_threads_is_a_usage_error_naming_both` |
 
 The two logits tests compare `f32::to_bits`, not an epsilon: "bit-identical" is
 the claim, so an approximate comparison would pass on a kernel that reorders.
@@ -5594,6 +5600,12 @@ vocabulary, so every width there takes the serial path.
 which crosses the threshold on both paths that split. The table test keeps the
 fixture: its subject is the printed table, and no reference capture exists at
 the wider shape.
+
+The last row was added on 2026-09-12. Until then `--threads` silently
+overrode `--single-thread` whatever the argv order: the shorthand set the
+width to one and the value flag overwrote it afterwards, so a caller passing
+both ran at a width nothing had visibly chosen. The pair is now refused
+before any checkpoint is opened.
 
 Observed (2026-09-11, the one sandbox run):
 
@@ -5853,6 +5865,120 @@ address succeeded.
 
 Status: VERIFIED 2026-09-11 (gate-backed by `rust-harness/harness/tests/serve_bind_addr.rs`)
 
+### RH.32 --trace-level selects the span depth
+
+Asserted by `rust-harness/harness/tests/trace_levels.rs`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| `info` has the session spans and the load and no per-layer span; `debug` adds the layer and block spans and no kernel span; `trace` adds the kernel spans; the three sets are strictly nested | `each_trace_level_adds_the_spans_its_help_text_names` |
+| The default opens the same span set as `debug` | `the_default_trace_level_is_debug` |
+
+RH.6 read a trace at the default level, and the level word itself was never
+passed in any entry. `cli_surface.rs` holds the flag to needing
+`--trace-chrome` and to naming its three levels on a typo, which a filter
+wired to a constant would satisfy. Each test here reads the set of span names
+a task run over the fixture opened at a level, so it is the flag's own help
+text that is asserted: what each level adds and that the default is `debug`.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+### RH.33 --version answers and --record writes what the replay reader reads
+
+Asserted by `rust-harness/harness/tests/version_and_record.rs`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| `--version` and `-V` print `harness <version>` on stdout, nothing on stderr, exit 0, and open no run log | `version_prints_the_crate_version_on_stdout_and_is_not_a_run` |
+| A task run with `--record` writes a recording whose header carries the sampling parameters and whose script covers every row a token was drawn from | `record_writes_a_recording_the_replay_reader_reads_back` |
+
+`--version` had been held equal to `-V` and to nothing else, which two empty
+answers satisfy. `--record` was run in RH.2 and RH.5, and
+`recording_replay.rs` reads a recording the workstation wrote, so the gate
+never produced one: a recorder that stopped writing would have failed the
+workstation's replay check and nothing in the sandbox. The second test
+writes a recording over the fixture and reads it back with the same reader.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+### RH.34 The sampling flags change what is sampled
+
+Asserted by `rust-harness/harness/tests/sampling_effect.rs`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| `--temperature 0` selects every row's argmax and consumes no draw | `a_zero_temperature_selects_every_argmax_without_drawing` |
+| `--top-k 1` under a nonzero temperature selects every argmax while drawing once per step | `a_top_k_of_one_selects_every_argmax_while_still_drawing` |
+| A `--top-p` too small to hold a second token selects every argmax | `a_nucleus_too_small_for_a_second_token_selects_every_argmax` |
+| The full support at the same seed leaves the argmax at least once | `the_full_support_at_the_same_seed_leaves_the_argmax` |
+
+RH.28 holds `--top-p` to its range and checks that an in-range value reaches
+the model, which is a parse-through; nothing asserted that any of the three
+cutoffs changes a draw. The flight recording is what makes that assertable
+one process apart from the sampler: it scripts every logits row and records
+every selection, so each selected token is compared with its own row's
+argmax after the fact. The three cutoff arms reach the argmax by different
+routes, told apart by the recorded draw counts, and the fourth row is what
+makes the first three evidence rather than a property of the fixture. The
+`--top-k 0` refusal is a unit test in `harness/src/cli.rs` and is not
+repeated here.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+### RH.35 --context, --size and --single-thread are read, not merely parsed
+
+Asserted by `rust-harness/harness/tests/context_cap.rs`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| A cap below the trained window is the `max_context` the run header reports, and the default is the window itself | `a_context_below_the_trained_window_is_the_budget_the_run_reports` |
+| A cap above the trained window fails the run with exit 1, not 2, naming the value and the window | `a_context_above_the_trained_window_fails_the_run_naming_both_figures` |
+
+Asserted by `rust-harness/harness/tests/single_thread.rs`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| With `--single-thread` the run header reports width one, and without it the machine's width | `single_thread_is_the_width_the_run_header_reports` |
+
+Asserted by `rust-harness/runtime/tests/ladder_size.rs`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| Each `--size` is recorded in the ladder header by name with the corpus length it implies, and the default is `quick` | `size_is_recorded_as_given_with_the_corpus_length_it_implies` |
+
+Three flags the workstation entries passed and read past. `--context`
+appears in seven entries' command blocks and in none of them is the budget
+itself read back; the upper bound is the one place its help text, which
+calls the trained window "the maximum", and its code, which refuses a value
+above it at load, disagree in kind, and the second test pins the code's
+answer. `--size` sizes L3 and L4, which need artifacts the tiny fixture does
+not carry, so what the sandbox can show is that the value arrives: the
+ladder header names the size and the corpus length. The harness's own
+`--single-thread` was run once under rr in RH.7; the runtime binaries' flag
+of the same name had the tests.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
 ## Known defects
 
 Three defects measured during this campaign, recorded here rather than in an
@@ -5860,11 +5986,11 @@ entry because none is a check to run: each is a statement about the tree that
 a reader of the entries above needs.
 
 **The `--serve-addr` default is two independent literals.** The value `--help`
-prints comes from `default: Some("127.0.0.1")` in the flag table
-(`rust-harness/harness/src/cli.rs:380`), which is consumed only by the help
-renderer at `cli.rs:551`. The value a run actually binds is a separate
-hardcoded literal, `None => IpAddr::from([127, 0, 0, 1])`
-(`rust-harness/harness/src/main.rs:971`). Changing one leaves the other
+prints comes from `default: Some("127.0.0.1")` in the `--serve-addr` entry
+of `FLAGS` (`rust-harness/harness/src/cli.rs`), which is consumed only by the
+help renderer, `cli::help`. The value a run actually binds is a separate
+hardcoded literal, `None => IpAddr::from([127, 0, 0, 1])`, in the
+`--serve-addr` arm of `rust-harness/harness/src/main.rs`. Changing one leaves the other
 stale, so the documented default and the real one can disagree with nothing
 to notice. Found by mutation: editing the flag-table literal does not turn
 RH.31's default test red, because it changes only what `--help` prints, while
@@ -5873,10 +5999,10 @@ flag carrying a `default:` in that table.
 
 **`Lanes16` is not bit-identical to `Sequential` on the real fixture.** At
 logit 0 the two kernels return `1062660370` and `1062660362` as raw f32 bits.
-`DotKind::is_bit_identical` (`rust-harness/runtime/src/model/cpu.rs:1623`)
+`DotKind::is_bit_identical` (`rust-harness/runtime/src/model/cpu.rs`)
 correctly excludes `Lanes16`, and RH.24's invariance tests are therefore
 asserted over the right set. **The `--dot` help text in
-`rust-harness/runtime/src/bin/ladder.rs:421` overclaims**: it reads "the
+the `SPEC` table of `rust-harness/runtime/src/bin/ladder.rs` overclaims**: it reads "the
 dot-product kernel; every kind is bit-identical", which is false of the one
 kind the predicate beside it exists to exclude. A run that picks `lanes16` on
 the strength of that sentence and then compares logits bits against a
@@ -5913,9 +6039,10 @@ is a decision rather than an oversight.
 | Ladder obs records | `rust-harness/runtime/tests/ladder_obs.rs` |
 | `ladder::window_schedule` against the reference generator's | `rust-harness/runtime/tests/ladder_reference_contract.rs` |
 | `ladder::attention_layers` against the reference generator's | `rust-harness/runtime/tests/ladder_reference_contract.rs::the_attention_generator_chooses_the_layers_the_rung_recomputes` |
-| `attention-capture --layers` and `--heads`: distinct indices, range-checked, every requested pair written, row mass, exact zeros outside the span, `span_first` against the fixture's schedule | `rust-harness/runtime/tests/attention_capture.rs` |
+| `attention-capture --prompt`, `--layers` and `--heads`: distinct indices, range-checked, every requested pair written, row mass, exact zeros outside the span, `span_first` against the fixture's schedule | `rust-harness/runtime/tests/attention_capture.rs` |
+| `--control-vector-scale`: a negative value accepted by the parser, a zero scale reproducing the unsteered baseline on E4B | `rust-harness/harness/src/cli.rs::a_value_that_only_looks_flag_adjacent_is_accepted`, `tests/hardware/test_interp_chain.py::test_a_zero_scale_vector_reproduces_the_baseline` |
 | Row-split bit-identity at every thread width | `rust-harness/runtime/src/model/cpu.rs::par_rows_is_bit_identical_at_every_width` |
-| `Lanes16` excluded from the bit-identical set | `rust-harness/runtime/src/model/cpu.rs` (the `DotKind::Lanes16` assertion at line 4252) |
+| `Lanes16` excluded from the bit-identical set | `rust-harness/runtime/src/model/cpu.rs::the_lane_dot_changes_the_logits_and_says_so` |
 | Blocked-row folding against row-at-a-time | `rust-harness/runtime/src/tensor.rs::a_block_of_rows_is_bit_identical_to_the_rows_folded_one_at_a_time` |
 | Widened blocks against stored-row folding | `rust-harness/runtime/src/tensor.rs::a_widened_block_is_bit_identical_to_folding_the_stored_rows` |
 | Rewindability invariants across stepped and batched runs | `rust-harness/runtime/src/conformance.rs` |
