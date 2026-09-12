@@ -6,12 +6,10 @@ title: First agent session
 
 A task run is an agent session: the model is given six tools, calls them by replying with a
 JSON object, and is answered with the tool's result until it replies with text instead. This
-page runs one such session with the permission prompt on, then with a rules file. It assumes
-`BIN` and `MODEL` from [Build](build.md).
-
-Against the synthetic checkpoint the model never produces a well-formed tool call, so the
-session ends after the first reply. The mechanics below are what a real checkpoint exercises;
-the commands are the same.
+page runs one such session with the permission prompt on, then with a rules file, and shows
+the transcript a completed session leaves. It assumes `BIN` and `MODEL` from [Build](build.md)
+and an empty working directory. The agent loop needs an instruction-tuned checkpoint; the
+outputs below are from `gemma-4-E2B-it`.
 
 ## The tools
 
@@ -27,17 +25,22 @@ the commands are the same.
 The working root of every tool is the directory the harness was started in. The `bash` tool
 runs with that directory as its working directory and is not otherwise confined.
 
+Tool-call formation is grammar-constrained on the task path: a model turn that opens with `{`
+is held to exactly one call, so a second call, a fabricated result, or prose around a call
+in one turn cannot reach the loop.
+
 ## Run with the permission prompt
 
 With no rules file present, every tool call asks on the terminal before it runs:
 
 ```bash
-"$BIN/harness" --model "$MODEL" --max-tokens 64 "List the files in this directory"
+"$BIN/harness" --model "$MODEL" --text-only --max-tokens 64 "List the files in this directory"
 ```
 
 A call prints `allow bash ls? [y/N]` to stderr and reads one line from stdin. Anything other
 than `y` or `yes` denies it, and a denied call is reported to the model as denied rather than
-ending the session.
+ending the session. A call that fails identically three times in a row aborts the run with
+exit 1: `aborting: tool call read main.py failed identically 3 times`.
 
 ## Run with a rules file
 
@@ -63,12 +66,51 @@ rules:
   - tool: bash
     action: ask
 EOF
-"$BIN/harness" --model "$MODEL" --max-tokens 64 "List the files in this directory"
+"$BIN/harness" --model "$MODEL" --text-only --max-tokens 64 "List the files in this directory"
 ```
 
 The file's format, the pattern language, and the two limits of what a rule can confine are on
 the [permissions.yaml reference page](../reference/permissions-yaml.md). A misspelled key or an
 unknown tool name is refused at startup rather than ignored.
+
+## A completed session
+
+A rules file that allows every tool lets a session run to its end without a prompt. This one
+writes a file and reads it back:
+
+```bash
+rm -rf /tmp/harness-demo/agent && mkdir -p /tmp/harness-demo/agent && cd /tmp/harness-demo/agent
+printf 'rules:\n  - tool: "*"\n    action: allow\n' > permissions.yaml
+"$BIN/harness" --model "$MODEL" --text-only \
+    "Create a file named hello.txt containing the word hello, then read it back"
+cat session.jsonl
+cat hello.txt
+```
+
+```text
+[INFO] Model load: 3.61 s
+[INFO] Prefill: 261 tokens in 11.85 s (22 tok/s)
+[INFO] Prefill: 18 tokens in 0.87 s (21 tok/s)
+[INFO] Prefill: 11 tokens in 0.55 s (20 tok/s)
+hello
+[INFO] Session snapshot: 333 cached tokens at /tmp/harness-demo/agent/session.kv
+```
+
+```text
+{"role":"user","content":"Create a file named hello.txt containing the word hello, then read it back"}
+{"role":"model","content":"{\"tool\": \"write\", \"args\": {\"path\": \"hello.txt\", \"content\": \"hello\"}}"}
+{"role":"tool","content":"wrote 5 bytes to hello.txt"}
+{"role":"model","content":"{\"tool\": \"read\", \"args\": {\"path\": \"hello.txt\"}}"}
+{"role":"tool","content":"hello"}
+{"role":"model","content":"hello"}
+hello
+```
+
+This is what a good session looks like: three model turns, one `write` call, one `read` call,
+and one plain-text answer, each a whole turn with nothing beside it. Both `tool` entries were
+written by the harness, not the model, and the last line is `hello.txt` on disk. The three
+`Prefill:` lines are the three turns; the first carries the tool contract and the task, and
+the later two only the tool results, because the KV cache held the rest.
 
 ## Persistent memory
 
@@ -86,5 +128,5 @@ Two flags bound a long session. `--context <n>` caps the token budget below the 
 trained window, and `--compact-at <f>` (default 0.8) is the fraction of that budget at which
 the harness asks the model to summarize the middle of the conversation and splices the summary
 in. Compaction is recorded in `session.jsonl` as its own record naming the replaced range, so
-the raw history survives on disk. See [Agent session](../guides/agent-session.md) for the
-snapshot and restart behavior that goes with it.
+the raw history survives on disk. See [Running an agent session](../guides/agent-session.md)
+for the snapshot and restart behavior that goes with it.

@@ -95,6 +95,8 @@ KNOWN_ABSENT = {
     # recorded verbatim, so it is exempted rather than reworded; several other
     # lines of that dataset would trip this the same way.
     ("docs/verification/rust-harness/rust-harness.md", "napalm"),
+    # The site's probe guide reproduces RH.9c's recipe and its recorded output.
+    ("site/docs/rust-harness/guides/probe-monitoring.md", "napalm"),
 }
 
 # Exempt by name, each for a stated reason.

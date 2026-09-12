@@ -47,6 +47,7 @@ const sidebars = {
         'rust-harness/observability/run-records',
         'rust-harness/observability/flight-recorder',
         'rust-harness/observability/tracing',
+        'rust-harness/observability/profiling',
         'rust-harness/observability/rr-debugging',
       ],
     },
