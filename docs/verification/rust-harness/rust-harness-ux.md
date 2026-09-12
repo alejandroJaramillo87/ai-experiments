@@ -506,7 +506,10 @@ readable by a tool written for a different tier.
   keys its fields on `cli`, the empty chart frames are hidden, and the memory axis sizes its
   precision to the tick spacing. Fix landed 2026-09-12; re-run `report` on the same directory
   and reopen `run.html`. The `Fold` and `Build` the strip should now state are the envelope's
-  `dot=widen4 batch=64 threads=8` and `0.1.0 git unknown`.
+  `dot=widen4 batch=64 threads=8` and `0.1.0 git unknown`. The first re-run (second Observed
+  block below) confirmed those two and exposed the third: the memory labels, now distinct,
+  were clipped by the axis gutter. The gutter now sizes itself to the labels; the labels
+  should read `14.24200` through `14.24240` in full.
 
 Observed (2026-09-12, on the run directory `tests/hardware/test_status_costs.py` wrote):
 
@@ -552,8 +555,29 @@ bordered `.chart` holder for every group and `refreshCharts` returns early for t
 leaving the boxes, and the memory axis needs more precision than three decimals when its
 range is narrow.
 
-Status: PENDING (failed 2026-09-12 on the header strip; re-run after the viewer fix). The
-report, the throughput series and the memory series held; the strip did not.
+Observed (2026-09-12, the re-run after the strip fix, `report` on the same directory;
+screenshot taken 09:22 local):
+
+- Header strip: `run R-20260912-160320-91dad9  command chat  model
+  /mnt/ai-data/models/hf/gemma-4-E4B  hash e376216f8b693aff  fold dot=widen4 batch=64
+  threads=8  build 0.1.0 git unknown`. Every field the terminal header printed for this run.
+- Two charts and no empty frames: Throughput (tokens/s) and Process memory (GB), then the run
+  log.
+- Process memory y-axis: five labels reading `24200`, `24210`, `24220`, `24230`, `24240` on a
+  chart whose values are near 14.24 GB.
+
+The labels are distinct, which is the precision fix working, and they are wrong to read
+because the leading `14.` is off the canvas. The series varies by tens of KB, so the tick
+spacing is 0.00001 and each label is eight characters, `14.24200` through `14.24240`. uPlot's
+y-axis gutter is a fixed 50 px by default and draws labels right-aligned against it, so a label
+wider than the gutter loses its left edge. The sandbox fixture used a 0.0001 spacing, one
+character shorter, which fit by a few pixels and did not reproduce this. The gutter now sizes
+itself to the widest label, and the harness fixture uses the workstation's spacing, on which
+the old gutter fails the check (50 px against 72 px needed).
+
+Status: PENDING (failed 2026-09-12 on the header strip, then on the memory axis gutter; re-run
+after the gutter fix). The report, both series, and now the strip held; the axis labels did
+not read in full.
 
 ## RHX.5 A capture is traceable to the invocation that made it
 

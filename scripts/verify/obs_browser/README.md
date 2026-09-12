@@ -53,8 +53,10 @@ Harness snapshot page (a `cli: harness` envelope, built the same way):
 - The strip states the harness envelope's model, hash, fold and build, with
   no training key and no dash (RHX.4 in the rust-harness UX runbook found
   every field but the run id blank).
-- The process-memory axis, over a series flat within a few MB, draws
-  distinct labels rather than six copies of the same three decimals.
+- The process-memory axis, over a series flat within tens of KB, draws
+  distinct labels rather than six copies of the same three decimals, and its
+  gutter is wide enough to hold the widest of them: the fixed 50 px default
+  clipped `14.24200` to `24200` on the workstation.
 - The `checkpoint_saved` and `watchdog/*` records become markers.
 - All fixture log rows render; the search filter narrows to the matching row;
   the level filter keeps warning rows and unknown-level rows.

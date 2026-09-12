@@ -199,6 +199,26 @@
     });
   }
 
+  /* The y-axis gutter, sized to the labels it is about to draw. uPlot's
+   * default is a fixed 50 px, and labels are right-aligned against it, so a
+   * label wider than that loses its leading digits off the canvas: RHX.4's
+   * second page (2026-09-12) drew `14.24200` as `24200`. The precision above
+   * comes from the data, so the gutter has to follow it. Measured once per
+   * layout; on the second cycle uPlot asks again and the answer is the same. */
+  function axisSize(u, values, axisIdx, cycleNum) {
+    var axis = u.axes[axisIdx];
+    if (cycleNum > 1) return axis._size;
+    if (!values || !values.length) return 50;
+    u.ctx.font = axis.font[0];
+    var widest = 0;
+    values.forEach(function (label) {
+      var w = u.ctx.measureText(String(label)).width;
+      if (w > widest) widest = w;
+    });
+    var px = uPlot.pxRatio || 1;
+    return Math.max(50, Math.ceil(widest / px + axis.gap + axis.ticks.size));
+  }
+
   function chartWidth(chartsRoot) {
     return Math.min((chartsRoot.clientWidth || 960) - 18, 1100);
   }
@@ -240,7 +260,7 @@
         width: chartWidth(chartsRoot),
         height: 240,
         scales: { x: { time: false } },
-        axes: [{}, { values: axisLabels }],
+        axes: [{}, { values: axisLabels, size: axisSize }],
         series: [{ label: "step" }].concat(
           keys.map(function (key, i) {
             return {

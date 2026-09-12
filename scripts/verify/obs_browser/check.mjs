@@ -138,14 +138,17 @@ function writeHarnessFixtures(base) {
     git_sha: "unknown",
   };
   const metrics = [header];
-  // rss_gb flat within a few MB, the shape that made every axis label read
-  // 14.242 on the 2026-09-12 page.
+  // rss_gb flat within tens of KB, the workstation's shape: the first
+  // 2026-09-12 page drew six labels all reading 14.242, and the second, with
+  // the precision fixed, drew 14.24200..14.24240 clipped to their last five
+  // digits by the default 50 px gutter. A 0.0001 spacing gave labels one
+  // character shorter that fit, so it did not reproduce the clipping.
   for (let step = 1; step <= 8; step += 1) {
     metrics.push({
       step,
       ts: `2026-09-12T16:03:3${step}+00:00`,
       tokens_per_s: step / 2,
-      rss_gb: 14.2421 + step * 0.0001,
+      rss_gb: 14.242 + step * 0.00001,
     });
   }
   fs.writeFileSync(
@@ -291,6 +294,27 @@ async function harnessChecks(page, htmlPath) {
       labels.length > 1 &&
       new Set(labels).size === labels.length,
     `memory axis: ${labels.length} labels, all distinct (${labels.join(" ")})`
+  );
+  // The gutter must hold the widest label plus the gap and the tick, or the
+  // label's leading digits fall off the canvas.
+  const gutter = await page.evaluate(() => {
+    const u =
+      document.getElementById("root").__obsState.charts["Process memory (GB)"]
+        .plot;
+    const axis = u.axes[1];
+    u.ctx.font = axis.font[0];
+    const widest = Math.max(
+      ...axis._values.map((v) => u.ctx.measureText(v).width)
+    );
+    return {
+      size: axis._size,
+      needed: widest / (uPlot.pxRatio || 1) + axis.gap + axis.ticks.size,
+    };
+  });
+  check(
+    gutter.size >= gutter.needed,
+    `memory axis: gutter ${gutter.size.toFixed(1)} px holds the widest label ` +
+      `(${gutter.needed.toFixed(1)} px needed)`
   );
   check(
     errors.length === 0,
