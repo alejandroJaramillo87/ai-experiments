@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 42 verified, 0 blocked, 0 pending, of 42.** RH.11 was blocked
+**Entries: 43 verified, 0 blocked, 1 pending, of 44.** RH.11 was blocked
 until 2026-09-05 on an instruction-tuned checkpoint; gemma-4-E2B-it unblocked
 it, and it closed on that checkpoint on 2026-09-06. RH.9d and RH.15 were
 blocked until the same day on a control vector this repository could not
@@ -20,7 +20,11 @@ section. The run of 2026-09-11 closed RH.23 through RH.31. RH.32 through
 RH.35 came from a second surface audit on 2026-09-12, which crossed every
 flag of every binary against the runbook's command blocks and against every
 test that passes a flag: seven flags had been run by hand or never run, and
-none had a test of its behaviour. They closed on the run of 2026-09-12. Everything
+none had a test of its behaviour. They closed on the run of 2026-09-12. The
+same audit left two surfaces only real weights can show, RH.36 and RH.37,
+opened the same day as workstation entries: RH.36 closed on its first run,
+and RH.37's first run exposed a defect in the trace shape check rather than
+in the flag, so it is pending a rerun on the corrected check. Everything
 the inventory found that is neither a full entry nor gate-backed is listed in
 the coverage roster at the end of this file, against the test that pins it.
 
@@ -125,6 +129,12 @@ it rather than re-diagnosed from scratch.
   - [RH.29 --tokenizer overrides the one beside the checkpoint](#rh29---tokenizer-overrides-the-one-beside-the-checkpoint)
   - [RH.30 --control-vector-layer-range decides which directions load](#rh30---control-vector-layer-range-decides-which-directions-load)
   - [RH.31 --serve-addr binds where it names](#rh31---serve-addr-binds-where-it-names)
+  - [RH.32 --trace-level selects the span depth](#rh32---trace-level-selects-the-span-depth)
+  - [RH.33 --version is not a run, and --record writes what the replay reader reads](#rh33---version-is-not-a-run-and---record-writes-what-the-replay-reader-reads)
+  - [RH.34 The sampling flags change what is sampled](#rh34-the-sampling-flags-change-what-is-sampled)
+  - [RH.35 --context, --size and --single-thread are read, not merely parsed](#rh35---context---size-and---single-thread-are-read-not-merely-parsed)
+- [RH.36 attention-capture as its own binary on E4B](#rh36-attention-capture-as-its-own-binary-on-e4b)
+- [RH.37 --trace-level info and trace on E4B](#rh37---trace-level-info-and-trace-on-e4b)
 - [Known defects](#known-defects)
 - [Coverage roster](#coverage-roster)
 
@@ -6023,6 +6033,321 @@ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 ```
 
 Status: VERIFIED 2026-09-12 (gate-backed by `rust-harness/harness/tests/context_cap.rs`, `rust-harness/harness/tests/single_thread.rs`, `rust-harness/runtime/tests/ladder_size.rs`)
+
+## RH.36 attention-capture as its own binary on E4B
+
+Implementation: `rust-harness/runtime/src/bin/attention-capture.rs`; the tap
+is the `AttentionTap` RH.18's rung shares with it.
+
+RH.18 reads attention weights off the real checkpoint, and never runs this
+binary: the L6 rung captures in-process through the same tap and compares
+against `transformers`. The binary's own surface, `--prompt`, `--layers`,
+`--heads` and `--out`, is pinned by `rust-harness/runtime/tests/attention_capture.rs`
+over a fixture whose window is three tokens, and the surface audit of
+2026-09-12 found no command block that had ever invoked it. What the fixture
+cannot show is the size line on a real request, the manifest's hash of a
+14 GB weights file, and a row mass summed over hundreds of keys rather than
+three.
+
+```bash
+set -o pipefail
+cd ~/workspace/ai-experiments/rust-harness
+MODEL=/mnt/ai-data/models/hf/gemma-4-E4B
+rm -rf /tmp/rh36 && mkdir -p /tmp/rh36
+
+# 1. the capture: first layer, the last global layer, one head each
+cargo run --release -q -p runtime --bin attention-capture -- \
+  --model "$MODEL" --text-only \
+  --prompt "The quick brown fox jumps over the lazy dog." \
+  --layers 0,41 --heads 0 --out /tmp/rh36/cap
+echo "exit=$?"
+
+# 2. what it wrote
+ls -la /tmp/rh36/cap
+cat /tmp/rh36/cap/manifest.json
+echo "exit=$?"
+
+# 3. row mass and the span schedule, read back from the shard
+cd ~/workspace/ai-experiments
+uv run python - <<'EOF'
+import numpy as np
+z = np.load("/tmp/rh36/cap/attention.npz")
+print(sorted(z.files))
+n = len(z["tokens"])
+for key in ("layer_0_head_0", "layer_41_head_0"):
+    m = z[key]
+    mass = m.sum(axis=1)
+    lower = np.triu(m, 1)
+    print(f"{key}: shape {m.shape}, row mass min {mass.min():.9f} max {mass.max():.9f}, "
+          f"weight above the diagonal {abs(lower).max():.3e}")
+for key in ("span_first_layer_0", "span_first_layer_41"):
+    print(f"{key}: {z[key].tolist()}")
+print(f"tokens: {n}")
+EOF
+echo "exit=$?"
+```
+
+Expected signal: step 1 exits 0 and prints, before any allocation,
+`Attention: <n> tokens, 2 layers x 1 heads = 2 matrices, <x> MiB`, then
+`Attention: 2 matrices of <n>x<n> -> /tmp/rh36/cap`. Step 2 lists
+`attention.npz` and `manifest.json` only, no `manifest.json.tmp`; the
+manifest carries `"layers": [0, 41]`, `"heads": [0]`,
+`"site": "attention_weights"`, `"softmax": "post"`, `"tokens"` equal to the
+count step 1 printed, and a 64-hex `model_hash`. Step 3 lists the two
+`layer_*_head_0` arrays, the two `span_first_*` arrays and `tokens`; each
+matrix is `n x n`, every row sums to one within 1e-5, and nothing sits
+above the diagonal. Layer 0 is a sliding layer, but a dozen-token prompt
+never reaches the 512 window, so `span_first` is all zeros on both layers at
+this length: that is the schedule, not a defect. A `captured 0 of 2
+requested` error is the tap defect RH.18 names.
+
+Asserted by `tests/hardware/test_attention_capture.py` on the workstation,
+over a prompt past the window so the sliding span moves:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| Exit 0; the size line precedes the completion line, and its MiB figure is `4 * pairs * tokens^2` | `test_the_capture_exits_zero_and_states_its_size_before_writing` |
+| The manifest names the request, the shard, a 64-hex hash, and the directory holds the two files and no temporary | `test_the_manifest_names_the_request_and_the_shard` |
+| Every row sums to one within 1e-5; `span_first` equals the schedule `layer_types` and `sliding_window` state; zero outside the span on both sides | `test_every_row_is_a_distribution_over_its_own_span` |
+
+```bash
+cd ~/workspace/ai-experiments
+HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B \
+  uv run pytest -m hw_e4b tests/hardware/test_attention_capture.py -v
+echo "exit=$?"
+```
+
+The same test runs under
+`make quality-full HW=e4b HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B`.
+It reads the layer kinds and the window from the checkpoint's own
+`config.json`, so its span check is against the schedule the file states
+and not against a stride constant.
+
+Observed (2026-09-12, the three steps by hand; the shell's prompt lines are
+omitted):
+
+```
+[INFO] Attention: 11 tokens, 2 layers x 1 heads = 2 matrices, 0.0 MiB
+[OK] Attention: 2 matrices of 11x11 -> /tmp/rh36/cap
+exit=0
+total 16
+drwxrwxr-x 2 alejandro alejandro 4096 Sep 11 18:45 .
+drwxrwxr-x 3 alejandro alejandro 4096 Sep 11 18:44 ..
+-rw-rw-r-- 1 alejandro alejandro 2458 Sep 11 18:44 attention.npz
+-rw-rw-r-- 1 alejandro alejandro  506 Sep 11 18:45 manifest.json
+{
+  "artifact": "attention_capture",
+  "capture_backend": "rust-harness-cpu",
+  "created": "2026-09-12T01:45:16Z",
+  "dtype": "float32",
+  "git_sha": "2b44b68961dab5ee2a6aef7ab5e9713207381f78",
+  "heads": [
+    0
+  ],
+  "layers": [
+    0,
+    41
+  ],
+  "model_hash": "43fb96cec3045b72852c787540300dc5b258634b7a025f7c80355ac0788b9651",
+  "model_id": "/mnt/ai-data/models/hf/gemma-4-E4B",
+  "schema_version": 1,
+  "shard": "attention.npz",
+  "site": "attention_weights",
+  "softmax": "post",
+  "tokens": 11
+}exit=0
+['layer_0_head_0', 'layer_41_head_0', 'span_first_layer_0', 'span_first_layer_41', 'tokens']
+layer_0_head_0: shape (11, 11), row mass min 0.999999881 max 1.000000238, weight above the diagonal 0.000e+00
+layer_41_head_0: shape (11, 11), row mass min 0.999999881 max 1.000000119, weight above the diagonal 0.000e+00
+span_first_layer_0: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+span_first_layer_41: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+tokens: 11
+exit=0
+```
+
+Every expected signal, on the first run. The eleven tokens are BOS plus the
+ten the prompt encodes to; the size line rounds `2 * 11 * 11 * 4` bytes to
+`0.0 MiB`, which is the arithmetic and not a missing figure. The row mass
+sits within 2.4e-7 of one on both layers, an f32 sum over eleven keys; the
+hardware test measures the same quantity over several hundred. The
+`model_hash` is the sha256 of `model.safetensors`, computed by the binary
+after the capture, and differs from the sixteen-hex fingerprint the harness
+banner prints (RH.2), which `checkpoint::fingerprint` takes over the header
+and the config and which an in-place weight edit does not change.
+
+Status: VERIFIED 2026-09-12 on the three steps by hand. `tests/hardware/test_attention_capture.py` was written the same day and has not yet been run on the workstation; its first run belongs beside this block.
+
+## RH.37 --trace-level info and trace on E4B
+
+Implementation: `rust-harness/harness/src/main.rs` (the `.with_filter` on
+the chrome layer), `rust-harness/harness/src/cli.rs` (`--trace-level`).
+
+RH.32 proves in the sandbox that the three levels are nested and that each
+adds the spans its help text names. What the fixture cannot show is the
+volume: two layers of sixteen dimensions write a trace of any level in a few
+kilobytes, and whether `trace` is usable on a real forward pass, 42 layers
+times every projection and every attention loop per token, is a question
+about the file size and about Perfetto, not about the span set. RH.6 traced
+E4B at the default level only.
+
+```bash
+set -o pipefail
+cd ~/workspace/ai-experiments/rust-harness
+MODEL=/mnt/ai-data/models/hf/gemma-4-E4B
+rm -rf /tmp/rh37 && mkdir -p /tmp/rh37/info /tmp/rh37/debug /tmp/rh37/trace
+
+# 1. one run per level, same prompt, each in its own directory so no run
+#    resumes another's session.jsonl
+for level in info debug trace; do
+  ( cd /tmp/rh37/$level && ~/workspace/ai-experiments/rust-harness/target/release/harness \
+      --model "$MODEL" --text-only --temperature 0 \
+      --trace-chrome trace.json --trace-level "$level" \
+      "Reply with the single word: ready" )
+  echo "$level exit=$?"
+done
+
+# 2. file sizes: the per-kernel volume is the figure this entry exists for
+ls -la /tmp/rh37/*/trace.json
+echo "exit=$?"
+
+# 3. the shape check on each, which prints which level it saw
+for level in info debug trace; do
+  make trace-check TRACE=/tmp/rh37/$level/trace.json 2>&1 | tail -n 12
+  echo "$level trace-check exit=$?"
+done
+```
+
+Expected signal: step 1 exits 0 three times, each run ending with the task's
+final answer as RH.6's did. Step 2 gives three sizes, strictly increasing
+from `info` to `trace`; record them. Step 3 passes all three: the `info` run
+prints `interior spans absent: an info-level trace`, the `debug` run prints
+`kernel spans absent: a debug-level trace` with `layers 42`, and the `trace`
+run prints `kernel spans <count>: a trace-level trace` and holds
+`kernel.attention` to one per `model.layer` and `kernel.lm_head` to one per
+logit row. `make trace-check` runs the fixture chat trace and the fixture
+trace-level task trace in the same binary, so two more `ok` lines in the
+tail are those, not the E4B file.
+
+**No `--max-tokens` cap, and one directory per level.** Both are the first
+run's mistakes, and the block above carries their corrections. The task loop
+needs a final answer within 64 turns; at four tokens a turn the base model
+never produced one, and each run spent 64 turns of 31-token prefills before
+exiting 1. And the harness resumes `session.jsonl` from its working
+directory, so the second run began by prefilling the first run's 64-turn
+transcript and the third run both: 252, 2504 and 4756 tokens at the first
+`Prefill:` line. The traces were still complete and the shape check still
+ran on each, which is how the finding below was reached, but the three sizes
+were not a comparison of three levels over one run.
+
+Observed (2026-09-12, the first run: `--max-tokens 4`, one shared
+directory; the header lines of each run are shown once, the run's 64
+`Prefill: 31 tokens` lines are elided to their first and last, and the
+`session.sync` lines `trace-check` prints for every turn are cut to the
+verdict):
+
+```
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E4B hash=e376216f8b693aff layers=42
+[INFO] Weights: 13.90 GiB resident at bf16
+[INFO] Peak RSS after load: 14.03 GiB
+[INFO] KV cache: 131072 tokens, 4.05 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0 max_tokens=4
+[INFO] Build: 0.1.0 git unknown
+[WARN] KV cache above 2 GiB: consider --context to cap it (compaction keeps long sessions inside the cap)
+[INFO] Model load: 5.95 s
+[INFO] Prefill: 252 tokens in 20.67 s (12 tok/s)
+[INFO] Prefill: 31 tokens in 2.73 s (11 tok/s)
+...
+[INFO] Prefill: 31 tokens in 3.70 s (8 tok/s)
+[ERROR] Task failed: no final answer within 64 turns
+info exit=1
+[INFO] Model load: 5.93 s
+[INFO] Prefill: 2504 tokens in 259.11 s (10 tok/s)
+[INFO] Prefill: 31 tokens in 3.74 s (8 tok/s)
+...
+[INFO] Prefill: 31 tokens in 5.03 s (6 tok/s)
+[ERROR] Task failed: no final answer within 64 turns
+debug exit=1
+[INFO] Model load: 6.18 s
+[INFO] Prefill: 4756 tokens in 571.99 s (8 tok/s)
+[INFO] Prefill: 31 tokens in 4.99 s (6 tok/s)
+...
+[INFO] Prefill: 31 tokens in 6.51 s (5 tok/s)
+[ERROR] Task failed: no final answer within 64 turns
+trace exit=1
+-rw-rw-r-- 1 alejandro alejandro 23233061 Sep 11 19:03 /tmp/rh37/debug.json
+-rw-rw-r-- 1 alejandro alejandro   435723 Sep 11 18:53 /tmp/rh37/info.json
+-rw-rw-r-- 1 alejandro alejandro 88838213 Sep 11 19:20 /tmp/rh37/trace.json
+exit=0
+[INFO] interior spans absent: an info-level trace
+test a_chrome_trace_from_a_real_run_has_the_documented_span_shape ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.02s
+
+info trace-check exit=0
+[INFO] layers 42, forwards 320, prefill groups 359, model.layer / group = 42.0
+[INFO] kernel spans absent: a debug-level trace
+test a_chrome_trace_from_a_real_run_has_the_documented_span_shape ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 1.12s
+
+debug trace-check exit=0
+[INFO] layers 42, forwards 320, prefill groups 394, model.layer / group = 42.0
+
+thread 'a_chrome_trace_from_a_real_run_has_the_documented_span_shape' panicked at harness/tests/trace_structure.rs:353:9:
+assertion `left == right` failed: kernel.lm_head once per model.lm_head
+  left: 320
+ right: 394
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test a_chrome_trace_from_a_real_run_has_the_documented_span_shape ... FAILED
+
+failures:
+
+failures:
+    a_chrome_trace_from_a_real_run_has_the_documented_span_shape
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1 filtered out; finished in 4.31s
+
+error: test failed, to rerun pass `-p harness --test trace_structure`
+make: *** [Makefile:84: trace-check] Error 101
+trace trace-check exit=2
+```
+
+**The finding is in the shape check, not in the flag.** The `trace` run's
+file is the first trace-level trace ever written on real weights, and it
+failed `trace_structure.rs` on `kernel.lm_head once per model.lm_head`: 320
+kernel calls against 394 head spans. The 320 is one per forward, and the
+394 is one per prefill group; the difference, 74, is the groups of the
+4756-token first prefill that come before its last. `model.lm_head` opens on
+every group with a `rows` field, and only the last group of a prefill
+produces a row, so the kernel that computes the row fires once per row and
+not once per span. That is the relation
+[observability.md](../../rust-harness/observability.md#phase-2-tracing)
+states for `kernel.lm_head`, "once per row", and the check had asserted a
+different one. Nothing before this run could contradict it: every trace the
+gate writes and every trace RH.6 read was a debug trace, where the kernel
+arm never runs, and the fixture task in `trace_levels.rs` reads span names
+without counting them.
+
+The fix sums the `rows` field over the `model.lm_head` spans and holds the
+kernel count to that sum, and the gate now carries a task run over the
+fixture at `--trace-level trace`, whose 1167-token prompt splits into 19
+groups: it failed the old assertion in the sandbox with 5 kernel calls
+against 23 head spans before the change and passes after it. The `debug`
+run's 359 groups against 320 forwards is the same arithmetic on the shorter
+resumed transcript, and it passed only because the debug arm asserts the
+head span per group, which is the relation that holds.
+
+Two figures from this run stand whatever the rerun shows. `info` at 0.4 MB
+against `debug` at 23 MB is the cost of the per-layer tier over a 2504-token
+resumed prefill plus 64 turns, and `trace` at 89 MB over a 4756-token one;
+neither is the size of a clean run, which the block above measures. And
+the shape check's own figure, `model.layer / group = 42.0` on both the
+`debug` and the `trace` file, is the per-layer tier intact at 42 layers
+under the kernel tier, the nesting RH.32 asserts on the fixture.
+
+Status: PENDING (first run 2026-09-12 exposed the shape-check defect above, fixed the same day; a rerun of the corrected block on the corrected check is owed)
 
 ## Known defects
 
