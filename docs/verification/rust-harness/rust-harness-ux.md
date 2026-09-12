@@ -4,7 +4,7 @@
 operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate —
 both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 0 verified, 0 blocked, 12 pending, of 12.** RHX.9 joined the eight `U`-campaign
+**Entries: 1 verified, 0 blocked, 11 pending, of 12.** RHX.9 joined the eight `U`-campaign
 entries from the surface inventory: it records a defect in the `--dot` help text and the check
 that closes it.
 
@@ -231,12 +231,85 @@ record whose byte fields convert to the printed figures (14924906496 B is 13.90 
 numbers and `temperature` as `0.8`. The count was the runbook's error, not the header's, and
 the block above was widened rather than the signal narrowed.
 
-Observed (the widened block, with `--probe`):
+Observed (2026-09-12, the widened block, with `--probe`):
 
 ```
+➜  rhx1 cp /mnt/ai-data/interp/probes/rust-e4b-verify-probe/probe.safetensors \
+   /mnt/ai-data/interp/probes/rust-e4b-verify-probe/probe.json /tmp/rhx1/
+➜  rhx1 jq -c '{name, layer, width, model_hash}' /tmp/rhx1/probe.json
+{"name":"rust-e4b-verify-probe","layer":8,"width":2560,"model_hash":"43fb96cec3045b72852c787540300dc5b258634b7a025f7c80355ac0788b9651"}
+➜  rhx1 printf '%s\n' "Reply with the single word: ready" \
+  | ~/workspace/ai-experiments/rust-harness/target/release/harness \
+      --model "$MODEL" --text-only --chat --probe /tmp/rhx1/probe.safetensors \
+      --seed 7 --temperature 0.8 --max-tokens 16
+echo "exit=$?"
+ls /tmp/rhx1
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E4B hash=e376216f8b693aff layers=42
+[INFO] Weights: 13.90 GiB resident at bf16
+[INFO] Peak RSS after load: 14.03 GiB
+[INFO] KV cache: 131072 tokens, 4.05 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=7 temperature=0.8 max_tokens=16
+[INFO] Probe rust-e4b-verify-probe: layer 8
+[INFO] Build: 0.1.0 git unknown
+[WARN] KV cache above 2 GiB: consider --context to cap it (compaction keeps long sessions inside the cap)
+[INFO] Model load: 41.26 s
+[INFO] Prefill: 16 tokens in 1.22 s (13 tok/s)
+You can use the following LLM model names to use this command: <code>
+[INFO] Chat ended: 1 model turns
+[INFO] Session snapshot: 32 cached tokens at /tmp/rhx1/session.kv
+[INFO] Probe rust-e4b-verify-probe: 32 positions scored, 12 flagged (threshold 0.9531292), flags at /tmp/rhx1/probe-flags.jsonl
+exit=0
+probe-flags.jsonl  probe.json  probe.safetensors  session.jsonl  session.kv
+➜  rhx1 RUN=$(ls -t /mnt/ai-data/logs/harness/R-*.jsonl | head -1)
+echo "$RUN"
+jq -c 'select(.event == "run.header")' "$RUN"
+/mnt/ai-data/logs/harness/R-20260912-152914-a99088.jsonl
+{"ts":"2026-09-12T15:29:55.810+00:00","level":"info","run_id":"R-20260912-152914-a99088","cli":"harness","command":"chat","pid":240936,"event":"run.header","msg":"resolved run configuration","model":"/mnt/ai-data/models/hf/gemma-4-E4B","model_hash":"e376216f8b693aff","n_layers":42,"dtype":"bf16","weight_bytes":14924906496,"max_context":131072,"kv_bytes":4353867776,"kv_batch_group":64,"threads":8,"dot":"widen4","batch":"64","seed":7,"temperature":0.8,"max_tokens":16,"binary_version":"0.1.0","git_sha":"unknown","peak_rss_bytes":15069581312,"rewind_horizon":208,"probe":"rust-e4b-verify-probe","probe_layer":8}
 ```
 
-Status: PENDING
+Observed (2026-09-12, the gate test, first run; the failure bodies cut to their assertion):
+
+```
+tests/hardware/test_run_header.py::test_the_header_is_nine_info_lines_in_order FAILED
+tests/hardware/test_run_header.py::test_the_fold_is_the_tuned_kernel_not_the_reference PASSED
+tests/hardware/test_run_header.py::test_the_sampling_line_states_the_flags_the_run_was_given PASSED
+tests/hardware/test_run_header.py::test_the_probe_line_names_the_sidecar_it_loaded FAILED
+tests/hardware/test_run_header.py::test_the_record_agrees_with_every_printed_line FAILED
+tests/hardware/test_run_header.py::test_the_kv_warning_follows_the_header_and_precedes_the_load PASSED
+tests/hardware/test_run_header.py::test_the_run_ends_with_one_turn_and_a_probe_report PASSED
+
+>       assert list(run.printed()) == HEADER_KEYS, "\n".join(block)
+E       At index 7 diff: 'Probe rust-e4b-verify-probe' != 'Probe'
+
+>       probe = run.printed()["Probe"]
+E       KeyError: 'Probe'
+
+>       assert printed["Probe"] == f"{record['probe']}: layer {record['probe_layer']}", (
+E       KeyError: 'Probe'
+
+[TIER] full: torch present, the whole suite was in scope.
+FAILED tests/hardware/test_run_header.py::test_the_header_is_nine_info_lines_in_order
+FAILED tests/hardware/test_run_header.py::test_the_probe_line_names_the_sidecar_it_loaded
+FAILED tests/hardware/test_run_header.py::test_the_record_agrees_with_every_printed_line
+```
+
+The three failures share one cause in the test, not the header: `Probe {name}: layer {l}` is
+the one line whose value sits before its colon, and the test's parser read
+`Probe rust-e4b-verify-probe` as the key. The parser now keys that line `Probe`; the four
+tests that passed include the fold and the warning's position. The corrected test's rerun is
+recorded below when it has one.
+
+Status: VERIFIED 2026-09-12 on the widened block by hand. Nine `[INFO]` lines with `--probe`
+and eight without, in the source's order; `dot=widen4`; the warning between `Build:` and
+`Model load:`; one model turn, then the probe report, and `probe-flags.jsonl` in `/tmp/rhx1`;
+exit 0. The record carries every printed fact typed: 14924906496 B is 13.90 GiB, 4353867776 B
+is 4.05 GiB, 15069581312 B is 14.03 GiB, `temperature` is `0.8`, `probe` is the sidecar's
+name and `probe_layer` its layer. The sidecar carries a real digest, so no identity warning
+printed and the load line's 41.26 s includes the sha256 over the weights that a 9.42 s
+probe-less load did not pay. The gate test has 4 of 7 passing; its rerun after the parser fix
+is pending.
 
 ## RHX.2 A run states what its two long operations cost
 

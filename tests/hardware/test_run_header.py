@@ -87,10 +87,10 @@ INFO = "[INFO] "
 KV_WARNING = "[WARN] KV cache above 2 GiB"
 GIB = re.compile(r"(\d+\.\d{2}) GiB")
 
-# 2026-09-12: the E4B load took 9.42 s and the 16-token prefill 1.24 s. A
-# sidecar carrying a real digest adds one sha256 over the 15 GB weights,
-# 35 s on 2026-09-11. Generous, because a timeout here would read as a
-# header failure.
+# 2026-09-12: the E4B load took 9.42 s without a probe and 41.26 s with the
+# registered one, whose sidecar carries a real digest and so costs a sha256
+# over the 15 GB weights before the header; the 16-token prefill took 1.2 s.
+# Generous, because a timeout here would read as a header failure.
 RUN_TIMEOUT_S = 15 * 60
 
 
@@ -122,10 +122,20 @@ class Run:
         return self.lines[start : end + 1]
 
     def printed(self) -> dict[str, str]:
-        """The header keyed by the text before its first colon, tag stripped."""
+        """The header keyed by the text before its first colon, tag stripped.
+
+        One line breaks that rule: `Probe {name}: layer {l}` carries its
+        value before the colon, so it is keyed `Probe` with everything after
+        the word as its value (`rust-e4b-verify-probe: layer 8`). The first
+        run of this module on 2026-09-12 read the name as part of the key and
+        failed three tests against a correct header."""
         out = {}
         for line in self.header_lines():
-            key, _, rest = line[len(INFO) :].partition(": ")
+            text = line[len(INFO) :]
+            if text.startswith("Probe "):
+                out["Probe"] = text[len("Probe ") :]
+                continue
+            key, _, rest = text.partition(": ")
             out[key] = rest
         return out
 
