@@ -76,7 +76,11 @@ holds the verdict to the earlier one. And `checkpoint-info --check` (RH.22):
 `checkpoint_info_check.rs` reaches both refusal paths in the sandbox, a config the backend
 cannot validate and a tiny checkpoint made multimodal by one tensor per tower, and
 `tests/hardware/test_checkpoint_info.py` under `hw_e4b` runs the pair of verdicts on the
-released E4B and reads the tower count the code's comments predict off the file.
+released E4B and reads the tower count the code's comments predict off the file. And the
+attention-capture binary (RH.36): `attention_capture.rs` pins its surface over a three-token
+window in the sandbox, and `tests/hardware/test_attention_capture.py` under `hw_e4b` runs it on
+the released E4B over a prompt past the real window, holding `span_first` to the schedule the
+checkpoint's own `config.json` states and every row's mass to one over hundreds of keys.
 
 Steps 5 and 6 are complementary rather than redundant. The reference check asks whether a
 cited path exists, which requires classifying a token as a path claim — and that classifier
