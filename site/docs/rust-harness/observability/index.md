@@ -7,6 +7,8 @@ title: Observability
 The harness is instrumented from the inside rather than watched from the outside. Five
 mechanisms, at five grains, each with its own page:
 
+![The five mechanisms ordered from coarsest grain, one run, to finest, one instruction. Run records are always on; the flight recorder and tracing are enabled per run by a flag; profiling and rr are workstation tooling. The run id joins the first three.](../../../static/img/diagrams/observability-grains.svg)
+
 | Mechanism | Grain | Always on | Where it goes |
 |-----------|-------|-----------|---------------|
 | [Run records](run-records.md) | One run: start, phases, configuration, end, and a per-step metrics series | Yes | `${OBS_LOG_DIR}/harness/` |

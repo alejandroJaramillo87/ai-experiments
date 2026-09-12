@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 332" class="fg-diagram fg-observability-grains" role="img" aria-label="Five observability mechanisms ordered by grain from one run to one instruction: run records are always on, the flight recorder and tracing are enabled per run by a flag, profiling and rr debugging are workstation tooling. Run records, the flight recorder, and tracing share the run id as their join key.">
+<title>Five observability mechanisms, five grains</title>
+<style>
+/* fg:begin palette-classic v1 */
+.fg-observability-grains {
+  --bg: #0f172a;
+  --panel: #1e293b;
+  --panel-hover: #334155;
+  --border: #334155;
+  --text: #f8fafc;
+  --muted: #94a3b8;
+  --accent: #38bdf8;
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --hot: #f87171;
+  --violet: #a78bfa;
+  --accent-dim: #0c3550;
+  --ok-dim: #0e4429;
+  --warn-dim: #4a3608;
+  --hot-dim: #4a1d1d;
+  --violet-dim: #2a2350;
+  --line: #64748b;
+  --font: "Work Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --radius: 12px;
+  --dur-fast: 0.45s;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+}
+/* fg:end palette-classic */
+/* fg:begin panel-base v1 */
+.fg-observability-grains {
+  background: var(--bg);
+  border-radius: var(--radius);
+  font-family: var(--font);
+  line-height: 1.4;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+.fg-observability-grains svg { display: block; width: 100%; height: auto; }
+.fg-observability-grains text { font-family: inherit; }
+/* fg:end panel-base */
+.fg-observability-grains {
+  padding: 16px 16px 12px;
+}
+
+/* --- diagram-specific styling ------------------------------------- */
+.fg-observability-grains .obsg-box { fill: var(--panel); stroke: var(--border); stroke-width: 2; }
+.fg-observability-grains .obsg-title { fill: var(--text); font-size: 15px; font-weight: 600; text-anchor: middle; }
+.fg-observability-grains .obsg-grain { fill: var(--muted); font-size: 11.5px; text-anchor: middle; }
+.fg-observability-grains .obsg-axis { stroke: var(--line); stroke-width: 2; fill: none; }
+.fg-observability-grains .obsg-axis-label { fill: var(--muted); font-size: 12px; }
+.fg-observability-grains .obsg-chip { stroke-width: 1.5; }
+.fg-observability-grains .obsg-chip-text { font-size: 11px; font-weight: 600; text-anchor: middle; font-family: var(--mono); }
+/* the state chip encodes how a mechanism is enabled: settled (always on),
+   in progress (a flag the run opts into), or outside the binary entirely */
+.fg-observability-grains .obsg-on .obsg-chip { fill: var(--ok-dim); stroke: var(--ok); }
+.fg-observability-grains .obsg-on .obsg-chip-text { fill: var(--ok); }
+.fg-observability-grains .obsg-flag .obsg-chip { fill: var(--warn-dim); stroke: var(--warn); }
+.fg-observability-grains .obsg-flag .obsg-chip-text { fill: var(--warn); }
+.fg-observability-grains .obsg-host .obsg-chip { fill: none; stroke: var(--line); stroke-dasharray: 4 3; }
+.fg-observability-grains .obsg-host .obsg-chip-text { fill: var(--muted); }
+.fg-observability-grains .obsg-join { stroke: var(--accent); stroke-width: 2; fill: none; }
+.fg-observability-grains .obsg-join-dot { fill: var(--accent); }
+.fg-observability-grains .obsg-join-label { fill: var(--accent); font-size: 12px; font-family: var(--mono); }
+.fg-observability-grains .obsg-legend { fill: var(--muted); font-size: 11.5px; }
+
+/* fg:begin reduced-motion v1 */
+@media (prefers-reduced-motion: reduce) {
+  .fg-observability-grains, .fg-observability-grains * { transition: none !important; animation: none !important; }
+}
+/* fg:end reduced-motion */
+.fg-observability-grains .fg-export-panel { fill: var(--bg); }
+</style>
+<rect class="fg-export-panel" width="820" height="332" rx="12"/>
+<g transform="translate(16 16)">
+  <defs>
+    <marker id="obsg-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
+    </marker>
+  </defs>
+  <text class="obsg-axis-label" x="20" y="30">coarser grain</text>
+  <text class="obsg-axis-label" x="768" y="30" text-anchor="end">finer grain</text>
+  <path class="obsg-axis" d="M130,26 L676,26" marker-end="url(#obsg-arrow)"/>
+  <g class="obsg-on" id="obsg-run-records">
+    <rect class="obsg-box" x="20" y="64" width="140" height="150" rx="8"/>
+    <text class="obsg-title" x="90" y="94">Run records</text>
+    <text class="obsg-grain" x="90" y="116">one run</text>
+    <text class="obsg-grain" x="90" y="134">start,</text>
+    <text class="obsg-grain" x="90" y="150">phases, metrics series</text>
+    <rect class="obsg-chip" x="36" y="172" width="108" height="24" rx="12"/>
+    <text class="obsg-chip-text" x="90" y="188">always on</text>
+  </g>
+  <g class="obsg-flag" id="obsg-flight-recorder">
+    <rect class="obsg-box" x="172" y="64" width="140" height="150" rx="8"/>
+    <text class="obsg-title" x="242" y="94">Flight recorder</text>
+    <text class="obsg-grain" x="242" y="116">one forward call</text>
+    <text class="obsg-grain" x="242" y="134">positions,</text>
+    <text class="obsg-grain" x="242" y="150">logits, sampled tokens</text>
+    <rect class="obsg-chip" x="188" y="172" width="108" height="24" rx="12"/>
+    <text class="obsg-chip-text" x="242" y="188">--record</text>
+  </g>
+  <g class="obsg-flag" id="obsg-tracing">
+    <rect class="obsg-box" x="324" y="64" width="140" height="150" rx="8"/>
+    <text class="obsg-title" x="394" y="94">Tracing</text>
+    <text class="obsg-grain" x="394" y="116">one span</text>
+    <text class="obsg-grain" x="394" y="134">session,</text>
+    <text class="obsg-grain" x="394" y="150">forward, layer, kernel</text>
+    <rect class="obsg-chip" x="340" y="172" width="108" height="24" rx="12"/>
+    <text class="obsg-chip-text" x="394" y="188">--trace-chrome</text>
+  </g>
+  <g class="obsg-host" id="obsg-profiling">
+    <rect class="obsg-box" x="476" y="64" width="140" height="150" rx="8"/>
+    <text class="obsg-title" x="546" y="94">Profiling</text>
+    <text class="obsg-grain" x="546" y="116">one sample</text>
+    <text class="obsg-grain" x="546" y="134">which function</text>
+    <text class="obsg-grain" x="546" y="150">held the CPU</text>
+    <rect class="obsg-chip" x="492" y="172" width="108" height="24" rx="12"/>
+    <text class="obsg-chip-text" x="546" y="188">perf</text>
+  </g>
+  <g class="obsg-host" id="obsg-rr-debugging">
+    <rect class="obsg-box" x="628" y="64" width="140" height="150" rx="8"/>
+    <text class="obsg-title" x="698" y="94">rr debugging</text>
+    <text class="obsg-grain" x="698" y="116">one instruction</text>
+    <text class="obsg-grain" x="698" y="134">record once,</text>
+    <text class="obsg-grain" x="698" y="150">replay in gdb</text>
+    <rect class="obsg-chip" x="644" y="172" width="108" height="24" rx="12"/>
+    <text class="obsg-chip-text" x="698" y="188">rr</text>
+  </g>
+  <path class="obsg-join" d="M90,214 L90,236 L394,236 L394,214"/>
+  <circle class="obsg-join-dot" cx="242" cy="236" r="4"/>
+  <text class="obsg-join-label" x="242" y="258" text-anchor="middle">run id: the join key</text>
+  <text class="obsg-legend" x="20" y="284">Turning any in-process mechanism on changes no value the model computes.</text>
+</g>
+</svg>

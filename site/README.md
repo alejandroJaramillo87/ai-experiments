@@ -40,6 +40,7 @@ package.json           Docusaurus and React pinned exact; package-lock.json is t
 src/css/custom.css     the theme: tokens shared with the blog and figura, code panels, article width
 src/prism/slate.js     the code panel Prism theme, dark under both page themes
 static/img/logo.svg    the navbar mark and favicon, one monochrome SVG
+static/img/diagrams/   architecture figures, each a copy of a static diagram's SVG export from the figura repo; edit there, re-export, re-copy
 docs/index.md          the overview
 docs/rust-harness/     getting-started, guides, observability, reference, troubleshooting
 docs/formats/          the checkpoint layout, four artifacts, and the capture-to-probe guide
