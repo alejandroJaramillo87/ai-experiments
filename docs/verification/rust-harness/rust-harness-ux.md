@@ -4,7 +4,7 @@
 operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate —
 both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 3 verified, 0 blocked, 9 pending, of 12.** RHX.9 joined the eight `U`-campaign
+**Entries: 4 verified, 0 blocked, 8 pending, of 12.** RHX.9 joined the eight `U`-campaign
 entries from the surface inventory: it records a defect in the `--dot` help text and the check
 that closes it.
 
@@ -456,12 +456,117 @@ attempted rung, each with a numeric `duration_s`. The run directory exists and h
 `step`. A rung that comes back red is still a completed run: it exits non-zero without a
 failure record, the same way a divergence is not a crash.
 
-Observed:
+Asserted by `tests/hardware/test_ladder.py`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| One `ladder.header` naming the checkpoint, the reference directory, the run size, the corpus token count and the fold (`threads`, `dot`, `batch`) | `test_one_ladder_header_names_the_climb` |
+| One `model.load` phase, then one `rung.L<n>` phase per rung the table printed, in order, each with a positive `duration_s` | `test_one_model_load_then_one_phase_per_printed_rung` |
+| The run directory holds a `metrics.jsonl` whose envelope is a `harness` `ladder` report and whose records are one per rung with the rung index as `step` and a `rung_duration_s` agreeing with the phase | `test_the_run_directory_holds_one_metrics_record_per_rung` |
+
+The three ride the climb RH.1b's test already makes, so `make quality-full HW=full` climbs
+once and reads the transcript and the record from the same run.
+
+```bash
+cd ~/workspace/ai-experiments
+HARNESS_E4B_MODEL="$MODEL" uv run pytest -m hw_full tests/hardware/test_ladder.py -v
+```
+
+Observed (2026-09-12; the first attempt was made from the repository root, where no `ladder`
+target exists, and is not recorded):
 
 ```
+➜  rust-harness git:(rust-harness-ux-verification) ✗ make ladder SIZE=quick MODEL="$MODEL"
+echo "exit=$?"
+
+RUN=$(ls -t /mnt/ai-data/logs/harness/R-*.jsonl | head -1)
+jq -c 'select(.event == "ladder.header")' "$RUN"
+jq -c 'select(.event == "phase.end") | {phase, duration_s}' "$RUN"
+ls "/mnt/ai-data/logs/harness/$(basename "$RUN" .jsonl)/"
+cargo run --release -p runtime --bin ladder -- \
+  --text-only --size quick --model /mnt/ai-data/models/hf/gemma-4-E4B --reference fixtures/reference/e4b/quick
+   Compiling runtime v0.1.0 (/home/alejandro/workspace/ai-experiments/rust-harness/runtime)
+    Finished `release` profile [optimized] target(s) in 3.87s
+     Running `target/release/ladder --text-only --size quick --model /mnt/ai-data/models/hf/gemma-4-E4B --reference fixtures/reference/e4b/quick`
+size=quick tokens=512 prompts=2
+prompt=6 tokens
+threads=8
+dot=widen4
+batch=64
+model=/mnt/ai-data/models/hf/gemma-4-E4B
+reference=fixtures/reference/e4b/quick
+
+rung  check                   value         threshold       verdict
+L0    token ids                                             PASS
+      case agreement          1.000000      >= 1.000000     ok
+      5 cases, every id identical
+L1    residual stream                                       PASS
+      worst cosine            1.000000      >= 0.999900     ok
+      worst rel_l2            0.000005      <= 0.001000     ok
+      42 layers within tolerance
+L2    final distribution                                    PASS
+      mean kl                 0.000000      <= 0.001000     ok
+      worst kl                0.000000      <= 0.005000     ok
+      worst top-50 overlap    1.000000      >= 0.980000     ok
+      argmax agreement        1.000000      >= 0.980000     ok
+      1 positions scored; worst at prompt position 5
+L3    perplexity                                            PASS
+      ppl delta               0.000032      <= 0.010000     ok
+      worst token nll         0.001248      <= 0.050000     ok
+      ppl 55.5420 against 55.5438 over 254 tokens; worst token at corpus position 414
+L4    greedy continuation                                   PASS
+      token agreement         1.000000      >= 0.980000     ok
+      mean common prefix      1.000000      >= 0.750000     ok
+      2 prompts, 0 ties
+L5    logits past the window                                PASS
+      scheduled positions agree  1.000000      >= 1.000000     ok
+      worst kl inside window  0.000000      <= 0.005000     ok
+      worst kl past window    0.000000      <= 0.005000     ok
+      worst top-50 overlap    1.000000      >= 0.980000     ok
+      argmax agreement        1.000000      >= 0.980000     ok
+      6 positions across a 512-token window over 2052 tokens; worst at position 1025
+L6    attention past window                                 PASS
+      captured layers agree   1.000000      >= 1.000000     ok
+      weight outside window   0.000000      <= 0.000000     ok
+      worst row max abs diff  0.000023      <= 0.001000     ok
+      worst row mass          0.000001      <= 0.000010     ok
+      worst top-10 overlap    1.000000      >= 0.900000     ok
+      192 rows across 4 layers x 8 heads at 6 positions; window 512; worst at layer 21 head 6 position 1025
+
+timing (not compared; expected to differ between runs)
+  L0        0.51s
+  L1        0.53s
+  L2        0.65s
+  L3       52.12s
+  L4       23.36s
+  L5      270.99s
+  L6      227.47s
+  sum     575.62s  (rung bodies only, excludes model load)
+[OK] Ladder: every rung within tolerance (0 skipped)
+[INFO] Peak RSS at exit: 16.13 GiB
+exit=0
+{"ts":"2026-09-12T16:40:12.371+00:00","level":"info","run_id":"R-20260912-164007-6f27ea","cli":"harness","command":"ladder","pid":754003,"event":"ladder.header","msg":"resolved ladder configuration","model":"/mnt/ai-data/models/hf/gemma-4-E4B","model_hash":"e376216f8b693aff","n_layers":42,"dtype":"bf16","weight_bytes":14924906496,"reference":"fixtures/reference/e4b/quick","size":"quick","corpus_tokens":512,"text_only":true,"threads":8,"dot":"widen4","batch":"64","binary_version":"0.1.0","git_sha":"698d7fed4f1d4d0d45ffdbc4491123ee1c1e1b29"}
+{"phase":"model.load","duration_s":5.331}
+{"phase":"rung.L0","duration_s":0.508}
+{"phase":"rung.L1","duration_s":0.525}
+{"phase":"rung.L2","duration_s":0.65}
+{"phase":"rung.L3","duration_s":52.122}
+{"phase":"rung.L4","duration_s":23.359}
+{"phase":"rung.L5","duration_s":270.992}
+{"phase":"rung.L6","duration_s":227.466}
+metrics.jsonl
 ```
 
-Status: PENDING
+Every rung green, exit 0. The one `ladder.header` names the model, its hash, the reference
+directory, `size=quick`, `corpus_tokens=512` and the fold `threads=8 dot=widen4 batch=64`. Its `git_sha` is the commit
+checked out, where the chat run's envelope at RHX.4 the same morning read `unknown`; that
+binary was built earlier and the difference is not explained here. One `model.load` phase and seven `rung.L<n>`
+phases, each agreeing with the timing table to the centisecond (`L5` 270.992 against
+`270.99s`). The run directory holds `metrics.jsonl` and nothing else, this being a run that
+no `report` has been pointed at yet.
+
+Status: VERIFIED 2026-09-12 by hand; the three test functions above were written from this
+transcript and await their first gate run.
 
 ## RHX.4 The training dashboard renders a harness run
 

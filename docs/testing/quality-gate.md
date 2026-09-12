@@ -205,7 +205,9 @@ make ladder SIZE=quick MODEL=<checkpoint-dir>      # also standard, deep
 It is deliberately outside `make quality`. The gate is mandatory before every push and has to
 stay fast, and the ladder loads the real checkpoint. It is inside `make quality-full HW=full`:
 `tests/hardware/test_ladder.py` drives the same target at `SIZE=quick` and fails on a red rung
-or a skipped one. The reference artifacts are file prerequisites of the target, so a first run
+or a skipped one. The same climb is the run RHX.3 reads: three more functions in that
+module check the `ladder.header` event, the per-rung phases and the run directory's
+`metrics.jsonl` off the catalog row the climb appended, so the gate climbs once. The reference artifacts are file prerequisites of the target, so a first run
 generates them through `transformers` before climbing and later runs reuse them;
 `make ladder-reference` rewrites them after a checkpoint or `transformers` change. The half that does run inside the gate is
 Tier T: the same rungs against a tiny Gemma 4 that `transformers` itself built, committed
