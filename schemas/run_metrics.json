@@ -31,7 +31,7 @@
       "cli",
       "command"
     ],
-    "extra_fields": "Emitters merge their own header payload on top. The harness merges RunHeader::fields() (schemas/obs_record.json, events.run.header), so the dashboard's header strip and the terminal's header state the same facts from the same struct."
+    "extra_fields": "Emitters merge their own header payload on top. The harness merges RunHeader::fields() (schemas/obs_record.json, events.run.header), so the dashboard's header strip and the terminal's header state the same facts from the same struct. viewer.js selects the strip's fields by `cli`: `harness` shows model, model_hash, the fold (dot, batch, threads) and the build (binary_version, git_sha); anything else shows the training keys (tier, model_id, recipe_hash, schedule). Until 2026-09-12 (RHX.4) it read only the training keys and a harness page's strip was blank past the run id."
   },
   "record": {
     "description": "One per step. Keys beyond step and ts are emitter-chosen series names; viewer.js groups the ones it knows and ignores the rest.",

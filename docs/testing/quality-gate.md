@@ -91,6 +91,23 @@ attention-capture binary (RH.36): `attention_capture.rs` pins its surface over a
 window in the sandbox, and `tests/hardware/test_attention_capture.py` under `hw_e4b` runs it on
 the released E4B over a prompt past the real window, holding `span_first` to the schedule the
 checkpoint's own `config.json` states and every row's mass to one over hundreds of keys.
+And the run header (RHX.1): `run_header.rs` holds the printed lines to the recorded fields over
+the fixture, and `tests/hardware/test_run_header.py` under `hw_full` runs one chat turn on the
+released E4B with the registered probe loaded, so all nine lines print, and reads the
+`run.header` record back off the real obs root to hold each line to its field at scale.
+And the two cost lines (RHX.2): `status_streams.rs` pins one `Model load:` and one `Prefill:`
+line over the fixture, and `tests/hardware/test_status_costs.py` under `hw_full` runs two chat
+turns of unequal length on the released E4B, holds the printed load to the recorded phase, and
+reads the second `Prefill:` line as the delta the fixture is too small to show.
+And a capture's run record (RHX.5): `capture_obs.rs` pins one header, one `model.load`
+phase, one catalog row and no run directory for each capture binary over the fixture, and
+`tests/hardware/test_capture_run_record.py` under `hw_full` reads the same four off an
+eight-example `activation-capture` on the released E4B, holding the header to the paths and
+count it passed and the load to seconds.
+And a failure's remedy (RHX.6): `actionable_surface.rs` pins the three-line shape and the
+command's spelling over the fixture, and `tests/hardware/test_remedy_runs_as_printed.py`
+under `hw_full` provokes the two failures on the released E4B, pastes each `Command:` line
+into a shell verbatim, and holds the shell's answer to the fault the run reported.
 Two more hardware tests have no sandbox half at all, because their question is the released
 weights themselves: `tests/hardware/test_shared_kv_weights.py` under `hw_e4b` reads every
 attention projection of E4B through safetensors and asks whether the shared-KV tail's
@@ -207,7 +224,9 @@ make ladder SIZE=quick MODEL=<checkpoint-dir>      # also standard, deep
 It is deliberately outside `make quality`. The gate is mandatory before every push and has to
 stay fast, and the ladder loads the real checkpoint. It is inside `make quality-full HW=full`:
 `tests/hardware/test_ladder.py` drives the same target at `SIZE=quick` and fails on a red rung
-or a skipped one. The reference artifacts are file prerequisites of the target, so a first run
+or a skipped one. The same climb is the run RHX.3 reads: three more functions in that
+module check the `ladder.header` event, the per-rung phases and the run directory's
+`metrics.jsonl` off the catalog row the climb appended, so the gate climbs once. The reference artifacts are file prerequisites of the target, so a first run
 generates them through `transformers` before climbing and later runs reuse them;
 `make ladder-reference` rewrites them after a checkpoint or `transformers` change. The half that does run inside the gate is
 Tier T: the same rungs against a tiny Gemma 4 that `transformers` itself built, committed

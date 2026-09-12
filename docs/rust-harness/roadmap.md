@@ -608,7 +608,10 @@ Done. Phases are wired explicitly rather than bridged from `tracing`, whose subs
 installed only under `--trace-chrome` and whose installation is a hard `expect`. The
 dashboard needed no Python change: `training report --run` pointed at a harness run
 directory writes `run.html`, joins the event file through the header's `run_id` and `cli`,
-and charts `tokens_per_s` and `rss_gb`. `common/obs/viewer.js` gained exactly one group.
+and charts `tokens_per_s` and `rss_gb`. `common/obs/viewer.js` gained exactly one group. It
+needed one more change than that, found at RHX.4 on 2026-09-12: the header strip read only
+the training envelope's keys, so a harness page showed a dash for everything but the run id
+until the strip learned to key its fields on `cli`.
 
 `RunLog` gained `phase`, `metrics_header`, `metric`, `run_dir` and — not in the design —
 `metrics_sink`. The sink is what makes the rest reachable: `Phase` borrows the log mutably,

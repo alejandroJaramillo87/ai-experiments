@@ -23,6 +23,10 @@ import { chromium } from "playwright-core";
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "../../..");
 const RUN_ID = "R-20260718-000000-b405e5";
+// A harness chat run's envelope: RunHeader::fields() merged on the shared
+// keys, the way rust-harness/obs writes it. Its page has two charts and a
+// strip that states model, fold and build (RHX.4).
+const HARNESS_RUN_ID = "R-20260912-160320-91dad9";
 const POLL_TIMEOUT_MS = 15000; // live page polls every 2s; several cycles
 
 let failures = 0;
@@ -111,6 +115,58 @@ function writeFixtures(base) {
   return { runDir, eventsDir, eventCount: events.length };
 }
 
+function writeHarnessFixtures(base) {
+  const runDir = path.join(base, "run-harness");
+  const eventsDir = path.join(base, "obs-logs", "harness");
+  fs.mkdirSync(runDir, { recursive: true });
+  fs.mkdirSync(eventsDir, { recursive: true });
+  const header = {
+    schema_version: 1,
+    report: "run_metrics",
+    timestamp: "2026-09-12T16:03:26.184+00:00",
+    run_id: HARNESS_RUN_ID,
+    cli: "harness",
+    command: "chat",
+    model: "/models/hf/gemma-4-E4B",
+    model_hash: "e376216f8b693aff",
+    n_layers: 42,
+    dtype: "bf16",
+    threads: 8,
+    dot: "widen4",
+    batch: "64",
+    binary_version: "0.1.0",
+    git_sha: "unknown",
+  };
+  const metrics = [header];
+  // rss_gb flat within tens of KB, the workstation's shape: the first
+  // 2026-09-12 page drew six labels all reading 14.242, and the second, with
+  // the precision fixed, drew 14.24200..14.24240 clipped to their last five
+  // digits by the default 50 px gutter. A 0.0001 spacing gave labels one
+  // character shorter that fit, so it did not reproduce the clipping.
+  for (let step = 1; step <= 8; step += 1) {
+    metrics.push({
+      step,
+      ts: `2026-09-12T16:03:3${step}+00:00`,
+      tokens_per_s: step / 2,
+      rss_gb: 14.242 + step * 0.00001,
+    });
+  }
+  fs.writeFileSync(
+    path.join(runDir, "metrics.jsonl"),
+    metrics.map((r) => JSON.stringify(r)).join("\n") + "\n"
+  );
+  fs.writeFileSync(
+    path.join(eventsDir, `${HARNESS_RUN_ID}.jsonl`),
+    JSON.stringify({
+      ts: "2026-09-12T16:03:26+00:00",
+      level: "info",
+      event: "run.header",
+      msg: "resolved run configuration",
+    }) + "\n"
+  );
+  return runDir;
+}
+
 function buildSnapshot(runDir, base) {
   execFileSync(
     "uv",
@@ -134,7 +190,19 @@ async function snapshotChecks(page, htmlPath, eventCount) {
   );
 
   const uplots = await page.locator(".uplot").count();
-  check(uplots === 3, `charts: ${uplots} uPlot instances (loss, lr, throughput)`);
+  check(
+    uplots === 3,
+    `charts: ${uplots} uPlot instances (loss, lr, throughput)`
+  );
+  const shown = await page.locator(".chart:visible").count();
+  check(shown === 3, `charts: ${shown} holders shown, the empty groups hidden`);
+  const strip = await page.locator(".header").innerText();
+  check(
+    strip.includes("tier") &&
+      strip.includes("sft") &&
+      strip.includes("test/model"),
+    "header: the training strip states tier and model"
+  );
 
   const markers = await page.evaluate(
     () => document.getElementById("root").__obsState.markers
@@ -172,7 +240,86 @@ async function snapshotChecks(page, htmlPath, eventCount) {
     )
   );
   check(hostile, "hostile <!--<script payload renders as text, page intact");
-  check(errors.length === 0, `no page errors (${errors.join("; ") || "clean"})`);
+  check(
+    errors.length === 0,
+    `no page errors (${errors.join("; ") || "clean"})`
+  );
+}
+
+async function harnessChecks(page, htmlPath) {
+  console.log("[RUN] harness snapshot page (file://)");
+  const errors = [];
+  page.on("pageerror", (err) => errors.push(String(err)));
+  await page.goto(`file://${htmlPath}`);
+  await page.waitForFunction(
+    () => document.getElementById("root").__obsState !== undefined
+  );
+
+  const uplots = await page.locator(".uplot").count();
+  check(uplots === 2, `charts: ${uplots} uPlot instances (throughput, memory)`);
+  const shown = await page.locator(".chart:visible").count();
+  check(
+    shown === 2,
+    `charts: ${shown} holders shown, four empty groups hidden`
+  );
+
+  const items = await page.evaluate(() =>
+    Array.from(document.querySelectorAll(".hdr-item")).map((n) => [
+      n.querySelector(".hdr-key").textContent,
+      n.querySelector(".hdr-val").textContent,
+    ])
+  );
+  const strip = Object.fromEntries(items);
+  check(
+    strip.model === "/models/hf/gemma-4-E4B" &&
+      strip.hash === "e376216f8b693aff" &&
+      strip.fold === "dot=widen4 batch=64 threads=8" &&
+      strip.build === "0.1.0 git unknown",
+    `header: the harness strip states model, hash, fold and build (${JSON.stringify(strip)})`
+  );
+  check(
+    !("tier" in strip) && !Object.values(strip).includes("-"),
+    "header: no training key and no dash on a harness page"
+  );
+
+  // The labels uPlot drew for the memory axis, read off the axis it kept.
+  const labels = await page.evaluate(() => {
+    const u =
+      document.getElementById("root").__obsState.charts["Process memory (GB)"]
+        .plot;
+    return u.axes[1]._values;
+  });
+  check(
+    Array.isArray(labels) &&
+      labels.length > 1 &&
+      new Set(labels).size === labels.length,
+    `memory axis: ${labels.length} labels, all distinct (${labels.join(" ")})`
+  );
+  // The gutter must hold the widest label plus the gap and the tick, or the
+  // label's leading digits fall off the canvas.
+  const gutter = await page.evaluate(() => {
+    const u =
+      document.getElementById("root").__obsState.charts["Process memory (GB)"]
+        .plot;
+    const axis = u.axes[1];
+    u.ctx.font = axis.font[0];
+    const widest = Math.max(
+      ...axis._values.map((v) => u.ctx.measureText(v).width)
+    );
+    return {
+      size: axis._size,
+      needed: widest / (uPlot.pxRatio || 1) + axis.gap + axis.ticks.size,
+    };
+  });
+  check(
+    gutter.size >= gutter.needed,
+    `memory axis: gutter ${gutter.size.toFixed(1)} px holds the widest label ` +
+      `(${gutter.needed.toFixed(1)} px needed)`
+  );
+  check(
+    errors.length === 0,
+    `no page errors (${errors.join("; ") || "clean"})`
+  );
 }
 
 function startServer(runDir, base) {
@@ -268,7 +415,8 @@ async function main() {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), "obs-browser-"));
   const { runDir, eventsDir, eventCount } = writeFixtures(base);
   const htmlPath = buildSnapshot(runDir, base);
-  ok(`fixtures and snapshot built under ${base}`);
+  const harnessHtml = buildSnapshot(writeHarnessFixtures(base), base);
+  ok(`fixtures and snapshots built under ${base}`);
 
   const browser = await chromium.launch({
     executablePath: findChromium(),
@@ -278,6 +426,8 @@ async function main() {
   try {
     const page = await browser.newPage();
     await snapshotChecks(page, htmlPath, eventCount);
+    console.log();
+    await harnessChecks(await browser.newPage(), harnessHtml);
     console.log();
     server = await startServer(runDir, base);
     await liveChecks(page, server.url, runDir, eventsDir, eventCount);

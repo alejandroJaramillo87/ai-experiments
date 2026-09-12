@@ -4,7 +4,7 @@
 operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate —
 both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 0 verified, 0 blocked, 12 pending, of 12.** RHX.9 joined the eight `U`-campaign
+**Entries: 6 verified, 0 blocked, 6 pending, of 12.** RHX.9 joined the eight `U`-campaign
 entries from the surface inventory: it records a defect in the `--dot` help text and the check
 that closes it.
 
@@ -61,7 +61,26 @@ observation already exists in [rust-harness.md](rust-harness.md), the entry cite
 than asking for it again. The same audit found three things a person meets before any of
 the above and no entry observed: the permission prompt, a silently resumed session, and
 a chat with no prompt marker. RHX.10 through RHX.12 are those, and the first two come
-with a status line added the same day so the run announces what it is doing.
+with a status line added the same day so the run announces what it is doing. Later the same
+day RHX.1 ran once and printed eight header lines, not nine: the ninth is the probe line, which
+only a run given `--probe` prints. The block now loads the E4B probe, the first run is kept as
+evidence, and `tests/hardware/test_run_header.py` pins the entry for `make quality-full`.
+
+## Table of contents
+
+- [Preconditions](#preconditions)
+- [RHX.1 The run header states the configuration a real run resolved](#rhx1-the-run-header-states-the-configuration-a-real-run-resolved)
+- [RHX.2 A run states what its two long operations cost](#rhx2-a-run-states-what-its-two-long-operations-cost)
+- [RHX.3 The ladder records the climb it actually ran](#rhx3-the-ladder-records-the-climb-it-actually-ran)
+- [RHX.4 The training dashboard renders a harness run](#rhx4-the-training-dashboard-renders-a-harness-run)
+- [RHX.5 A capture is traceable to the invocation that made it](#rhx5-a-capture-is-traceable-to-the-invocation-that-made-it)
+- [RHX.6 A failure states a remedy that runs as printed](#rhx6-a-failure-states-a-remedy-that-runs-as-printed)
+- [RHX.7 One catalog serves the whole workspace](#rhx7-one-catalog-serves-the-whole-workspace)
+- [RHX.8 Status output is coloured at a terminal and plain through a pipe](#rhx8-status-output-is-coloured-at-a-terminal-and-plain-through-a-pipe)
+- [RHX.9 The --dot help text describes the kernels the flag offers](#rhx9-the---dot-help-text-describes-the-kernels-the-flag-offers)
+- [RHX.10 A tool call the rules do not decide asks, and the run says so first](#rhx10-a-tool-call-the-rules-do-not-decide-asks-and-the-run-says-so-first)
+- [RHX.11 A resumed session says what it resumed](#rhx11-a-resumed-session-says-what-it-resumed)
+- [RHX.12 A chat at a terminal shows where the next turn goes](#rhx12-a-chat-at-a-terminal-shows-where-the-next-turn-goes)
 
 ## Preconditions
 
@@ -95,16 +114,29 @@ unit-tested, and what is not is whether the values are right at scale. The fixtu
 KV budget in kilobytes and a load in milliseconds; this entry is the first time the header
 describes a checkpoint anyone would serve.
 
+The run loads a probe. The entry's first run, on 2026-09-12 and recorded below, printed eight
+header lines against an expected nine: the ninth, `Probe {name}: layer {l}`, and the `probe`
+and `probe_layer` fields it states exist only when `--probe` is given, and a plain chat run
+exercises neither. No earlier banner did either. The probe is the E4B probe RH.16 step 4b
+exported, `rust-e4b-verify-probe`, copied from its registry directory by name as RHX.6 does,
+so the header has all nine lines to print and the record both fields to carry.
+
 ```bash
 set -o pipefail
 MODEL=<the gemma-4-E4B checkpoint directory>
 rm -rf /tmp/rhx1 && mkdir -p /tmp/rhx1 && cd /tmp/rhx1
 
+# the probe, and the sidecar facts the header must repeat
+cp /mnt/ai-data/interp/probes/rust-e4b-verify-probe/probe.safetensors \
+   /mnt/ai-data/interp/probes/rust-e4b-verify-probe/probe.json /tmp/rhx1/
+jq -c '{name, layer, width, model_hash}' /tmp/rhx1/probe.json
+
 printf '%s\n' "Reply with the single word: ready" \
   | ~/workspace/ai-experiments/rust-harness/target/release/harness \
-      --model "$MODEL" --text-only --chat \
+      --model "$MODEL" --text-only --chat --probe /tmp/rhx1/probe.safetensors \
       --seed 7 --temperature 0.8 --max-tokens 16
 echo "exit=$?"
+ls /tmp/rhx1
 
 # the record the terminal was rendered from
 RUN=$(ls -t /mnt/ai-data/logs/harness/R-*.jsonl | head -1)
@@ -115,27 +147,169 @@ jq -c 'select(.event == "run.header")' "$RUN"
 Expected signal: the nine header lines, all `[INFO]`, naming the model and its hash, the
 layer count, the resident weight size and dtype, peak RSS after load, the KV cache budget, the
 rewind horizon, the fold (`dot=`, `batch=`, `threads=`), the sampling parameters including
-`seed=7`, and the build. The `dot` value is the tuned kernel, not the reference one. A run
+`seed=7`, the probe as `Probe rust-e4b-verify-probe: layer 8` between `Sampling:` and
+`Build:`, and the build. The `dot` value is the tuned kernel, not the reference one. A run
 without `--context` follows them with `[WARN] KV cache above 2 GiB` before `Model load:`, and
-the chat ends with `[INFO] Chat ended: 1 model turns`; neither is a header line. The reply
-itself is immaterial: E4B is a base model and may not say `ready`. The `run.header` record
-carries the same facts as JSON numbers rather than formatted strings — `n_layers` and
-`weight_bytes` are numbers, `temperature` renders as `0.8` and not `0.80000001`.
+the chat ends with `[INFO] Chat ended: 1 model turns` followed by
+`[INFO] Probe rust-e4b-verify-probe: N positions scored, M flagged`, with `probe-flags.jsonl`
+listed in `/tmp/rhx1`; none of those is a header line. The sidecar decides one more line: a
+`model_hash` of `unknown` puts `[WARN] Model identity: probe records model hash "unknown",
+check skipped` before the header, and a real digest prints nothing there and costs a sha256
+over the weights before the header appears. The reply itself is immaterial: E4B is a base
+model and may not say `ready`. The `run.header` record carries the same facts as JSON numbers
+rather than formatted strings — `n_layers` and `weight_bytes` are numbers, `temperature`
+renders as `0.8` and not `0.80000001`, `probe` is the sidecar's `name` as a string and
+`probe_layer` its `layer` as a number.
 
 The header half of this entry has been observed three times already, in RH.2, RH.8 and RH.37
-of [rust-harness.md](rust-harness.md), and those banners are what the count and the `dot=`
-claim above were checked against. What none of them read is the record: this entry closes on
-the `run.header` line agreeing with the nine printed ones, and on nothing else.
+of [rust-harness.md](rust-harness.md), and those banners are what the `dot=` claim above was
+checked against. What none of them read is the record, and none loaded a probe: this entry
+closes on the `run.header` line agreeing with the nine printed ones, and on nothing else.
 
 Record both the nine lines and the `run.header` record. The point of the entry is that they
 agree.
 
-Observed:
+Asserted by `tests/hardware/test_run_header.py`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| Nine `[INFO]` lines from `Model:` through `Build:`, in the source's order, `Probe` eighth | `test_the_header_is_nine_info_lines_in_order` |
+| `Fold:` has the `dot= batch= threads=` shape and `dot` is not `sequential` | `test_the_fold_is_the_tuned_kernel_not_the_reference` |
+| `Sampling:` repeats `seed=7 temperature=0.8 max_tokens=16` | `test_the_sampling_line_states_the_flags_the_run_was_given` |
+| `Probe` line equals the sidecar's `name` and `layer` | `test_the_probe_line_names_the_sidecar_it_loaded` |
+| Every `run.header` field is typed (integers, `temperature` a float, `probe` a string) and renders to its printed line; the three byte fields convert to the printed GiB at two decimals | `test_the_record_agrees_with_every_printed_line` |
+| `[WARN] KV cache above 2 GiB` sits after `Build:` and before `Model load:` | `test_the_kv_warning_follows_the_header_and_precedes_the_load` |
+| `Chat ended: 1 model turns`, then the probe report naming `probe-flags.jsonl` in the run directory, which exists; the reply is on stdout | `test_the_run_ends_with_one_turn_and_a_probe_report` |
+
+```bash
+cd ~/workspace/ai-experiments
+HARNESS_E4B_MODEL="$MODEL" uv run pytest -m hw_full tests/hardware/test_run_header.py -v
+```
+
+The test runs the same chat turn with the same probe from a temporary directory and, like
+[RH.13](rust-harness.md)'s, leaves its one row and event file in the real obs root. It skips
+when the checkpoint or the registered probe is absent and fails when the release binary is.
+
+Observed (2026-09-12, the first run, before `--probe` was added to the block; eight header
+lines, the record without `probe` or `probe_layer`):
 
 ```
+➜  ai-experiments git:(rust-harness-ux-verification) ✗ MODEL=/mnt/ai-data/models/hf/gemma-4-E4B
+➜  ai-experiments git:(rust-harness-ux-verification) ✗ set -o pipefail
+rm -rf /tmp/rhx1 && mkdir -p /tmp/rhx1 && cd /tmp/rhx1
+➜  rhx1 printf '%s\n' "Reply with the single word: ready" \
+  | ~/workspace/ai-experiments/rust-harness/target/release/harness \
+      --model "$MODEL" --text-only --chat \
+      --seed 7 --temperature 0.8 --max-tokens 16
+echo "exit=$?"
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E4B hash=e376216f8b693aff layers=42
+[INFO] Weights: 13.90 GiB resident at bf16
+[INFO] Peak RSS after load: 14.03 GiB
+[INFO] KV cache: 131072 tokens, 4.05 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=7 temperature=0.8 max_tokens=16
+[INFO] Build: 0.1.0 git unknown
+[WARN] KV cache above 2 GiB: consider --context to cap it (compaction keeps long sessions inside the cap)
+[INFO] Model load: 9.42 s
+[INFO] Prefill: 16 tokens in 1.24 s (13 tok/s)
+You can use the following LLM model names to use this command: <code>
+[INFO] Chat ended: 1 model turns
+[INFO] Session snapshot: 32 cached tokens at /tmp/rhx1/session.kv
+exit=0
+➜  rhx1 RUN=$(ls -t /mnt/ai-data/logs/harness/R-*.jsonl | head -1)
+echo "$RUN"
+jq -c 'select(.event == "run.header")' "$RUN"
+/mnt/ai-data/logs/harness/R-20260912-150430-77f6ad.jsonl
+{"ts":"2026-09-12T15:04:39.509+00:00","level":"info","run_id":"R-20260912-150430-77f6ad","cli":"harness","command":"chat","pid":175956,"event":"run.header","msg":"resolved run configuration","model":"/mnt/ai-data/models/hf/gemma-4-E4B","model_hash":"e376216f8b693aff","n_layers":42,"dtype":"bf16","weight_bytes":14924906496,"max_context":131072,"kv_bytes":4353867776,"kv_batch_group":64,"threads":8,"dot":"widen4","batch":"64","seed":7,"temperature":0.8,"max_tokens":16,"binary_version":"0.1.0","git_sha":"unknown","peak_rss_bytes":15068209152,"rewind_horizon":208}
 ```
 
-Status: PENDING
+Everything else the first run predicted held: eight `[INFO]` lines in the source's order,
+`dot=widen4`, the warning between `Build:` and `Model load:`, one model turn, exit 0, and a
+record whose byte fields convert to the printed figures (14924906496 B is 13.90 GiB,
+4353867776 B is 4.05 GiB, 15068209152 B is 14.03 GiB) with `n_layers` and `weight_bytes` as
+numbers and `temperature` as `0.8`. The count was the runbook's error, not the header's, and
+the block above was widened rather than the signal narrowed.
+
+Observed (2026-09-12, the widened block, with `--probe`):
+
+```
+➜  rhx1 cp /mnt/ai-data/interp/probes/rust-e4b-verify-probe/probe.safetensors \
+   /mnt/ai-data/interp/probes/rust-e4b-verify-probe/probe.json /tmp/rhx1/
+➜  rhx1 jq -c '{name, layer, width, model_hash}' /tmp/rhx1/probe.json
+{"name":"rust-e4b-verify-probe","layer":8,"width":2560,"model_hash":"43fb96cec3045b72852c787540300dc5b258634b7a025f7c80355ac0788b9651"}
+➜  rhx1 printf '%s\n' "Reply with the single word: ready" \
+  | ~/workspace/ai-experiments/rust-harness/target/release/harness \
+      --model "$MODEL" --text-only --chat --probe /tmp/rhx1/probe.safetensors \
+      --seed 7 --temperature 0.8 --max-tokens 16
+echo "exit=$?"
+ls /tmp/rhx1
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E4B hash=e376216f8b693aff layers=42
+[INFO] Weights: 13.90 GiB resident at bf16
+[INFO] Peak RSS after load: 14.03 GiB
+[INFO] KV cache: 131072 tokens, 4.05 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=7 temperature=0.8 max_tokens=16
+[INFO] Probe rust-e4b-verify-probe: layer 8
+[INFO] Build: 0.1.0 git unknown
+[WARN] KV cache above 2 GiB: consider --context to cap it (compaction keeps long sessions inside the cap)
+[INFO] Model load: 41.26 s
+[INFO] Prefill: 16 tokens in 1.22 s (13 tok/s)
+You can use the following LLM model names to use this command: <code>
+[INFO] Chat ended: 1 model turns
+[INFO] Session snapshot: 32 cached tokens at /tmp/rhx1/session.kv
+[INFO] Probe rust-e4b-verify-probe: 32 positions scored, 12 flagged (threshold 0.9531292), flags at /tmp/rhx1/probe-flags.jsonl
+exit=0
+probe-flags.jsonl  probe.json  probe.safetensors  session.jsonl  session.kv
+➜  rhx1 RUN=$(ls -t /mnt/ai-data/logs/harness/R-*.jsonl | head -1)
+echo "$RUN"
+jq -c 'select(.event == "run.header")' "$RUN"
+/mnt/ai-data/logs/harness/R-20260912-152914-a99088.jsonl
+{"ts":"2026-09-12T15:29:55.810+00:00","level":"info","run_id":"R-20260912-152914-a99088","cli":"harness","command":"chat","pid":240936,"event":"run.header","msg":"resolved run configuration","model":"/mnt/ai-data/models/hf/gemma-4-E4B","model_hash":"e376216f8b693aff","n_layers":42,"dtype":"bf16","weight_bytes":14924906496,"max_context":131072,"kv_bytes":4353867776,"kv_batch_group":64,"threads":8,"dot":"widen4","batch":"64","seed":7,"temperature":0.8,"max_tokens":16,"binary_version":"0.1.0","git_sha":"unknown","peak_rss_bytes":15069581312,"rewind_horizon":208,"probe":"rust-e4b-verify-probe","probe_layer":8}
+```
+
+Observed (2026-09-12, the gate test, first run; the failure bodies cut to their assertion):
+
+```
+tests/hardware/test_run_header.py::test_the_header_is_nine_info_lines_in_order FAILED
+tests/hardware/test_run_header.py::test_the_fold_is_the_tuned_kernel_not_the_reference PASSED
+tests/hardware/test_run_header.py::test_the_sampling_line_states_the_flags_the_run_was_given PASSED
+tests/hardware/test_run_header.py::test_the_probe_line_names_the_sidecar_it_loaded FAILED
+tests/hardware/test_run_header.py::test_the_record_agrees_with_every_printed_line FAILED
+tests/hardware/test_run_header.py::test_the_kv_warning_follows_the_header_and_precedes_the_load PASSED
+tests/hardware/test_run_header.py::test_the_run_ends_with_one_turn_and_a_probe_report PASSED
+
+>       assert list(run.printed()) == HEADER_KEYS, "\n".join(block)
+E       At index 7 diff: 'Probe rust-e4b-verify-probe' != 'Probe'
+
+>       probe = run.printed()["Probe"]
+E       KeyError: 'Probe'
+
+>       assert printed["Probe"] == f"{record['probe']}: layer {record['probe_layer']}", (
+E       KeyError: 'Probe'
+
+[TIER] full: torch present, the whole suite was in scope.
+FAILED tests/hardware/test_run_header.py::test_the_header_is_nine_info_lines_in_order
+FAILED tests/hardware/test_run_header.py::test_the_probe_line_names_the_sidecar_it_loaded
+FAILED tests/hardware/test_run_header.py::test_the_record_agrees_with_every_printed_line
+```
+
+The three failures share one cause in the test, not the header: `Probe {name}: layer {l}` is
+the one line whose value sits before its colon, and the test's parser read
+`Probe rust-e4b-verify-probe` as the key. The parser now keys that line `Probe`; the four
+tests that passed include the fold and the warning's position. The corrected test's rerun
+passed 7 of 7 the same day.
+
+Status: VERIFIED 2026-09-12 on the widened block by hand. Nine `[INFO]` lines with `--probe`
+and eight without, in the source's order; `dot=widen4`; the warning between `Build:` and
+`Model load:`; one model turn, then the probe report, and `probe-flags.jsonl` in `/tmp/rhx1`;
+exit 0. The record carries every printed fact typed: 14924906496 B is 13.90 GiB, 4353867776 B
+is 4.05 GiB, 15069581312 B is 14.03 GiB, `temperature` is `0.8`, `probe` is the sidecar's
+name and `probe_layer` its layer. The sidecar carries a real digest, so no identity warning
+printed and the load line's 41.26 s includes the sha256 over the weights that a 9.42 s
+probe-less load did not pay. The gate test's rerun after the parser fix passed, 7 of 7, as
+reported by the operator on 2026-09-12; the transcript was not pasted.
 
 ## RHX.2 A run states what its two long operations cost
 
@@ -183,12 +357,73 @@ deliberately not built, so an `Observed` block gets clean lines.
 RH.4 in [rust-harness.md](rust-harness.md) measured the delta itself, on a trace; this entry
 is the line a person sees without one.
 
-Observed:
+Asserted by `tests/hardware/test_status_costs.py`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| One `Model load:` line, then two `Prefill:` lines in turn order, then `Chat ended: 2 model turns` | `test_one_load_line_then_one_prefill_line_per_turn` |
+| The printed load equals the `model.load` phase's `duration_s` to two decimals | `test_the_printed_load_is_the_recorded_phase_to_two_decimals` |
+| Each `Prefill:` line's `tok/s` is its own tokens over its own seconds | `test_each_prefill_line_states_its_own_rate` |
+| The second prefill is smaller than the first, the two prefills sum to less than the snapshot's cached tokens, and the remainder is at most two replies | `test_the_second_prefill_is_the_delta_not_the_transcript` |
+| No carriage return in either stream; the replies are on stdout | `test_neither_stream_carries_a_carriage_return` |
+
+The test's first turn is long and its second short, so the second prefill being smaller than
+the first is decisive. That is the check the 2026-09-12 hand run below showed this entry needs:
+on two turns of equal length the two prefills are equal, and only the snapshot arithmetic shows
+the delta.
+
+```bash
+cd ~/workspace/ai-experiments
+HARNESS_E4B_MODEL="$MODEL" uv run pytest -m hw_full tests/hardware/test_status_costs.py -v
+```
+
+Observed (2026-09-12):
 
 ```
+➜  rhx2 printf '%s\n' \
+    "Summarize the Unix philosophy in three sentences" \
+    "Now say that again in one sentence" \
+  | ~/workspace/ai-experiments/rust-harness/target/release/harness \
+      --model "$MODEL" --text-only --chat --max-tokens 32
+echo "exit=$?"
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E4B hash=e376216f8b693aff layers=42
+[INFO] Weights: 13.90 GiB resident at bf16
+[INFO] Peak RSS after load: 14.03 GiB
+[INFO] KV cache: 131072 tokens, 4.05 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=32
+[INFO] Build: 0.1.0 git unknown
+[WARN] KV cache above 2 GiB: consider --context to cap it (compaction keeps long sessions inside the cap)
+[INFO] Model load: 5.70 s
+[INFO] Prefill: 17 tokens in 1.28 s (13 tok/s)
+What is the Unix philosophy? What are the three guiding principles of Unix?
+回答： The Unix philosophy is a set of three guiding principles that govern the design
+[INFO] Prefill: 17 tokens in 1.33 s (13 tok/s)
+The Unix philosophy is a set of three guiding principles that govern the design of Unix systems.
+回答：The Unix philosophy is a set of three guiding principles that
+[INFO] Chat ended: 2 model turns
+[INFO] Session snapshot: 98 cached tokens at /tmp/rhx2/session.kv
+exit=0
+➜  rhx2 RUN=$(ls -t /mnt/ai-data/logs/harness/R-*.jsonl | head -1)
+jq -c 'select(.event == "phase.end" and .phase == "model.load")' "$RUN"
+{"ts":"2026-09-12T15:43:44.511+00:00","level":"info","run_id":"R-20260912-154338-b9b546","cli":"harness","command":"chat","pid":378783,"event":"phase.end","msg":"","phase":"model.load","duration_s":5.704}
 ```
 
-Status: PENDING
+The second prefill is 17 tokens, the same as the first, not "a small fraction" of it: the
+first turn is itself 17 tokens, so the runbook's comparison could never hold on these prompts.
+The delta is visible anyway, in the snapshot: 98 cached tokens is 17 + 32 + 17 + 32, the two
+turns and their two 32-token replies, and a prefill that re-sent the transcript would have
+read 66 tokens (17 + 32 + 17), not 17. The wording was the runbook's error, not the harness's,
+and is left as written per the recording protocol.
+
+Status: VERIFIED 2026-09-12. One `Model load: 5.70 s`, agreeing with the record's
+`duration_s` 5.704 to two decimals; two `Prefill:` lines, 17 tokens each at 13 tok/s, the
+second being the new turn alone as the 98-token snapshot shows; exit 0; no carriage return in
+either stream. The 5.70 s load against RHX.1's 9.42 s and 41.26 s is a warm page cache and no
+probe digest to pay. The replies are a base model continuing a chat template and are
+immaterial. The gate test passed, 5 of 5, as reported by the operator on 2026-09-12; the
+transcript was not pasted.
 
 ## RHX.3 The ladder records the climb it actually ran
 
@@ -221,12 +456,119 @@ attempted rung, each with a numeric `duration_s`. The run directory exists and h
 `step`. A rung that comes back red is still a completed run: it exits non-zero without a
 failure record, the same way a divergence is not a crash.
 
-Observed:
+Asserted by `tests/hardware/test_ladder.py`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| One `ladder.header` naming the checkpoint, the reference directory, the run size, the corpus token count and the fold (`threads`, `dot`, `batch`) | `test_one_ladder_header_names_the_climb` |
+| One `model.load` phase, then one `rung.L<n>` phase per rung the table printed, in order, each with a positive `duration_s` | `test_one_model_load_then_one_phase_per_printed_rung` |
+| The run directory holds a `metrics.jsonl` whose envelope is a `harness` `ladder` report and whose records are one per rung with the rung index as `step` and a `rung_duration_s` agreeing with the phase | `test_the_run_directory_holds_one_metrics_record_per_rung` |
+
+The three ride the climb RH.1b's test already makes, so `make quality-full HW=full` climbs
+once and reads the transcript and the record from the same run.
+
+```bash
+cd ~/workspace/ai-experiments
+HARNESS_E4B_MODEL="$MODEL" uv run pytest -m hw_full tests/hardware/test_ladder.py -v
+```
+
+Observed (2026-09-12; the first attempt was made from the repository root, where no `ladder`
+target exists, and is not recorded):
 
 ```
+➜  rust-harness git:(rust-harness-ux-verification) ✗ make ladder SIZE=quick MODEL="$MODEL"
+echo "exit=$?"
+
+RUN=$(ls -t /mnt/ai-data/logs/harness/R-*.jsonl | head -1)
+jq -c 'select(.event == "ladder.header")' "$RUN"
+jq -c 'select(.event == "phase.end") | {phase, duration_s}' "$RUN"
+ls "/mnt/ai-data/logs/harness/$(basename "$RUN" .jsonl)/"
+cargo run --release -p runtime --bin ladder -- \
+  --text-only --size quick --model /mnt/ai-data/models/hf/gemma-4-E4B --reference fixtures/reference/e4b/quick
+   Compiling runtime v0.1.0 (/home/alejandro/workspace/ai-experiments/rust-harness/runtime)
+    Finished `release` profile [optimized] target(s) in 3.87s
+     Running `target/release/ladder --text-only --size quick --model /mnt/ai-data/models/hf/gemma-4-E4B --reference fixtures/reference/e4b/quick`
+size=quick tokens=512 prompts=2
+prompt=6 tokens
+threads=8
+dot=widen4
+batch=64
+model=/mnt/ai-data/models/hf/gemma-4-E4B
+reference=fixtures/reference/e4b/quick
+
+rung  check                   value         threshold       verdict
+L0    token ids                                             PASS
+      case agreement          1.000000      >= 1.000000     ok
+      5 cases, every id identical
+L1    residual stream                                       PASS
+      worst cosine            1.000000      >= 0.999900     ok
+      worst rel_l2            0.000005      <= 0.001000     ok
+      42 layers within tolerance
+L2    final distribution                                    PASS
+      mean kl                 0.000000      <= 0.001000     ok
+      worst kl                0.000000      <= 0.005000     ok
+      worst top-50 overlap    1.000000      >= 0.980000     ok
+      argmax agreement        1.000000      >= 0.980000     ok
+      1 positions scored; worst at prompt position 5
+L3    perplexity                                            PASS
+      ppl delta               0.000032      <= 0.010000     ok
+      worst token nll         0.001248      <= 0.050000     ok
+      ppl 55.5420 against 55.5438 over 254 tokens; worst token at corpus position 414
+L4    greedy continuation                                   PASS
+      token agreement         1.000000      >= 0.980000     ok
+      mean common prefix      1.000000      >= 0.750000     ok
+      2 prompts, 0 ties
+L5    logits past the window                                PASS
+      scheduled positions agree  1.000000      >= 1.000000     ok
+      worst kl inside window  0.000000      <= 0.005000     ok
+      worst kl past window    0.000000      <= 0.005000     ok
+      worst top-50 overlap    1.000000      >= 0.980000     ok
+      argmax agreement        1.000000      >= 0.980000     ok
+      6 positions across a 512-token window over 2052 tokens; worst at position 1025
+L6    attention past window                                 PASS
+      captured layers agree   1.000000      >= 1.000000     ok
+      weight outside window   0.000000      <= 0.000000     ok
+      worst row max abs diff  0.000023      <= 0.001000     ok
+      worst row mass          0.000001      <= 0.000010     ok
+      worst top-10 overlap    1.000000      >= 0.900000     ok
+      192 rows across 4 layers x 8 heads at 6 positions; window 512; worst at layer 21 head 6 position 1025
+
+timing (not compared; expected to differ between runs)
+  L0        0.51s
+  L1        0.53s
+  L2        0.65s
+  L3       52.12s
+  L4       23.36s
+  L5      270.99s
+  L6      227.47s
+  sum     575.62s  (rung bodies only, excludes model load)
+[OK] Ladder: every rung within tolerance (0 skipped)
+[INFO] Peak RSS at exit: 16.13 GiB
+exit=0
+{"ts":"2026-09-12T16:40:12.371+00:00","level":"info","run_id":"R-20260912-164007-6f27ea","cli":"harness","command":"ladder","pid":754003,"event":"ladder.header","msg":"resolved ladder configuration","model":"/mnt/ai-data/models/hf/gemma-4-E4B","model_hash":"e376216f8b693aff","n_layers":42,"dtype":"bf16","weight_bytes":14924906496,"reference":"fixtures/reference/e4b/quick","size":"quick","corpus_tokens":512,"text_only":true,"threads":8,"dot":"widen4","batch":"64","binary_version":"0.1.0","git_sha":"698d7fed4f1d4d0d45ffdbc4491123ee1c1e1b29"}
+{"phase":"model.load","duration_s":5.331}
+{"phase":"rung.L0","duration_s":0.508}
+{"phase":"rung.L1","duration_s":0.525}
+{"phase":"rung.L2","duration_s":0.65}
+{"phase":"rung.L3","duration_s":52.122}
+{"phase":"rung.L4","duration_s":23.359}
+{"phase":"rung.L5","duration_s":270.992}
+{"phase":"rung.L6","duration_s":227.466}
+metrics.jsonl
 ```
 
-Status: PENDING
+Every rung green, exit 0. The one `ladder.header` names the model, its hash, the reference
+directory, `size=quick`, `corpus_tokens=512` and the fold `threads=8 dot=widen4 batch=64`. Its `git_sha` is the commit
+checked out, where the chat run's envelope at RHX.4 the same morning read `unknown`; that
+binary was built earlier and the difference is not explained here. One `model.load` phase and seven `rung.L<n>`
+phases, each agreeing with the timing table to the centisecond (`L5` 270.992 against
+`270.99s`). The run directory holds `metrics.jsonl` and nothing else, this being a run that
+no `report` has been pointed at yet.
+
+Status: VERIFIED 2026-09-12 by hand (gate-backed by `tests/hardware/test_ladder.py`; its three
+RHX.3 functions were written from this transcript and had not run on the workstation when the
+entry closed, the operator deferring the ten-minute climb to the next `make quality-full
+HW=full`).
 
 ## RHX.4 The training dashboard renders a harness run
 
@@ -264,12 +606,96 @@ cannot be automated, so its `Observed` block will not be pasted output.
 The first line of `metrics.jsonl` is the report envelope. Record it: it is what makes the file
 readable by a tool written for a different tier.
 
-Observed:
+**Fix to confirm here** (details in [bugs/known-bugs.md](../bugs/known-bugs.md)):
+
+- KB-70 — `common/obs/viewer.js` — the header strip read only the training envelope's keys
+  and showed a dash for every field but the run id on the 2026-09-12 page below; the strip now
+  keys its fields on `cli`, the empty chart frames are hidden, and the memory axis sizes its
+  precision to the tick spacing. Fix landed 2026-09-12; re-run `report` on the same directory
+  and reopen `run.html`. The `Fold` and `Build` the strip should now state are the envelope's
+  `dot=widen4 batch=64 threads=8` and `0.1.0 git unknown`. The first re-run (second Observed
+  block below) confirmed those two and exposed the third: the memory labels, now distinct,
+  were clipped by the axis gutter. The gutter now sizes itself to the labels; the labels
+  should read `14.24200` through `14.24240` in full. Confirmed as far as this entry goes on
+  the third render the same day (third Observed block below); the row moved to resolved.
+
+Observed (2026-09-12, on the run directory `tests/hardware/test_status_costs.py` wrote):
 
 ```
+➜  ai-experiments git:(rust-harness-ux-verification) ✗ cd ~/workspace/ai-experiments
+RUN_DIR=$(ls -dt /mnt/ai-data/logs/harness/R-*/ | head -1)
+echo "$RUN_DIR"
+head -1 "$RUN_DIR/metrics.jsonl"
+/mnt/ai-data/logs/harness/R-20260912-160320-91dad9/
+{"schema_version":1,"report":"run_metrics","timestamp":"2026-09-12T16:03:26.184+00:00","run_id":"R-20260912-160320-91dad9","cli":"harness","command":"chat","model":"/mnt/ai-data/models/hf/gemma-4-E4B","model_hash":"e376216f8b693aff","n_layers":42,"dtype":"bf16","weight_bytes":14924906496,"max_context":131072,"kv_bytes":4353867776,"kv_batch_group":64,"threads":8,"dot":"widen4","batch":"64","seed":7,"temperature":0.8,"max_tokens":32,"binary_version":"0.1.0","git_sha":"unknown","peak_rss_bytes":15069679616,"rewind_horizon":208}
+➜  ai-experiments git:(rust-harness-ux-verification) ✗ .venv/bin/python -m training report --run "$RUN_DIR"
+ls -la "$RUN_DIR/run.html"
+[OK] Wrote /mnt/ai-data/logs/harness/R-20260912-160320-91dad9/run.html
+-rw-rw-r-- 1 alejandro alejandro 80246 Sep 12 09:08 /mnt/ai-data/logs/harness/R-20260912-160320-91dad9//run.html
 ```
 
-Status: PENDING
+The page, opened from `file:///mnt/ai-data/logs/harness/R-20260912-160320-91dad9/run.html`
+(screenshot taken 2026-09-12 09:10 local):
+
+- Header strip: `run R-20260912-160320-91dad9  tier -  model -  recipe -  schedule -`. Neither
+  the model, the fold nor the build appears; every field but the run id is a dash.
+- Four empty bordered boxes, two above the throughput chart, one between the two charts, and
+  one below the memory chart: the Loss, Learning rate, Device memory and Rung duration groups,
+  which a chat run has no series for.
+- Throughput (tokens/s): populated, 64 steps, `tokens_per_s` ramping from 0 to about 2.4 over
+  the first 32 steps, dropping at step 32 where the second turn's prefill lands, and ramping
+  again to about 4.3 at step 64. Correct for two 32-token turns.
+- Process memory (GB): populated, flat near 14.24 GB with a step up at 32, but every one of the
+  six y-axis labels reads `14.242`: the axis formatter rounds to three decimals and the series
+  varies below that, so the labels are indistinguishable.
+- Run log: the run's twelve records, from `cmd.start` through `cmd.end` with `exit_code: 0`,
+  each phase's `duration_s` shown (`model.load` 5.83, two `prefill`, two `decode`).
+
+`report` wrote the file and exited 0, and both series U6 promised are present and populated.
+The header strip does not meet the expected signal, and this is the finding: `refreshHeader`
+in `common/obs/viewer.js` reads `tier`, `model_id`, `recipe_hash` and `schedule`, the
+training envelope's keys, and none of `model`, `dot`, `batch`, `threads`, `binary_version` or
+`git_sha` the harness envelope carries. `schemas/run_metrics.json` states that "the dashboard's
+header strip and the terminal's header state the same facts from the same struct"; the strip
+reads none of them. "No Python change" was true and insufficient: the page needed a viewer
+change and did not get one. Two smaller defects from the same screenshot: `render` appends a
+bordered `.chart` holder for every group and `refreshCharts` returns early for the empty ones,
+leaving the boxes, and the memory axis needs more precision than three decimals when its
+range is narrow.
+
+Observed (2026-09-12, the re-run after the strip fix, `report` on the same directory;
+screenshot taken 09:22 local):
+
+- Header strip: `run R-20260912-160320-91dad9  command chat  model
+  /mnt/ai-data/models/hf/gemma-4-E4B  hash e376216f8b693aff  fold dot=widen4 batch=64
+  threads=8  build 0.1.0 git unknown`. Every field the terminal header printed for this run.
+- Two charts and no empty frames: Throughput (tokens/s) and Process memory (GB), then the run
+  log.
+- Process memory y-axis: five labels reading `24200`, `24210`, `24220`, `24230`, `24240` on a
+  chart whose values are near 14.24 GB.
+
+The labels are distinct, which is the precision fix working, and they are wrong to read
+because the leading `14.` is off the canvas. The series varies by tens of KB, so the tick
+spacing is 0.00001 and each label is eight characters, `14.24200` through `14.24240`. uPlot's
+y-axis gutter is a fixed 50 px by default and draws labels right-aligned against it, so a label
+wider than the gutter loses its left edge. The sandbox fixture used a 0.0001 spacing, one
+character shorter, which fit by a few pixels and did not reproduce this. The gutter now sizes
+itself to the widest label, and the harness fixture uses the workstation's spacing, on which
+the old gutter fails the check (50 px against 72 px needed).
+
+Observed (2026-09-12, the third render, `report` on the same directory after the gutter fix;
+reported in prose, no screenshot):
+
+The operator reported one remaining defect: the `rss_gb` value in the process-memory legend
+does not change as the cursor moves along the chart line. They did not report on the axis
+labels, and closed the entry at this point: the page is good enough for the campaign, and the
+dashboard's UX is to be cleaned up in a later pass. The hover readout is filed as KB-71.
+
+Status: VERIFIED 2026-09-12 with the KB-71 caveat. `report` wrote the page and exited 0 on
+all three renders; the throughput and process-memory series were present from the first, and
+the strip named the terminal header's model, fold and build from the second. Closed at the
+operator's decision with the memory legend's hover readout open and the axis labels
+unconfirmed.
 
 ## RHX.5 A capture is traceable to the invocation that made it
 
@@ -310,12 +736,79 @@ file, which is the scope decision observed rather than assumed. `harness-runs` s
 whose command is `activation-capture`, beside rows for `task` and `ladder`, all under one
 catalog.
 
-Observed:
+Asserted by `tests/hardware/test_capture_run_record.py`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| One `activation-capture.header` whose `model`, `dataset`, `out`, `layers` and `examples` are what was passed, carrying the fold and the build; the `[OK] Capture:` line's count equals its `examples` | `test_one_header_names_the_invocation` |
+| One `model.load` phase, at least a second long, written before the header | `test_one_model_load_phase_in_seconds` |
+| No run directory: the catalog row's `run_dir` names a path that does not exist | `test_no_run_directory_and_the_row_says_so` |
+| One catalog row, command `activation-capture`, exit 0, its run id the header's and `cmd.end`'s | `test_the_catalog_row_names_this_run` |
+
+The test captures the first eight lines of the refusal set where this entry captured all 258;
+the record is the same shape at any length, and eight keeps the gate to one load plus seconds.
+
+```bash
+cd ~/workspace/ai-experiments
+HARNESS_E4B_MODEL="$MODEL" uv run pytest -m hw_full tests/hardware/test_capture_run_record.py -v
+```
+
+Observed (2026-09-12; the 258 `[RUN] Example n/258: k tokens` lines between the first and
+last are elided here, every one of that shape with 8 to 19 tokens):
 
 ```
+➜  rust-harness git:(rust-harness-ux-verification) ✗ cargo run --release -q -p runtime --bin activation-capture -- \
+  --model "$MODEL" --text-only \
+  --dataset ../interp/probes/prompts/refusal.jsonl \
+  --layers 8,16,24 --out /tmp/rhx5
+echo "exit=$?"
+[RUN] Example 1/258: 15 tokens
+[RUN] Example 2/258: 13 tokens
+...
+[RUN] Example 257/258: 12 tokens
+[RUN] Example 258/258: 11 tokens
+[OK] Capture: 258 examples, 3 layers, 1 shards -> /tmp/rhx5
+exit=0
 ```
 
-Status: PENDING
+The first pass at the reading half assigned the run file to a mistyped variable and read the
+ladder's file from RHX.3; it is not recorded. The second, against the run id the catalog
+listed:
+
+```
+➜  ai-experiments git:(rust-harness-ux-verification) ✗ RUN=/mnt/ai-data/logs/harness/R-20260912-170211-f585ef.jsonl
+jq -c 'select(.event == "activation-capture.header")' "$RUN"
+jq -c 'select(.event == "phase.end")' "$RUN"
+ls -d "/mnt/ai-data/logs/harness/$(basename "$RUN" .jsonl)/" 2>&1
+{"ts":"2026-09-12T17:02:17.178+00:00","level":"info","run_id":"R-20260912-170211-f585ef","cli":"harness","command":"activation-capture","pid":1304419,"event":"activation-capture.header","msg":"resolved capture configuration","model":"/mnt/ai-data/models/hf/gemma-4-E4B","model_hash":"e376216f8b693aff","n_layers":42,"dtype":"bf16","weight_bytes":14924906496,"layers":"8,16,24","dataset":"../interp/probes/prompts/refusal.jsonl","examples":258,"out":"/tmp/rhx5","text_only":true,"threads":8,"dot":"widen4","batch":"64","binary_version":"0.1.0","git_sha":"e451466bf02f437a54a7458309b9d877c494e68b"}
+{"ts":"2026-09-12T17:02:16.715+00:00","level":"info","run_id":"R-20260912-170211-f585ef","cli":"harness","command":"activation-capture","pid":1304419,"event":"phase.end","msg":"","phase":"model.load","duration_s":5.487}
+ls: cannot access '/mnt/ai-data/logs/harness/R-20260912-170211-f585ef/': No such file or directory
+```
+
+```
+➜  rust-harness git:(rust-harness-ux-verification) ✗ cd ~/workspace/ai-experiments && make harness-runs ARGS='-n 5'
+uv run --no-sync python -m common.obs.runs --cli harness -n 5
+FINISHED             RUN ID                    COMMAND             EXIT    DURATION
+2026-09-12T15:37:39  R-20260912-153654-1f95ad  chat                   0     45.107s
+2026-09-12T15:43:58  R-20260912-154338-b9b546  chat                   0     19.581s
+2026-09-12T16:03:46  R-20260912-160320-91dad9  chat                   0     26.043s
+2026-09-12T16:49:48  R-20260912-164007-6f27ea  ladder                 0    581.237s
+2026-09-12T17:07:04  R-20260912-170211-f585ef  activation-capture     0    292.917s
+```
+
+One header naming the model and its hash, `layers` `8,16,24`, the dataset, `examples` 258,
+the output directory and the fold `threads=8 dot=widen4 batch=64`; one `model.load` phase; no
+run directory, the `ls` failing as the scope decision predicts; and the catalog row for the
+capture beside the day's `ladder` and `chat` rows. The catalog has no `task` row because no
+`task` run was made today; the expected signal's "beside rows for `task` and `ladder`" assumed
+one. The load took 5.487 s, not the "tens of seconds" the expected signal estimated: it agrees
+with the 5.33 s and 5.70 s the ladder and the chat measured on the same warm page cache, so
+the estimate was high and the distinction it draws, seconds against the fixture's
+milliseconds, holds.
+
+Status: VERIFIED 2026-09-12 by hand (gate-backed by `tests/hardware/test_capture_run_record.py`,
+4 passed on the workstation the same day). Every signal present; the two mismatches above are
+in the expected signal's wording, not the run.
 
 ## RHX.6 A failure states a remedy that runs as printed
 
@@ -343,6 +836,10 @@ echo "exit=$?"
 # 3. a probe of the wrong width against real weights: the E2B-it probe RH.9b
 #    exported, 1536 wide, against E4B's 2560. Named, not globbed: the E4B
 #    probe RH.16 step 4b built sits beside it and passes the width check.
+#    The registry directory holds the trained probe.npz; RH.9c exported its
+#    harness image to /tmp, so export in place first, as RH.16 step 4b did.
+(cd ~/workspace/ai-experiments && make probe-export \
+   ARGS="--probe /mnt/ai-data/interp/probes/rust-e2b-it-refusal-probe")
 cp /mnt/ai-data/interp/probes/rust-e2b-it-refusal-probe/probe.safetensors \
    /mnt/ai-data/interp/probes/rust-e2b-it-refusal-probe/probe.json /tmp/rhx6/
 ~/workspace/ai-experiments/rust-harness/target/release/harness \
@@ -366,16 +863,149 @@ Step 1's three lines have been observed already, in RH.13 (2026-09-06) and RH.16
 [rust-harness.md](rust-harness.md); neither ran the `Command:` it printed. Steps 2 and 4 are
 this entry's claim.
 
+The first attempt on 2026-09-12 stopped at step 3's copy: the registry directory held only
+`manifest.json` and `probe.npz`, because RH.9c had exported the E2B-it image to `/tmp` and
+never into the directory, so the export step above was added to the command.
+
 If a `Command:` line fails to run, that is the finding and the entry is `FAILED` — the
 placeholder assertion passing while the command is unusable is exactly the gap this entry
 exists to close.
 
+Asserted by `tests/hardware/test_remedy_runs_as_printed.py`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| A missing checkpoint: exit 1, stdout empty, stderr exactly the tagged diagnosis, `Solution:` and `Command:`, the command `ls` of the path given, no placeholder | `test_a_missing_checkpoint_is_three_lines_and_nothing_else` |
+| That `ls`, pasted verbatim into a shell, lists the directory as missing | `test_the_ls_remedy_runs_as_printed` |
+| A probe fitted on other weights: the same three lines and no header, the diagnosis naming the probe's hash and the served digest, the command `--status --deep` spelled with the binary as invoked (KB-72) | `test_a_foreign_probe_is_refused_before_the_load_and_names_the_binary_invoked` |
+| That preflight, pasted verbatim into a shell, reports the same identity fault, digest for digest | `test_the_preflight_remedy_runs_as_printed_and_reports_the_same_fault` |
+
+The test builds its foreign probe with the real exporter at E4B's width rather than copying
+RH.9b's from the registry, so it depends on no host artifact; the fault reached is the same,
+the identity check, because `main.rs` compares hashes before widths.
+
+```bash
+cd ~/workspace/ai-experiments
+HARNESS_E4B_MODEL="$MODEL" uv run pytest -m hw_full tests/hardware/test_remedy_runs_as_printed.py -v
+```
+
 Observed:
 
 ```
+➜  rhx6 ~/workspace/ai-experiments/rust-harness/target/release/harness \
+  --model /mnt/ai-data/models/hf/absent --text-only "say ready"
+echo "exit=$?"
+
+[ERROR] Task failed: read model /mnt/ai-data/models/hf/absent: no checkpoint at /mnt/ai-data/models/hf/absent: expected a directory holding config.json and model.safetensors, or a path to the weights file itself
+  Solution: point --model at a directory holding config.json and model.safetensors, or at the weights file itself
+  Command: ls /mnt/ai-data/models/hf/absent
+exit=1
+➜  rhx6 ls /mnt/ai-data/models/hf/absent
+echo "exit=$?"
+
+ls: cannot access '/mnt/ai-data/models/hf/absent': No such file or directory
+exit=2
+➜  rhx6 (cd ~/workspace/ai-experiments && make probe-export \
+   ARGS="--probe /mnt/ai-data/interp/probes/rust-e2b-it-refusal-probe")
+cp /mnt/ai-data/interp/probes/rust-e2b-it-refusal-probe/probe.safetensors \
+   /mnt/ai-data/interp/probes/rust-e2b-it-refusal-probe/probe.json /tmp/rhx6/
+~/workspace/ai-experiments/rust-harness/target/release/harness \
+  --model "$MODEL" --text-only --probe /tmp/rhx6/probe.safetensors "say ready"
+echo "exit=$?"
+uv run python -m interp probe-export --probe /mnt/ai-data/interp/probes/rust-e2b-it-refusal-probe
+[RUN] Exporting /mnt/ai-data/interp/probes/rust-e2b-it-refusal-probe
+[OK] Image written: /mnt/ai-data/interp/probes/rust-e2b-it-refusal-probe/probe.safetensors
+[OK] Sidecar written: /mnt/ai-data/interp/probes/rust-e2b-it-refusal-probe/probe.json
+  [INFO] Serve with: make harness-serve HARNESS_PROBE=/app/probes/rust-e2b-it-refusal-probe/probe.safetensors
+[ERROR] Task failed: probe was trained on a different model: probe model_hash 2db5482b20d746879bb3ef79b5203e9075a2e2b98f54ec7c2f281c1477ddc550, served model sha256 43fb96cec3045b72852c787540300dc5b258634b7a025f7c80355ac0788b9651
+  Solution: serve the weights the probe was fitted on, or re-export the probe against these
+  Command: harness --status --deep --model /mnt/ai-data/models/hf/gemma-4-E4B --probe /tmp/rhx6/probe.safetensors
+exit=1
+➜  rhx6 harness --status --deep --model /mnt/ai-data/models/hf/gemma-4-E4B --probe /tmp/rhx6/probe.safetensors
+echo "exit=$?"
+harness: command not found
+exit=127
 ```
 
-Status: PENDING
+Run 2026-09-12. Steps 1 and 2 hold: three lines, stdout empty, and the `ls` did what the
+remedy claimed. Step 3 raised two mismatches with the expected signal above, both in the
+signal's favour and neither a defect: the fault named is the model hash, not the width,
+because `main.rs` compares the probe's `model_hash` to the served weights before it compares
+widths and the E2B-it probe fails the earlier check; and no header preceded the error, so the
+wrong probe cost no load. Step 4 is the failure the entry was written to find. The
+`Command:` line begins with a bare `harness`, which `cli::usage` spells and
+`every_command_is_runnable_as_printed` pins, and nothing installs the binary on `PATH`: the
+operator runs it as `target/release/harness`, so the line pasted back is `command not found`,
+exit 127. Filed as KB-72. The fix lands with this entry: `actionable::render` replaces that
+leading `harness` with the invocation's own `argv[0]`, so the line names the binary the way
+it was just run; the `ls` remedy is untouched. `actionable_surface.rs` now asserts the printed
+command begins with the path the test invoked. Step 4 re-runs after `cargo build --release`.
+
+Step 3 re-run on the rebuilt binary, the same day:
+
+```
+➜  ai-experiments git:(rust-harness-ux-verification) ✗ cd ~/workspace/ai-experiments && git pull origin rust-harness-ux-verification \
+  && cargo build --release -p harness --manifest-path rust-harness/Cargo.toml
+cd /tmp/rhx6
+~/workspace/ai-experiments/rust-harness/target/release/harness \
+  --model "$MODEL" --text-only --probe /tmp/rhx6/probe.safetensors "say ready"
+echo "exit=$?"
+   Compiling runtime v0.1.0 (/home/alejandro/workspace/ai-experiments/rust-harness/runtime)
+   Compiling harness v0.1.0 (/home/alejandro/workspace/ai-experiments/rust-harness/harness)
+    Finished `release` profile [optimized] target(s) in 4.16s
+[ERROR] Task failed: probe was trained on a different model: probe model_hash 2db5482b20d746879bb3ef79b5203e9075a2e2b98f54ec7c2f281c1477ddc550, served model sha256 43fb96cec3045b72852c787540300dc5b258634b7a025f7c80355ac0788b9651
+  Solution: serve the weights the probe was fitted on, or re-export the probe against these
+  Command: /home/alejandro/workspace/ai-experiments/rust-harness/target/release/harness --status --deep --model /mnt/ai-data/models/hf/gemma-4-E4B --probe /tmp/rhx6/probe.safetensors
+exit=1
+```
+
+Step 4 on that line, the same day:
+
+```
+➜  rhx6 cd /tmp/rhx6
+/home/alejandro/workspace/ai-experiments/rust-harness/target/release/harness --status --deep --model /mnt/ai-data/models/hf/gemma-4-E4B --probe /tmp/rhx6/probe.safetensors
+echo "exit=$?"
+[OK] model directory: /mnt/ai-data/models/hf/gemma-4-E4B
+[OK] checkpoint files: config.json and model.safetensors present, header names 2130 tensors
+[OK] config.json: 42 layers, hidden size 2560, context 131072
+[ERROR] backend compatibility: checkpoint is multimodal: it carries 114 tensor families in model.audio_tower., model.embed_audio., model.embed_vision., model.vision_tower., and this backend serves text only. Pass --text-only to load the text stack and decline the rest
+[OK] probe: rust-e2b-it-refusal-probe, layer 1, site LayerOutput, width 1536
+[ERROR] probe geometry: probe width 1536 does not match model embedding dimension 2560
+[ERROR] probe identity: trained on a different model: artifact model_hash 2db5482b20d746879bb3ef79b5203e9075a2e2b98f54ec7c2f281c1477ddc550, served model sha256 43fb96cec3045b72852c787540300dc5b258634b7a025f7c80355ac0788b9651
+[SKIP] control vector: no --control-vector given
+[SKIP] control vector identity: no --control-vector given
+[SKIP] interp log directory: no --interp-log given
+[OK] obs log directory: /mnt/ai-data/logs/harness is writable
+exit=1
+```
+
+The pasted line ran, and its `probe identity` verdict carries the two digests the run's
+diagnosis named, so the remedy reports the fault the run hit; the `probe geometry` verdict
+beside it is the width fault the entry was written to provoke, which the run path never
+reached. One lesser finding, filed as KB-73: the run was given `--text-only` and the
+`Command:` line does not carry it, so the preflight also reports a `backend compatibility`
+fault the run did not have. The remedy still does what it claims; it says one thing more
+than the run did.
+
+The gate test then ran on the same tree:
+
+```
+➜  ai-experiments git:(rust-harness-ux-verification) ✗ cd ~/workspace/ai-experiments && git pull origin rust-harness-ux-verification
+HARNESS_E4B_MODEL="$MODEL" uv run pytest -m hw_full tests/hardware/test_remedy_runs_as_printed.py -v
+collected 4 items
+
+tests/hardware/test_remedy_runs_as_printed.py::test_a_missing_checkpoint_is_three_lines_and_nothing_else PASSED                                                             [ 25%]
+tests/hardware/test_remedy_runs_as_printed.py::test_the_ls_remedy_runs_as_printed PASSED                                                                                    [ 50%]
+tests/hardware/test_remedy_runs_as_printed.py::test_a_foreign_probe_is_refused_before_the_load_and_names_the_binary_invoked PASSED                                          [ 75%]
+tests/hardware/test_remedy_runs_as_printed.py::test_the_preflight_remedy_runs_as_printed_and_reports_the_same_fault PASSED                                                  [100%]
+
+[TIER] full: torch present, the whole suite was in scope.
+========================================================================== 4 passed in 77.25s (0:01:17) ===========================================================================
+```
+
+Status: VERIFIED 2026-09-12 (gate-backed by `tests/hardware/test_remedy_runs_as_printed.py`,
+4 passed on the workstation the same day). Failed first at step 4 with exit 127, KB-72; fixed
+and re-run the same day; KB-73 open for the dropped `--text-only`.
 
 ## RHX.7 One catalog serves the whole workspace
 

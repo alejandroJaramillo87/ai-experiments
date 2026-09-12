@@ -223,4 +223,11 @@ fn a_probe_of_the_wrong_width_states_the_fix() {
     assert!(lines[1].starts_with("  Solution: "), "{err}");
     assert!(lines[2].starts_with("  Command: "), "{err}");
     assert!(!lines[2].contains('<'), "{err}");
+    // The command names the binary the way this test invoked it, not a bare
+    // `harness` no PATH holds: RHX.6 pasted that and got exit 127.
+    let program = env!("CARGO_BIN_EXE_harness");
+    assert!(
+        lines[2].starts_with(&format!("  Command: {program} --status")),
+        "the command must name the invoked binary: {err}"
+    );
 }
