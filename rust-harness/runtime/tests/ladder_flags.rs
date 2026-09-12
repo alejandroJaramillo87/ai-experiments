@@ -221,6 +221,35 @@ fn every_thread_width_prints_the_same_ladder_table() {
     assert_eq!(short.table(), reference.table());
 }
 
+/// `--single-thread` beside `--threads` is a usage error naming both, decided
+/// before any checkpoint is opened.
+///
+/// The two used to be accepted together, with `--threads` winning whatever
+/// the argv order, which is a width the caller did not visibly choose. The
+/// paths here do not exist: reaching the loader would show as exit 1.
+#[test]
+fn single_thread_beside_threads_is_a_usage_error_naming_both() {
+    let dir = tempfile::tempdir().expect("a scratch working directory");
+    for order in [
+        ["--single-thread", "--threads", "2"],
+        ["--threads", "2", "--single-thread"],
+    ] {
+        let out = Command::new(env!("CARGO_BIN_EXE_ladder"))
+            .args(["--model", "/nonexistent", "--reference", "/nonexistent"])
+            .args(order)
+            .current_dir(dir.path())
+            .env("OBS_LOG_DIR", dir.path().join("logs"))
+            .output()
+            .expect("the ladder builds as a test binary");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(2), "{order:?}: {stderr}");
+        assert!(
+            stderr.contains("--single-thread") && stderr.contains("--threads"),
+            "{order:?}: the error must name both flags: {stderr}"
+        );
+    }
+}
+
 /// `--batch` changes when a dot product runs and not what it sums.
 #[test]
 fn every_batch_mode_prints_the_same_ladder_table() {

@@ -522,6 +522,16 @@ fn main() -> ExitCode {
     // serializes threads anyway; --threads exists because the width that is
     // actually fastest on a given machine has to be swept for, and rebuilding
     // between widths would put a recompile inside the measurement.
+    //
+    // Both at once is refused: --single-thread is --threads 1 by its own help
+    // text, so a second width beside it is a contradiction, and the value
+    // that won used to depend on nothing the caller could see.
+    if parsed.has("--single-thread") && threads_arg.is_some() {
+        return runtime::cli::usage_error(
+            &SPEC,
+            "--single-thread and --threads: pass one; --single-thread is --threads 1",
+        );
+    }
     let mut threads = parsed.has("--single-thread").then_some(1);
     let mut dot = DotKind::default();
     let mut batch = BatchKind::default();
