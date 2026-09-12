@@ -4,7 +4,7 @@
 operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate —
 both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 2 verified, 0 blocked, 10 pending, of 12.** RHX.9 joined the eight `U`-campaign
+**Entries: 3 verified, 0 blocked, 9 pending, of 12.** RHX.9 joined the eight `U`-campaign
 entries from the surface inventory: it records a defect in the `--dot` help text and the check
 that closes it.
 
@@ -509,7 +509,8 @@ readable by a tool written for a different tier.
   `dot=widen4 batch=64 threads=8` and `0.1.0 git unknown`. The first re-run (second Observed
   block below) confirmed those two and exposed the third: the memory labels, now distinct,
   were clipped by the axis gutter. The gutter now sizes itself to the labels; the labels
-  should read `14.24200` through `14.24240` in full.
+  should read `14.24200` through `14.24240` in full. Confirmed as far as this entry goes on
+  the third render the same day (third Observed block below); the row moved to resolved.
 
 Observed (2026-09-12, on the run directory `tests/hardware/test_status_costs.py` wrote):
 
@@ -575,9 +576,19 @@ character shorter, which fit by a few pixels and did not reproduce this. The gut
 itself to the widest label, and the harness fixture uses the workstation's spacing, on which
 the old gutter fails the check (50 px against 72 px needed).
 
-Status: PENDING (failed 2026-09-12 on the header strip, then on the memory axis gutter; re-run
-after the gutter fix). The report, both series, and now the strip held; the axis labels did
-not read in full.
+Observed (2026-09-12, the third render, `report` on the same directory after the gutter fix;
+reported in prose, no screenshot):
+
+The operator reported one remaining defect: the `rss_gb` value in the process-memory legend
+does not change as the cursor moves along the chart line. They did not report on the axis
+labels, and closed the entry at this point: the page is good enough for the campaign, and the
+dashboard's UX is to be cleaned up in a later pass. The hover readout is filed as KB-71.
+
+Status: VERIFIED 2026-09-12 with the KB-71 caveat. `report` wrote the page and exited 0 on
+all three renders; the throughput and process-memory series were present from the first, and
+the strip named the terminal header's model, fold and build from the second. Closed at the
+operator's decision with the memory legend's hover readout open and the axis labels
+unconfirmed.
 
 ## RHX.5 A capture is traceable to the invocation that made it
 
