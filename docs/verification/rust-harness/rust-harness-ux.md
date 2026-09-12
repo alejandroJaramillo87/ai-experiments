@@ -4,7 +4,7 @@
 operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate —
 both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 1 verified, 0 blocked, 11 pending, of 12.** RHX.9 joined the eight `U`-campaign
+**Entries: 2 verified, 0 blocked, 10 pending, of 12.** RHX.9 joined the eight `U`-campaign
 entries from the surface inventory: it records a defect in the `--dot` help text and the check
 that closes it.
 
@@ -357,12 +357,52 @@ deliberately not built, so an `Observed` block gets clean lines.
 RH.4 in [rust-harness.md](rust-harness.md) measured the delta itself, on a trace; this entry
 is the line a person sees without one.
 
-Observed:
+Observed (2026-09-12):
 
 ```
+➜  rhx2 printf '%s\n' \
+    "Summarize the Unix philosophy in three sentences" \
+    "Now say that again in one sentence" \
+  | ~/workspace/ai-experiments/rust-harness/target/release/harness \
+      --model "$MODEL" --text-only --chat --max-tokens 32
+echo "exit=$?"
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E4B hash=e376216f8b693aff layers=42
+[INFO] Weights: 13.90 GiB resident at bf16
+[INFO] Peak RSS after load: 14.03 GiB
+[INFO] KV cache: 131072 tokens, 4.05 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=32
+[INFO] Build: 0.1.0 git unknown
+[WARN] KV cache above 2 GiB: consider --context to cap it (compaction keeps long sessions inside the cap)
+[INFO] Model load: 5.70 s
+[INFO] Prefill: 17 tokens in 1.28 s (13 tok/s)
+What is the Unix philosophy? What are the three guiding principles of Unix?
+回答： The Unix philosophy is a set of three guiding principles that govern the design
+[INFO] Prefill: 17 tokens in 1.33 s (13 tok/s)
+The Unix philosophy is a set of three guiding principles that govern the design of Unix systems.
+回答：The Unix philosophy is a set of three guiding principles that
+[INFO] Chat ended: 2 model turns
+[INFO] Session snapshot: 98 cached tokens at /tmp/rhx2/session.kv
+exit=0
+➜  rhx2 RUN=$(ls -t /mnt/ai-data/logs/harness/R-*.jsonl | head -1)
+jq -c 'select(.event == "phase.end" and .phase == "model.load")' "$RUN"
+{"ts":"2026-09-12T15:43:44.511+00:00","level":"info","run_id":"R-20260912-154338-b9b546","cli":"harness","command":"chat","pid":378783,"event":"phase.end","msg":"","phase":"model.load","duration_s":5.704}
 ```
 
-Status: PENDING
+The second prefill is 17 tokens, the same as the first, not "a small fraction" of it: the
+first turn is itself 17 tokens, so the runbook's comparison could never hold on these prompts.
+The delta is visible anyway, in the snapshot: 98 cached tokens is 17 + 32 + 17 + 32, the two
+turns and their two 32-token replies, and a prefill that re-sent the transcript would have
+read 66 tokens (17 + 32 + 17), not 17. The wording was the runbook's error, not the harness's,
+and is left as written per the recording protocol.
+
+Status: VERIFIED 2026-09-12. One `Model load: 5.70 s`, agreeing with the record's
+`duration_s` 5.704 to two decimals; two `Prefill:` lines, 17 tokens each at 13 tok/s, the
+second being the new turn alone as the 98-token snapshot shows; exit 0; no carriage return in
+either stream. The 5.70 s load against RHX.1's 9.42 s and 41.26 s is a warm page cache and no
+probe digest to pay. The replies are a base model continuing a chat template and are
+immaterial.
 
 ## RHX.3 The ladder records the climb it actually ran
 
