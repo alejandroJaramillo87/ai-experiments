@@ -4,7 +4,7 @@
 operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate —
 both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 4 verified, 0 blocked, 8 pending, of 12.** RHX.9 joined the eight `U`-campaign
+**Entries: 5 verified, 0 blocked, 7 pending, of 12.** RHX.9 joined the eight `U`-campaign
 entries from the surface inventory: it records a defect in the `--dot` help text and the check
 that closes it.
 
@@ -736,12 +736,61 @@ file, which is the scope decision observed rather than assumed. `harness-runs` s
 whose command is `activation-capture`, beside rows for `task` and `ladder`, all under one
 catalog.
 
-Observed:
+Observed (2026-09-12; the 258 `[RUN] Example n/258: k tokens` lines between the first and
+last are elided here, every one of that shape with 8 to 19 tokens):
 
 ```
+➜  rust-harness git:(rust-harness-ux-verification) ✗ cargo run --release -q -p runtime --bin activation-capture -- \
+  --model "$MODEL" --text-only \
+  --dataset ../interp/probes/prompts/refusal.jsonl \
+  --layers 8,16,24 --out /tmp/rhx5
+echo "exit=$?"
+[RUN] Example 1/258: 15 tokens
+[RUN] Example 2/258: 13 tokens
+...
+[RUN] Example 257/258: 12 tokens
+[RUN] Example 258/258: 11 tokens
+[OK] Capture: 258 examples, 3 layers, 1 shards -> /tmp/rhx5
+exit=0
 ```
 
-Status: PENDING
+The first pass at the reading half assigned the run file to a mistyped variable and read the
+ladder's file from RHX.3; it is not recorded. The second, against the run id the catalog
+listed:
+
+```
+➜  ai-experiments git:(rust-harness-ux-verification) ✗ RUN=/mnt/ai-data/logs/harness/R-20260912-170211-f585ef.jsonl
+jq -c 'select(.event == "activation-capture.header")' "$RUN"
+jq -c 'select(.event == "phase.end")' "$RUN"
+ls -d "/mnt/ai-data/logs/harness/$(basename "$RUN" .jsonl)/" 2>&1
+{"ts":"2026-09-12T17:02:17.178+00:00","level":"info","run_id":"R-20260912-170211-f585ef","cli":"harness","command":"activation-capture","pid":1304419,"event":"activation-capture.header","msg":"resolved capture configuration","model":"/mnt/ai-data/models/hf/gemma-4-E4B","model_hash":"e376216f8b693aff","n_layers":42,"dtype":"bf16","weight_bytes":14924906496,"layers":"8,16,24","dataset":"../interp/probes/prompts/refusal.jsonl","examples":258,"out":"/tmp/rhx5","text_only":true,"threads":8,"dot":"widen4","batch":"64","binary_version":"0.1.0","git_sha":"e451466bf02f437a54a7458309b9d877c494e68b"}
+{"ts":"2026-09-12T17:02:16.715+00:00","level":"info","run_id":"R-20260912-170211-f585ef","cli":"harness","command":"activation-capture","pid":1304419,"event":"phase.end","msg":"","phase":"model.load","duration_s":5.487}
+ls: cannot access '/mnt/ai-data/logs/harness/R-20260912-170211-f585ef/': No such file or directory
+```
+
+```
+➜  rust-harness git:(rust-harness-ux-verification) ✗ cd ~/workspace/ai-experiments && make harness-runs ARGS='-n 5'
+uv run --no-sync python -m common.obs.runs --cli harness -n 5
+FINISHED             RUN ID                    COMMAND             EXIT    DURATION
+2026-09-12T15:37:39  R-20260912-153654-1f95ad  chat                   0     45.107s
+2026-09-12T15:43:58  R-20260912-154338-b9b546  chat                   0     19.581s
+2026-09-12T16:03:46  R-20260912-160320-91dad9  chat                   0     26.043s
+2026-09-12T16:49:48  R-20260912-164007-6f27ea  ladder                 0    581.237s
+2026-09-12T17:07:04  R-20260912-170211-f585ef  activation-capture     0    292.917s
+```
+
+One header naming the model and its hash, `layers` `8,16,24`, the dataset, `examples` 258,
+the output directory and the fold `threads=8 dot=widen4 batch=64`; one `model.load` phase; no
+run directory, the `ls` failing as the scope decision predicts; and the catalog row for the
+capture beside the day's `ladder` and `chat` rows. The catalog has no `task` row because no
+`task` run was made today; the expected signal's "beside rows for `task` and `ladder`" assumed
+one. The load took 5.487 s, not the "tens of seconds" the expected signal estimated: it agrees
+with the 5.33 s and 5.70 s the ladder and the chat measured on the same warm page cache, so
+the estimate was high and the distinction it draws, seconds against the fixture's
+milliseconds, holds.
+
+Status: VERIFIED 2026-09-12 by hand. Every signal present; the two mismatches above are in the
+expected signal's wording, not the run.
 
 ## RHX.6 A failure states a remedy that runs as printed
 
