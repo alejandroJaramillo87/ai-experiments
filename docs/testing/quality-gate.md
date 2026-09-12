@@ -85,6 +85,10 @@ And the run header (RHX.1): `run_header.rs` holds the printed lines to the recor
 the fixture, and `tests/hardware/test_run_header.py` under `hw_full` runs one chat turn on the
 released E4B with the registered probe loaded, so all nine lines print, and reads the
 `run.header` record back off the real obs root to hold each line to its field at scale.
+And the two cost lines (RHX.2): `status_streams.rs` pins one `Model load:` and one `Prefill:`
+line over the fixture, and `tests/hardware/test_status_costs.py` under `hw_full` runs two chat
+turns of unequal length on the released E4B, holds the printed load to the recorded phase, and
+reads the second `Prefill:` line as the delta the fixture is too small to show.
 Two more hardware tests have no sandbox half at all, because their question is the released
 weights themselves: `tests/hardware/test_shared_kv_weights.py` under `hw_e4b` reads every
 attention projection of E4B through safetensors and asks whether the shared-KV tail's

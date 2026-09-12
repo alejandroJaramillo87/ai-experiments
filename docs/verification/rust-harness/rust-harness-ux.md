@@ -357,6 +357,26 @@ deliberately not built, so an `Observed` block gets clean lines.
 RH.4 in [rust-harness.md](rust-harness.md) measured the delta itself, on a trace; this entry
 is the line a person sees without one.
 
+Asserted by `tests/hardware/test_status_costs.py`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| One `Model load:` line, then two `Prefill:` lines in turn order, then `Chat ended: 2 model turns` | `test_one_load_line_then_one_prefill_line_per_turn` |
+| The printed load equals the `model.load` phase's `duration_s` to two decimals | `test_the_printed_load_is_the_recorded_phase_to_two_decimals` |
+| Each `Prefill:` line's `tok/s` is its own tokens over its own seconds | `test_each_prefill_line_states_its_own_rate` |
+| The second prefill is smaller than the first, the two prefills sum to less than the snapshot's cached tokens, and the remainder is at most two replies | `test_the_second_prefill_is_the_delta_not_the_transcript` |
+| No carriage return in either stream; the replies are on stdout | `test_neither_stream_carries_a_carriage_return` |
+
+The test's first turn is long and its second short, so the second prefill being smaller than
+the first is decisive. That is the check the 2026-09-12 hand run below showed this entry needs:
+on two turns of equal length the two prefills are equal, and only the snapshot arithmetic shows
+the delta.
+
+```bash
+cd ~/workspace/ai-experiments
+HARNESS_E4B_MODEL="$MODEL" uv run pytest -m hw_full tests/hardware/test_status_costs.py -v
+```
+
 Observed (2026-09-12):
 
 ```
