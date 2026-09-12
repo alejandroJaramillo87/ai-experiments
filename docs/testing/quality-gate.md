@@ -10,7 +10,7 @@ disagrees with it, the recipe is right.
 
 ## What it runs
 
-Thirteen steps, cheapest first, failing on the first error:
+Fourteen steps, cheapest first, failing on the first error:
 
 1. `ruff format --check .` — formatting.
 2. `ruff check .` — lint.
@@ -40,10 +40,20 @@ Thirteen steps, cheapest first, failing on the first error:
     block carries a `$ ` prompt marker, because a pasted `$ make quality` fails as a command
     named `$`. Reads neither `console` transcripts nor a runbook's Observed blocks, and skips
     frozen records.
-14. `shellcheck --severity=warning` — shell scripts, enumerated with `find`.
+14. `scripts/docs/check_site_reference.py` — fails when a generated reference page under
+    `site/docs/rust-harness/reference/` disagrees with the flag table it was rendered from:
+    a binary with no page, a page for no binary, or a flag its page does not show. Runs
+    without cargo or node; `make site-check` is the workstation form that regenerates and
+    diffs.
+15. `shellcheck --severity=warning` — shell scripts, enumerated with `find`.
 
 Note what is absent: **`make quality` does not run pytest.** See
 [The full gate](#the-full-gate) below.
+
+After the rust-harness gate it runs `make site-build`, which builds the documentation site
+under `site/` and skips itself with `[SKIP]` when `site/node_modules` is absent, as in a fresh
+sandbox, where installing them would need the network. With the dependencies present the build
+is offline and fails on a broken link or anchor.
 
 It then chains the rust-harness gate when that directory exists. That half is documented in
 [../../rust-harness/README.md](../../rust-harness/README.md): its five steps, the
