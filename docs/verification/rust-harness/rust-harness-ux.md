@@ -4,7 +4,7 @@
 operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate —
 both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 5 verified, 0 blocked, 7 pending, of 12.** RHX.9 joined the eight `U`-campaign
+**Entries: 6 verified, 0 blocked, 6 pending, of 12.** RHX.9 joined the eight `U`-campaign
 entries from the surface inventory: it records a defect in the `--dot` help text and the check
 that closes it.
 
@@ -959,11 +959,53 @@ echo "exit=$?"
 exit=1
 ```
 
-The `Command:` line now names the binary as it was run. Step 4 on this line is what closes
-the entry.
+Step 4 on that line, the same day:
 
-Status: PENDING (FAILED 2026-09-12 at step 4, exit 127; fix in the tree as KB-72, awaiting the
-re-run of steps 3 and 4)
+```
+➜  rhx6 cd /tmp/rhx6
+/home/alejandro/workspace/ai-experiments/rust-harness/target/release/harness --status --deep --model /mnt/ai-data/models/hf/gemma-4-E4B --probe /tmp/rhx6/probe.safetensors
+echo "exit=$?"
+[OK] model directory: /mnt/ai-data/models/hf/gemma-4-E4B
+[OK] checkpoint files: config.json and model.safetensors present, header names 2130 tensors
+[OK] config.json: 42 layers, hidden size 2560, context 131072
+[ERROR] backend compatibility: checkpoint is multimodal: it carries 114 tensor families in model.audio_tower., model.embed_audio., model.embed_vision., model.vision_tower., and this backend serves text only. Pass --text-only to load the text stack and decline the rest
+[OK] probe: rust-e2b-it-refusal-probe, layer 1, site LayerOutput, width 1536
+[ERROR] probe geometry: probe width 1536 does not match model embedding dimension 2560
+[ERROR] probe identity: trained on a different model: artifact model_hash 2db5482b20d746879bb3ef79b5203e9075a2e2b98f54ec7c2f281c1477ddc550, served model sha256 43fb96cec3045b72852c787540300dc5b258634b7a025f7c80355ac0788b9651
+[SKIP] control vector: no --control-vector given
+[SKIP] control vector identity: no --control-vector given
+[SKIP] interp log directory: no --interp-log given
+[OK] obs log directory: /mnt/ai-data/logs/harness is writable
+exit=1
+```
+
+The pasted line ran, and its `probe identity` verdict carries the two digests the run's
+diagnosis named, so the remedy reports the fault the run hit; the `probe geometry` verdict
+beside it is the width fault the entry was written to provoke, which the run path never
+reached. One lesser finding, filed as KB-73: the run was given `--text-only` and the
+`Command:` line does not carry it, so the preflight also reports a `backend compatibility`
+fault the run did not have. The remedy still does what it claims; it says one thing more
+than the run did.
+
+The gate test then ran on the same tree:
+
+```
+➜  ai-experiments git:(rust-harness-ux-verification) ✗ cd ~/workspace/ai-experiments && git pull origin rust-harness-ux-verification
+HARNESS_E4B_MODEL="$MODEL" uv run pytest -m hw_full tests/hardware/test_remedy_runs_as_printed.py -v
+collected 4 items
+
+tests/hardware/test_remedy_runs_as_printed.py::test_a_missing_checkpoint_is_three_lines_and_nothing_else PASSED                                                             [ 25%]
+tests/hardware/test_remedy_runs_as_printed.py::test_the_ls_remedy_runs_as_printed PASSED                                                                                    [ 50%]
+tests/hardware/test_remedy_runs_as_printed.py::test_a_foreign_probe_is_refused_before_the_load_and_names_the_binary_invoked PASSED                                          [ 75%]
+tests/hardware/test_remedy_runs_as_printed.py::test_the_preflight_remedy_runs_as_printed_and_reports_the_same_fault PASSED                                                  [100%]
+
+[TIER] full: torch present, the whole suite was in scope.
+========================================================================== 4 passed in 77.25s (0:01:17) ===========================================================================
+```
+
+Status: VERIFIED 2026-09-12 (gate-backed by `tests/hardware/test_remedy_runs_as_printed.py`,
+4 passed on the workstation the same day). Failed first at step 4 with exit 127, KB-72; fixed
+and re-run the same day; KB-73 open for the dropped `--text-only`.
 
 ## RHX.7 One catalog serves the whole workspace
 
