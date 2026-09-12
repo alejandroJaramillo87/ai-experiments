@@ -1,8 +1,9 @@
 /*
  * ladder_flags — the four tuning flags, and the claims their help text makes.
  *
- * `--dot` says "every kind is bit-identical" and `--threads` says "the tables
- * are bit-identical at every width". Both are claims about results rather than
+ * `--dot` says "every kind but lanes16 is bit-identical" and `--threads` says
+ * "the tables are bit-identical at every width". Both are claims about results
+ * rather than
  * about speed, and until now nothing asserted either: the flags were parsed,
  * passed to the model, and never compared against anything. A switch whose
  * documented property is untested is a switch that can start changing the

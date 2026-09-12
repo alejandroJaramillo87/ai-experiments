@@ -8,7 +8,8 @@
  * artifact fitted on other weights, and a `--model` path that is not a
  * checkpoint are all raised deep inside `build_generator` and surface at
  * `main.rs`'s one error arm, several frames from anything that knows what to
- * suggest.
+ * suggest. A fourth, the task loop running out of turns, ends in `agent.rs`,
+ * which knows neither the checkpoint nor the flags its remedy has to name.
  *
  * So the remedy travels with the error. `Actionable` is attached as an
  * `anyhow` context and recovered by `render`, which downcasts. The rejected
@@ -27,7 +28,7 @@
  * Constructors rather than struct literals at the call sites, because
  * `no_remedy_offers_a_placeholder_where_a_real_path_is_known` has to enumerate
  * every remedy this crate can produce and nothing can reflect over struct
- * literals. Three named constructors are that enumeration.
+ * literals. Four named constructors are that enumeration.
  *
  * Not applied to the `--status` path. `preflight`'s checks report the same two
  * faults (probe geometry, artifact identity) as data rather than as errors,
@@ -184,6 +185,28 @@ pub fn missing_checkpoint(given: &Path) -> Actionable {
     }
 }
 
+/// The task loop spent every turn on tool calls and never answered in prose.
+///
+/// The cause this campaign has met is a base checkpoint, which cannot follow
+/// the tool contract task mode prepends and invents a `read` per turn until
+/// the budget is gone (RH.37: 64 turns, half an hour on E4B, nothing said).
+/// The cheap remedy is the prose path: `--chat` reads turns from stdin,
+/// installs no contract and no grammar, and asks no permission, so the
+/// command is a chat against the same weights with the same flags.
+pub fn no_final_answer(turns: usize, model: &Path, text_only: bool) -> Actionable {
+    Actionable {
+        what: format!("no final answer within {turns} turns"),
+        solution: "put the prompt on stdin with --chat, which has no tool loop, or give \
+                   the task to an instruction-tuned checkpoint"
+            .to_string(),
+        command: format!(
+            "harness --chat{} --model {}",
+            if text_only { " --text-only" } else { "" },
+            model.display()
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -202,6 +225,7 @@ mod tests {
             model_identity("--probe", &probe, &model, "aaaa", "bbbb"),
             model_identity("--control-vector", &probe, &model, "aaaa", "bbbb"),
             missing_checkpoint(&PathBuf::from("/nonexistent-checkpoint")),
+            no_final_answer(64, &model, true),
         ]
     }
 

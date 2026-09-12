@@ -440,7 +440,7 @@ const SPEC: Spec = Spec {
         Flag {
             name: "--dot",
             kind: Kind::Value("<kind>"),
-            help: "the dot-product kernel; every kind is bit-identical",
+            help: "the dot-product kernel; every kind but lanes16 is bit-identical",
         },
         Flag {
             name: "--batch",
