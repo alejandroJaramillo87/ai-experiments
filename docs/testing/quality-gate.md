@@ -89,6 +89,11 @@ And the two cost lines (RHX.2): `status_streams.rs` pins one `Model load:` and o
 line over the fixture, and `tests/hardware/test_status_costs.py` under `hw_full` runs two chat
 turns of unequal length on the released E4B, holds the printed load to the recorded phase, and
 reads the second `Prefill:` line as the delta the fixture is too small to show.
+And a capture's run record (RHX.5): `capture_obs.rs` pins one header, one `model.load`
+phase, one catalog row and no run directory for each capture binary over the fixture, and
+`tests/hardware/test_capture_run_record.py` under `hw_full` reads the same four off an
+eight-example `activation-capture` on the released E4B, holding the header to the paths and
+count it passed and the load to seconds.
 Two more hardware tests have no sandbox half at all, because their question is the released
 weights themselves: `tests/hardware/test_shared_kv_weights.py` under `hw_e4b` reads every
 attention projection of E4B through safetensors and asks whether the shared-KV tail's

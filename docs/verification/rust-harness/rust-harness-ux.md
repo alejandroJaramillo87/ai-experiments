@@ -736,6 +736,23 @@ file, which is the scope decision observed rather than assumed. `harness-runs` s
 whose command is `activation-capture`, beside rows for `task` and `ladder`, all under one
 catalog.
 
+Asserted by `tests/hardware/test_capture_run_record.py`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| One `activation-capture.header` whose `model`, `dataset`, `out`, `layers` and `examples` are what was passed, carrying the fold and the build; the `[OK] Capture:` line's count equals its `examples` | `test_one_header_names_the_invocation` |
+| One `model.load` phase, at least a second long, written before the header | `test_one_model_load_phase_in_seconds` |
+| No run directory: the catalog row's `run_dir` names a path that does not exist | `test_no_run_directory_and_the_row_says_so` |
+| One catalog row, command `activation-capture`, exit 0, its run id the header's and `cmd.end`'s | `test_the_catalog_row_names_this_run` |
+
+The test captures the first eight lines of the refusal set where this entry captured all 258;
+the record is the same shape at any length, and eight keeps the gate to one load plus seconds.
+
+```bash
+cd ~/workspace/ai-experiments
+HARNESS_E4B_MODEL="$MODEL" uv run pytest -m hw_full tests/hardware/test_capture_run_record.py -v
+```
+
 Observed (2026-09-12; the 258 `[RUN] Example n/258: k tokens` lines between the first and
 last are elided here, every one of that shape with 8 to 19 tokens):
 
@@ -790,7 +807,8 @@ the estimate was high and the distinction it draws, seconds against the fixture'
 milliseconds, holds.
 
 Status: VERIFIED 2026-09-12 by hand. Every signal present; the two mismatches above are in the
-expected signal's wording, not the run.
+expected signal's wording, not the run. The four test functions above were written from this
+transcript and await their first gate run.
 
 ## RHX.6 A failure states a remedy that runs as printed
 
