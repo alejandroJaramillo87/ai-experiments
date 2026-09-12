@@ -14,9 +14,10 @@ and the entry records the install step. RH.8 was blocked until the same day
 on the absence of an instruction-tuned checkpoint; gemma-4-E2B-it now closes
 it, and its entry records the two harness defects the first runs exposed.
 
-RH.23 through RH.35 are **gate-backed**: each names the test function that
-asserts its expected signal, and one `cargo test --workspace` run closes the
-section. The run of 2026-09-11 closed RH.23 through RH.31. RH.32 through
+RH.23 through RH.35 are **gate-backed** entries with no workstation block:
+each names the test function that asserts its expected signal, and one
+`cargo test --workspace` run closes the section. Earlier entries that gained a
+hardware test after closing say so in their Status line. The run of 2026-09-11 closed RH.23 through RH.31. RH.32 through
 RH.35 came from a second surface audit on 2026-09-12, which crossed every
 flag of every binary against the runbook's command blocks and against every
 test that passes a flag: seven flags had been run by hand or never run, and
@@ -130,7 +131,7 @@ it rather than re-diagnosed from scratch.
   - [RH.30 --control-vector-layer-range decides which directions load](#rh30---control-vector-layer-range-decides-which-directions-load)
   - [RH.31 --serve-addr binds where it names](#rh31---serve-addr-binds-where-it-names)
   - [RH.32 --trace-level selects the span depth](#rh32---trace-level-selects-the-span-depth)
-  - [RH.33 --version is not a run, and --record writes what the replay reader reads](#rh33---version-is-not-a-run-and---record-writes-what-the-replay-reader-reads)
+  - [RH.33 --version answers and --record writes what the replay reader reads](#rh33---version-answers-and---record-writes-what-the-replay-reader-reads)
   - [RH.34 The sampling flags change what is sampled](#rh34-the-sampling-flags-change-what-is-sampled)
   - [RH.35 --context, --size and --single-thread are read, not merely parsed](#rh35---context---size-and---single-thread-are-read-not-merely-parsed)
 - [RH.36 attention-capture as its own binary on E4B](#rh36-attention-capture-as-its-own-binary-on-e4b)
@@ -584,12 +585,18 @@ Implementation: `rust-harness/runtime/src/ladder.rs`,
 `rust-harness/runtime/src/bin/ladder.rs`, the five generators under
 `rust-harness/fixtures/`, and `make ladder`.
 
-The numerics oracle. Six rungs compare the CPU backend against
+The numerics oracle. Seven rungs compare the CPU backend against
 `transformers` on the real checkpoint: token ids (L0), residual stream (L1),
-final distribution (L2), perplexity (L3), greedy continuation (L4), and the
-long-context anchors past the sliding window (L5, added by RH.17). Every
-other entry in this runbook observes behavior; this one is the only entry
-that can call the backend correct.
+final distribution (L2), perplexity (L3), greedy continuation (L4), the
+long-context anchors past the sliding window (L5, added by RH.17), and the
+attention rows past it (L6, added by RH.18 on 2026-09-11). Every other entry
+in this runbook observes behavior; this one is the only entry that can call
+the backend correct.
+
+The Observed block below is the six-rung climb of 2026-09-04. L6's first run
+is recorded under RH.18, which drives the same `make ladder`; a seven-row
+climb has not yet been pasted here, so this entry's evidence is split across
+the two until one is.
 
 The generators are GPU consumers and `reference_perplexity.py` is the slow
 one. The artifacts land in a git-ignored directory by design — tens of MB at
@@ -611,7 +618,7 @@ cd ~/workspace/ai-experiments/rust-harness
 make ladder SIZE=quick MODEL=<the gemma-4-E4B checkpoint directory>
 ```
 
-Expected signal: six rows, each `PASS`, and `0 skipped`. **A `skipped` rung is
+Expected signal: seven rows, each `PASS`, and `0 skipped`. **A `skipped` rung is
 missing evidence, not a pass** — read the count in the closing `[OK]` line
 rather than the exit code. A skip after the generators ran means one wrote
 somewhere other than where the climb read. The first run recorded below
@@ -741,7 +748,8 @@ the first run could not show, and it passed at every anchor. Peak RSS rose
 from 14.27 to 16.13 GiB, which is the 2052-token L5 forward pass the first
 run never made.
 
-Status: VERIFIED 2026-09-04 on six rungs (first decided 2026-08-14 on five)
+Status: VERIFIED 2026-09-04 on six rungs (first decided 2026-08-14 on five;
+the seventh, L6, verified under RH.18 on 2026-09-11)
 
 ## RH.2 Real-model load and generation smoke
 
@@ -880,13 +888,14 @@ each cost a host round trip and neither should be re-derived.
 carries `<|turn>` and `<turn|>` in its added-tokens table and does **not**
 carry `<start_of_turn>` or `<end_of_turn>` — the reverse of what that theory
 needed. `template::MARKERS` names the literals, `generator::PROMPT_SPECIALS`
-(`generator.rs:236`) admits them, and every prompt goes through
-`encode_prompt` with that allowlist (`generator.rs:164` and `:244`), so the
-delimiters reach the model as their own ids.
+(a `const` in `rust-harness/harness/src/generator.rs`) admits them, and
+every prompt goes through `encode_prompt` with that allowlist at each of
+its call sites in that file, so the delimiters reach the model as their own
+ids.
 
 The mechanism behind the second hypothesis is real even though it is not the
 cause here, and it is unguarded. The `special_at` doc comment in
-`runtime/src/tokenizer.rs` (lines 342-345) says so itself: a literal that is
+`runtime/src/tokenizer.rs` says so itself: a literal that is
 not in the vocabulary matches nothing; the caller may name a delimiter this
 checkpoint does not carry, and encoding it as text is the same treatment any
 other unknown string gets. A renderer and a
@@ -1737,7 +1746,7 @@ Observed block. Drop it only after applying rr's Zen workaround.
 Inside the rr/gdb session:
 
 ```
-(rr) break cpu.rs:3242
+(rr) break cpu.rs:3269
 (rr) continue
 (rr) watch -l logits.buf.inner.ptr.pointer.pointer[0]
 (rr) continue
@@ -1768,12 +1777,14 @@ line 3186.
 
 **The breakpoint is a line number, not a function.** An earlier version of
 this entry said `break cpu.rs:forward_one` followed by `watch -l logits[0]`,
-and that sequence cannot work: `forward_one` is declared at `cpu.rs:2733`,
-while `logits` is a local of a different function, declared at `cpu.rs:3230`
-inside the tied-head projection loop. The watchpoint has nothing to resolve
-against at the `forward_one` frame. Breaking at `cpu.rs:3242`, the
-`fill_dots(` call that fills it, puts `logits` in scope. Line numbers as of
-2026-09-05.
+and that sequence cannot work: `forward_one` is one function, while `logits`
+is a local of another, `forward_batch`, declared inside the tied-head
+projection. The watchpoint has nothing to resolve against at the
+`forward_one` frame. Breaking at the `fill_dots(` call that fills it puts
+`logits` in scope. That call was `cpu.rs:3242` on 2026-09-05, when the
+Observed block below was recorded, and is `cpu.rs:3269` as of 2026-09-12;
+the `grep` above is how to recompute it, and the block carries the current
+line.
 
 `release-with-debug` (`rust-harness/Cargo.toml:7-9`) inherits `release`, so it
 is fully optimized and locals may print `<optimized out>`. If they do, rebuild
@@ -1841,7 +1852,8 @@ Stack at that stop, innermost first: `fill_run_blocked` at `cpu.rs:1749`,
 `fill_dots` at `cpu.rs:1789`, `CpuModel::forward_batch` at `cpu.rs:3242`,
 `prefill_groups` at `cpu.rs:3321`, `prefill` at `cpu.rs:3370`,
 `Session::sync` at `session.rs:242`, `Session::begin_generation` at
-`session.rs:260`, `Session::generate` at `session.rs:299`. Locals at the
+`session.rs:260`, `Session::generate` at `session.rs:299`, all line numbers
+of the 2026-09-05 checkout the recording was built from. Locals at the
 stop: `got = [0.142605513, 0.17676878, 0.00949310139, 0.16828309]` and
 `head = [0.142605513, 0 <repeats 287 times>]`. The `New value = 46` is gdb
 printing the cell through the raw pointer's type rather than as `f32`; the
@@ -4297,7 +4309,8 @@ cargo run --release -q -p runtime --bin ladder -- --text-only \
 echo "exit=$?"
 ```
 
-Expected signal: six rungs in the table, none skipped, `L5` passing. The
+Expected signal: every rung in the table (six on 2026-09-04, seven since L6
+landed), none skipped, `L5` passing. The
 anchors L5 scores are `window - 1`, `window`, `window + 1`, `2*window + 1`,
 `length // 2` and `length - 1`, derived from the window the *loader* read, and
 the run reports that window. It must be 512 — the same figure the reference
@@ -6351,9 +6364,14 @@ Status: PENDING (first run 2026-09-12 exposed the shape-check defect above, fixe
 
 ## Known defects
 
-Three defects measured during this campaign, recorded here rather than in an
-entry because none is a check to run: each is a statement about the tree that
-a reader of the entries above needs.
+Two defects measured during this campaign, recorded here rather than in an
+entry because neither is a check to run: each is a statement about the tree
+that a reader of the entries above needs. A third, a malformed safetensors
+header aborting the loader on a 7.3e18-byte allocation instead of returning
+an error, was recorded here until `Envelope::payload_range` in
+`rust-harness/runtime/src/checkpoint.rs` validated every declared extent
+against the file length before allocating; two tests beside it pin the
+refusal, and every unreadable-checkpoint path now reports and exits 1.
 
 **The `--serve-addr` default is two independent literals.** The value `--help`
 prints comes from `default: Some("127.0.0.1")` in the `--serve-addr` entry
@@ -6379,16 +6397,6 @@ the strength of that sentence and then compares logits bits against a
 sequential baseline will report a defect that is not there. The code is right
 and the help text is wrong; see RHX.9 in
 [rust-harness-ux.md](rust-harness-ux.md).
-
-**A malformed safetensors header aborts the loader rather than returning an
-error.** A header declaring a tensor larger than the file drives a request for
-roughly 7.3e18 bytes, and the process dies on `SIGABRT` from the allocator
-instead of surfacing a `Result`. Every other unreadable-checkpoint path in the
-tree reports and exits 1 (RH.16 step 3, RH.22 step 4), so this is the one input
-class where a caller cannot distinguish a bad file from a crash, and no
-`catch_unwind` helps because an allocation failure is an abort and not a panic.
-The fix is to validate declared extents against the file length before
-allocating.
 
 ## Coverage roster
 

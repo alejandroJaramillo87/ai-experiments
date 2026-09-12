@@ -81,6 +81,12 @@ attention-capture binary (RH.36): `attention_capture.rs` pins its surface over a
 window in the sandbox, and `tests/hardware/test_attention_capture.py` under `hw_e4b` runs it on
 the released E4B over a prompt past the real window, holding `span_first` to the schedule the
 checkpoint's own `config.json` states and every row's mass to one over hundreds of keys.
+Two more hardware tests have no sandbox half at all, because their question is the released
+weights themselves: `tests/hardware/test_shared_kv_weights.py` under `hw_e4b` reads every
+attention projection of E4B through safetensors and asks whether the shared-KV tail's
+surplus projections were ever trained (RH.1a), and `tests/hardware/test_interp_chain.py`
+under `hw_full` runs the whole capture, probe, monitor and steer chain on `gemma-4-E2B-it`
+and holds each step to the signal RH.9 recorded by hand.
 
 Steps 5 and 6 are complementary rather than redundant. The reference check asks whether a
 cited path exists, which requires classifying a token as a path claim — and that classifier
