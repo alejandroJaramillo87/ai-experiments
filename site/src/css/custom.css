@@ -6,41 +6,163 @@
  * font fetch. The system UI stack stays for body text; the monospace stack
  * prefers a coding font when the reader has one installed and falls back to
  * the platform default.
+ *
+ * The palette is the one the blog (curiosity-chronicles, assets/scss/custom.scss)
+ * and the diagram library (figura, shared/tokens.css) share: slate neutrals, a
+ * sky accent, and a dark slate panel for code that stays dark on both page
+ * themes. The tokens are declared first under the blog's own names, then
+ * Infima's variables are aliased to them, so a value can be diffed against the
+ * other two repositories by name and a palette change lands in one block.
  */
 
 :root {
-  /* One neutral slate-blue accent in place of the template green. The six
-   * shades follow Infima's convention, which theme-classic reads for hover,
-   * active, and contrast states. */
-  --ifm-color-primary: #3b5b7d;
-  --ifm-color-primary-dark: #355270;
-  --ifm-color-primary-darker: #324d6a;
-  --ifm-color-primary-darkest: #294057;
-  --ifm-color-primary-light: #41648a;
-  --ifm-color-primary-lighter: #446990;
-  --ifm-color-primary-lightest: #4d76a2;
+  /* Neutral ramp (slate) */
+  --ink: #0f172a;
+  --ink-strong: #1e293b;
+  --body: #334155;
+  --body-2: #475569;
+  --muted: #64748b;
+  --faint: #94a3b8;
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --surface: #ffffff;
+  --surface-2: #f8fafc;
+  --surface-3: #f1f5f9;
 
+  /* Accent: sky-600/700, the same hue family as figura's #38bdf8 but dark
+   * enough for AA contrast on white. */
+  --accent: #0284c7;
+  --accent-hover: #0369a1;
+
+  /* Dark panel (figura classic palette). Code blocks share the diagrams'
+   * material, so these do not change with the page theme. */
+  --panel-bg: #0f172a;
+  --panel-2: #1e293b;
+  --panel-fg: #f8fafc;
+  --panel-muted: #94a3b8;
+  --panel-faint: #64748b;
+  --panel-border: #334155;
+  --panel-accent: #38bdf8;
+  --panel-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+
+  /* Semantic */
+  --code-inline: #be123c;
+
+  /* Shape, motion, type: identical values to figura's tokens */
+  --radius: 12px;
+  --radius-sm: 6px;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur: 0.2s;
+  --font-sans: "Work Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "JetBrains Mono", "Fira Code", "Cascadia Code",
+    Menlo, Consolas, monospace;
+
+  /* Infima primary: the Tailwind sky stops around sky-600. theme-classic reads
+   * the six shades for hover, active, and contrast states. */
+  --ifm-color-primary: #0284c7;
+  --ifm-color-primary-dark: #0369a1;
+  --ifm-color-primary-darker: #075985;
+  --ifm-color-primary-darkest: #0c4a6e;
+  --ifm-color-primary-light: #0ea5e9;
+  --ifm-color-primary-lighter: #38bdf8;
+  --ifm-color-primary-lightest: #7dd3fc;
+
+  --ifm-font-color-base: var(--body);
+  --ifm-heading-color: var(--ink);
+  --ifm-background-color: var(--surface);
+  --ifm-background-surface-color: var(--surface-2);
+  --ifm-color-emphasis-200: var(--border);
+  --ifm-color-emphasis-300: var(--border-strong);
+  --ifm-color-emphasis-600: var(--muted);
+  --ifm-toc-border-color: var(--border);
+  --ifm-hr-background-color: var(--border);
+  --ifm-table-border-color: var(--border);
+
+  --ifm-link-color: var(--accent);
+  --ifm-link-hover-color: var(--accent-hover);
+
+  /* Type. The blog sets 18px on a wider column; 17px keeps the 46rem article
+   * below at about 75 characters per line. */
+  --ifm-font-family-base: var(--font-sans);
+  --ifm-font-family-monospace: var(--font-mono);
+  --ifm-font-size-base: 17px;
+  --ifm-line-height-base: 1.7;
   --ifm-heading-font-weight: 600;
   --ifm-h1-font-size: 2rem;
   --ifm-h2-font-size: 1.5rem;
   --ifm-h3-font-size: 1.2rem;
 
-  --ifm-font-family-monospace: ui-monospace, "JetBrains Mono", "Fira Code",
-    "Cascadia Code", Menlo, Consolas, monospace;
-  --ifm-code-font-size: 90%;
+  /* Shape and motion */
+  --ifm-global-radius: var(--radius-sm);
+  --ifm-transition-fast: var(--dur);
+  --ifm-transition-timing-default: var(--ease);
+
+  /* Inline code: rose on the faint surface, as the blog sets it; 3px is the
+   * blog's inline-code radius, smaller than the global one. */
+  --ifm-code-background: var(--surface-3);
+  --ifm-code-border-radius: 3px;
+  --ifm-code-font-size: 0.875em;
+  --ifm-code-padding-vertical: 0.2em;
+  --ifm-code-padding-horizontal: 0.4em;
 
   --ifm-menu-link-padding-vertical: 0.3rem;
 }
 
-[data-theme='dark'] {
-  /* Lighter on the dark ground so links keep their contrast. */
-  --ifm-color-primary: #8fb0d1;
-  --ifm-color-primary-dark: #79a1c8;
-  --ifm-color-primary-darker: #6e99c4;
-  --ifm-color-primary-darkest: #4d80b4;
-  --ifm-color-primary-light: #a5bfda;
-  --ifm-color-primary-lighter: #b0c7de;
-  --ifm-color-primary-lightest: #d1dde9;
+/* Dark is not an inversion: text is slate-200 rather than white, the accent
+ * lightens to figura's sky-400 for contrast, and shadows give way to borders.
+ * The panel tokens are already dark and stay as they are. */
+html[data-theme='dark'] {
+  --ink: #f8fafc;
+  --ink-strong: #f1f5f9;
+  --body: #cbd5e1;
+  --body-2: #94a3b8;
+  --muted: #94a3b8;
+  --faint: #64748b;
+  --border: #1e293b;
+  --border-strong: #334155;
+  --surface: #020617;
+  --surface-2: #0f172a;
+  --surface-3: #1e293b;
+
+  --accent: #38bdf8;
+  --accent-hover: #7dd3fc;
+
+  --panel-shadow: none;
+
+  --code-inline: #fda4af;
+
+  --ifm-color-primary: #38bdf8;
+  --ifm-color-primary-dark: #0ea5e9;
+  --ifm-color-primary-darker: #0284c7;
+  --ifm-color-primary-darkest: #0369a1;
+  --ifm-color-primary-light: #7dd3fc;
+  --ifm-color-primary-lighter: #bae6fd;
+  --ifm-color-primary-lightest: #e0f2fe;
+
+  /* Infima's own dark block sets these to literals after :root, so the
+   * aliases are restated here or the dark page keeps Infima's near-black. */
+  --ifm-font-color-base: var(--body);
+  --ifm-heading-color: var(--ink);
+  --ifm-background-color: var(--surface);
+  --ifm-background-surface-color: var(--surface-2);
+  --ifm-color-emphasis-200: var(--border);
+  --ifm-color-emphasis-300: var(--border-strong);
+  --ifm-color-emphasis-600: var(--muted);
+  --ifm-toc-border-color: var(--border);
+  --ifm-hr-background-color: var(--border);
+  --ifm-table-border-color: var(--border);
+  --ifm-code-background: var(--surface-3);
+}
+
+/* Infima draws a translucent border around inline code; the blog's is flat.
+ * Prism colors the tokens inside a block, so the rose applies to prose only. */
+code {
+  border: 0;
+  color: var(--code-inline);
+}
+
+pre code {
+  color: inherit;
 }
 
 /* The docs h1 is the page title, not a banner. */
