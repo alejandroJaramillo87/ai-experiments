@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -78,6 +79,38 @@ def events(run_id: str) -> list[dict]:
     assert os.path.isfile(path), f"no event file for {run_id} at {path}"
     with open(path, encoding="utf-8") as handle:
         return [json.loads(line) for line in handle if line.strip()]
+
+
+def write_probe(directory: Path, width: int, layer: int, model_hash: str) -> Path:
+    """A probe of the model's width whose sidecar records `model_hash`,
+    written by the exporter the harness's reader is tested against. The
+    vectors are inert (zero weights, unit sigma): the preflight reads the
+    sidecar and the tensor shapes, never a score."""
+    import numpy as np
+
+    from interp.probes.export import write_probe_from_probe
+    from interp.probes.registry import Probe
+
+    probe = Probe(
+        name="hw-preflight",
+        layer=layer,
+        weights=np.zeros(width, dtype=np.float32),
+        bias=0.0,
+        mu=np.zeros(width, dtype=np.float32),
+        sigma=np.ones(width, dtype=np.float32),
+        threshold=0.5,
+        manifest={"model_hash": model_hash},
+    )
+    image = directory / "probe.safetensors"
+    write_probe_from_probe(probe, str(image))
+    return image
+
+
+def altered(digest: str) -> str:
+    """The digest with its first hex digit changed: one character, so the
+    comparison has to decide rather than merely hash."""
+    first = "5" if digest[0] != "5" else "6"
+    return first + digest[1:]
 
 
 @pytest.fixture()

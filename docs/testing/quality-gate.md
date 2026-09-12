@@ -94,6 +94,10 @@ phase, one catalog row and no run directory for each capture binary over the fix
 `tests/hardware/test_capture_run_record.py` under `hw_full` reads the same four off an
 eight-example `activation-capture` on the released E4B, holding the header to the paths and
 count it passed and the load to seconds.
+And a failure's remedy (RHX.6): `actionable_surface.rs` pins the three-line shape and the
+command's spelling over the fixture, and `tests/hardware/test_remedy_runs_as_printed.py`
+under `hw_full` provokes the two failures on the released E4B, pastes each `Command:` line
+into a shell verbatim, and holds the shell's answer to the fault the run reported.
 Two more hardware tests have no sandbox half at all, because their question is the released
 weights themselves: `tests/hardware/test_shared_kv_weights.py` under `hw_e4b` reads every
 attention projection of E4B through safetensors and asks whether the shared-KV tail's

@@ -871,6 +871,24 @@ If a `Command:` line fails to run, that is the finding and the entry is `FAILED`
 placeholder assertion passing while the command is unusable is exactly the gap this entry
 exists to close.
 
+Asserted by `tests/hardware/test_remedy_runs_as_printed.py`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| A missing checkpoint: exit 1, stdout empty, stderr exactly the tagged diagnosis, `Solution:` and `Command:`, the command `ls` of the path given, no placeholder | `test_a_missing_checkpoint_is_three_lines_and_nothing_else` |
+| That `ls`, pasted verbatim into a shell, lists the directory as missing | `test_the_ls_remedy_runs_as_printed` |
+| A probe fitted on other weights: the same three lines and no header, the diagnosis naming the probe's hash and the served digest, the command `--status --deep` spelled with the binary as invoked (KB-72) | `test_a_foreign_probe_is_refused_before_the_load_and_names_the_binary_invoked` |
+| That preflight, pasted verbatim into a shell, reports the same identity fault, digest for digest | `test_the_preflight_remedy_runs_as_printed_and_reports_the_same_fault` |
+
+The test builds its foreign probe with the real exporter at E4B's width rather than copying
+RH.9b's from the registry, so it depends on no host artifact; the fault reached is the same,
+the identity check, because `main.rs` compares hashes before widths.
+
+```bash
+cd ~/workspace/ai-experiments
+HARNESS_E4B_MODEL="$MODEL" uv run pytest -m hw_full tests/hardware/test_remedy_runs_as_printed.py -v
+```
+
 Observed:
 
 ```
@@ -922,6 +940,27 @@ exit 127. Filed as KB-72. The fix lands with this entry: `actionable::render` re
 leading `harness` with the invocation's own `argv[0]`, so the line names the binary the way
 it was just run; the `ls` remedy is untouched. `actionable_surface.rs` now asserts the printed
 command begins with the path the test invoked. Step 4 re-runs after `cargo build --release`.
+
+Step 3 re-run on the rebuilt binary, the same day:
+
+```
+➜  ai-experiments git:(rust-harness-ux-verification) ✗ cd ~/workspace/ai-experiments && git pull origin rust-harness-ux-verification \
+  && cargo build --release -p harness --manifest-path rust-harness/Cargo.toml
+cd /tmp/rhx6
+~/workspace/ai-experiments/rust-harness/target/release/harness \
+  --model "$MODEL" --text-only --probe /tmp/rhx6/probe.safetensors "say ready"
+echo "exit=$?"
+   Compiling runtime v0.1.0 (/home/alejandro/workspace/ai-experiments/rust-harness/runtime)
+   Compiling harness v0.1.0 (/home/alejandro/workspace/ai-experiments/rust-harness/harness)
+    Finished `release` profile [optimized] target(s) in 4.16s
+[ERROR] Task failed: probe was trained on a different model: probe model_hash 2db5482b20d746879bb3ef79b5203e9075a2e2b98f54ec7c2f281c1477ddc550, served model sha256 43fb96cec3045b72852c787540300dc5b258634b7a025f7c80355ac0788b9651
+  Solution: serve the weights the probe was fitted on, or re-export the probe against these
+  Command: /home/alejandro/workspace/ai-experiments/rust-harness/target/release/harness --status --deep --model /mnt/ai-data/models/hf/gemma-4-E4B --probe /tmp/rhx6/probe.safetensors
+exit=1
+```
+
+The `Command:` line now names the binary as it was run. Step 4 on this line is what closes
+the entry.
 
 Status: PENDING (FAILED 2026-09-12 at step 4, exit 127; fix in the tree as KB-72, awaiting the
 re-run of steps 3 and 4)
