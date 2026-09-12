@@ -6231,13 +6231,14 @@ cd ~/workspace/ai-experiments/rust-harness
 MODEL=/mnt/ai-data/models/hf/gemma-4-E4B
 rm -rf /tmp/rh37 && mkdir -p /tmp/rh37/info /tmp/rh37/debug /tmp/rh37/trace
 
-# 1. one run per level, same prompt, each in its own directory so no run
-#    resumes another's session.jsonl
+# 1. one run per level, same turn on stdin, each in its own directory so
+#    no run resumes another's session.jsonl. --chat has no tool loop, so a
+#    base checkpoint ends the run on its own; --max-tokens bounds it.
 for level in info debug trace; do
-  ( cd /tmp/rh37/$level && ~/workspace/ai-experiments/rust-harness/target/release/harness \
-      --model "$MODEL" --text-only --temperature 0 \
-      --trace-chrome trace.json --trace-level "$level" \
-      "Reply with the single word: ready" )
+  ( cd /tmp/rh37/$level && printf '%s\n' "Reply with the single word: ready" \
+      | ~/workspace/ai-experiments/rust-harness/target/release/harness \
+          --model "$MODEL" --text-only --chat --temperature 0 --max-tokens 16 \
+          --trace-chrome trace.json --trace-level "$level" )
   echo "$level exit=$?"
 done
 
@@ -6252,8 +6253,10 @@ for level in info debug trace; do
 done
 ```
 
-Expected signal: step 1 exits 0 three times, each run ending with the task's
-final answer as RH.6's did. Step 2 gives three sizes, strictly increasing
+Expected signal: step 1 exits 0 three times, each run ending with
+`[INFO] Chat ended: 1 model turns` and a `Session snapshot:` line, the
+three `Prefill:` lines carrying one token count. Step 2 gives three sizes,
+strictly increasing
 from `info` to `trace`; record them. Step 3 passes all three: the `info` run
 prints `interior spans absent: an info-level trace`, the `debug` run prints
 `kernel spans absent: a debug-level trace` with `layers 42`, and the `trace`
@@ -6263,8 +6266,10 @@ logit row. `make trace-check` runs the fixture chat trace and the fixture
 trace-level task trace in the same binary, so two more `ok` lines in the
 tail are those, not the E4B file.
 
-**No `--max-tokens` cap, and one directory per level.** Both are the first
-run's mistakes, and the block above carries their corrections. The task loop
+**A chat turn, a token cap, and one directory per level.** The first run
+lacked the cap and the directories; the second, below, had both and was
+still a task run on a base checkpoint, which cannot end one. The block above
+carries all three corrections. The task loop
 needs a final answer within 64 turns; at four tokens a turn the base model
 never produced one, and each run spent 64 turns of 31-token prefills before
 exiting 1. And the harness resumes `session.jsonl` from its working
@@ -6382,7 +6387,89 @@ the shape check's own figure, `model.layer / group = 42.0` on both the
 `debug` and the `trace` file, is the per-layer tier intact at 42 layers
 under the kernel tier, the nesting RH.32 asserts on the fixture.
 
-Status: PENDING (first run 2026-09-12 exposed the shape-check defect above, fixed the same day; a rerun of the corrected block on the corrected check is owed)
+Observed (2026-09-12, the second run: task mode with `--temperature 0` and no
+token cap, one directory per level, a `permissions.yaml` in each allowing
+`read`, `glob` and `todo` and denying the rest; the header is shown once per
+run, the `Prefill:` lines are elided to the first, second and last, and the
+`session.sync` lines of each `trace-check` are cut to the verdict):
+
+```
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E4B hash=e376216f8b693aff layers=42
+[INFO] Weights: 13.90 GiB resident at bf16
+[INFO] Peak RSS after load: 14.03 GiB
+[INFO] KV cache: 131072 tokens, 4.05 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0 max_tokens=256
+[INFO] Build: 0.1.0 git unknown
+[WARN] KV cache above 2 GiB: consider --context to cap it (compaction keeps long sessions inside the cap)
+[INFO] Model load: 6.02 s
+[INFO] Prefill: 476 tokens in 40.16 s (12 tok/s)
+[INFO] Prefill: 17 tokens in 1.65 s (10 tok/s)
+...
+[INFO] Prefill: 17 tokens in 2.85 s (6 tok/s)
+[ERROR] Task failed: no final answer within 64 turns
+info exit=1
+[INFO] Model load: 5.92 s
+[INFO] Prefill: 252 tokens in 20.17 s (12 tok/s)
+[INFO] Prefill: 29 tokens in 2.54 s (11 tok/s)
+...
+[INFO] Prefill: 33 tokens in 5.08 s (6 tok/s)
+[ERROR] Task failed: aborting: tool call bash chmod +w README.md failed identically 3 times
+debug exit=1
+[INFO] Model load: 6.23 s
+[INFO] Prefill: 252 tokens in 20.24 s (12 tok/s)
+[INFO] Prefill: 29 tokens in 2.51 s (12 tok/s)
+...
+[INFO] Prefill: 33 tokens in 4.86 s (7 tok/s)
+[ERROR] Task failed:
+-rw-rw-r-- 1 alejandro alejandro 222621934 Sep 11 20:26 /tmp/rh37/debug/trace.json
+-rw-rw-r-- 1 alejandro alejandro   5558785 Sep 11 20:11 /tmp/rh37/info/trace.json
+-rw-rw-r-- 1 alejandro alejandro 773991746 Sep 11 20:42 /tmp/rh37/trace/trace.json
+exit=0
+[INFO] interior spans absent: an info-level trace
+test a_chrome_trace_from_a_real_run_has_the_documented_span_shape ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.27s
+
+info trace-check exit=0
+[INFO] layers 42, forwards 3430, prefill groups 3433, model.layer / group = 42.0
+[INFO] kernel spans absent: a debug-level trace
+test a_chrome_trace_from_a_real_run_has_the_documented_span_shape ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 11.14s
+
+debug trace-check exit=0
+[INFO] layers 42, forwards 3430, prefill groups 3433, model.layer / group = 42.0
+[INFO] kernel spans 1325135: a trace-level trace
+test a_chrome_trace_from_a_real_run_has_the_documented_span_shape ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 39.64s
+
+trace trace-check exit=0
+```
+
+What the entry exists for is now shown. The corrected shape check passes on
+all three files, the trace-level one included, and reports the kernel count
+it holds `model.lm_head` to: 1325135 kernel spans over 3430 forwards. The
+sizes are 5.6 MB, 223 MB and 774 MB, strictly increasing, and the per-layer
+tier reads `42.0` layers per group under the kernel tier on both the debug and
+the trace file. The `2 filtered out` is the gate's two fixture traces.
+
+The runs themselves are not the three-level comparison the block asks for,
+for three reasons the transcripts and the obs records give. The `info` run's
+first prefill is 476 tokens against the 252 of the other two: its directory
+held a `README.md` written at 19:51 by an earlier run there, two minutes
+before its `permissions.yaml` was created, so it resumed that run's
+transcript and took a different trajectory throughout. The `debug` and
+`trace` runs are token-identical to each other, as `--temperature 0`
+requires, and each ended on the identical-failure abort rather than the turn
+budget: the model issued `bash chmod +w README.md`, the deny-all rule refused
+it three times running, and the loop stopped, the first time that exit has
+been seen on real weights. Their sizes are therefore a like-for-like pair
+over 38 turns; `info` is not. The `trace` run's stderr ended `[ERROR] Task failed:` with nothing after it, and the paste ended before its `trace exit=` line. Its obs record says otherwise: the `fail` event in `/mnt/ai-data/logs/harness/R-20260912-032651-f38eed.jsonl` carries `exc_msg` `aborting: tool call bash chmod +w README.md failed identically 3 times`, the debug run's message word for word, and `cmd.end` exit 1 after 911.39 s (the debug run's record, `R-20260912-031139-f722b8`, is the same message at 911.86 s). The message existed and reached the record; `main.rs` formats the whole line before one `eprintln!`, so the terminal showing the prefix alone has no explanation in the code. It is recorded here as a single sighting and not under Known defects; the `--chat` rerun has no tool loop and cannot reproduce it.
+
+Status: PENDING (first run 2026-09-12 exposed the shape-check defect above, fixed the same day; the second run passed the corrected check on all three levels but was a task run on a base checkpoint; the `--chat` block above is owed a run)
 
 ## Known defects
 
