@@ -28,6 +28,7 @@ orientation, not explanation: they point here for the detail.
 | [../rust-harness/README.md](../rust-harness/README.md) | The Rust harness workspace, its test tiers, and its quality gate |
 | [../hugepages/README.md](../hugepages/README.md) | The huge-page interceptor library |
 | [../schemas/README.md](../schemas/README.md) | Cross-language artifact contracts |
+| [../site/README.md](../site/README.md) | The user-facing documentation site for the rust harness, distinct from this knowledge base |
 
 ## Documentation by Category
 

@@ -1,0 +1,11 @@
+/*
+ * custom.css
+ *
+ * The one theme override: the generated reference pages hold --help output in
+ * a fenced block whose longest usage line runs past the content column, so
+ * code blocks scroll horizontally rather than wrapping a command mid-flag.
+ */
+
+pre code {
+  white-space: pre;
+}

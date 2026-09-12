@@ -106,6 +106,20 @@ format: ## Format code with ruff
 # 210 blocks carried it until the 2026-09-04 sweep. Transcripts keep their prompt under a
 # `console` tag or an Observed heading, which the gate does not read.
 #
+# check_site_reference.py holds the committed copy of each binary's --help, under
+# site/docs/rust-harness/reference/, to the flag table it was rendered from. The pages are
+# committed so the site builds without cargo, which is also how they go stale: a flag added
+# to the table ships in the binary and stays absent from its page until `make site-gen` is
+# run again. The gate enumerates the same `Flag` literals the census reads and fails on a
+# binary with no page, a page for no binary, or a flag its page does not show. It needs
+# neither cargo nor node, so it runs in the sandbox; `make site-check` is the stricter
+# workstation form that regenerates and diffs.
+#
+# The site build is last, after the rust gate, and skips itself with [SKIP] when
+# site/node_modules is absent -- a fresh sandbox has none, because installing them needs
+# the network, in the same way `uv lock --check` is skipped above. With them present the
+# build is offline and fails on a broken link or anchor.
+#
 # Shell files are enumerated with find, not `git ls-files`. The git form fails in a
 # contained agent sandbox (/work is a linked worktree whose gitdir is outside the bind
 # mount), and because it sat on the left of a pipe the recipe's status came from xargs --
@@ -118,7 +132,7 @@ format: ## Format code with ruff
 # dies on a missing tool -- and the gate has to be followed by `make install` to
 # undo what it did. Checking first turns that into a named error that changes
 # nothing. Skipped in a sandbox, which has no .venv by design.
-quality: ## Run the full quality gate (format check, lint, mypy, lock check, doc refs, retired names, make targets, doc counts, KB refs, pin parity, command prompts, shellcheck, rust gate)
+quality: ## Run the full quality gate (format check, lint, mypy, lock check, doc refs, retired names, make targets, doc counts, KB refs, pin parity, command prompts, site reference, shellcheck, rust gate, site build)
 ifndef AI_SANDBOX
 	@if [ ! -x .venv/bin/ruff ] || [ ! -e "$$(readlink -f .venv/bin/python 2>/dev/null)" ]; then \
 	  printf '[ERROR] .venv is missing, incomplete, or points at an interpreter that no longer exists\n'; \
@@ -150,6 +164,7 @@ endif
 	$(RUN_PY) python scripts/docs/check_surface_census.py
 	$(RUN_PY) python scripts/docs/check_group_pin_parity.py
 	$(RUN_PY) python scripts/docs/check_command_prompts.py
+	$(RUN_PY) python scripts/docs/check_site_reference.py
 	@files=$$(find . -name '*.sh' -type f \
 	    -not -path './.git/*' -not -path './.venv/*' \
 	    -not -path './node_modules/*' -not -path '*/target/*' \
@@ -161,6 +176,7 @@ endif
 	printf '[INFO] shellcheck: %s files\n' "$$(printf '%s\n' "$$files" | wc -l)"; \
 	printf '%s\n' "$$files" | xargs $(RUN_PY) shellcheck --severity=warning
 	@if [ -d rust-harness ]; then $(MAKE) -C rust-harness quality; fi
+	$(MAKE) site-build
 
 # Hardware tier for `make quality-full`. smoke is the before-every-session tier: under five
 # minutes, no model downloads, temporary-directory writes only. full may allocate

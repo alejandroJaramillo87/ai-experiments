@@ -23,6 +23,11 @@ a permanent part of that repository, not a staging area for extraction, so the
 artifact seams it shares with the Python pipelines may be tested across the two
 trees rather than specified in prose.
 
+User documentation -- building the workspace, every flag of every binary, the run
+records, and the artifact formats -- is the site under `site/` at the repository
+root (`make site-build`), written for someone running the harness rather than
+changing it.
+
 ## Layout
 
 ```

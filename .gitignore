@@ -116,4 +116,12 @@ node_modules/
 package-lock.json
 package.json
 
+# The documentation site is the one place a package.json and its lockfile are the pin
+# rather than a scratch install, so it is carved back out of the rule above. Its build
+# output and Docusaurus cache stay ignored.
+!/site/package.json
+!/site/package-lock.json
+/site/build/
+/site/.docusaurus/
+
 
