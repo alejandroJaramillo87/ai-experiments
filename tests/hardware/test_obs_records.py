@@ -41,18 +41,19 @@ from pathlib import Path
 import pytest
 
 from common.obs.catalog import read_runs
-from common.obs.core import DEFAULT_LOG_DIR
-from tests.hardware.conftest import AI_DATA_ROOT, REPO_ROOT
+from tests.hardware.conftest import (
+    AI_DATA_ROOT,
+    HARNESS,
+    LOG_ROOT,
+    REPO_ROOT,
+    default_root_env,
+    events,
+    require_binary,
+)
 
 pytestmark = [pytest.mark.hw_full, pytest.mark.cpu, pytest.mark.ram, pytest.mark.ssd]
 
-HARNESS_DIR = os.path.join(REPO_ROOT, "rust-harness")
-HARNESS = os.path.join(HARNESS_DIR, "target", "release", "harness")
 CONTRACT = os.path.join(REPO_ROOT, "schemas", "obs_record.json")
-# The root the binary resolves when OBS_LOG_DIR is unset, spelled from the
-# Python side's own constant rather than through catalog_path, which would
-# honour an OBS_LOG_DIR in the test's shell that the child never sees.
-LOG_ROOT = os.path.join(DEFAULT_LOG_DIR, "harness")
 CATALOG = Path(LOG_ROOT) / "runs.jsonl"  # read_runs takes a Path, not a str
 
 RUN_ID = re.compile(r"R-\d{8}-\d{6}-[0-9a-f]{6}")
@@ -70,24 +71,6 @@ def checkpoint() -> str:
     return os.path.join(root, "gemma-4-E2B-it")
 
 
-def require_binary() -> None:
-    """A missing binary fails rather than skips: it is built by `make
-    harness-build` on the same host, so its absence is a misconfigured run
-    and not the unavailable hardware the conftest rule exempts."""
-    assert os.path.isfile(HARNESS), (
-        f"built binary absent: {HARNESS}; run `make harness-build` in {HARNESS_DIR}"
-    )
-
-
-def default_root_env() -> dict[str, str]:
-    """The child's environment with OBS_LOG_DIR removed, so the binary resolves
-    the default root. That resolution is the fact this module exists to check;
-    inheriting an override from the shell would test the override instead."""
-    env = {k: v for k, v in os.environ.items() if k != "OBS_LOG_DIR"}
-    env["NO_COLOR"] = "1"
-    return env
-
-
 def harness(
     directory: str, args: list[str], stdin: str | None
 ) -> subprocess.CompletedProcess:
@@ -101,17 +84,6 @@ def harness(
         timeout=RUN_TIMEOUT_S,
         env=default_root_env(),
     )
-
-
-def event_file(run_id: str) -> str:
-    return os.path.join(LOG_ROOT, f"{run_id}.jsonl")
-
-
-def events(run_id: str) -> list[dict]:
-    path = event_file(run_id)
-    assert os.path.isfile(path), f"no event file for {run_id} at {path}"
-    with open(path, encoding="utf-8") as handle:
-        return [json.loads(line) for line in handle if line.strip()]
 
 
 class Records:

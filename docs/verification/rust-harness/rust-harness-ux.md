@@ -61,7 +61,10 @@ observation already exists in [rust-harness.md](rust-harness.md), the entry cite
 than asking for it again. The same audit found three things a person meets before any of
 the above and no entry observed: the permission prompt, a silently resumed session, and
 a chat with no prompt marker. RHX.10 through RHX.12 are those, and the first two come
-with a status line added the same day so the run announces what it is doing.
+with a status line added the same day so the run announces what it is doing. Later the same
+day RHX.1 ran once and printed eight header lines, not nine: the ninth is the probe line, which
+only a run given `--probe` prints. The block now loads the E4B probe, the first run is kept as
+evidence, and `tests/hardware/test_run_header.py` pins the entry for `make quality-full`.
 
 ## Table of contents
 
@@ -111,16 +114,29 @@ unit-tested, and what is not is whether the values are right at scale. The fixtu
 KV budget in kilobytes and a load in milliseconds; this entry is the first time the header
 describes a checkpoint anyone would serve.
 
+The run loads a probe. The entry's first run, on 2026-09-12 and recorded below, printed eight
+header lines against an expected nine: the ninth, `Probe {name}: layer {l}`, and the `probe`
+and `probe_layer` fields it states exist only when `--probe` is given, and a plain chat run
+exercises neither. No earlier banner did either. The probe is the E4B probe RH.16 step 4b
+exported, `rust-e4b-verify-probe`, copied from its registry directory by name as RHX.6 does,
+so the header has all nine lines to print and the record both fields to carry.
+
 ```bash
 set -o pipefail
 MODEL=<the gemma-4-E4B checkpoint directory>
 rm -rf /tmp/rhx1 && mkdir -p /tmp/rhx1 && cd /tmp/rhx1
 
+# the probe, and the sidecar facts the header must repeat
+cp /mnt/ai-data/interp/probes/rust-e4b-verify-probe/probe.safetensors \
+   /mnt/ai-data/interp/probes/rust-e4b-verify-probe/probe.json /tmp/rhx1/
+jq -c '{name, layer, width, model_hash}' /tmp/rhx1/probe.json
+
 printf '%s\n' "Reply with the single word: ready" \
   | ~/workspace/ai-experiments/rust-harness/target/release/harness \
-      --model "$MODEL" --text-only --chat \
+      --model "$MODEL" --text-only --chat --probe /tmp/rhx1/probe.safetensors \
       --seed 7 --temperature 0.8 --max-tokens 16
 echo "exit=$?"
+ls /tmp/rhx1
 
 # the record the terminal was rendered from
 RUN=$(ls -t /mnt/ai-data/logs/harness/R-*.jsonl | head -1)
@@ -131,22 +147,91 @@ jq -c 'select(.event == "run.header")' "$RUN"
 Expected signal: the nine header lines, all `[INFO]`, naming the model and its hash, the
 layer count, the resident weight size and dtype, peak RSS after load, the KV cache budget, the
 rewind horizon, the fold (`dot=`, `batch=`, `threads=`), the sampling parameters including
-`seed=7`, and the build. The `dot` value is the tuned kernel, not the reference one. A run
+`seed=7`, the probe as `Probe rust-e4b-verify-probe: layer 8` between `Sampling:` and
+`Build:`, and the build. The `dot` value is the tuned kernel, not the reference one. A run
 without `--context` follows them with `[WARN] KV cache above 2 GiB` before `Model load:`, and
-the chat ends with `[INFO] Chat ended: 1 model turns`; neither is a header line. The reply
-itself is immaterial: E4B is a base model and may not say `ready`. The `run.header` record
-carries the same facts as JSON numbers rather than formatted strings — `n_layers` and
-`weight_bytes` are numbers, `temperature` renders as `0.8` and not `0.80000001`.
+the chat ends with `[INFO] Chat ended: 1 model turns` followed by
+`[INFO] Probe rust-e4b-verify-probe: N positions scored, M flagged`, with `probe-flags.jsonl`
+listed in `/tmp/rhx1`; none of those is a header line. The sidecar decides one more line: a
+`model_hash` of `unknown` puts `[WARN] Model identity: probe records model hash "unknown",
+check skipped` before the header, and a real digest prints nothing there and costs a sha256
+over the weights before the header appears. The reply itself is immaterial: E4B is a base
+model and may not say `ready`. The `run.header` record carries the same facts as JSON numbers
+rather than formatted strings — `n_layers` and `weight_bytes` are numbers, `temperature`
+renders as `0.8` and not `0.80000001`, `probe` is the sidecar's `name` as a string and
+`probe_layer` its `layer` as a number.
 
 The header half of this entry has been observed three times already, in RH.2, RH.8 and RH.37
-of [rust-harness.md](rust-harness.md), and those banners are what the count and the `dot=`
-claim above were checked against. What none of them read is the record: this entry closes on
-the `run.header` line agreeing with the nine printed ones, and on nothing else.
+of [rust-harness.md](rust-harness.md), and those banners are what the `dot=` claim above was
+checked against. What none of them read is the record, and none loaded a probe: this entry
+closes on the `run.header` line agreeing with the nine printed ones, and on nothing else.
 
 Record both the nine lines and the `run.header` record. The point of the entry is that they
 agree.
 
-Observed:
+Asserted by `tests/hardware/test_run_header.py`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| Nine `[INFO]` lines from `Model:` through `Build:`, in the source's order, `Probe` eighth | `test_the_header_is_nine_info_lines_in_order` |
+| `Fold:` has the `dot= batch= threads=` shape and `dot` is not `sequential` | `test_the_fold_is_the_tuned_kernel_not_the_reference` |
+| `Sampling:` repeats `seed=7 temperature=0.8 max_tokens=16` | `test_the_sampling_line_states_the_flags_the_run_was_given` |
+| `Probe` line equals the sidecar's `name` and `layer` | `test_the_probe_line_names_the_sidecar_it_loaded` |
+| Every `run.header` field is typed (integers, `temperature` a float, `probe` a string) and renders to its printed line; the three byte fields convert to the printed GiB at two decimals | `test_the_record_agrees_with_every_printed_line` |
+| `[WARN] KV cache above 2 GiB` sits after `Build:` and before `Model load:` | `test_the_kv_warning_follows_the_header_and_precedes_the_load` |
+| `Chat ended: 1 model turns`, then the probe report naming `probe-flags.jsonl` in the run directory, which exists; the reply is on stdout | `test_the_run_ends_with_one_turn_and_a_probe_report` |
+
+```bash
+cd ~/workspace/ai-experiments
+HARNESS_E4B_MODEL="$MODEL" uv run pytest -m hw_full tests/hardware/test_run_header.py -v
+```
+
+The test runs the same chat turn with the same probe from a temporary directory and, like
+[RH.13](rust-harness.md)'s, leaves its one row and event file in the real obs root. It skips
+when the checkpoint or the registered probe is absent and fails when the release binary is.
+
+Observed (2026-09-12, the first run, before `--probe` was added to the block; eight header
+lines, the record without `probe` or `probe_layer`):
+
+```
+➜  ai-experiments git:(rust-harness-ux-verification) ✗ MODEL=/mnt/ai-data/models/hf/gemma-4-E4B
+➜  ai-experiments git:(rust-harness-ux-verification) ✗ set -o pipefail
+rm -rf /tmp/rhx1 && mkdir -p /tmp/rhx1 && cd /tmp/rhx1
+➜  rhx1 printf '%s\n' "Reply with the single word: ready" \
+  | ~/workspace/ai-experiments/rust-harness/target/release/harness \
+      --model "$MODEL" --text-only --chat \
+      --seed 7 --temperature 0.8 --max-tokens 16
+echo "exit=$?"
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E4B hash=e376216f8b693aff layers=42
+[INFO] Weights: 13.90 GiB resident at bf16
+[INFO] Peak RSS after load: 14.03 GiB
+[INFO] KV cache: 131072 tokens, 4.05 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=7 temperature=0.8 max_tokens=16
+[INFO] Build: 0.1.0 git unknown
+[WARN] KV cache above 2 GiB: consider --context to cap it (compaction keeps long sessions inside the cap)
+[INFO] Model load: 9.42 s
+[INFO] Prefill: 16 tokens in 1.24 s (13 tok/s)
+You can use the following LLM model names to use this command: <code>
+[INFO] Chat ended: 1 model turns
+[INFO] Session snapshot: 32 cached tokens at /tmp/rhx1/session.kv
+exit=0
+➜  rhx1 RUN=$(ls -t /mnt/ai-data/logs/harness/R-*.jsonl | head -1)
+echo "$RUN"
+jq -c 'select(.event == "run.header")' "$RUN"
+/mnt/ai-data/logs/harness/R-20260912-150430-77f6ad.jsonl
+{"ts":"2026-09-12T15:04:39.509+00:00","level":"info","run_id":"R-20260912-150430-77f6ad","cli":"harness","command":"chat","pid":175956,"event":"run.header","msg":"resolved run configuration","model":"/mnt/ai-data/models/hf/gemma-4-E4B","model_hash":"e376216f8b693aff","n_layers":42,"dtype":"bf16","weight_bytes":14924906496,"max_context":131072,"kv_bytes":4353867776,"kv_batch_group":64,"threads":8,"dot":"widen4","batch":"64","seed":7,"temperature":0.8,"max_tokens":16,"binary_version":"0.1.0","git_sha":"unknown","peak_rss_bytes":15068209152,"rewind_horizon":208}
+```
+
+Everything else the first run predicted held: eight `[INFO]` lines in the source's order,
+`dot=widen4`, the warning between `Build:` and `Model load:`, one model turn, exit 0, and a
+record whose byte fields convert to the printed figures (14924906496 B is 13.90 GiB,
+4353867776 B is 4.05 GiB, 15068209152 B is 14.03 GiB) with `n_layers` and `weight_bytes` as
+numbers and `temperature` as `0.8`. The count was the runbook's error, not the header's, and
+the block above was widened rather than the signal narrowed.
+
+Observed (the widened block, with `--probe`):
 
 ```
 ```

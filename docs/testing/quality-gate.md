@@ -81,6 +81,10 @@ attention-capture binary (RH.36): `attention_capture.rs` pins its surface over a
 window in the sandbox, and `tests/hardware/test_attention_capture.py` under `hw_e4b` runs it on
 the released E4B over a prompt past the real window, holding `span_first` to the schedule the
 checkpoint's own `config.json` states and every row's mass to one over hundreds of keys.
+And the run header (RHX.1): `run_header.rs` holds the printed lines to the recorded fields over
+the fixture, and `tests/hardware/test_run_header.py` under `hw_full` runs one chat turn on the
+released E4B with the registered probe loaded, so all nine lines print, and reads the
+`run.header` record back off the real obs root to hold each line to its field at scale.
 Two more hardware tests have no sandbox half at all, because their question is the released
 weights themselves: `tests/hardware/test_shared_kv_weights.py` under `hw_e4b` reads every
 attention projection of E4B through safetensors and asks whether the shared-KV tail's

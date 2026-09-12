@@ -14,13 +14,24 @@ torch so sandbox collection stays clean; heavy imports live inside tests.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 
 import pytest
 
+from common.obs.core import DEFAULT_LOG_DIR
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 AI_DATA_ROOT = "/mnt/ai-data"
+
+# The release harness the run-record suites spawn, and the obs root it
+# resolves when OBS_LOG_DIR is unset. The root is spelled from the Python
+# side's own constant rather than through catalog_path, which would honour an
+# OBS_LOG_DIR in the test's shell that the child never sees.
+HARNESS_DIR = os.path.join(REPO_ROOT, "rust-harness")
+HARNESS = os.path.join(HARNESS_DIR, "target", "release", "harness")
+LOG_ROOT = os.path.join(DEFAULT_LOG_DIR, "harness")
 
 # The repo root is on sys.path already (tests/conftest.py), which is what makes
 # `from tests.hardware.conftest import ...` resolvable at collection time.
@@ -37,6 +48,36 @@ def e4b_checkpoint() -> str:
         return named
     root = os.environ.get("GEMMA4_CHECKPOINT_ROOT", f"{AI_DATA_ROOT}/models/hf")
     return os.path.join(root, "gemma-4-E4B")
+
+
+def require_binary() -> None:
+    """A missing binary fails rather than skips: it is built by `make
+    harness-build` on the same host, so its absence is a misconfigured run
+    and not the unavailable hardware the module rule exempts."""
+    assert os.path.isfile(HARNESS), (
+        f"built binary absent: {HARNESS}; run `make harness-build` in {HARNESS_DIR}"
+    )
+
+
+def default_root_env() -> dict[str, str]:
+    """The child's environment with OBS_LOG_DIR removed, so the binary resolves
+    the default root. That resolution is a fact the record suites check;
+    inheriting an override from the shell would test the override instead."""
+    env = {k: v for k, v in os.environ.items() if k != "OBS_LOG_DIR"}
+    env["NO_COLOR"] = "1"
+    return env
+
+
+def event_file(run_id: str) -> str:
+    return os.path.join(LOG_ROOT, f"{run_id}.jsonl")
+
+
+def events(run_id: str) -> list[dict]:
+    """Every record of one run's event file under the default root."""
+    path = event_file(run_id)
+    assert os.path.isfile(path), f"no event file for {run_id} at {path}"
+    with open(path, encoding="utf-8") as handle:
+        return [json.loads(line) for line in handle if line.strip()]
 
 
 @pytest.fixture()
