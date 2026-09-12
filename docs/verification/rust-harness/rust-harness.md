@@ -3787,11 +3787,12 @@ itself. Two are closed:
 
 ### RH.15 Steered scorecard through the harness endpoint
 
-Never executed against real weights; the entry status below records why. R10
-moved the control vector to safetensors and retired llama.cpp steering, so the
-scorecard's subject is now `harness-serve` rather than `llama-gpu`. Everything
-below is verified in the sandbox against a synthetic model, which proves the
-format and the wiring and nothing about steering a real checkpoint.
+Not executed against real weights until 2026-09-06; the Observed block and the
+status below record that run. R10 moved the control vector to safetensors
+and retired llama.cpp steering, so the scorecard's subject is `harness-serve`
+rather than `llama-gpu`. The sandbox verifies the format and the wiring
+against a synthetic model and nothing about steering a real checkpoint,
+which is what the workstation run below adds.
 
 Requires a control vector extracted against the weights being served; a
 vector whose `manifest.json` records a different `model_hash` is refused, and
