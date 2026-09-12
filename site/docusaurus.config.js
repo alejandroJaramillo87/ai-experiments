@@ -5,14 +5,14 @@
 // is deliberately not mounted here. Docs are served at the site root: there is
 // no landing page, no blog, and no external fonts or analytics, so the build
 // needs no network once node_modules is installed. The theme is
-// src/css/custom.css over theme-classic; the logo is a hand-written SVG under
-// static/img.
+// src/css/custom.css over theme-classic, with src/prism/slate.js for code
+// panels; the logo is a hand-written SVG under static/img.
 
 // @ts-check
 
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
-import {themes as prismThemes} from 'prism-react-renderer';
+import slate from './src/prism/slate.js';
 
 // The footer names the harness version, read from the workspace manifest so it
 // cannot lag a release. A manifest without the field is a build failure rather
@@ -115,10 +115,11 @@ const config = {
         copyright: `Rust Harness ${harnessVersion}. Generated from the ai-experiments repository.`,
       },
       prism: {
-        // A light code theme under the light page and a dark one under the
-        // dark page; the default pairs a dark block with the light page.
-        theme: prismThemes.github,
-        darkTheme: prismThemes.dracula,
+        // One dark theme under both page themes: code panels share the dark
+        // slate material of the blog's code blocks and figura's diagrams,
+        // and read as framed figures on the light page.
+        theme: slate,
+        darkTheme: slate,
         additionalLanguages: ['bash', 'json', 'rust', 'yaml'],
       },
     }),

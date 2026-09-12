@@ -165,6 +165,53 @@ pre code {
   color: inherit;
 }
 
+/* Code panels: the blog's .code-panel (curiosity-chronicles,
+ * assets/scss/custom.scss) on theme-classic's block. The surface comes from
+ * the Prism theme (src/prism/slate.js); the frame, shadow, and title bar are
+ * set here. theme-classic already clips the block to its radius. */
+:root,
+html[data-theme='dark'] {
+  --ifm-pre-background: var(--panel-bg);
+  --ifm-pre-border-radius: var(--radius);
+  --ifm-pre-padding: 1rem 1.25rem;
+  --ifm-pre-color: var(--panel-fg);
+  --docusaurus-highlighted-code-line-bg: rgba(56, 189, 248, 0.12);
+}
+
+.theme-code-block {
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius);
+  box-shadow: var(--panel-shadow);
+}
+
+/* theme-classic hashes its module class names, so the title bar is matched
+ * on the stable prefix. Styled as the blog's language tab: header-bar fill,
+ * small lowercase mono. */
+.theme-code-block [class*='codeBlockTitle'] {
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--panel-border);
+  color: var(--panel-muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  padding: 0.35rem 1rem;
+}
+
+/* Copy and wrap buttons: outlined in the panel border, accent on hover, as
+ * the blog's copy button. theme-classic reveals them on block hover. */
+.theme-code-block .clean-btn {
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  color: var(--panel-muted);
+  transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.theme-code-block .clean-btn:hover {
+  border-color: var(--panel-accent);
+  color: var(--panel-accent);
+}
+
 /* The docs h1 is the page title, not a banner. */
 .markdown h1:first-child {
   --ifm-h1-font-size: 2rem;
