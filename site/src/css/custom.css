@@ -212,6 +212,138 @@ html[data-theme='dark'] {
   color: var(--panel-accent);
 }
 
+/* Navbar: flat on the page surface with a hairline, as the blog's header. */
+:root,
+html[data-theme='dark'] {
+  --ifm-navbar-background-color: var(--surface);
+  --ifm-navbar-shadow: none;
+  --ifm-footer-background-color: var(--surface-2);
+}
+
+.navbar {
+  border-bottom: 1px solid var(--border);
+}
+
+/* Wordmark: the blog's .site-logo, <Rust Harness/> in mono with accent
+ * brackets. Pseudo-elements carry the brackets so theme-classic's title
+ * needs no swizzle. */
+.navbar__title {
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 1.2rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  transition: opacity var(--dur) var(--ease);
+}
+
+.navbar__brand:hover .navbar__title {
+  color: var(--ink);
+  opacity: 0.8;
+}
+
+.navbar__title::before,
+.navbar__title::after {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.navbar__title::before {
+  content: '<';
+  margin-right: 0.15rem;
+}
+
+.navbar__title::after {
+  content: '/>';
+  margin-left: 0.15rem;
+}
+
+/* Sidebar and table of contents: muted links, the accent on the current
+ * page, and an inset rail beside it so the active item needs no layout. */
+:root,
+html[data-theme='dark'] {
+  --ifm-menu-color: var(--body-2);
+  --ifm-menu-color-active: var(--accent);
+  --ifm-menu-color-background-active: var(--surface-3);
+  --ifm-menu-color-background-hover: var(--surface-2);
+  --ifm-toc-link-color: var(--muted);
+}
+
+.menu__link--active:not(.menu__link--sublist) {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.menu__list-item-collapsible > .menu__link:not(.menu__link--active) {
+  color: var(--ink-strong);
+}
+
+.table-of-contents__link--active {
+  color: var(--accent);
+}
+
+/* Admonitions: figura's semantic set on the blog's blockquote shape (a 4px
+ * rail on the faint surface). Light text colors are the 600-700 stops of the
+ * same hues; dark fills are figura's -dim tokens, the hue at ~15% over the
+ * panel. Infima's alert variables are overridden per variant so the rest of
+ * its admonition layout stays. */
+.theme-admonition {
+  border-left-width: 4px;
+  border-radius: var(--radius);
+}
+
+.theme-admonition.alert--secondary {
+  --ifm-alert-background-color: var(--surface-2);
+  --ifm-alert-border-color: var(--border-strong);
+  --ifm-alert-foreground-color: var(--body);
+}
+
+.theme-admonition.alert--info {
+  --ifm-alert-background-color: var(--surface-2);
+  --ifm-alert-border-color: #0284c7;
+  --ifm-alert-foreground-color: #0369a1;
+}
+
+.theme-admonition.alert--success {
+  --ifm-alert-background-color: #ecfdf5;
+  --ifm-alert-border-color: #059669;
+  --ifm-alert-foreground-color: #047857;
+}
+
+.theme-admonition.alert--warning {
+  --ifm-alert-background-color: #fffbeb;
+  --ifm-alert-border-color: #d97706;
+  --ifm-alert-foreground-color: #b45309;
+}
+
+.theme-admonition.alert--danger {
+  --ifm-alert-background-color: #fef2f2;
+  --ifm-alert-border-color: #dc2626;
+  --ifm-alert-foreground-color: #b91c1c;
+}
+
+html[data-theme='dark'] .theme-admonition.alert--info {
+  --ifm-alert-background-color: #0c3550;
+  --ifm-alert-border-color: #38bdf8;
+  --ifm-alert-foreground-color: #7dd3fc;
+}
+
+html[data-theme='dark'] .theme-admonition.alert--success {
+  --ifm-alert-background-color: #0e4429;
+  --ifm-alert-border-color: #34d399;
+  --ifm-alert-foreground-color: #6ee7b7;
+}
+
+html[data-theme='dark'] .theme-admonition.alert--warning {
+  --ifm-alert-background-color: #4a3608;
+  --ifm-alert-border-color: #fbbf24;
+  --ifm-alert-foreground-color: #fcd34d;
+}
+
+html[data-theme='dark'] .theme-admonition.alert--danger {
+  --ifm-alert-background-color: #4a1d1d;
+  --ifm-alert-border-color: #f87171;
+  --ifm-alert-foreground-color: #fca5a5;
+}
+
 /* The docs h1 is the page title, not a banner. */
 .markdown h1:first-child {
   --ifm-h1-font-size: 2rem;

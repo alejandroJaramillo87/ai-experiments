@@ -84,11 +84,9 @@ const config = {
         respectPrefersColorScheme: true,
       },
       navbar: {
+        // The title is the wordmark; custom.css sets it in the blog's bracketed
+        // mono form, so no logo image sits beside it. The SVG stays the favicon.
         title: 'Rust Harness',
-        logo: {
-          src: 'img/logo.svg',
-          alt: '',
-        },
         items: [
           {
             type: 'docSidebar',
