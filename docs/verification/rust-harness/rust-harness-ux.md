@@ -422,7 +422,8 @@ Status: VERIFIED 2026-09-12. One `Model load: 5.70 s`, agreeing with the record'
 second being the new turn alone as the 98-token snapshot shows; exit 0; no carriage return in
 either stream. The 5.70 s load against RHX.1's 9.42 s and 41.26 s is a warm page cache and no
 probe digest to pay. The replies are a base model continuing a chat template and are
-immaterial.
+immaterial. The gate test passed, 5 of 5, as reported by the operator on 2026-09-12; the
+transcript was not pasted.
 
 ## RHX.3 The ladder records the climb it actually ran
 
