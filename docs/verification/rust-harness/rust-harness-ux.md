@@ -298,8 +298,8 @@ FAILED tests/hardware/test_run_header.py::test_the_record_agrees_with_every_prin
 The three failures share one cause in the test, not the header: `Probe {name}: layer {l}` is
 the one line whose value sits before its colon, and the test's parser read
 `Probe rust-e4b-verify-probe` as the key. The parser now keys that line `Probe`; the four
-tests that passed include the fold and the warning's position. The corrected test's rerun is
-recorded below when it has one.
+tests that passed include the fold and the warning's position. The corrected test's rerun
+passed 7 of 7 the same day.
 
 Status: VERIFIED 2026-09-12 on the widened block by hand. Nine `[INFO]` lines with `--probe`
 and eight without, in the source's order; `dot=widen4`; the warning between `Build:` and
@@ -308,8 +308,8 @@ exit 0. The record carries every printed fact typed: 14924906496 B is 13.90 GiB,
 is 4.05 GiB, 15069581312 B is 14.03 GiB, `temperature` is `0.8`, `probe` is the sidecar's
 name and `probe_layer` its layer. The sidecar carries a real digest, so no identity warning
 printed and the load line's 41.26 s includes the sha256 over the weights that a 9.42 s
-probe-less load did not pay. The gate test has 4 of 7 passing; its rerun after the parser fix
-is pending.
+probe-less load did not pay. The gate test's rerun after the parser fix passed, 7 of 7, as
+reported by the operator on 2026-09-12; the transcript was not pasted.
 
 ## RHX.2 A run states what its two long operations cost
 
