@@ -179,6 +179,26 @@
     );
   }
 
+  /* Y-axis labels with as many decimals as the tick spacing needs, so a
+   * narrow range gets distinguishable labels. uPlot's default rounds to a
+   * fixed precision; RHX.4's process-memory chart, flat within a few MB of
+   * 14.24 GB, showed six ticks all reading 14.242. Capped at six decimals so a
+   * degenerate spacing cannot produce an unreadable axis. */
+  function axisLabels(u, splits) {
+    var gap = Infinity;
+    for (var i = 1; i < splits.length; i += 1) {
+      var d = Math.abs(splits[i] - splits[i - 1]);
+      if (d > 0 && d < gap) gap = d;
+    }
+    var decimals = 0;
+    if (isFinite(gap) && gap < 1) {
+      decimals = Math.min(6, Math.ceil(-Math.log10(gap)));
+    }
+    return splits.map(function (v) {
+      return v.toFixed(decimals);
+    });
+  }
+
   function chartWidth(chartsRoot) {
     return Math.min((chartsRoot.clientWidth || 960) - 18, 1100);
   }
@@ -187,6 +207,12 @@
     CHART_GROUPS.forEach(function (group) {
       var entry = state.charts[group.title];
       var keys = activeKeys(state, group);
+      /* A group with no series is a group this run does not have: a
+       * training run has no rss_gb, a harness run no loss. Its holder is
+       * created up front so groups keep their order when a series arrives
+       * live, and hidden until then; RHX.4 found the four empty frames a
+       * harness page otherwise shows. */
+      entry.holder.style.display = keys.length ? "" : "none";
       if (!keys.length) return;
       if (entry.plot && entry.keys.join(" ") === keys.join(" ")) {
         /* a user zoom survives new data: resetScales only when unzoomed,
@@ -214,6 +240,7 @@
         width: chartWidth(chartsRoot),
         height: 240,
         scales: { x: { time: false } },
+        axes: [{}, { values: axisLabels }],
         series: [{ label: "step" }].concat(
           keys.map(function (key, i) {
             return {
@@ -234,6 +261,39 @@
     });
   }
 
+  /* The strip states the facts the emitter's own header states, keyed by
+   * the envelope's `cli`. The harness merges RunHeader::fields() into its
+   * envelope (schemas/run_metrics.json, header.extra_fields), so its strip is
+   * the terminal's header: model, hash, fold and build. Until RHX.4 (the
+   * 2026-09-12 run) the strip read only the training keys and showed a dash
+   * for everything but the run id on every harness page. */
+  function headerFields(h) {
+    if (h.cli === "harness") {
+      var fold =
+        h.dot || h.batch || h.threads
+          ? "dot=" + h.dot + " batch=" + h.batch + " threads=" + h.threads
+          : "-";
+      var build = h.binary_version
+        ? h.binary_version + " git " + (h.git_sha || "unknown")
+        : "-";
+      return [
+        ["run", h.run_id || "-"],
+        ["command", h.command || "-"],
+        ["model", h.model || "-"],
+        ["hash", h.model_hash || "-"],
+        ["fold", fold],
+        ["build", build],
+      ];
+    }
+    return [
+      ["run", h.run_id || "-"],
+      ["tier", h.tier || "-"],
+      ["model", h.model_id || "-"],
+      ["recipe", (h.recipe_hash || "").slice(0, 12) || "-"],
+      ["schedule", h.schedule ? JSON.stringify(h.schedule) : "-"],
+    ];
+  }
+
   function refreshHeader(state, node) {
     node.textContent = "";
     var h = state.header;
@@ -241,13 +301,7 @@
       node.appendChild(el("span", "muted", "waiting for run_metrics header"));
       return;
     }
-    [
-      ["run", h.run_id || "-"],
-      ["tier", h.tier || "-"],
-      ["model", h.model_id || "-"],
-      ["recipe", (h.recipe_hash || "").slice(0, 12) || "-"],
-      ["schedule", h.schedule ? JSON.stringify(h.schedule) : "-"],
-    ].forEach(function (field) {
+    headerFields(h).forEach(function (field) {
       var item = el("span", "hdr-item");
       item.appendChild(el("span", "hdr-key", field[0]));
       item.appendChild(el("span", "hdr-val", field[1]));
@@ -392,7 +446,11 @@
       state.charts[group.title] = { holder: holder, plot: null, keys: [] };
     });
 
-    var ui = { levelSelect: levelSelect, searchInput: searchInput, logBody: logBody };
+    var ui = {
+      levelSelect: levelSelect,
+      searchInput: searchInput,
+      logBody: logBody,
+    };
 
     function refreshAll() {
       refreshHeader(state, headerNode);

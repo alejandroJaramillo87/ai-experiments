@@ -499,6 +499,15 @@ cannot be automated, so its `Observed` block will not be pasted output.
 The first line of `metrics.jsonl` is the report envelope. Record it: it is what makes the file
 readable by a tool written for a different tier.
 
+**Fix to confirm here** (details in [bugs/known-bugs.md](../bugs/known-bugs.md)):
+
+- KB-70 — `common/obs/viewer.js` — the header strip read only the training envelope's keys
+  and showed a dash for every field but the run id on the 2026-09-12 page below; the strip now
+  keys its fields on `cli`, the empty chart frames are hidden, and the memory axis sizes its
+  precision to the tick spacing. Fix landed 2026-09-12; re-run `report` on the same directory
+  and reopen `run.html`. The `Fold` and `Build` the strip should now state are the envelope's
+  `dot=widen4 batch=64 threads=8` and `0.1.0 git unknown`.
+
 Observed (2026-09-12, on the run directory `tests/hardware/test_status_costs.py` wrote):
 
 ```
