@@ -37,7 +37,8 @@ is a no-op until the dependencies are installed.
 docusaurus.config.js   docs at the site root, no blog, broken links fail the build
 sidebars.js            the two sidebars, in reading order
 package.json           Docusaurus and React pinned exact; package-lock.json is the pin
-src/css/custom.css     the theme: accent, heading sizes, article width, fonts, sidebar weights
+src/css/custom.css     the theme: tokens shared with the blog and figura, code panels, article width
+src/prism/slate.js     the code panel Prism theme, dark under both page themes
 static/img/logo.svg    the navbar mark and favicon, one monochrome SVG
 docs/index.md          the overview
 docs/rust-harness/     getting-started, guides, observability, reference, troubleshooting
