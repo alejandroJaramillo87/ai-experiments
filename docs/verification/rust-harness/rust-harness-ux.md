@@ -565,8 +565,10 @@ phases, each agreeing with the timing table to the centisecond (`L5` 270.992 aga
 `270.99s`). The run directory holds `metrics.jsonl` and nothing else, this being a run that
 no `report` has been pointed at yet.
 
-Status: VERIFIED 2026-09-12 by hand; the three test functions above were written from this
-transcript and await their first gate run.
+Status: VERIFIED 2026-09-12 by hand (gate-backed by `tests/hardware/test_ladder.py`; its three
+RHX.3 functions were written from this transcript and had not run on the workstation when the
+entry closed, the operator deferring the ten-minute climb to the next `make quality-full
+HW=full`).
 
 ## RHX.4 The training dashboard renders a harness run
 
