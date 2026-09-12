@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 38 verified, 0 blocked, 4 pending, of 42.** RH.11 was blocked
+**Entries: 42 verified, 0 blocked, 0 pending, of 42.** RH.11 was blocked
 until 2026-09-05 on an instruction-tuned checkpoint; gemma-4-E2B-it unblocked
 it, and it closed on that checkpoint on 2026-09-06. RH.9d and RH.15 were
 blocked until the same day on a control vector this repository could not
@@ -20,7 +20,7 @@ section. The run of 2026-09-11 closed RH.23 through RH.31. RH.32 through
 RH.35 came from a second surface audit on 2026-09-12, which crossed every
 flag of every binary against the runbook's command blocks and against every
 test that passes a flag: seven flags had been run by hand or never run, and
-none had a test of its behaviour. They are pending the next run. Everything
+none had a test of its behaviour. They closed on the run of 2026-09-12. Everything
 the inventory found that is neither a full entry nor gate-backed is listed in
 the coverage roster at the end of this file, against the test that pins it.
 
@@ -5526,8 +5526,9 @@ The run that closed RH.23 through RH.31 was made on 2026-09-11 in the agent
 sandbox, from the worktree's `rust-harness/` directory rather than the
 workstation path above, with `--test-threads=1` as written: 61 test binaries,
 every one `0 failed`, no `[SKIP]` line, `exit=0`. Each of those entries
-carries its own binary's block from that run. RH.32 through RH.35 were added
-afterwards and wait on the next.
+carries its own binary's block from that run. RH.32 through RH.35 closed on a
+second run the same way on 2026-09-12: 67 test binaries, every one `0 failed`,
+no `[SKIP]` line, `exit=0`.
 
 ### RH.23 layer-diff numerics are bracketed around a measured value
 
@@ -5881,12 +5882,19 @@ wired to a constant would satisfy. Each test here reads the set of span names
 a task run over the fixture opened at a level, so it is the flag's own help
 text that is asserted: what each level adds and that the default is `debug`.
 
-Observed:
+Observed (2026-09-12, the one sandbox run):
 
 ```
+     Running tests/trace_levels.rs (target/debug/deps/trace_levels-bda386852b6bea0a)
+
+running 2 tests
+test each_trace_level_adds_the_spans_its_help_text_names ... ok
+test the_default_trace_level_is_debug ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.50s
 ```
 
-Status: PENDING
+Status: VERIFIED 2026-09-12 (gate-backed by `rust-harness/harness/tests/trace_levels.rs`)
 
 ### RH.33 --version answers and --record writes what the replay reader reads
 
@@ -5904,12 +5912,19 @@ never produced one: a recorder that stopped writing would have failed the
 workstation's replay check and nothing in the sandbox. The second test
 writes a recording over the fixture and reads it back with the same reader.
 
-Observed:
+Observed (2026-09-12, the one sandbox run):
 
 ```
+     Running tests/version_and_record.rs (target/debug/deps/version_and_record-945460c747098af9)
+
+running 2 tests
+test record_writes_a_recording_the_replay_reader_reads_back ... ok
+test version_prints_the_crate_version_on_stdout_and_is_not_a_run ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.70s
 ```
 
-Status: PENDING
+Status: VERIFIED 2026-09-12 (gate-backed by `rust-harness/harness/tests/version_and_record.rs`)
 
 ### RH.34 The sampling flags change what is sampled
 
@@ -5933,12 +5948,21 @@ makes the first three evidence rather than a property of the fixture. The
 `--top-k 0` refusal is a unit test in `harness/src/cli.rs` and is not
 repeated here.
 
-Observed:
+Observed (2026-09-12, the one sandbox run):
 
 ```
+     Running tests/sampling_effect.rs (target/debug/deps/sampling_effect-1da548ea0c927f30)
+
+running 4 tests
+test a_nucleus_too_small_for_a_second_token_selects_every_argmax ... ok
+test a_top_k_of_one_selects_every_argmax_while_still_drawing ... ok
+test a_zero_temperature_selects_every_argmax_without_drawing ... ok
+test the_full_support_at_the_same_seed_leaves_the_argmax ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.83s
 ```
 
-Status: PENDING
+Status: VERIFIED 2026-09-12 (gate-backed by `rust-harness/harness/tests/sampling_effect.rs`)
 
 ### RH.35 --context, --size and --single-thread are read, not merely parsed
 
@@ -5972,12 +5996,33 @@ ladder header names the size and the corpus length. The harness's own
 `--single-thread` was run once under rr in RH.7; the runtime binaries' flag
 of the same name had the tests.
 
-Observed:
+Observed (2026-09-12, the one sandbox run):
 
 ```
+     Running tests/context_cap.rs (target/debug/deps/context_cap-1d537b4283336112)
+
+running 2 tests
+test a_context_above_the_trained_window_fails_the_run_naming_both_figures ... ok
+test a_context_below_the_trained_window_is_the_budget_the_run_reports ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.38s
+
+     Running tests/single_thread.rs (target/debug/deps/single_thread-9f2b8c86f51885cc)
+
+running 1 test
+test single_thread_is_the_width_the_run_header_reports ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.39s
+
+     Running tests/ladder_size.rs (target/debug/deps/ladder_size-d206ddcccd957709)
+
+running 1 test
+test size_is_recorded_as_given_with_the_corpus_length_it_implies ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.89s
 ```
 
-Status: PENDING
+Status: VERIFIED 2026-09-12 (gate-backed by `rust-harness/harness/tests/context_cap.rs`, `rust-harness/harness/tests/single_thread.rs`, `rust-harness/runtime/tests/ladder_size.rs`)
 
 ## Known defects
 
