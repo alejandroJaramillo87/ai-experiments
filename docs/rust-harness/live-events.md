@@ -38,7 +38,8 @@ summary reaches stderr at the same late moment.
 Part of that gap has since closed at the terminal. The run header states the
 resolved configuration before the work starts, and a completed operation
 reports what it cost: `Model load: 53.50 s`, then `Prefill: 234 tokens in
-1.90 s (123 tok/s)` on every turn. Those are summaries after the fact, which
+1.90 s (123 tok/s)` on every turn, with a clause naming the rewind the
+sliding window refused when a compaction forced a rebuild. Those are summaries after the fact, which
 is the distinction that keeps this document alive — they say what a step took
 once it is over, and say nothing while it runs.
 

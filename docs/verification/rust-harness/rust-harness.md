@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 23 verified, 0 blocked, 15 pending, of 38.** RH.11 was blocked
+**Entries: 43 verified, 0 blocked, 1 pending, of 44.** RH.11 was blocked
 until 2026-09-05 on an instruction-tuned checkpoint; gemma-4-E2B-it unblocked
 it, and it closed on that checkpoint on 2026-09-06. RH.9d and RH.15 were
 blocked until the same day on a control vector this repository could not
@@ -14,12 +14,20 @@ and the entry records the install step. RH.8 was blocked until the same day
 on the absence of an instruction-tuned checkpoint; gemma-4-E2B-it now closes
 it, and its entry records the two harness defects the first runs exposed.
 
-Of the 16 pending, RH.17 through RH.22 are new full entries from the surface
-inventory, each needing a human, the GPU host, or the real E4B checkpoint.
-RH.23 through RH.31 are **gate-backed**: each names the test function that
-asserts its expected signal, and one `cargo test --workspace` run closes all
-nine. Everything the inventory found that is neither is listed in the coverage
-roster at the end of this file, against the test that pins it.
+RH.23 through RH.35 are **gate-backed** entries with no workstation block:
+each names the test function that asserts its expected signal, and one
+`cargo test --workspace` run closes the section. Earlier entries that gained a
+hardware test after closing say so in their Status line. The run of 2026-09-11 closed RH.23 through RH.31. RH.32 through
+RH.35 came from a second surface audit on 2026-09-12, which crossed every
+flag of every binary against the runbook's command blocks and against every
+test that passes a flag: seven flags had been run by hand or never run, and
+none had a test of its behaviour. They closed on the run of 2026-09-12. The
+same audit left two surfaces only real weights can show, RH.36 and RH.37,
+opened the same day as workstation entries: RH.36 closed on its first run,
+and RH.37's first run exposed a defect in the trace shape check rather than
+in the flag, so it is pending a rerun on the corrected check. Everything
+the inventory found that is neither a full entry nor gate-backed is listed in
+the coverage roster at the end of this file, against the test that pins it.
 
 Workstation verification for the `rust-harness/` workspace: the CPU
 inference backend on the real Gemma 4 E4B checkpoint, the observability stack
@@ -122,6 +130,12 @@ it rather than re-diagnosed from scratch.
   - [RH.29 --tokenizer overrides the one beside the checkpoint](#rh29---tokenizer-overrides-the-one-beside-the-checkpoint)
   - [RH.30 --control-vector-layer-range decides which directions load](#rh30---control-vector-layer-range-decides-which-directions-load)
   - [RH.31 --serve-addr binds where it names](#rh31---serve-addr-binds-where-it-names)
+  - [RH.32 --trace-level selects the span depth](#rh32---trace-level-selects-the-span-depth)
+  - [RH.33 --version answers and --record writes what the replay reader reads](#rh33---version-answers-and---record-writes-what-the-replay-reader-reads)
+  - [RH.34 The sampling flags change what is sampled](#rh34-the-sampling-flags-change-what-is-sampled)
+  - [RH.35 --context, --size and --single-thread are read, not merely parsed](#rh35---context---size-and---single-thread-are-read-not-merely-parsed)
+- [RH.36 attention-capture as its own binary on E4B](#rh36-attention-capture-as-its-own-binary-on-e4b)
+- [RH.37 --trace-level info and trace on E4B](#rh37---trace-level-info-and-trace-on-e4b)
 - [Known defects](#known-defects)
 - [Coverage roster](#coverage-roster)
 
@@ -571,12 +585,18 @@ Implementation: `rust-harness/runtime/src/ladder.rs`,
 `rust-harness/runtime/src/bin/ladder.rs`, the five generators under
 `rust-harness/fixtures/`, and `make ladder`.
 
-The numerics oracle. Six rungs compare the CPU backend against
+The numerics oracle. Seven rungs compare the CPU backend against
 `transformers` on the real checkpoint: token ids (L0), residual stream (L1),
-final distribution (L2), perplexity (L3), greedy continuation (L4), and the
-long-context anchors past the sliding window (L5, added by RH.17). Every
-other entry in this runbook observes behavior; this one is the only entry
-that can call the backend correct.
+final distribution (L2), perplexity (L3), greedy continuation (L4), the
+long-context anchors past the sliding window (L5, added by RH.17), and the
+attention rows past it (L6, added by RH.18 on 2026-09-11). Every other entry
+in this runbook observes behavior; this one is the only entry that can call
+the backend correct.
+
+The Observed block below is the six-rung climb of 2026-09-04. L6's first run
+is recorded under RH.18, which drives the same `make ladder`; a seven-row
+climb has not yet been pasted here, so this entry's evidence is split across
+the two until one is.
 
 The generators are GPU consumers and `reference_perplexity.py` is the slow
 one. The artifacts land in a git-ignored directory by design — tens of MB at
@@ -598,11 +618,12 @@ cd ~/workspace/ai-experiments/rust-harness
 make ladder SIZE=quick MODEL=<the gemma-4-E4B checkpoint directory>
 ```
 
-Expected signal: six rows, each `PASS`, and `0 skipped`. **A `skipped` rung is
+Expected signal: seven rows, each `PASS`, and `0 skipped`. **A `skipped` rung is
 missing evidence, not a pass** — read the count in the closing `[OK]` line
 rather than the exit code. A skip after the generators ran means one wrote
 somewhere other than where the climb read. The first run recorded below
-predates L5 and shows five rows; L5's first pass is RH.17's Observed block.
+predates L5 and shows five rows; L5's first pass is the 2026-09-04 block
+below, which RH.17 also records.
 
 Observed:
 
@@ -727,7 +748,8 @@ the first run could not show, and it passed at every anchor. Peak RSS rose
 from 14.27 to 16.13 GiB, which is the 2052-token L5 forward pass the first
 run never made.
 
-Status: VERIFIED 2026-09-04 on six rungs (first decided 2026-08-14 on five)
+Status: VERIFIED 2026-09-04 on six rungs (first decided 2026-08-14 on five;
+the seventh, L6, verified under RH.18 on 2026-09-11)
 
 ## RH.2 Real-model load and generation smoke
 
@@ -866,13 +888,14 @@ each cost a host round trip and neither should be re-derived.
 carries `<|turn>` and `<turn|>` in its added-tokens table and does **not**
 carry `<start_of_turn>` or `<end_of_turn>` — the reverse of what that theory
 needed. `template::MARKERS` names the literals, `generator::PROMPT_SPECIALS`
-(`generator.rs:236`) admits them, and every prompt goes through
-`encode_prompt` with that allowlist (`generator.rs:164` and `:244`), so the
-delimiters reach the model as their own ids.
+(a `const` in `rust-harness/harness/src/generator.rs`) admits them, and
+every prompt goes through `encode_prompt` with that allowlist at each of
+its call sites in that file, so the delimiters reach the model as their own
+ids.
 
 The mechanism behind the second hypothesis is real even though it is not the
 cause here, and it is unguarded. The `special_at` doc comment in
-`runtime/src/tokenizer.rs` (lines 342-345) says so itself: a literal that is
+`runtime/src/tokenizer.rs` says so itself: a literal that is
 not in the vocabulary matches nothing; the caller may name a delimiter this
 checkpoint does not carry, and encoding it as text is the same treatment any
 other unknown string gets. A renderer and a
@@ -1723,7 +1746,7 @@ Observed block. Drop it only after applying rr's Zen workaround.
 Inside the rr/gdb session:
 
 ```
-(rr) break cpu.rs:3242
+(rr) break cpu.rs:3269
 (rr) continue
 (rr) watch -l logits.buf.inner.ptr.pointer.pointer[0]
 (rr) continue
@@ -1754,12 +1777,14 @@ line 3186.
 
 **The breakpoint is a line number, not a function.** An earlier version of
 this entry said `break cpu.rs:forward_one` followed by `watch -l logits[0]`,
-and that sequence cannot work: `forward_one` is declared at `cpu.rs:2733`,
-while `logits` is a local of a different function, declared at `cpu.rs:3230`
-inside the tied-head projection loop. The watchpoint has nothing to resolve
-against at the `forward_one` frame. Breaking at `cpu.rs:3242`, the
-`fill_dots(` call that fills it, puts `logits` in scope. Line numbers as of
-2026-09-05.
+and that sequence cannot work: `forward_one` is one function, while `logits`
+is a local of another, `forward_batch`, declared inside the tied-head
+projection. The watchpoint has nothing to resolve against at the
+`forward_one` frame. Breaking at the `fill_dots(` call that fills it puts
+`logits` in scope. That call was `cpu.rs:3242` on 2026-09-05, when the
+Observed block below was recorded, and is `cpu.rs:3269` as of 2026-09-12;
+the `grep` above is how to recompute it, and the block carries the current
+line.
 
 `release-with-debug` (`rust-harness/Cargo.toml:7-9`) inherits `release`, so it
 is fully optimized and locals may print `<optimized out>`. If they do, rebuild
@@ -1827,7 +1852,8 @@ Stack at that stop, innermost first: `fill_run_blocked` at `cpu.rs:1749`,
 `fill_dots` at `cpu.rs:1789`, `CpuModel::forward_batch` at `cpu.rs:3242`,
 `prefill_groups` at `cpu.rs:3321`, `prefill` at `cpu.rs:3370`,
 `Session::sync` at `session.rs:242`, `Session::begin_generation` at
-`session.rs:260`, `Session::generate` at `session.rs:299`. Locals at the
+`session.rs:260`, `Session::generate` at `session.rs:299`, all line numbers
+of the 2026-09-05 checkout the recording was built from. Locals at the
 stop: `got = [0.142605513, 0.17676878, 0.00949310139, 0.16828309]` and
 `head = [0.142605513, 0 <repeats 287 times>]`. The `New value = 46` is gdb
 printing the cell through the raw pointer's type rather than as `f32`; the
@@ -3761,11 +3787,12 @@ itself. Two are closed:
 
 ### RH.15 Steered scorecard through the harness endpoint
 
-Never executed against real weights; the entry status below records why. R10
-moved the control vector to safetensors and retired llama.cpp steering, so the
-scorecard's subject is now `harness-serve` rather than `llama-gpu`. Everything
-below is verified in the sandbox against a synthetic model, which proves the
-format and the wiring and nothing about steering a real checkpoint.
+Not executed against real weights until 2026-09-06; the Observed block and the
+status below record that run. R10 moved the control vector to safetensors
+and retired llama.cpp steering, so the scorecard's subject is `harness-serve`
+rather than `llama-gpu`. The sandbox verifies the format and the wiring
+against a synthetic model and nothing about steering a real checkpoint,
+which is what the workstation run below adds.
 
 Requires a control vector extracted against the weights being served; a
 vector whose `manifest.json` records a different `model_hash` is refused, and
@@ -3945,8 +3972,9 @@ times on 2026-09-06 before the sweep completed).
 ## RH.16 The preflight answers before the model loads
 
 `harness --status` exists because every artifact check a run makes happens
-after `CpuModel::load` — ninety seconds and 14 GiB on E4B — so a missing probe
-sidecar or an unwritable log directory costs a full load to discover. The
+after `CpuModel::load` — six seconds warm and tens of seconds cold on E4B, at
+14 GiB resident (RH.2's run headers) — so a missing probe sidecar or an
+unwritable log directory costs a full load to discover. The
 preflight reads `config.json` and the safetensors header only. This entry says
 its answers are the ones a run would give, on real weights rather than on the
 16-dimension fixture the sandbox uses.
@@ -3954,9 +3982,11 @@ its answers are the ones a run would give, on real weights rather than on the
 Steps 1-3 are the preflight itself. Step 4 exercises `--deep`, and needs an
 artifact for the digest to be compared against — `compare_identity` is what
 consumes the hash, so a `--deep` with no probe and no control vector reads
-nothing at all. There is no probe on this workstation at a stable path today
-(RH.9c wrote its own to `/tmp/rh9` behind an `rm -rf`, and no control vector
-exists at all), so step 4 builds one from a copy.
+nothing at all. There was no probe on this workstation at a stable path when
+this ran (RH.9c wrote its own to `/tmp/rh9` behind an `rm -rf`), and no
+control vector existed; the one RH.9d has since produced, `refusal-e2b-it`,
+records E2B-it's digest and could not match E4B in any case. So step 4 builds
+its artifact from a copy.
 
 Substitute the E4B checkpoint directory for `$MODEL`.
 
@@ -4024,7 +4054,64 @@ comparison from one that hashes the weights and discards the answer.
 
 Record the elapsed times from (1) and (4c). The gap between them is the entire
 argument for `--deep` being opt-in rather than the default, and this is the
-only place it is measured against real weights.
+only place it is measured against real weights. The gate test below prints
+both on every run, beside hashlib's time over the same file.
+
+Asserted by `tests/hardware/test_preflight.py`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| (1) exit 0, `[OK] backend compatibility: supported`, a config line with a positive layer count, well under a second | `test_the_shallow_preflight_passes_and_names_the_checkpoint_it_read` |
+| (2) nothing on stdout | `test_the_report_is_a_verdict_not_payload` |
+| (3) exit 1 with one `[ERROR] model directory` line and every other check `[SKIP]` | `test_an_absent_checkpoint_exits_one_not_two` |
+| (4c) exit 0, `[OK] probe identity` naming a digest equal to hashlib's over the same file, `[OK] probe geometry` | `test_deep_matches_the_served_weights_when_the_probe_records_their_digest` |
+| (4d) one hex digit changed: exit 1, `[ERROR] probe identity` naming both hashes | `test_deep_decides_rather_than_merely_hashes` |
+| `--deep` outlasts the shallow run; the three elapsed times are printed, the ratio is not asserted | `test_deep_reads_the_weights_once_and_reports_what_it_cost` |
+
+```bash
+cd ~/workspace/ai-experiments
+uv run pytest -m hw_smoke tests/hardware/test_preflight.py -v -s
+```
+
+The test builds its probe in memory and writes it with
+`interp.probes.export.write_probe_from_probe` at the width the preflight's
+own config line reports, so no registered probe is needed on the host. It
+skips when the E4B checkpoint is absent and fails, rather than skips, when
+the release binary is. `hw_smoke` rather than `hw_full` because it loads no
+model and writes only under `tmp_path`; about 80 s, two `--deep` passes and
+one hashlib pass. `hw_e4b` alongside, so `make quality-full HW=e4b` runs it
+against the checkpoint that variable names.
+
+Observed (2026-09-11, the gate test on the workstation, after
+`make harness-build`):
+
+```
+[+] build 1/1
+ ✔ Image rust-harness:latest Built                                                                                                                                             1.7s
+rust-harness image built.
+=============================================================================== test session starts ===============================================================================
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /home/alejandro/workspace/ai-experiments/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/alejandro/workspace/ai-experiments
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, mock-3.15.1, jaxtyping-0.3.11, cov-7.1.0, hydra-core-1.3.2, anyio-4.14.2, xdist-3.8.0, typeguard-4.6.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 6 items
+
+tests/hardware/test_preflight.py::test_the_shallow_preflight_passes_and_names_the_checkpoint_it_read PASSED
+tests/hardware/test_preflight.py::test_the_report_is_a_verdict_not_payload PASSED
+tests/hardware/test_preflight.py::test_an_absent_checkpoint_exits_one_not_two PASSED
+tests/hardware/test_preflight.py::test_deep_matches_the_served_weights_when_the_probe_records_their_digest PASSED
+tests/hardware/test_preflight.py::test_deep_decides_rather_than_merely_hashes PASSED
+tests/hardware/test_preflight.py::test_deep_reads_the_weights_once_and_reports_what_it_cost [INFO] preflight cost: shallow 0.003 s, hashlib sha256 6.354 s, --deep 34.959 s
+PASSED
+
+[TIER] full: torch present, the whole suite was in scope.
+========================================================================== 6 passed in 76.25s (0:01:16) ===========================================================================
+```
+
+The printed cost line is the hand run's 35 s against 6 s, now reproduced by
+the gate on every `make quality-full`.
 
 Observed, steps 1-3, 2026-08-15:
 
@@ -4134,15 +4221,56 @@ timing alone could never show. The digest the preflight computed is the one
 `sha256sum` reported in 4a, so the two independent readers of the same 15 GB
 agree.
 
-**4c's elapsed time is not the isolated figure the entry asked for.** 36.762s
-against 4a's 6.153s, at 112% CPU and 40.61s user: this run rebuilt the release
-binary after the `--deep` fix, and the build is the difference. The two
-deciding signals are unaffected, but the "close to 4a's" sub-signal is
-unconfirmed rather than observed — a repeat against a warm target directory
-would settle it, and until then the honest statement is that `--deep` reads the
-weights once, evidenced by the matching digest rather than by the clock.
+**4c's elapsed time is not the isolated figure the entry asked for, and the
+first explanation for it was wrong.** 36.762s against 4a's 6.153s, at 112% CPU
+and 40.61s user, was read on 2026-08-15 as the release rebuild after the
+`--deep` fix. The 2026-09-11 repeat below, with the binary built beforehand,
+measured 34.960s at 99% CPU and 34.51s user against 5.991s for `sha256sum`:
+the build was never the difference. `--deep` hashes about six times slower
+than coreutils because `runtime/src/digest.rs` is an in-tree scalar SHA-256
+with no hardware instructions and one extra copy per block, written that way
+on the dependency posture in `.styles/RUST_STYLE.md`. The "close to 4a's"
+sub-signal is refuted, not unconfirmed. The two deciding signals stand: the
+digest the preflight computed is `sha256sum`'s, so `--deep` reads the weights
+once and reads them correctly, evidenced by the match rather than by the
+clock. The hasher is kept as is; the gate test prints the cost on every run so
+the decision can be revisited on evidence.
 
-Status: VERIFIED 2026-08-15
+Observed (2026-09-11, steps 4a and 4c on a warm target directory; 4d was
+not repeated, its 2026-08-15 record stands):
+
+```
+➜  rust-harness git:(rust-harness-verification) ✗ python3 - "$DIGEST" <<'PY'
+import json, sys
+p = "/tmp/rh16/probe.json"
+d = json.load(open(p))
+d["model_hash"] = sys.argv[1]
+json.dump(d, open(p, "w"))
+PY
+time sha256sum "$MODEL/model.safetensors"
+43fb96cec3045b72852c787540300dc5b258634b7a025f7c80355ac0788b9651  /mnt/ai-data/models/hf/gemma-4-E4B/model.safetensors
+sha256sum "$MODEL/model.safetensors"  5.58s user 0.41s system 99% cpu 5.991 total
+➜  rust-harness git:(rust-harness-verification) ✗ time cargo run --release -q -p harness -- --model "$MODEL" --text-only \
+  --probe /tmp/rh16/probe.safetensors --status --deep
+echo "exit=$?"
+[OK] model directory: /mnt/ai-data/models/hf/gemma-4-E4B
+[OK] checkpoint files: config.json and model.safetensors present, header names 2130 tensors
+[OK] config.json: 42 layers, hidden size 2560, context 131072
+[OK] backend compatibility: supported
+[OK] probe: rust-e4b-verify-probe, layer 8, site LayerOutput, width 2560
+[OK] probe geometry: width 2560 and layer 8 fit the model
+[OK] probe identity: matches the served weights, sha256 43fb96cec3045b72852c787540300dc5b258634b7a025f7c80355ac0788b9651
+[SKIP] control vector: no --control-vector given
+[SKIP] control vector identity: no --control-vector given
+[SKIP] interp log directory: no --interp-log given
+[OK] obs log directory: /mnt/ai-data/logs/harness is writable
+cargo run --release -q -p harness -- --model "$MODEL" --text-only --probe     34.51s user 0.41s system 99% cpu 34.960 total
+exit=0
+```
+
+Status: VERIFIED 2026-08-15 (gate-backed 2026-09-11 by
+`tests/hardware/test_preflight.py`; the 4c timing sub-signal was refuted the
+same day and is recorded above, not asserted)
 
 ## RH.17 The CPU backend past E4B's real sliding window
 
@@ -4160,130 +4288,310 @@ the binary that writes it is the engine it guards.
 
 **`make ladder` now carries L5 as a standing rung, so this entry is a rung of
 the routine climb rather than a bespoke command.** The reference artifact is
-not committed and has to be generated on the workstation by
-`rust-harness/fixtures/reference_long_context.py`, which needs the checkpoint
-and `transformers`. Both sides derive the scored positions from the
-checkpoint's `sliding_window`, so which positions were scored is itself part of
-what L5 asserts.
+not committed; `make ladder` generates it on the workstation through
+`rust-harness/fixtures/reference_long_context.py` when it is missing, as it
+does every other artifact (`make ladder-reference` regenerates them all), and
+the generator needs the checkpoint and `transformers`. Both sides derive the
+scored positions from the checkpoint's `sliding_window`, so which positions
+were scored is itself part of what L5 asserts.
 
 ```bash
 cd ~/workspace/ai-experiments/rust-harness
 MODEL=<the gemma-4-E4B checkpoint directory>
 
-# 1. generate the reference. It writes long_context.json into the reference
-#    directory the ladder reads for this SIZE.
-uv run python fixtures/reference_long_context.py --model "$MODEL" \
-  --out fixtures/reference/e4b/quick/long_context.json
-
-# 2. the whole climb, L5 included
+# 1. the whole climb, L5 included; a missing long_context.json is generated first
 make ladder SIZE=quick MODEL="$MODEL"
 echo "exit=$?"
 
-# 3. L5 alone, for a re-run that does not pay for the first five rungs
+# 2. L5 alone, for a re-run that does not pay for the other rungs
 cargo run --release -q -p runtime --bin ladder -- --text-only \
   --size quick --model "$MODEL" --reference fixtures/reference/e4b/quick \
   --rung L5
 echo "exit=$?"
 ```
 
-Expected signal: six rungs in the table, none skipped, `L5` passing. The
+Expected signal: every rung in the table (six on 2026-09-04, seven since L6
+landed), none skipped, `L5` passing. The
 anchors L5 scores are `window - 1`, `window`, `window + 1`, `2*window + 1`,
 `length // 2` and `length - 1`, derived from the window the *loader* read, and
 the run reports that window. It must be 512 — the same figure the reference
 generator recorded — because a run whose loader read a different window scores
 different positions and compares rows computed at different places. A skipped
-L5 means step 1 did not write where step 2 reads, and is a failure of this
-entry rather than a pass with an absence.
+L5 means the generator did not write where the climb reads, and is a failure
+of this entry rather than a pass with an absence.
 
 Record the reported window alongside the verdict. The window agreeing across
 the two independently written sides is half of what the rung measures.
 
-Observed:
+Asserted by `tests/hardware/test_ladder.py`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| Every rung, `0 skipped`, the L5 detail line reporting six positions and a window equal to the `sliding_window` the reference artifact recorded | `test_the_ladder_passes_every_rung_at_tier_e` |
+
+```bash
+cd ~/workspace/ai-experiments
+make quality-full HW=e4b HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B
+```
+
+The test is RH.1b's, under `hw_full` and `hw_e4b`; it drives the same
+`make ladder SIZE=quick` as step 1 and reads the window off the L5 detail
+line, since the closing verdict line does not carry it.
+
+Observed (2026-09-04, the six-rung climb recorded in full under RH.1b; the L5
+rows and the closing lines are repeated here so the entry stands alone):
 
 ```
+L5    logits past the window                                PASS
+      scheduled positions agree  1.000000      >= 1.000000     ok
+      worst kl inside window  0.000000      <= 0.005000     ok
+      worst kl past window    0.000000      <= 0.005000     ok
+      worst top-50 overlap    1.000000      >= 0.980000     ok
+      argmax agreement        1.000000      >= 0.980000     ok
+      6 positions across a 512-token window over 2052 tokens; worst at position 1025
+
+timing (not compared; expected to differ between runs)
+  L0        0.48s
+  L1        0.70s
+  L2        0.83s
+  L3       52.70s
+  L4       23.70s
+  L5      268.92s
+  sum     347.33s  (rung bodies only, excludes model load)
+[OK] Ladder: every rung within tolerance (0 skipped)
+[INFO] Peak RSS at exit: 16.13 GiB
 ```
 
-Status: PENDING
+The generator's own output that day recorded the L5 schedule
+`[511, 512, 513, 1025, 1026, 2051]` of 2052 (quoted under RH.1b).
+
+Every signal is in that run. The window the loader read is 512, and the
+generator's schedule is `window - 1`, `window`, `window + 1`, `2*window + 1`,
+`2052 // 2` and `2052 - 1` for that window, so the two independently written
+sides agree on where to look; `scheduled positions agree 1.000000` is the
+run's schedule matching the artifact's at every index. Worst KL past the
+window is 0.000000 at the tolerance's precision, so the eviction, the mask
+and the shared-KV tail, the three things that engage nowhere else in the
+ladder, agree with `transformers`. The rung took 268.92 s of the 347.33 s
+climb, and the 2052-token forward pass is the 1.86 GiB of peak RSS the five-
+rung run never allocated. The entry stayed pending for a week with its
+evidence already in this file under RH.1b, which is why the hardware test now
+reads the window and why the block above is repeated rather than pointed to.
+
+Status: VERIFIED 2026-09-04 (on RH.1b's climb; recorded here 2026-09-11 and
+gate-backed by `tests/hardware/test_ladder.py`)
 
 ## RH.18 Attention capture on real weights
 
-Implementation: `rust-harness/runtime/src/bin/attention-capture.rs`.
+Implementation: `rust-harness/runtime/src/ladder.rs` (`rung_attention`,
+`capture_attention`, `attention_layers`),
+`rust-harness/fixtures/reference_attention.py`; the tap under test is the one
+`rust-harness/runtime/src/bin/attention-capture.rs` writes from.
 
 `attention-capture` writes post-softmax attention weights for the requested
-layers and query heads over one prompt. Every assertion on it to date runs
-against the two-layer synthetic fixture, whose layers are all one kind: the
-fixture cannot show an interleaved sliding/global schedule because it does not
-have one. This entry is the first reading of the captured weights against the
-schedule the real checkpoint declares.
+layers and query heads over one prompt, and nothing under `make quality-full`
+has ever read attention weights off the real checkpoint. The sandbox pins the
+tool's structure: `rust-harness/runtime/tests/attention_capture.rs` runs it
+over the mixed `tiny-gemma4-e4b` fixture (two sliding layers, two global, a
+3-token window, a two-layer shared-KV tail) and asserts every row sums to one,
+every weight outside the row's span is exactly zero, and `span_first` matches
+the schedule the checkpoint declares.
 
-The prompt must be longer than the window for the sliding layers to differ
-from the global ones at all — under 512 tokens both attend to the whole prefix
-and the two are indistinguishable. Use the L5 corpus, which is 2052 tokens.
+**That is as far as a structural check goes, and the first draft of this
+entry stopped there.** Its deciding property was the exact zero outside the
+span, on the reasoning that a masked key is `-inf` before the softmax. The
+backend has no such mask: `cpu.rs` scores only the keys in `first..=position`
+and never computes a forbidden one, and the zeros in the capture are
+`dense_matrix`'s padding. A check that the padding is zero cannot fail on any
+checkpoint, and the draft's schedule check compared the loader's reading of
+`layer_types` with `checkpoint-info`'s reading of the same array. Neither
+could tell a correct capture from a wrong one.
+
+What can is the reference implementation, which is what every other rung
+uses. L6 is the seventh rung of `make ladder`. `reference_attention.py` runs
+the L5 prompt (the 2052-token corpus prefix) through `transformers` under
+eager attention with a forward hook on the chosen layers' attention modules,
+and records the dense post-softmax row over keys `0..=position` for every
+query head at L5's six positions. The reference computes those rows the
+masking way, so its forbidden keys are exact zeros by arithmetic; the rung
+captures ours in-process through the same `AttentionTap` the binary uses,
+pads them, and compares key for key. A key we wrongly allow carries weight
+where the reference has zero, and one we wrongly forbid has zero where the
+reference has weight. That is what makes the zeros a checked fact about the
+mask, on both sides, and the reason the backend keeps skipping forbidden keys
+rather than masking them: the two formulations produce the same row bit for
+bit, and scoring evicted keys would undo the windowed cache RH.17 verified.
+
+The layers come from a rule both sides share, `attention_layers`, applied to
+the checkpoint's `layer_types` rather than to an index list: the first two
+layers, the sliding layer nearest the middle of the stack, and the last global
+layer. On E4B that is 0, 1, 21 and 41; layer 41 is in the shared-KV tail
+(layers 24 to 41 read a donor's cache, RH.2), so the donor read is in the
+comparison. Every query head is compared, so the query-to-key-value head
+mapping is too. The rung recomputes the layers, the positions and the head
+count from its own config read and refuses the artifact's where they differ,
+in L5's spirit.
+
+Five measures, one `L6` row:
+
+| Measure | Threshold (Tier E) |
+|---------|--------------------|
+| `captured layers agree` | 1.0: the artifact's layers, positions and head count equal the run's |
+| `weight outside window` | 0.0, exact: the reference put no weight before our row's first visible key |
+| `worst row max abs diff` | 1e-3, PROVISIONAL |
+| `worst row mass` | 1e-5: each of our rows sums to one |
+| `worst top-10 overlap` | 0.9, PROVISIONAL |
+
+The two provisional bounds are `Tolerance::attention_max_abs` and
+`attention_overlap` in `ladder.rs`. No attention row of ours has been
+compared with `transformers` on real weights before this entry, so they were
+chosen from L5's precedent (bf16 weights widened to f32 on both sides, a
+2560-wide dot, a softmax over up to 2052 keys) and not from a run. A value
+that lands outside one is recorded as a finding under this entry, not
+absorbed by moving the bound.
 
 ```bash
 cd ~/workspace/ai-experiments/rust-harness
 MODEL=<the gemma-4-E4B checkpoint directory>
-mkdir -p /tmp/rh18
 
-# a prompt past the 512-token window: the first ~2100 words of the corpus
-PROMPT=$(head -c 12000 fixtures/reference/corpus.txt)
-
-# sliding layers 0, 1 and 20, global layer 41 (the schedule puts a global
-# layer at 5, 11, ..., 41); head 0 of each. --out is a directory: the tool
-# writes attention.npz and manifest.json into it.
-cargo run --release -q -p runtime --bin attention-capture -- --text-only \
-  --model "$MODEL" --prompt "$PROMPT" --layers 0,1,20,41 --heads 0 \
-  --out /tmp/rh18/attn
+# 1. the whole climb, L6 included; a missing attention.json is generated
+#    first (one more transformers pass over the L5 prompt, minutes)
+make ladder SIZE=quick MODEL="$MODEL"
 echo "exit=$?"
 
-# 1. the manifest, then row mass and the zeros outside each row's span.
-#    span_first_layer_<l> names the first visible key per query row; the
-#    matrix is dense, so everything left of it is a structural zero.
-cat /tmp/rh18/attn/manifest.json
-uv run python - <<'PY'
-import numpy as np
-z = np.load("/tmp/rh18/attn/attention.npz")
-for l in (0, 1, 20, 41):
-    m, first = z[f"layer_{l}_head_0"], z[f"span_first_layer_{l}"]
-    n = m.shape[0]
-    mass = np.abs(m.sum(axis=1) - 1.0).max()
-    outside = max(np.abs(m[i, :first[i]]).max(initial=0.0) for i in range(n))
-    width = int((np.arange(n) - first + 1).max())
-    print(f"layer {l}: rows {n}, worst |row sum - 1| {mass:.2e}, "
-          f"max weight outside span {outside}, widest span {width}")
-PY
-
-# 2. the per-layer sliding/global verdict the checkpoint declares
-cargo run --release -q -p runtime --bin checkpoint-info -- --text-only "$MODEL" \
-  | grep -i 'window\|sliding\|global' | head -50
+# 2. L6 alone, for a re-run that does not pay for the first six rungs
+cargo run --release -q -p runtime --bin ladder -- --text-only \
+  --size quick --model "$MODEL" --reference fixtures/reference/e4b/quick \
+  --rung L6
+echo "exit=$?"
 ```
 
-Expected signal: three properties, all of them checked against the same
-capture.
+Expected signal: seven rungs, `0 skipped`, the `L6 attention past window`
+row `PASS` with all five measures within tolerance, `weight outside window`
+printed as `0.000000`, and the detail line `192 rows across 4 layers x 8 heads
+at 6 positions; window 512; worst at layer ...`. Record the five values: the
+max-abs and overlap figures are the first measurement of the two provisional
+bounds and belong beside them.
 
-| Property | Expected |
-|----------|----------|
-| Row mass | Every query row sums to 1.0 over the positions it may attend, within 1e-5 |
-| Outside the span | Every weight at a position outside the row's span is exactly 0.0, not merely small |
-| Schedule | The layers the capture marks sliding, and the span width it gives them, match what `checkpoint-info` reports for the same layer indices |
+A skipped L6 means the generator did not write where the climb reads. An `L6`
+error naming `captured no row` means the tap fired for none of the requested
+(layer, head, position) triples, which is a rung defect rather than a numerics
+one. A `captured layers agree` below 1.0 means the two sides chose different
+rows, and the note names both choices; treat the rung as unmet rather than
+reading the other four measures.
 
-The zero outside the span is the deciding property and it is exact, not
-approximate: a masked position is `-inf` before the softmax, so it comes out
-`0.0` bit-for-bit. A small-but-nonzero weight there means the mask was applied
-as a large negative number rather than an infinity, which is a different
-implementation with a different failure mode at long context.
+Asserted by `tests/hardware/test_ladder.py`:
 
-The widest span the script prints is the schedule verdict: 512 on a sliding
-layer, the full prompt length on a global one. If it disagrees with what
-`checkpoint-info` reports for the same layer index, record both and treat the
-schedule check as unmet rather than inferring it.
+| Expected signal | Test function |
+|-----------------|---------------|
+| Seven rungs, `0 skipped`, the L6 detail line reporting as many rows, layers, heads and positions as `attention.json` holds, at the window it recorded | `test_the_ladder_passes_every_rung_at_tier_e` |
 
-Observed:
+```bash
+cd ~/workspace/ai-experiments
+make quality-full HW=e4b HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B
+```
+
+The test is RH.1b's; L6 is one more row of the climb it already drives, and
+it reads the counts off the detail line the way it reads L5's window.
+
+Observed (2026-09-11, the first seven-rung climb; the generator wrote
+`attention.json` on the way up):
 
 ```
+➜  rust-harness git:(rust-harness-verification) ✗ make ladder SIZE=quick MODEL="$MODEL"
+uv run python fixtures/reference_attention.py --model "/mnt/ai-data/models/hf/gemma-4-E4B" --out fixtures/reference/e4b/quick/attention.json
+[OK] Window: 512 tokens, scoring [511, 512, 513, 1025, 1026, 2051] of 2052
+[OK] Layers: [0, 1, 21, 41] (sliding_attention, sliding_attention, sliding_attention, full_attention)
+[RUN] Load tokenizer: /mnt/ai-data/models/hf/gemma-4-E4B
+[OK] Prompt: 2052 ids from corpus
+[RUN] Load model: float32 on cpu, this reads the whole file
+Loading weights: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 2076/2076 [00:01<00:00, 1630.76it/s]
+[OK] Decoder layers: 42 at model.language_model.layers
+[RUN] Forward pass: 2052 positions
+[OK] Wrote fixtures/reference/e4b/quick/attention.json: 192 rows across 4 layers x 8 heads at 6 positions; window 512
+cargo run --release -p runtime --bin ladder -- \
+  --text-only --size quick --model /mnt/ai-data/models/hf/gemma-4-E4B --reference fixtures/reference/e4b/quick
+   Compiling runtime v0.1.0 (/home/alejandro/workspace/ai-experiments/rust-harness/runtime)
+    Finished `release` profile [optimized] target(s) in 3.16s
+     Running `target/release/ladder --text-only --size quick --model /mnt/ai-data/models/hf/gemma-4-E4B --reference fixtures/reference/e4b/quick`
+size=quick tokens=512 prompts=2
+prompt=6 tokens
+threads=8
+dot=widen4
+batch=64
+model=/mnt/ai-data/models/hf/gemma-4-E4B
+reference=fixtures/reference/e4b/quick
+
+rung  check                   value         threshold       verdict
+L0    token ids                                             PASS
+      case agreement          1.000000      >= 1.000000     ok
+      5 cases, every id identical
+L1    residual stream                                       PASS
+      worst cosine            1.000000      >= 0.999900     ok
+      worst rel_l2            0.000005      <= 0.001000     ok
+      42 layers within tolerance
+L2    final distribution                                    PASS
+      mean kl                 0.000000      <= 0.001000     ok
+      worst kl                0.000000      <= 0.005000     ok
+      worst top-50 overlap    1.000000      >= 0.980000     ok
+      argmax agreement        1.000000      >= 0.980000     ok
+      1 positions scored; worst at prompt position 5
+L3    perplexity                                            PASS
+      ppl delta               0.000032      <= 0.010000     ok
+      worst token nll         0.001248      <= 0.050000     ok
+      ppl 55.5420 against 55.5438 over 254 tokens; worst token at corpus position 414
+L4    greedy continuation                                   PASS
+      token agreement         1.000000      >= 0.980000     ok
+      mean common prefix      1.000000      >= 0.750000     ok
+      2 prompts, 0 ties
+L5    logits past the window                                PASS
+      scheduled positions agree  1.000000      >= 1.000000     ok
+      worst kl inside window  0.000000      <= 0.005000     ok
+      worst kl past window    0.000000      <= 0.005000     ok
+      worst top-50 overlap    1.000000      >= 0.980000     ok
+      argmax agreement        1.000000      >= 0.980000     ok
+      6 positions across a 512-token window over 2052 tokens; worst at position 1025
+L6    attention past the window                                PASS
+      captured layers agree   1.000000      >= 1.000000     ok
+      weight outside window   0.000000      <= 0.000000     ok
+      worst row max abs diff  0.000023      <= 0.001000     ok
+      worst row mass          0.000001      <= 0.000010     ok
+      worst top-10 overlap    1.000000      >= 0.900000     ok
+      192 rows across 4 layers x 8 heads at 6 positions; window 512; worst at layer 21 head 6 position 1025
+
+timing (not compared; expected to differ between runs)
+  L0        0.48s
+  L1        0.52s
+  L2        0.66s
+  L3       52.16s
+  L4       22.72s
+  L5      267.44s
+  L6      226.79s
+  sum     570.77s  (rung bodies only, excludes model load)
+[OK] Ladder: every rung within tolerance (0 skipped)
+[INFO] Peak RSS at exit: 16.13 GiB
 ```
 
-Status: PENDING
+Every signal is in that run. The generator chose layers 0, 1, 21 and 41 from
+`layer_types` and the rung's own choice agreed at every index, position and
+head. `weight outside window` is 0.000000 at an exact threshold: across 192
+rows, the reference put no weight on any key before the position our loader
+scored from, so the two sides agree on where every sliding row begins. The
+worst single-key difference against `transformers` is 2.3e-5, at layer 21
+head 6 position 1025, the first position past the second window crossing on
+the middle sliding layer; the provisional bound of 1e-3 is forty times
+wider, and stays where it is until a second checkpoint says otherwise. Every
+row's ten heaviest keys are the reference's ten. L6 took 226.79 s of the
+570.77 s climb, on a second 2052-token forward pass with the tap installed;
+peak RSS is unchanged from the six-rung climb at 16.13 GiB, so holding six
+rows per pair rather than every row cost nothing measurable.
+
+One defect the paste shows: the `L6` row's subject, `attention past the
+window`, is three characters wider than the table's subject column, so its
+`PASS` sits past the other rows'. The subject is `attention past window`
+from the commit after this run; the transcript above is as printed.
+
+Status: VERIFIED 2026-09-11 (gate-backed by `tests/hardware/test_ladder.py`)
 
 ## RH.19 The alignment artifact on the real vocabulary
 
@@ -4315,213 +4623,907 @@ cargo run --release -q -p harness -- --model "$MODEL" --text-only \
   "The three states of matter are"
 echo "exit=$?"
 
-# 1. the header, then the role histogram
-head -1 /tmp/rh19/align.jsonl | jq .
+# 1. the header without its text, then the role histogram
+head -1 /tmp/rh19/align.jsonl | jq 'del(.text)'
 tail -n +2 /tmp/rh19/align.jsonl | jq -r .role | sort | uniq -c
 
-# 2. the scaffold rows and the bytes they claim
+# 2. the scaffold rows and the bytes they claim (a row carries byte offsets
+#    into the header's text, not the text itself)
 tail -n +2 /tmp/rh19/align.jsonl \
-  | jq -c 'select(.role == "scaffold") | {pos, span, text}'
+  | jq -c 'select(.role == "scaffold") | {position, byte_start, byte_end}'
 
-# 3. the round trip: concatenated spans reproduce the text
-tail -n +2 /tmp/rh19/align.jsonl | jq -r .text | tr -d '\n' | wc -c
-head -1 /tmp/rh19/align.jsonl | jq .text_bytes
+# 3. the round trip: the spans tile the header's text from 0 to its byte
+#    length with no gap or overlap
+head -1 /tmp/rh19/align.jsonl | jq -j .text | wc -c
+tail -n +2 /tmp/rh19/align.jsonl | jq -s \
+  '{rows: length, first: .[0].byte_start, last: .[-1].byte_end,
+    gaps: [range(1; length) as $i | select(.[$i].byte_start != .[$i-1].byte_end)] | length}'
 ```
 
-Expected signal: (1) positions dense from zero, counted in the header, and at
-least one row marked `scaffold`. (2) **On the real vocabulary every scaffold
-row carries an empty span** — the marker is a piece `decode` drops, so the
-position exists in the artifact and contributes no bytes. This is the clause
-the fixtures invert. (3) The concatenated spans reproduce the written text
-byte for byte, which is the property the artifact would break if it suppressed
-bytes to satisfy the rule rather than marking the role.
+Expected signal: (1) positions dense from zero, counted in the header's
+`positions`, and at least one row marked `scaffold` (the task prompt is
+rendered through the chat template, `<bos>` and the turn markers included).
+(2) **On the real vocabulary every scaffold row carries an empty span**,
+`byte_start` equal to `byte_end` — the marker is a piece `decode` drops, so
+the position exists in the artifact and contributes no bytes. This is the
+clause the fixtures invert. (3) The spans tile the header's `text`: the first
+row starts at 0, the last ends at the text's byte length, and no row starts
+anywhere but where the previous one ended, which is the property the
+artifact would break if it suppressed bytes to satisfy the rule rather than
+marking the role.
+
+The first draft of this block read `pos`, `span` and `text` off the rows and
+`text_bytes` off the header; none of those keys exists
+(`schemas/alignment.json`), so it would have printed nulls and
+compared nothing.
 
 Record the scaffold rows verbatim. If any of them carries a non-empty span,
 the fork in the header block is wrong about the real vocabulary and the note
 needs correcting, not the artifact.
 
-Observed:
+Observed (2026-09-11, the manual run):
 
 ```
+➜  rust-harness git:(rust-harness-verification) ✗ cd ~/workspace/ai-experiments/rust-harness
+MODEL=/mnt/ai-data/models/hf/gemma-4-E4B
+mkdir -p /tmp/rh19
+
+cargo run --release -q -p harness -- --model "$MODEL" --text-only \
+  --seed 7 --max-tokens 48 --alignment-out /tmp/rh19/align.jsonl \
+  "The three states of matter are"
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E4B hash=e376216f8b693aff layers=42
+[INFO] Weights: 13.90 GiB resident at bf16
+[INFO] Peak RSS after load: 14.03 GiB
+[INFO] KV cache: 131072 tokens, 4.05 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=7 temperature=0.8 max_tokens=48
+[INFO] Build: 0.1.0 git 547695b3230fc94969d7b042461c4a74d4d9bf61
+[WARN] KV cache above 2 GiB: consider --context to cap it (compaction keeps long sessions inside the cap)
+[INFO] Model load: 5.88 s
+[INFO] Prefill: 251 tokens in 22.95 s (11 tok/s)
+I understand. Let's proceed with reading the current directory.
+[{"role": "user", "content": "The three states of matter are"}]
+{'tool': 'read', 'args': {'path': '.'}}
+[INFO] Session snapshot: 299 cached tokens at /home/alejandro/workspace/ai-experiments/rust-harness/session.kv
+[INFO] Alignment: 299 positions, 52 passes -> /tmp/rh19/align.jsonl
+
+
+➜  rust-harness git:(rust-harness-verification) ✗ head -1 /tmp/rh19/align.jsonl | jq 'del(.text)'
+tail -n +2 /tmp/rh19/align.jsonl | jq -r .role | sort | uniq -c
+{
+  "artifact": "alignment",
+  "created": "2026-09-11T18:06:51Z",
+  "git_sha": "547695b3230fc94969d7b042461c4a74d4d9bf61",
+  "model_hash": "e376216f8b693aff",
+  "positions": 299,
+  "run_id": "R-20260911-180613-765fa9",
+  "schema_version": 1
+}
+    293 content
+      6 scaffold
+➜  rust-harness git:(rust-harness-verification) ✗ tail -n +2 /tmp/rh19/align.jsonl \
+  | jq -c 'select(.role == "scaffold") | {position, byte_start, byte_end}'
+{"position":0,"byte_start":0,"byte_end":0}
+{"position":1,"byte_start":0,"byte_end":0}
+{"position":235,"byte_start":862,"byte_end":862}
+{"position":237,"byte_start":863,"byte_end":863}
+{"position":246,"byte_start":898,"byte_end":898}
+{"position":248,"byte_start":899,"byte_end":899}
+➜  rust-harness git:(rust-harness-verification) ✗ head -1 /tmp/rh19/align.jsonl | jq -j .text | wc -c
+tail -n +2 /tmp/rh19/align.jsonl | jq -s \
+  '{rows: length, first: .[0].byte_start, last: .[-1].byte_end,
+    gaps: [range(1; length) as $i | select(.[$i].byte_start != .[$i-1].byte_end)] | length}'
+1072
+{
+  "rows": 299,
+  "first": 0,
+  "last": 1072,
+  "gaps": 0
+}
 ```
 
-Status: PENDING
+All three signals are in that run. The six-word task became a 251-token
+prefill because the positional task renders the coding-agent scaffold, and
+the six scaffold rows read as that render: position 0 is `<bos>`, 1 opens the
+memory turn, 235 closes it, 237 opens the user turn one byte later (the
+newline at 236 is content), 246 closes it and 248 opens the model turn, whose
+`model\n` at 249 and 250 is content by the range rule. Every one is
+zero-width, so the fork in the header block is right about the real
+vocabulary: the marker positions exist and contribute no bytes. The 299 spans
+tile the 1072-byte text with 0 gaps, and the 52 passes are four prefill
+batches of 64 and 48 decodes.
+
+**What that run did not show.** The tiling check is a partition check. It
+proves the spans divide the text consistently, not that position k's span
+holds the bytes token k produced: a partition shifted by one token inside a
+run of content passes every line above. Closing that needs the ids, which the
+artifact did not record. Since this entry each row carries `token_id`
+(`schemas/alignment.json`, optional so the schema version stays 1), and the
+gate below decodes each row's id with `transformers`' tokenizer for the same
+checkpoint and holds the span to those bytes. Rows are grouped the way
+`runtime/src/align.rs` attributes them: a codepoint spread across
+byte-fallback ids lands whole on the id that completes it, so a group is a run
+of empty spans plus the non-empty one that ends it. Two limits remain. The
+harness and the test decode through the same `tokenizers` library over the
+same tokenizer.json, so the check is independent of the harness's span
+arithmetic and not of the library. And the rendered prompt is not in the
+artifact, so the prompt's ids are held to what can be seen without it: the
+first is `<bos>`, every scaffold id is a special piece, and the generated ids
+re-encode from their own text.
+
+Asserted by `tests/hardware/test_alignment.py`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| Header `positions` equals the row count, positions dense from 0, rows past the prompt | `test_the_artifact_covers_every_position` |
+| Both roles present; every scaffold row zero-width and carrying a special id; the first row `<bos>`; no scaffold past the prompt | `test_scaffold_rows_are_zero_width_on_the_real_vocabulary` |
+| First span at 0, last at the text's byte length, no gap, no span ending inside a codepoint | `test_the_spans_tile_the_text` |
+| The run's ids decode to the header's text, and each attribution group's ids decode to exactly its span's bytes | `test_each_span_holds_its_tokens_bytes` |
+| The generated ids re-encode from their decoded text | `test_the_generated_ids_round_trip_through_transformers` |
+
+```bash
+cd ~/workspace/ai-experiments
+(cd rust-harness && cargo build --release -p harness)
+HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B \
+  uv run pytest -m hw_e4b tests/hardware/test_alignment.py -v
+echo "exit=$?"
+```
+
+The test runs the harness once in a directory of its own (the harness
+resumes `session.kv` from where it starts, and a resumed session prefills
+nothing), with the same task, seed and token budget as the run above, then
+loads the checkpoint's tokenizer through `AutoTokenizer`. Expected signal:
+five passes. A failure in the fourth function names the first group whose ids
+decode to different bytes than its span holds, which is the shifted-partition
+case; record it as a finding under this entry rather than loosening the
+check. The same test runs under
+`make quality-full HW=e4b HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B`.
+
+Observed (2026-09-11, the gate):
+
+```
+➜  rust-harness git:(rust-harness-verification) ✗ cd ~/workspace/ai-experiments
+(cd rust-harness && cargo build --release -p harness)
+HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B \
+  uv run pytest -m hw_e4b tests/hardware/test_alignment.py -v
+echo "exit=$?"
+   Compiling harness v0.1.0 (/home/alejandro/workspace/ai-experiments/rust-harness/harness)
+    Finished `release` profile [optimized] target(s) in 1.56s
+=============================================================================== test session starts ===============================================================================
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /home/alejandro/workspace/ai-experiments/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/alejandro/workspace/ai-experiments
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, mock-3.15.1, jaxtyping-0.3.11, cov-7.1.0, hydra-core-1.3.2, anyio-4.14.2, xdist-3.8.0, typeguard-4.6.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 5 items
+
+tests/hardware/test_alignment.py::test_the_artifact_covers_every_position PASSED                                                                                            [ 20%]
+tests/hardware/test_alignment.py::test_scaffold_rows_are_zero_width_on_the_real_vocabulary PASSED                                                                           [ 40%]
+tests/hardware/test_alignment.py::test_the_spans_tile_the_text PASSED                                                                                                       [ 60%]
+tests/hardware/test_alignment.py::test_each_span_holds_its_tokens_bytes PASSED                                                                                              [ 80%]
+tests/hardware/test_alignment.py::test_the_generated_ids_round_trip_through_transformers PASSED                                                                             [100%]
+
+[TIER] full: torch present, the whole suite was in scope.
+=============================================================================== 5 passed in 38.64s ================================================================================
+exit=0
+```
+
+Five of five in 38.64 s, the checkpoint loaded once. The fourth function is
+the one the manual run could not stand in for: every attribution group's
+ids, decoded by `transformers`, equal the bytes the group's span selects, so
+the partition is not shifted anywhere in the 299 rows, and the fifth found
+the generated ids re-encoding from their own text. The `[TIER] full` line is
+the suite's own statement that torch was present and nothing skipped.
+
+Status: VERIFIED 2026-09-11 (gate-backed by `tests/hardware/test_alignment.py`)
 
 ## RH.20 Compaction past the rewind horizon
 
-Implementation: `rust-harness/runtime/src/session.rs`,
-`rust-harness/runtime/src/model/cpu.rs` (`rewind_horizon`).
+Implementation: `rust-harness/runtime/src/session.rs` (`sync`, `Prefill`),
+`rust-harness/runtime/src/model/cpu.rs` (`rewind_horizon`, `rewindable_from`),
+`rust-harness/harness/src/generator.rs` (`report_prefill`).
 
-`Session::sync` may not rewind past a sliding-window cache's horizon, because
-such a cache evicts rather than masks. Below the horizon it clears and
-re-prefills. Compaction rewinds much further than the horizon by construction —
-it rewrites the middle of the transcript and the summarizing turn opens a fresh
-sequence, so the common prefix lands near zero — which makes the clear-and-
-re-prefill path the routine path after a compaction rather than an edge case.
+`Session::sync` may not rewind past a sliding-window cache's floor, because
+such a cache evicts rather than masks. Below the floor it clears and
+re-prefills. Compaction rewinds much further than the floor by construction —
+it rewrites the middle of the transcript, so the new prompt shares only its
+head with the cache — which makes the clear-and-re-prefill path the routine
+path after a compaction rather than an edge case. The property is that the
+path is taken as a rebuild, exactly, and not enforced as a refusal.
 
-`harness/tests/sampling_flags.rs` pins that `--compact-at` fires at a low
-threshold and does not at a high one (RH.28), but on the fixture the horizon is
-a handful of positions and the re-prefill is instant. **The horizon on E4B is
-reported in the run header as `rewind_horizon`, and this entry expects 208**;
-the header is the authority, so record what it prints rather than assuming the
-figure. Reaching it needs a session long enough that compaction has a middle to
-rewrite, which on E4B means turns numbering in the tens.
+**The first draft of this entry could not be run, for three reasons worth
+keeping.** Its deciding signal was the `tracing::debug!` in `sync`, which no
+stderr subscriber ever prints: the harness installs only the Chrome trace
+layer, and only under `--trace-chrome`, so `RUST_LOG` does nothing. Its
+`--compact-at 0.05` measured against the default budget of 131072 tokens
+(the RH.19 header shows it), so forty short turns never reached the 6553
+tokens at which it would fire. And it expected `floor=208`, confusing two
+quantities: the horizon, which the run header reports as 208, is how far
+behind the tip the floor sits once the window has filled; the floor itself is
+an absolute position, several hundred at the first compaction and rising.
 
-The transcript is `session.jsonl` in the working directory, so run this from an
-empty directory. The debug-level rewind message is the deciding signal, so
-raise the log level for it.
+The rewind rule is unchanged. What changed is that `sync` now records its
+decision in the `Prefill` it already keeps — the positions kept, and when the
+floor forced zero, the prefix it refused and the floor — and the binary names
+both on the `Prefill:` line it already prints (`report_prefill`). The library
+still prints nothing, by its own rule above `last_prefill`. The sandbox pins
+the record on a synthetic four-position window
+(`a_sync_below_the_floor_rebuilds_from_zero_and_records_why`, which also holds
+the rebuilt logits to a fresh session's). This entry reaches the floor on the
+real window through the chat loop.
+
+The settings, from the run header and `kv::window_capacity`: window 512 and a
+batch group of 64 give a capacity of 719 positions, so eviction begins past
+719 and the horizon is 719 - 511 = 208. `--context 2048` does not move it
+(the group is still 64) and puts `--compact-at 0.4` at about 819 rendered
+tokens, past 719; so the floor is several hundred at every sync a compaction
+causes. The transcript is `session.jsonl` in the working directory and the
+harness resumes from it, so run this from an empty directory and nothing else
+there.
+
+**A compaction causes two such syncs, and the first run below is what showed
+it.** The entry as first rewritten expected one rebuild per compaction, with a
+common prefix of the memory turn plus the head entry. The run printed two per
+compaction, every one with a prefix of 2. `compact::compact` renders its
+summarization prompt as BOS plus the middle entries, which begin at the first
+model reply; the chat prompt is BOS plus the head user entry
+(`chat::render_all`). The two diverge at their third token, so the
+summarization sync shares two positions with the cache and rebuilds the whole
+transcript; the post-compaction prompt then shares the same two with the
+summarization prompt the cache now holds, and rebuilds again, the short
+compacted prompt this time. Large then small, once per compaction, is the
+shape; the count below is corrected to it, and the reason is this paragraph
+rather than the paste.
 
 ```bash
 cd ~/workspace/ai-experiments/rust-harness
+cargo build --release -p harness
 MODEL=<the gemma-4-E4B checkpoint directory>
-mkdir -p /tmp/rh20 && cd /tmp/rh20
+mkdir -p /tmp/rh20 && cd /tmp/rh20 && rm -f session.jsonl session.kv
 
-# 1. the horizon this checkpoint reports, before anything else
-cargo run --release -q --manifest-path ~/workspace/ai-experiments/rust-harness/Cargo.toml \
-  -p harness -- --model "$MODEL" --text-only --max-tokens 1 "hello" 2>&1 \
-  | grep rewind_horizon
-
-# 2. a session long enough to compact more than once. --compact-at 0.05
-#    reaches the threshold in tens of turns rather than hundreds; the
-#    conversation content does not matter, only its length.
-seq 1 40 | sed 's/^/turn /' \
-  | RUST_LOG=runtime::session=debug cargo run --release -q \
-      --manifest-path ~/workspace/ai-experiments/rust-harness/Cargo.toml \
-      -p harness -- --model "$MODEL" --text-only --chat \
-      --compact-at 0.05 --max-tokens 8 2> /tmp/rh20/run.log
+# 1. sixty turns of thirty words, long enough to cross the threshold more
+#    than once; the content does not matter
+python3 -c 'w="matter energy motion field charge wave particle heat light sound".split()
+for i in range(60): print(f"turn {i+1}: "+" ".join(w[(i+j)%len(w)] for j in range(30)))' \
+  | ~/workspace/ai-experiments/rust-harness/target/release/harness \
+      --model "$MODEL" --text-only --chat --context 2048 --compact-at 0.4 \
+      --max-tokens 8 > /tmp/rh20/replies.txt 2> /tmp/rh20/run.log
 echo "exit=$?"
+
+# 2. the horizon this checkpoint reports
+grep 'Rewind horizon' /tmp/rh20/run.log
 
 # 3. how many compactions the transcript records
 jq -r .role /tmp/rh20/session.jsonl | sort | uniq -c
 
-# 4. the rewind decision, once per compaction
-grep 'rewind past the sliding window' /tmp/rh20/run.log
+# 4. the rebuild, once per compaction
+grep 'rebuilt from 0' /tmp/rh20/run.log
 ```
 
-Expected signal: (1) `rewind_horizon=208`. (2) exit 0 — a rewind past the
-horizon is a slower path, not an error, and a run that fails here means the
-floor is being enforced as a refusal rather than as a rebuild. (3) at least two
-compaction records. (4) **one `rewind past the sliding window: clearing and
-re-prefilling` line per compaction, each naming `floor=208` and a `keep` below
-it.** That line is the entry: it is the only evidence that compaction crossed
-the horizon rather than staying inside a window where the cheap rewind
-suffices, and a run with two compactions and no such line has not tested the
-path this entry exists for.
+Expected signal: (1) exit 0 — a rewind past the floor is a slower path, not
+an error, and a run that fails here means the floor is being enforced as a
+refusal rather than as a rebuild. (2) `Rewind horizon: 208 tokens behind the
+tip`. (3) at least two `compaction` records. (4) **two `Prefill: N tokens in
+S s (R tok/s); rebuilt from 0: a rewind to C fell below the window floor at
+F` lines per compaction, the summarization sync's then the compacted
+prompt's, each with `C` at least 1 and below `F` and `N` above `C`, the first
+`N` of each pair above the second.** That line is the entry: it is the only
+evidence that compaction crossed the floor rather than staying inside a
+window where the cheap rewind suffices. A run with fewer such lines than two
+per compaction has not tested the path this entry exists for; record it as a
+finding (the threshold sat below eviction) rather than as a pass.
 
-If (4) is empty, lower `--compact-at` or lengthen the session and re-run rather
-than recording a pass.
+Asserted by `tests/hardware/test_compaction.py`:
 
-Observed:
+| Expected signal | Test function |
+|-----------------|---------------|
+| The `Rewind horizon` line, with a positive count | `test_the_header_reports_the_horizon` |
+| Exit 0 and at least two `compaction` records, every turn reporting its prefill | `test_the_session_compacts_more_than_once` |
+| Twice as many rebuilt `Prefill:` lines as compaction records, each with `1 <= C < F` and `N > C`, in pairs whose first `N` exceeds the second | `test_every_compaction_rebuilds_the_cache_past_the_floor` |
+
+```bash
+cd ~/workspace/ai-experiments
+HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B \
+  uv run pytest -m hw_e4b tests/hardware/test_compaction.py -v
+echo "exit=$?"
+```
+
+The same test runs under
+`make quality-full HW=e4b HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B`.
+The horizon's value is read into the failure message and not pinned: it is a
+property of the checkpoint the header reports, and this entry records it.
+
+Observed (2026-09-11, the manual run; the entry then expected one rebuild per
+compaction, see above):
 
 ```
+➜  rust-harness git:(rust-harness-verification) ✗ cd ~/workspace/ai-experiments/rust-harness
+cargo build --release -p harness
+MODEL=/mnt/ai-data/models/hf/gemma-4-E4B
+mkdir -p /tmp/rh20 && cd /tmp/rh20 && rm -f session.jsonl session.kv
+
+python3 -c 'w="matter energy motion field charge wave particle heat light sound".split()
+for i in range(60): print(f"turn {i+1}: "+" ".join(w[(i+j)%len(w)] for j in range(30)))' \
+  | ~/workspace/ai-experiments/rust-harness/target/release/harness \
+      --model "$MODEL" --text-only --chat --context 2048 --compact-at 0.4 \
+      --max-tokens 8 > /tmp/rh20/replies.txt 2> /tmp/rh20/run.log
+echo "exit=$?"
+grep 'Rewind horizon' /tmp/rh20/run.log
+jq -r .role /tmp/rh20/session.jsonl | sort | uniq -c
+grep 'rebuilt from 0' /tmp/rh20/run.log
+   Compiling runtime v0.1.0 (/home/alejandro/workspace/ai-experiments/rust-harness/runtime)
+   Compiling harness v0.1.0 (/home/alejandro/workspace/ai-experiments/rust-harness/harness)
+    Finished `release` profile [optimized] target(s) in 3.34s
+exit=0
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+      4 compaction
+     60 model
+     60 user
+[INFO] Prefill: 724 tokens in 66.46 s (11 tok/s); rebuilt from 0: a rewind to 2 fell below the window floor at 656
+[INFO] Prefill: 168 tokens in 13.92 s (12 tok/s); rebuilt from 0: a rewind to 2 fell below the window floor at 603
+[INFO] Prefill: 751 tokens in 69.36 s (11 tok/s); rebuilt from 0: a rewind to 2 fell below the window floor at 683
+[INFO] Prefill: 168 tokens in 13.92 s (12 tok/s); rebuilt from 0: a rewind to 2 fell below the window floor at 630
+[INFO] Prefill: 751 tokens in 69.30 s (11 tok/s); rebuilt from 0: a rewind to 2 fell below the window floor at 683
+[INFO] Prefill: 168 tokens in 13.90 s (12 tok/s); rebuilt from 0: a rewind to 2 fell below the window floor at 630
+[INFO] Prefill: 751 tokens in 69.28 s (11 tok/s); rebuilt from 0: a rewind to 2 fell below the window floor at 683
+[INFO] Prefill: 168 tokens in 13.81 s (12 tok/s); rebuilt from 0: a rewind to 2 fell below the window floor at 630
 ```
 
-Status: PENDING
+Exit 0, the horizon at 208, four compactions in sixty turns, and eight
+rebuilds in four pairs of the same shape: the whole transcript at the
+threshold (724, then 751 tokens, at 11 tok/s), then the compacted prompt (168
+tokens). Every prefix is 2 and every floor is between 603 and 683, a few
+hundred behind a tip that had just crossed 819, which is where eviction puts
+it. The property held four times; what the run refuted was the count this
+entry had predicted, corrected above.
+
+One finding beside the pass, not part of it. The summarization sync should
+not need a rebuild: its prompt is the transcript the cache already holds,
+minus the head entry at the front, and because the head comes first the
+shared prefix collapses to two tokens and the harness re-prefills the whole
+transcript, 66 to 69 s on E4B, to write an eight-token summary. Rendering the
+summarization prompt with the same head as the chat prompt would make that
+sync an append and leave only the post-compaction sync crossing the floor. A
+cost defect in `compact::compact`, left for its own commit.
+
+Observed (2026-09-11, the gate):
+
+```
+➜  rust-harness git:(rust-harness-verification) ✗ cd ~/workspace/ai-experiments
+HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B \
+  uv run pytest -m hw_e4b tests/hardware/test_compaction.py -v
+=============================================================================== test session starts ===============================================================================
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /home/alejandro/workspace/ai-experiments/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/alejandro/workspace/ai-experiments
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, mock-3.15.1, jaxtyping-0.3.11, cov-7.1.0, hydra-core-1.3.2, anyio-4.14.2, xdist-3.8.0, typeguard-4.6.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 3 items
+
+tests/hardware/test_compaction.py::test_the_header_reports_the_horizon PASSED                                                                                               [ 33%]
+tests/hardware/test_compaction.py::test_the_session_compacts_more_than_once PASSED                                                                                          [ 66%]
+tests/hardware/test_compaction.py::test_every_compaction_rebuilds_the_cache_past_the_floor PASSED                                                                           [100%]
+
+[TIER] full: torch present, the whole suite was in scope.
+```
+
+Three of three. The third function is the corrected count: twice as many
+rebuilt lines as compaction records, every prefix below its floor, and each
+pair the whole transcript then the compacted prompt. The session is
+deterministic under the default seed and the same input, so the counts are
+the manual run's.
+
+Status: VERIFIED 2026-09-11 (gate-backed by `tests/hardware/test_compaction.py`)
 
 ## RH.21 Layer diff against a real reference capture
 
-Implementation: `rust-harness/runtime/src/bin/layer-diff.rs`.
+Implementation: `rust-harness/runtime/src/bin/layer-diff.rs`,
+`rust-harness/fixtures/reference_capture.py`; the sibling comparison is the
+ladder's L1 rung, `rust-harness/runtime/src/ladder.rs` (`rung_layers`).
 
-`layer-diff` runs the checkpoint, compares the residual stream layer by layer
-against a reference capture, and passes or fails against `--cosine-floor` and
-`--rel-l2-ceiling`. Its numerics are now bracketed in the sandbox against a
-synthetic capture (RH.23), including that the verdict names the *first*
-diverging layer and not the worst. What the sandbox cannot supply is a
-reference capture from `transformers` over the real 42-layer stack, where the
-per-layer figures are the ones a reader would quote.
+`layer-diff` prefills the token ids a `transformers` capture recorded,
+compares the residual stream row by row against the capture, and passes or
+fails each row against `--cosine-floor` and `--rel-l2-ceiling`. Its verdict
+names the *first* row over tolerance, not the worst: once layer k diverges
+every later layer is downstream of it, and a table read by magnitude points at
+the end of the stack. RH.23 brackets both tolerances in the sandbox around
+perturbed rows of the tiny capture (`transformers`' own output over the
+committed `tiny-hf-gemma4` fixture); it is gate-backed and pending in this
+runbook like the rest of its block.
+
+**The residual stream has been measured on real weights already.** The
+ladder's L1 rung makes this same comparison with the same capture script, the
+same `vec_diff` metrics and the same Tier E floor and ceiling (0.9999 and
+1e-3), and RH.1b records it passing on E4B: worst cosine 1.000000, worst
+rel-L2 0.000005, 42 layers within tolerance. L1 prints that worst pair and
+nothing else. `layer-diff` prints every row, and the per-row table across the
+stack, the shape of the drift with depth, is what this entry produces and no
+other entry reports.
+
+**The first draft's step 3 proved nothing, and this one is built so that it
+can.** It closed the ceiling to just under the worst row, so that one row was
+over it, and expected the verdict to name "the first row over, not the
+largest"; with one row over, those are the same row. The corrected step puts
+the ceiling between the second- and third-largest layer figures, so exactly
+two rows exceed it and the verdict has to choose. Two more facts the draft
+missed: the table is not 42 rows but 46, because the tool prints the four
+prelude stages the capture records (`embed`, `ple_identity`, `ple_context`,
+`ple`; `PRELUDE_STAGES` in `rust-harness/runtime/src/model/cpu.rs`) before
+the layer rows, and a stage over the
+ceiling displaces the layer verdict with the "stack's input diverges" message,
+by design. So the closed ceiling must sit above every stage row, and a stage
+row that would not allow it is a finding about that stage's magnitude.
+
+The capture already exists. `make ladder` writes `layers.json` into the
+ladder's reference directory through `reference_capture.py` over "The capital
+of France is" (the Makefile's `$(REFERENCE)/layers.json` rule, which the gate
+below invokes directly when the file is absent), RH.18's climb on 2026-09-11
+left it on the workstation, and reusing it saves a second float32 load of E4B (about 30 GB)
+and makes this table directly comparable with the L1 figures above. The
+tool's independence is in the oracle, not in the prompt. The header and the
+verdict go to stderr and the table to stdout, so the paste needs `2>&1`.
 
 ```bash
 cd ~/workspace/ai-experiments/rust-harness
 MODEL=<the gemma-4-E4B checkpoint directory>
+cargo build --release -p runtime --bin layer-diff
 mkdir -p /tmp/rh21
+set -o pipefail   # so $? after a tee is layer-diff's exit, in bash and zsh alike
 
-# 1. the reference capture, from transformers. --prompt is required: the
-#    residual stream is per-position, so the capture is only defined against
-#    a stated input, and the same text must reach layer-diff.
-uv run python fixtures/reference_capture.py --model "$MODEL" \
-  --prompt "The three states of matter are" \
-  --out /tmp/rh21/capture.json
+# 1. the ladder's capture, present since RH.18's climb; the climb writes
+#    it when absent
+test -f fixtures/reference/e4b/quick/layers.json \
+  || make ladder SIZE=quick MODEL="$MODEL"
 
-# 2. the comparison at the defaults
-cargo run --release -q -p runtime --bin layer-diff -- --text-only \
-  --model "$MODEL" --reference /tmp/rh21/capture.json
+# 2. the comparison at the defaults: 4 stage rows, 42 layer rows, the verdict
+./target/release/layer-diff --text-only --model "$MODEL" \
+  --reference fixtures/reference/e4b/quick/layers.json \
+  2>&1 | tee /tmp/rh21/defaults.txt
 echo "exit=$?"
 
-# 3. the same comparison with the tolerances closed to just under the
-#    measured worst row, so the tool has to fail and name a layer
-cargo run --release -q -p runtime --bin layer-diff -- --text-only \
-  --model "$MODEL" --reference /tmp/rh21/capture.json \
-  --rel-l2-ceiling <just under the worst rel-L2 from step 2>
+# 3. the ceiling closed between the second- and third-largest rel_l2 among
+#    the LAYER rows of step 2 (read them off the table; every stage row must
+#    be below the value chosen), so exactly two rows are over it
+./target/release/layer-diff --text-only --model "$MODEL" \
+  --reference fixtures/reference/e4b/quick/layers.json \
+  --rel-l2-ceiling <between the second- and third-largest layer rel_l2> \
+  2>&1 | tee /tmp/rh21/closed.txt
 echo "exit=$?"
 ```
 
-Expected signal: (2) exit 0, a table of 42 rows, cosine at or above the floor
-and relative L2 at or below the ceiling on every one. Record the whole table:
-the shape of the drift across depth is the measurement this entry exists to
-produce, and no other entry reports it. (3) exit 1, with the verdict naming
-**the first row over the closed ceiling, not the largest** — the tool states
-that every later layer is downstream of this one, so a verdict naming the worst
-row would send a reader to the wrong layer.
+Expected signal: (2) exit 0; a table of 4 stage rows then 42 layer rows, none
+marked `<--`, every cosine at or above 0.9999 and every rel_l2 at or below
+1e-3; then `[OK] Residual stream: all 42 layers within tolerance`. Record the
+whole table: it is the measurement. (3) exit 1; exactly two rows marked
+`<-- diverges (magnitude)`, and the verdict `[ERROR] Residual stream: first
+divergence at layer N (...)` with **N the earlier of the two marked layers,
+whichever of them carries the larger figure**. A verdict naming the later
+layer when it is the larger is the failure this step exists to catch. A run
+whose closed ceiling falls under a stage row prints `the stack's input
+diverges at '<stage>'` instead; that is the tool behaving as designed and a
+finding about the stage's magnitude, recorded under this entry rather than
+worked around by moving the ceiling.
 
-Step 3 is what makes step 2 mean anything. A pass with tolerances no run can
-fail is not a measurement.
+Asserted by `tests/hardware/test_layer_diff.py`:
 
-Observed:
+| Expected signal | Test function |
+|-----------------|---------------|
+| Exit 0, the verdict line, no row marked, the stage rows then every layer in order | `test_the_defaults_pass_every_row` |
+| Every stage and layer row within the Tier E floor and ceiling | `test_every_row_is_within_the_tier_e_tolerances` |
+| A ceiling between the second- and third-largest layer figures marks exactly those two and the verdict names the earlier | `test_a_closed_ceiling_names_the_first_row_over_it_not_the_worst` |
+
+```bash
+cd ~/workspace/ai-experiments
+HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B \
+  uv run pytest -m hw_e4b tests/hardware/test_layer_diff.py -v
+echo "exit=$?"
+```
+
+The same test runs under
+`make quality-full HW=e4b HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B`.
+It reads the bracket off the tool's own table rather than pinning any figure:
+the drift is a property of the checkpoint, and this entry records it.
+
+Observed (2026-09-11, steps 2 and 3 by hand; the table's trailing spaces
+are trimmed and nothing else is):
 
 ```
+➜  rust-harness git:(rust-harness-verification) ✗ ./target/release/layer-diff --text-only --model "$MODEL" \
+  --reference fixtures/reference/e4b/quick/layers.json \
+  2>&1 | tee /tmp/rh21/defaults.txt
+echo "exit=${PIPESTATUS[0]}"
+[INFO] Reference: 6 tokens, 42 layers, float32 precision
+[INFO] Cosine floor: 0.9999, relative-L2 ceiling: 0.001
+ stage/layer  cosine       max_abs      rel_l2
+       embed  1.00000000   0.000e0      0.000e0
+ple_identity  1.00000000   0.000e0      0.000e0
+ ple_context  1.00000000   3.815e-5     5.510e-7
+         ple  1.00000000   3.052e-5     4.869e-7
+           0  1.00000000   3.815e-5     1.474e-6
+           1  1.00000000   2.575e-5     9.956e-7
+           2  1.00000000   4.578e-5     1.396e-6
+           3  1.00000000   2.289e-5     1.834e-6
+           4  1.00000000   2.289e-5     2.092e-6
+           5  1.00000000   3.290e-5     2.829e-6
+           6  1.00000000   2.646e-5     2.650e-6
+           7  1.00000000   2.915e-5     3.368e-6
+           8  1.00000000   3.219e-5     4.326e-6
+           9  1.00000000   5.054e-5     3.847e-6
+          10  1.00000000   6.580e-5     3.388e-6
+          11  1.00000000   5.627e-5     2.298e-6
+          12  1.00000000   3.171e-5     2.231e-6
+          13  1.00000000   2.474e-5     2.301e-6
+          14  1.00000000   2.956e-5     2.980e-6
+          15  1.00000000   2.801e-5     2.906e-6
+          16  1.00000000   2.980e-5     3.532e-6
+          17  1.00000000   3.386e-5     3.849e-6
+          18  1.00000000   4.029e-5     4.620e-6
+          19  1.00000000   3.040e-5     4.993e-6
+          20  1.00000000   3.409e-5     4.315e-6
+          21  1.00000000   2.867e-5     4.005e-6
+          22  1.00000000   2.909e-5     3.747e-6
+          23  1.00000000   3.794e-5     4.316e-6
+          24  1.00000000   3.099e-5     3.393e-6
+          25  1.00000000   2.623e-5     3.006e-6
+          26  1.00000000   2.766e-5     2.661e-6
+          27  1.00000000   2.718e-5     2.555e-6
+          28  1.00000000   2.989e-5     2.600e-6
+          29  1.00000000   6.104e-5     2.890e-6
+          30  1.00000000   4.292e-5     2.572e-6
+          31  1.00000000   6.104e-5     2.379e-6
+          32  1.00000000   4.578e-5     2.102e-6
+          33  1.00000000   3.815e-5     1.867e-6
+          34  1.00000000   3.767e-5     1.743e-6
+          35  1.00000000   3.672e-5     1.721e-6
+          36  1.00000000   3.076e-5     1.639e-6
+          37  1.00000000   2.861e-5     1.603e-6
+          38  1.00000000   4.005e-5     1.632e-6
+          39  1.00000000   2.670e-5     1.684e-6
+          40  1.00000000   3.052e-5     1.937e-6
+          41  1.00000000   3.195e-5     2.756e-6
+
+[OK] Residual stream: all 42 layers within tolerance
+exit=
 ```
 
-Status: PENDING
+The empty `exit=` is the shell: `PIPESTATUS` is bash's array and the
+workstation runs zsh, whose is `pipestatus`. The block above now sets
+`pipefail` and reads `$?`, which both shells honour. The `[OK]` line is the
+binary's exit-0 path and the verdict was not rerun for the number.
+
+The second- and third-largest layer figures are layer 18 at 4.620e-6 and
+layer 8 at 4.326e-6, with layer 19 at 4.993e-6 the largest; every stage row
+is under 6e-7. The ceiling chosen between them is 4.5e-6:
+
+```
+➜  rust-harness git:(rust-harness-verification) ✗ ./target/release/layer-diff --text-only --model "$MODEL" \
+  --reference fixtures/reference/e4b/quick/layers.json \
+  --rel-l2-ceiling 4.5e-6 \
+  2>&1 | tee /tmp/rh21/closed.txt
+echo "exit=${pipestatus[1]}"
+[INFO] Reference: 6 tokens, 42 layers, float32 precision
+[INFO] Cosine floor: 0.9999, relative-L2 ceiling: 0.0000045
+ stage/layer  cosine       max_abs      rel_l2
+       embed  1.00000000   0.000e0      0.000e0
+ple_identity  1.00000000   0.000e0      0.000e0
+ ple_context  1.00000000   3.815e-5     5.510e-7
+         ple  1.00000000   3.052e-5     4.869e-7
+           0  1.00000000   3.815e-5     1.474e-6
+           1  1.00000000   2.575e-5     9.956e-7
+           2  1.00000000   4.578e-5     1.396e-6
+           3  1.00000000   2.289e-5     1.834e-6
+           4  1.00000000   2.289e-5     2.092e-6
+           5  1.00000000   3.290e-5     2.829e-6
+           6  1.00000000   2.646e-5     2.650e-6
+           7  1.00000000   2.915e-5     3.368e-6
+           8  1.00000000   3.219e-5     4.326e-6
+           9  1.00000000   5.054e-5     3.847e-6
+          10  1.00000000   6.580e-5     3.388e-6
+          11  1.00000000   5.627e-5     2.298e-6
+          12  1.00000000   3.171e-5     2.231e-6
+          13  1.00000000   2.474e-5     2.301e-6
+          14  1.00000000   2.956e-5     2.980e-6
+          15  1.00000000   2.801e-5     2.906e-6
+          16  1.00000000   2.980e-5     3.532e-6
+          17  1.00000000   3.386e-5     3.849e-6
+          18  1.00000000   4.029e-5     4.620e-6     <-- diverges (magnitude)
+          19  1.00000000   3.040e-5     4.993e-6     <-- diverges (magnitude)
+          20  1.00000000   3.409e-5     4.315e-6
+          21  1.00000000   2.867e-5     4.005e-6
+          22  1.00000000   2.909e-5     3.747e-6
+          23  1.00000000   3.794e-5     4.316e-6
+          24  1.00000000   3.099e-5     3.393e-6
+          25  1.00000000   2.623e-5     3.006e-6
+          26  1.00000000   2.766e-5     2.661e-6
+          27  1.00000000   2.718e-5     2.555e-6
+          28  1.00000000   2.989e-5     2.600e-6
+          29  1.00000000   6.104e-5     2.890e-6
+          30  1.00000000   4.292e-5     2.572e-6
+          31  1.00000000   6.104e-5     2.379e-6
+          32  1.00000000   4.578e-5     2.102e-6
+          33  1.00000000   3.815e-5     1.867e-6
+          34  1.00000000   3.767e-5     1.743e-6
+          35  1.00000000   3.672e-5     1.721e-6
+          36  1.00000000   3.076e-5     1.639e-6
+          37  1.00000000   2.861e-5     1.603e-6
+          38  1.00000000   4.005e-5     1.632e-6
+          39  1.00000000   2.670e-5     1.684e-6
+          40  1.00000000   3.052e-5     1.937e-6
+          41  1.00000000   3.195e-5     2.756e-6
+
+[ERROR] Residual stream: first divergence at layer 18 (SlidingWindow(512), head 256, ffn 10240, rope base 10000, kv source 18)
+  Every later layer is downstream of this one; fix layer 18 before reading the rest of the table.
+exit=1
+```
+
+Step 2: exit 0, 46 rows, none marked, every cosine printing as 1.00000000
+and every rel-L2 between 0 and 4.993e-6 against a ceiling of 1e-3, then the
+verdict. Step 3: exit 1, exactly the two rows over 4.5e-6 marked
+`(magnitude)`, and the verdict names layer 18, the earlier, while layer 19
+carries the larger figure. That is the first-not-worst policy shown on real
+weights, which the entry's first draft could not do.
+
+The table is the measurement, and its shape: relative L2 rises from 1.5e-6 at
+layer 0 to a peak of 5e-6 at layers 18 and 19, falls through the shared-KV
+tail from layer 24 to a floor of 1.6e-6 at layer 37, and rises again to 2.8e-6
+at layer 41. `embed` and `ple_identity` are exact zeros, so the embedding
+lookup and the identity half of the per-layer inputs agree with `transformers`
+bit for bit; only the two stages that involve a matmul and a norm carry
+noise. Every figure is two to three orders of magnitude under the ceiling,
+which is the accumulation-order noise the tool's own comment on
+`COSINE_FLOOR` predicts and nothing else. Layer 18's geometry line, a
+sliding-window layer reading its own cache, agrees with RH.2's schedule, in
+which the shared-KV tail begins at layer 24.
+
+Observed (2026-09-11, the gate):
+
+```
+➜  rust-harness git:(rust-harness-verification) ✗ cd ~/workspace/ai-experiments
+HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B \
+  uv run pytest -m hw_e4b tests/hardware/test_layer_diff.py -v
+echo "exit=$?"
+=============================================================================== test session starts ===============================================================================
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /home/alejandro/workspace/ai-experiments/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/alejandro/workspace/ai-experiments
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, mock-3.15.1, jaxtyping-0.3.11, cov-7.1.0, hydra-core-1.3.2, anyio-4.14.2, xdist-3.8.0, typeguard-4.6.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 3 items
+
+tests/hardware/test_layer_diff.py::test_the_defaults_pass_every_row PASSED                                                                                                  [ 33%]
+tests/hardware/test_layer_diff.py::test_every_row_is_within_the_tier_e_tolerances PASSED                                                                                    [ 66%]
+tests/hardware/test_layer_diff.py::test_a_closed_ceiling_names_the_first_row_over_it_not_the_worst PASSED                                                                   [100%]
+
+[TIER] full: torch present, the whole suite was in scope.
+=============================================================================== 3 passed in 12.14s ================================================================================
+exit=0
+```
+
+Three of three. The third function reads its own bracket off the table,
+between the same 4.620e-6 and 4.326e-6, so it reproduced the verdict at
+layer 18 without being told the figure.
+
+Status: VERIFIED 2026-09-11 (gate-backed by `tests/hardware/test_layer_diff.py`)
 
 ## RH.22 checkpoint-info --check against the real E4B
 
-Implementation: `rust-harness/runtime/src/bin/checkpoint-info.rs`.
+Implementation: `rust-harness/runtime/src/bin/checkpoint-info.rs`;
+`rust-harness/runtime/src/model/cpu.rs` (`check_supported_checkpoint`,
+`non_text_families`, `NON_TEXT_PREFIXES`); the cross-check is
+`rust-harness/harness/src/preflight.rs`.
 
 `checkpoint-info` dumps a checkpoint's config and tensor table, then the
-architecture summary and the CPU backend's compatibility verdict. `--check`
-turns that verdict into an exit code: 1 when the checkpoint is unsupported,
-rather than reporting and exiting 0. The released E4B is
-`Gemma4ForConditionalGeneration` — a text tower beside a vision and an audio
-one — so it exercises **both** verdicts from one checkpoint depending on
-whether `--text-only` is given, and no fixture reproduces that.
+architecture summary and the CPU backend's compatibility verdict. The report
+exits 0 whatever the verdict, by design: an inspection run of a file the
+backend cannot load is not a failed command. `--check` turns the verdict into
+an exit code, 1 when the checkpoint is unsupported.
+
+**The tool has two refusal paths, and only one of them was gated.** A config
+the backend cannot validate fails in `checkpoint::parse`, before the tool has
+anything to describe; the sandbox test in
+`rust-harness/runtime/tests/checkpoint_info_check.rs` forced that path with a
+foreign activation and nothing else. A multimodal file parses, is described in
+full, and is refused at the end by `check_supported_checkpoint`, which names
+the towers and the flag that declines them. The released E4B is
+`Gemma4ForConditionalGeneration`, a text tower beside a vision and an audio
+one, so it takes the second path, and on that path the binary's own wiring
+(`--text-only` reaching the verdict, `--check` turning the verdict into exit
+1) had no test. It now has one in the same file, on a tiny checkpoint made
+multimodal by one tensor per tower, the recipe the `cpu.rs` unit tests use.
+What the real file adds is the released tower set against the code's own
+predictions: two comments in `cpu.rs` state that E4B carries 114 non-text
+tensor families and that its towers hold 1409 of its 2130 tensors, and RH.1
+recorded `BF16 x2130`. This entry is where those claims meet the artifact.
+
+**The three preflight figures are not printed as figures.** RH.16's preflight
+line reads `42 layers, hidden size 2560, context 131072` off
+`num_hidden_layers`, `hidden_size` and `max_position_embeddings`. Here the
+layer count is derived in the summary (`uniform 10240 across 42 layers`), and
+the other two appear only in the `=== config.json ===` echo, inside the
+`text_config` block; the vision and audio blocks carry a `hidden_size` of
+their own, so a bare grep finds three. The block is the one to read.
+
+Each of the three reports is about 2624 lines (RH.1's count), and the verdict
+goes to stderr, so every run captures both streams to a file and pastes the
+tail. Step 4 is sandbox-covered and kept so the paste holds all four codes
+side by side.
 
 ```bash
 cd ~/workspace/ai-experiments/rust-harness
 MODEL=<the gemma-4-E4B checkpoint directory>
+cargo build --release -p runtime --bin checkpoint-info
+mkdir -p /tmp/rh22
+set -o pipefail   # so $? after a tee is checkpoint-info's exit, in bash and zsh alike
 
 # 1. the report, no --check: exit 0 whatever the verdict
-cargo run --release -q -p runtime --bin checkpoint-info -- "$MODEL"
+./target/release/checkpoint-info "$MODEL" 2>&1 | tee /tmp/rh22/1.txt | tail -n 8
 echo "exit=$?"
+grep -n '"num_hidden_layers"\|"hidden_size"\|"max_position_embeddings"\|=== ' /tmp/rh22/1.txt
 
 # 2. --check without --text-only: multimodal, so unsupported
-cargo run --release -q -p runtime --bin checkpoint-info -- --check "$MODEL"
+./target/release/checkpoint-info --check "$MODEL" 2>&1 | tee /tmp/rh22/2.txt | tail -n 3
 echo "exit=$?"
 
 # 3. --check with --text-only: the text tower is supported
-cargo run --release -q -p runtime --bin checkpoint-info -- --check --text-only "$MODEL"
+./target/release/checkpoint-info --check --text-only "$MODEL" 2>&1 | tee /tmp/rh22/3.txt | tail -n 3
 echo "exit=$?"
 
 # 4. a directory that is not a checkpoint: an error, not a verdict
-cargo run --release -q -p runtime --bin checkpoint-info -- --check /absent
+./target/release/checkpoint-info --check /absent
 echo "exit=$?"
 ```
 
-Expected signal: (1) exit 0, with 42 layers, hidden size 2560 and context
-131072 — the same three figures RH.16's preflight and RH.2's run header report,
-which is what cross-checks that the three readers read one checkpoint. (2) exit
-**1**, with the verdict naming the towers it declined to serve. (3) exit **0**,
-supported. (4) an error naming the path; exit 1 for a missing checkpoint, and
-not exit 2, which would mean the command line was misread.
+Expected signal: (1) exit 0, and the tail ends in `[ERROR] CPU backend
+compatibility: checkpoint is multimodal: it carries N tensor families in
+<prefixes>, and this backend serves text only. Pass --text-only ...`, because
+the report exits 0 whatever the verdict. The grep shows the section headers
+with their line numbers, `=== Tensors (2130) ===` and `=== Non-text towers (N)
+===` among them, and the three fields; the ones under `text_config` read 42,
+2560 and 131072, the figures RH.16's preflight and RH.1's summary report, which
+is what cross-checks that the three readers read one checkpoint. (2) exit
+**1**, the same verdict, with N equal to the towers section's count and every
+prefix one of the four in `NON_TEXT_PREFIXES`. (3) exit **0**, `[OK] CPU
+backend compatibility: supported`, and the towers section still printed:
+declining the towers does not hide them. (4) exit 1 with `[ERROR] Read
+/absent: no checkpoint at /absent: ...`, and not exit 2, which would mean the
+command line was misread.
 
 The pair (2) and (3) is the entry. One of them alone shows the exit code moved,
-not that it tracks the verdict.
+not that it tracks the verdict. N and the prefixes are recorded as measured,
+not pinned: the comments predict 114 and the file decides.
 
-Observed:
+Asserted by `rust-harness/runtime/tests/checkpoint_info_check.rs` in the
+sandbox:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| A multimodal file: exit 0 with the verdict, 1 under `--check`, 0 under `--check --text-only`, towers section either way | `check_tracks_the_multimodal_verdict_and_text_only_flips_it` |
+| A missing path: exit 1 with the read error, with or without `--check` | `a_missing_checkpoint_is_a_failed_run_not_a_usage_error` |
+
+Asserted by `tests/hardware/test_checkpoint_info.py` on the workstation:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| Exit 0, the multimodal verdict, the three sections | `test_the_report_exits_zero_and_reports_the_multimodal_verdict` |
+| The echo's `text_config` block and the summary's layer count match the file | `test_the_config_echo_carries_the_preflight_figures` |
+| `--check` exits 1 naming N and the four prefixes at most; `--check --text-only` exits 0 supported | `test_check_exits_one_on_the_multimodal_file_and_zero_with_text_only` |
+| A missing path exits 1, not 2 | `test_a_missing_checkpoint_exits_one_not_two` |
+
+```bash
+cd ~/workspace/ai-experiments
+HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B \
+  uv run pytest -m hw_e4b tests/hardware/test_checkpoint_info.py -v
+echo "exit=$?"
+```
+
+The same test runs under
+`make quality-full HW=e4b HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B`.
+It reads the figures from the checkpoint's own `config.json` rather than
+pinning them, so the test is the cross-check and not a second copy of it.
+
+Observed (2026-09-11, the four steps by hand; step 1 was run a second time
+to open the file in an editor and that rerun's prompt lines are omitted):
 
 ```
+➜  rust-harness git:(rust-harness-verification) ✗ cargo build --release -p runtime --bin checkpoint-info
+mkdir -p /tmp/rh22
+set -o pipefail
+   Compiling runtime v0.1.0 (/home/alejandro/workspace/ai-experiments/rust-harness/runtime)
+    Finished `release` profile [optimized] target(s) in 0.26s
+➜  rust-harness git:(rust-harness-verification) ✗ ./target/release/checkpoint-info "$MODEL" 2>&1 | tee /tmp/rh22/1.txt | tail -n 8
+echo "exit=$?"
+grep -n '"num_hidden_layers"\|"hidden_size"\|"max_position_embeddings"\|=== ' /tmp/rh22/1.txt
+  layers 24-28: SlidingWindow(512), head 256, ffn 10240, rope base 10000
+  layer 29: Global, head 512, ffn 10240, rope base 1000000
+  layers 30-34: SlidingWindow(512), head 256, ffn 10240, rope base 10000
+  layer 35: Global, head 512, ffn 10240, rope base 1000000
+  layers 36-40: SlidingWindow(512), head 256, ffn 10240, rope base 10000
+  layer 41: Global, head 512, ffn 10240, rope base 1000000
+
+[ERROR] CPU backend compatibility: checkpoint is multimodal: it carries 114 tensor families in model.audio_tower., model.embed_audio., model.embed_vision., model.vision_tower., and this backend serves text only. Pass --text-only to load the text stack and decline the rest
+exit=0
+1:=== config.json ===
+19:    "hidden_size": 1024,
+32:    "num_hidden_layers": 12,
+69:    "hidden_size": 2560,
+117:    "max_position_embeddings": 131072,
+122:    "num_hidden_layers": 42,
+161:    "hidden_size": 768,
+173:    "max_position_embeddings": 131072,
+176:    "num_hidden_layers": 16,
+196:=== Tensors (2130) ===
+2328:=== Non-text towers (114) ===
+2445:=== Architecture summary ===
+➜  rust-harness git:(rust-harness-verification) ✗ ./target/release/checkpoint-info --check "$MODEL" 2>&1 | tee /tmp/rh22/2.txt | tail -n 3
+echo "exit=$?"
+  layer 41: Global, head 512, ffn 10240, rope base 1000000
+
+[ERROR] CPU backend compatibility: checkpoint is multimodal: it carries 114 tensor families in model.audio_tower., model.embed_audio., model.embed_vision., model.vision_tower., and this backend serves text only. Pass --text-only to load the text stack and decline the rest
+exit=1
+➜  rust-harness git:(rust-harness-verification) ✗ ./target/release/checkpoint-info --check --text-only "$MODEL" 2>&1 | tee /tmp/rh22/3.txt | tail -n 3
+echo "exit=$?"
+  layer 41: Global, head 512, ffn 10240, rope base 1000000
+
+[OK] CPU backend compatibility: supported
+exit=0
+➜  rust-harness git:(rust-harness-verification) ✗ ./target/release/checkpoint-info --check /absent
+echo "exit=$?"
+[ERROR] Read /absent: no checkpoint at /absent: expected a directory holding config.json and model.safetensors, or a path to the weights file itself
+exit=1
 ```
 
-Status: PENDING
+Exit 0, 1, 0, 1, as expected, and the verdict in (1) and (2) is the same
+line, so (2) shows the flag turning the verdict into a code and (3) shows
+`--text-only` moving the verdict rather than the code. The verdict names 114
+families in all four `NON_TEXT_PREFIXES`, and the towers section counts the
+same 114: the `cpu.rs` comment's figure is the artifact's. Its other figure,
+1409 tower tensors of 2130, is not decidable from this paste, because the
+section lists families and the tool prints no per-tower tensor count; the
+2130 agrees with RH.1's `BF16 x2130`. The grep shows the three `hidden_size`
+lines the entry warned of: 1024 at line 19 is the vision block (12 layers),
+768 at line 161 the audio block (16 layers), and 2560 at line 69 is
+`text_config`, whose 42 layers at line 122 and 131072 at line 117 are the
+figures RH.16's preflight and RH.1's summary report. The audio block also
+declares `max_position_embeddings` 131072, so that figure alone would not
+have told the blocks apart.
+
+Observed (2026-09-11, the gate):
+
+```
+➜  rust-harness git:(rust-harness-verification) ✗ cd ~/workspace/ai-experiments
+HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B \
+  uv run pytest -m hw_e4b tests/hardware/test_checkpoint_info.py -v
+echo "exit=$?"
+=============================================================================== test session starts ===============================================================================
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /home/alejandro/workspace/ai-experiments/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/alejandro/workspace/ai-experiments
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, mock-3.15.1, jaxtyping-0.3.11, cov-7.1.0, hydra-core-1.3.2, anyio-4.14.2, xdist-3.8.0, typeguard-4.6.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 4 items
+
+tests/hardware/test_checkpoint_info.py::test_the_report_exits_zero_and_reports_the_multimodal_verdict PASSED                                                                [ 25%]
+tests/hardware/test_checkpoint_info.py::test_the_config_echo_carries_the_preflight_figures PASSED                                                                           [ 50%]
+tests/hardware/test_checkpoint_info.py::test_check_exits_one_on_the_multimodal_file_and_zero_with_text_only PASSED                                                          [ 75%]
+tests/hardware/test_checkpoint_info.py::test_a_missing_checkpoint_exits_one_not_two PASSED                                                                                  [100%]
+
+[TIER] full: torch present, the whole suite was in scope.
+================================================================================ 4 passed in 0.03s ================================================================================
+exit=0
+```
+
+Four of four, in 0.03 s: the tool reads the config and the safetensors
+header and never the payload, which is why the test carries no `ram` marker.
+The third function held the towers section and the verdict to one count and
+the prefixes to the four in `NON_TEXT_PREFIXES`, and the second compared the
+echo's `text_config` block with the file rather than with a pinned figure.
+
+Status: VERIFIED 2026-09-11 (gate-backed by `tests/hardware/test_checkpoint_info.py`)
 
 ## Gate-backed entries
 
@@ -4544,6 +5546,14 @@ echo "exit=$?"
 Paste the summary lines for the named test binaries into each entry's Observed
 block, not the whole run.
 
+The run that closed RH.23 through RH.31 was made on 2026-09-11 in the agent
+sandbox, from the worktree's `rust-harness/` directory rather than the
+workstation path above, with `--test-threads=1` as written: 61 test binaries,
+every one `0 failed`, no `[SKIP]` line, `exit=0`. Each of those entries
+carries its own binary's block from that run. RH.32 through RH.35 closed on a
+second run the same way on 2026-09-12: 67 test binaries, every one `0 failed`,
+no `[SKIP]` line, `exit=0`.
+
 ### RH.23 layer-diff numerics are bracketed around a measured value
 
 Asserted by `rust-harness/runtime/tests/layer_diff_numerics.rs`:
@@ -4562,12 +5572,23 @@ non-empty: the test perturbs one row until the figure crosses, then runs the
 tool once on each side of the flag. RH.21 supplies what this cannot — the same
 tool against a `transformers` capture over 42 real layers.
 
-Observed:
+Observed (2026-09-11, the one sandbox run):
 
 ```
+     Running tests/layer_diff_numerics.rs (target/debug/deps/layer_diff_numerics-8aa8068bf6d81ab6)
+
+running 6 tests
+test a_divergence_before_the_stack_is_reported_instead_of_a_layer ... ok
+test a_reference_matching_the_checkpoint_passes_every_layer ... ok
+test a_reference_perturbed_at_one_layer_fails_and_names_that_layer ... ok
+test the_cosine_floor_moves_the_verdict_across_a_reoriented_row ... ok
+test the_rel_l2_ceiling_moves_the_verdict_across_a_scaled_row ... ok
+test the_verdict_names_the_first_diverging_layer_and_not_the_worst ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.47s
 ```
 
-Status: PENDING
+Status: VERIFIED 2026-09-11 (gate-backed by `rust-harness/runtime/tests/layer_diff_numerics.rs`)
 
 ### RH.24 The ladder table is invariant across the flags that may not change it
 
@@ -4581,6 +5602,7 @@ Asserted by `rust-harness/runtime/tests/ladder_flags.rs`:
 | Every bit-identical `--dot` kind yields the same logits bits | `every_bit_identical_dot_kind_produces_the_same_logits_bits` |
 | Every `--threads` width yields the same logits bits | `every_thread_width_produces_the_same_logits_bits` |
 | `--rung` climbs only the rung it names, in both directions | `rung_climbs_only_the_rung_it_names` |
+| `--single-thread` beside `--threads` is a usage error naming both, in either order | `single_thread_beside_threads_is_a_usage_error_naming_both` |
 
 The two logits tests compare `f32::to_bits`, not an epsilon: "bit-identical" is
 the claim, so an approximate comparison would pass on a kernel that reorders.
@@ -4604,12 +5626,29 @@ which crosses the threshold on both paths that split. The table test keeps the
 fixture: its subject is the printed table, and no reference capture exists at
 the wider shape.
 
-Observed:
+The last row was added on 2026-09-12. Until then `--threads` silently
+overrode `--single-thread` whatever the argv order: the shorthand set the
+width to one and the value flag overwrote it afterwards, so a caller passing
+both ran at a width nothing had visibly chosen. The pair is now refused
+before any checkpoint is opened.
+
+Observed (2026-09-11, the one sandbox run):
 
 ```
+     Running tests/ladder_flags.rs (target/debug/deps/ladder_flags-760954db91f0ce1e)
+
+running 6 tests
+test every_batch_mode_prints_the_same_ladder_table ... ok
+test every_bit_identical_dot_kind_prints_the_same_ladder_table ... ok
+test every_bit_identical_dot_kind_produces_the_same_logits_bits ... ok
+test every_thread_width_prints_the_same_ladder_table ... ok
+test every_thread_width_produces_the_same_logits_bits ... ok
+test rung_climbs_only_the_rung_it_names ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.81s
 ```
 
-Status: PENDING
+Status: VERIFIED 2026-09-11 (gate-backed by `rust-harness/runtime/tests/ladder_flags.rs`)
 
 ### RH.25 The fixture writers produce what they claim, reproducibly
 
@@ -4629,12 +5668,24 @@ The two byte-identity tests are what let a fixture be regenerated in review: a
 diff against the committed artifact is meaningful only if the writer is
 deterministic.
 
-Observed:
+Observed (2026-09-11, the one sandbox run):
 
 ```
+     Running tests/fixture_writers.rs (target/debug/deps/fixture_writers-d32c0a68ff6330fe)
+
+running 7 tests
+test long_context_golden_regenerates_byte_identical_bytes ... ok
+test long_context_golden_writes_the_rows_it_claims ... ok
+test tiny_model_bpe_writes_only_a_tokenizer ... ok
+test tiny_model_e4b_writes_a_different_architecture_from_the_default ... ok
+test tiny_model_regenerates_byte_identical_artifacts ... ok
+test tiny_model_writes_a_checkpoint_that_loads_and_prefills ... ok
+test tiny_model_writes_a_tokenizer_the_tokenizers_crate_reads ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.75s
 ```
 
-Status: PENDING
+Status: VERIFIED 2026-09-11 (gate-backed by `rust-harness/runtime/tests/fixture_writers.rs`)
 
 ### RH.26 --alignment-out reaches the same contract through the binary
 
@@ -4655,12 +5706,29 @@ share one `assert_conforms` helper with the library tests, so the flag cannot
 drift into writing a second dialect of the artifact. RH.19 covers the one
 clause this cannot: scaffold role on a vocabulary whose markers `decode` drops.
 
-Observed:
+Observed (2026-09-11, the one sandbox run):
 
 ```
+     Running tests/alignment_artifact.rs (target/debug/deps/alignment_artifact-f9aa521c1637e7c9)
+
+running 8 tests
+test a_scored_run_carries_the_score_channel_and_an_unscored_one_omits_it ... ok
+test concatenating_the_written_spans_reproduces_the_written_text ... ok
+test every_enumerated_field_holds_a_value_the_contract_lists ... ok
+test every_row_carries_the_id_the_run_computed_at_its_position ... ok
+test positions_are_dense_from_zero_and_counted_in_the_header ... ok
+test the_alignment_out_flag_writes_an_artifact_conforming_to_the_same_contract ... ok
+test the_flagged_run_records_every_pass_and_counts_its_positions_in_the_header ... ok
+test the_header_and_rows_carry_exactly_the_contract_key_sets ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.60s
 ```
 
-Status: PENDING
+Eight passed where the table names seven: the eighth,
+`every_row_carries_the_id_the_run_computed_at_its_position`, is a
+library-level row check the table does not claim, recorded as printed.
+
+Status: VERIFIED 2026-09-11 (gate-backed by `rust-harness/harness/tests/alignment_artifact.rs`)
 
 ### RH.27 Probe identity decides, and --probe-out writes where it names
 
@@ -4677,12 +5745,21 @@ RH.16 step 4d is the same comparison against 14 GiB of real weights; this is
 the same decision made in milliseconds, so both arms can be asserted on every
 gate run.
 
-Observed:
+Observed (2026-09-11, the one sandbox run):
 
 ```
+     Running tests/probe_identity.rs (target/debug/deps/probe_identity-9ab1eea8a8367f31)
+
+running 4 tests
+test a_probe_recording_a_different_model_hash_is_refused_naming_both_hashes ... ok
+test a_probe_recording_the_served_models_sha256_loads_and_the_run_completes ... ok
+test a_probe_recording_the_unknown_sentinel_loads_with_the_check_skipped ... ok
+test probe_out_puts_the_flag_file_where_it_names_and_leaves_the_default_unwritten ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.12s
 ```
 
-Status: PENDING
+Status: VERIFIED 2026-09-11 (gate-backed by `rust-harness/harness/tests/probe_identity.rs`)
 
 ### RH.28 The sampling and compaction thresholds are validated at the boundary
 
@@ -4700,12 +5777,22 @@ The last test is what makes `--compact-at` a threshold rather than a parsed
 number. RH.20 covers what it cannot: a session long enough that compaction
 rewinds past the horizon and forces the clear-and-re-prefill path.
 
-Observed:
+Observed (2026-09-11, the one sandbox run):
 
 ```
+     Running tests/sampling_flags.rs (target/debug/deps/sampling_flags-008f103b249e69fe)
+
+running 5 tests
+test a_compact_at_outside_the_unit_interval_is_refused_naming_the_range ... ok
+test a_low_compact_at_threshold_compacts_the_conversation_and_a_high_one_does_not ... ok
+test a_nucleus_under_greedy_decoding_warns_rather_than_refusing_the_run ... ok
+test a_top_p_inside_the_unit_interval_is_accepted_and_reaches_the_model ... ok
+test a_top_p_outside_the_unit_interval_is_refused_naming_the_range ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.10s
 ```
 
-Status: PENDING
+Status: VERIFIED 2026-09-11 (gate-backed by `rust-harness/harness/tests/sampling_flags.rs`)
 
 ### RH.29 --tokenizer overrides the one beside the checkpoint
 
@@ -4720,12 +5807,19 @@ The second is the one that matters: a flag that silently falls back to the
 checkpoint's own tokenizer on a typo produces a run that looks correct and was
 not the run that was asked for.
 
-Observed:
+Observed (2026-09-11, the one sandbox run):
 
 ```
+     Running tests/tokenizer_override.rs (target/debug/deps/tokenizer_override-4be6c3500417a83a)
+
+running 2 tests
+test a_tokenizer_that_does_not_exist_is_refused_rather_than_resolved_around ... ok
+test the_tokenizer_flag_overrides_the_one_beside_the_checkpoint ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.69s
 ```
 
-Status: PENDING
+Status: VERIFIED 2026-09-11 (gate-backed by `rust-harness/harness/tests/tokenizer_override.rs`)
 
 ### RH.30 --control-vector-layer-range decides which directions load
 
@@ -4740,12 +5834,20 @@ Asserted by `rust-harness/harness/tests/control_vector_range.rs`:
 The kept and dropped arms are asserted together; either alone is consistent
 with a flag that ignores its value.
 
-Observed:
+Observed (2026-09-11, the one sandbox run):
 
 ```
+     Running tests/control_vector_range.rs (target/debug/deps/control_vector_range-75daf8428db62049)
+
+running 3 tests
+test a_direction_inside_the_layer_range_is_kept ... ok
+test a_direction_outside_the_layer_range_is_dropped_at_load ... ok
+test a_malformed_layer_range_is_refused_naming_the_flag ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.37s
 ```
 
-Status: PENDING
+Status: VERIFIED 2026-09-11 (gate-backed by `rust-harness/harness/tests/control_vector_range.rs`)
 
 ### RH.31 --serve-addr binds where it names
 
@@ -4768,25 +5870,624 @@ address on the same port -- free if the harness took loopback, already held if
 it took the wildcard. That arm skips loudly on a host with no routable
 address.
 
-Observed:
+Observed (2026-09-11, the one sandbox run):
 
 ```
+     Running tests/serve_bind_addr.rs (target/debug/deps/serve_bind_addr-5662d9ac8869c926)
+
+running 3 tests
+test an_address_the_host_does_not_own_fails_the_bind_naming_it ... ok
+test the_default_bind_address_is_loopback ... ok
+test the_endpoint_answers_on_the_bind_address_and_not_on_the_default ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
 ```
 
-Status: PENDING
+No `[SKIP]` line anywhere in the run: the sandbox reports a routable
+address, so the wildcard-default arm of
+`the_default_bind_address_is_loopback` ran, and the second bind on that
+address succeeded.
+
+Status: VERIFIED 2026-09-11 (gate-backed by `rust-harness/harness/tests/serve_bind_addr.rs`)
+
+### RH.32 --trace-level selects the span depth
+
+Asserted by `rust-harness/harness/tests/trace_levels.rs`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| `info` has the session spans and the load and no per-layer span; `debug` adds the layer and block spans and no kernel span; `trace` adds the kernel spans; the three sets are strictly nested | `each_trace_level_adds_the_spans_its_help_text_names` |
+| The default opens the same span set as `debug` | `the_default_trace_level_is_debug` |
+
+RH.6 read a trace at the default level, and the level word itself was never
+passed in any entry. `cli_surface.rs` holds the flag to needing
+`--trace-chrome` and to naming its three levels on a typo, which a filter
+wired to a constant would satisfy. Each test here reads the set of span names
+a task run over the fixture opened at a level, so it is the flag's own help
+text that is asserted: what each level adds and that the default is `debug`.
+
+Observed (2026-09-12, the one sandbox run):
+
+```
+     Running tests/trace_levels.rs (target/debug/deps/trace_levels-bda386852b6bea0a)
+
+running 2 tests
+test each_trace_level_adds_the_spans_its_help_text_names ... ok
+test the_default_trace_level_is_debug ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.50s
+```
+
+Status: VERIFIED 2026-09-12 (gate-backed by `rust-harness/harness/tests/trace_levels.rs`)
+
+### RH.33 --version answers and --record writes what the replay reader reads
+
+Asserted by `rust-harness/harness/tests/version_and_record.rs`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| `--version` and `-V` print `harness <version>` on stdout, nothing on stderr, exit 0, and open no run log | `version_prints_the_crate_version_on_stdout_and_is_not_a_run` |
+| A task run with `--record` writes a recording whose header carries the sampling parameters and whose script covers every row a token was drawn from | `record_writes_a_recording_the_replay_reader_reads_back` |
+
+`--version` had been held equal to `-V` and to nothing else, which two empty
+answers satisfy. `--record` was run in RH.2 and RH.5, and
+`recording_replay.rs` reads a recording the workstation wrote, so the gate
+never produced one: a recorder that stopped writing would have failed the
+workstation's replay check and nothing in the sandbox. The second test
+writes a recording over the fixture and reads it back with the same reader.
+
+Observed (2026-09-12, the one sandbox run):
+
+```
+     Running tests/version_and_record.rs (target/debug/deps/version_and_record-945460c747098af9)
+
+running 2 tests
+test record_writes_a_recording_the_replay_reader_reads_back ... ok
+test version_prints_the_crate_version_on_stdout_and_is_not_a_run ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.70s
+```
+
+Status: VERIFIED 2026-09-12 (gate-backed by `rust-harness/harness/tests/version_and_record.rs`)
+
+### RH.34 The sampling flags change what is sampled
+
+Asserted by `rust-harness/harness/tests/sampling_effect.rs`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| `--temperature 0` selects every row's argmax and consumes no draw | `a_zero_temperature_selects_every_argmax_without_drawing` |
+| `--top-k 1` under a nonzero temperature selects every argmax while drawing once per step | `a_top_k_of_one_selects_every_argmax_while_still_drawing` |
+| A `--top-p` too small to hold a second token selects every argmax | `a_nucleus_too_small_for_a_second_token_selects_every_argmax` |
+| The full support at the same seed leaves the argmax at least once | `the_full_support_at_the_same_seed_leaves_the_argmax` |
+
+RH.28 holds `--top-p` to its range and checks that an in-range value reaches
+the model, which is a parse-through; nothing asserted that any of the three
+cutoffs changes a draw. The flight recording is what makes that assertable
+one process apart from the sampler: it scripts every logits row and records
+every selection, so each selected token is compared with its own row's
+argmax after the fact. The three cutoff arms reach the argmax by different
+routes, told apart by the recorded draw counts, and the fourth row is what
+makes the first three evidence rather than a property of the fixture. The
+`--top-k 0` refusal is a unit test in `harness/src/cli.rs` and is not
+repeated here.
+
+Observed (2026-09-12, the one sandbox run):
+
+```
+     Running tests/sampling_effect.rs (target/debug/deps/sampling_effect-1da548ea0c927f30)
+
+running 4 tests
+test a_nucleus_too_small_for_a_second_token_selects_every_argmax ... ok
+test a_top_k_of_one_selects_every_argmax_while_still_drawing ... ok
+test a_zero_temperature_selects_every_argmax_without_drawing ... ok
+test the_full_support_at_the_same_seed_leaves_the_argmax ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.83s
+```
+
+Status: VERIFIED 2026-09-12 (gate-backed by `rust-harness/harness/tests/sampling_effect.rs`)
+
+### RH.35 --context, --size and --single-thread are read, not merely parsed
+
+Asserted by `rust-harness/harness/tests/context_cap.rs`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| A cap below the trained window is the `max_context` the run header reports, and the default is the window itself | `a_context_below_the_trained_window_is_the_budget_the_run_reports` |
+| A cap above the trained window fails the run with exit 1, not 2, naming the value and the window | `a_context_above_the_trained_window_fails_the_run_naming_both_figures` |
+
+Asserted by `rust-harness/harness/tests/single_thread.rs`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| With `--single-thread` the run header reports width one, and without it the machine's width | `single_thread_is_the_width_the_run_header_reports` |
+
+Asserted by `rust-harness/runtime/tests/ladder_size.rs`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| Each `--size` is recorded in the ladder header by name with the corpus length it implies, and the default is `quick` | `size_is_recorded_as_given_with_the_corpus_length_it_implies` |
+
+Three flags the workstation entries passed and read past. `--context`
+appears in seven entries' command blocks and in none of them is the budget
+itself read back; the upper bound is the one place its help text, which
+calls the trained window "the maximum", and its code, which refuses a value
+above it at load, disagree in kind, and the second test pins the code's
+answer. `--size` sizes L3 and L4, which need artifacts the tiny fixture does
+not carry, so what the sandbox can show is that the value arrives: the
+ladder header names the size and the corpus length. The harness's own
+`--single-thread` was run once under rr in RH.7; the runtime binaries' flag
+of the same name had the tests.
+
+Observed (2026-09-12, the one sandbox run):
+
+```
+     Running tests/context_cap.rs (target/debug/deps/context_cap-1d537b4283336112)
+
+running 2 tests
+test a_context_above_the_trained_window_fails_the_run_naming_both_figures ... ok
+test a_context_below_the_trained_window_is_the_budget_the_run_reports ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.38s
+
+     Running tests/single_thread.rs (target/debug/deps/single_thread-9f2b8c86f51885cc)
+
+running 1 test
+test single_thread_is_the_width_the_run_header_reports ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.39s
+
+     Running tests/ladder_size.rs (target/debug/deps/ladder_size-d206ddcccd957709)
+
+running 1 test
+test size_is_recorded_as_given_with_the_corpus_length_it_implies ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.89s
+```
+
+Status: VERIFIED 2026-09-12 (gate-backed by `rust-harness/harness/tests/context_cap.rs`, `rust-harness/harness/tests/single_thread.rs`, `rust-harness/runtime/tests/ladder_size.rs`)
+
+## RH.36 attention-capture as its own binary on E4B
+
+Implementation: `rust-harness/runtime/src/bin/attention-capture.rs`; the tap
+is the `AttentionTap` RH.18's rung shares with it.
+
+RH.18 reads attention weights off the real checkpoint, and never runs this
+binary: the L6 rung captures in-process through the same tap and compares
+against `transformers`. The binary's own surface, `--prompt`, `--layers`,
+`--heads` and `--out`, is pinned by `rust-harness/runtime/tests/attention_capture.rs`
+over a fixture whose window is three tokens, and the surface audit of
+2026-09-12 found no command block that had ever invoked it. What the fixture
+cannot show is the size line on a real request, the manifest's hash of a
+14 GB weights file, and a row mass summed over hundreds of keys rather than
+three.
+
+```bash
+set -o pipefail
+cd ~/workspace/ai-experiments/rust-harness
+MODEL=/mnt/ai-data/models/hf/gemma-4-E4B
+rm -rf /tmp/rh36 && mkdir -p /tmp/rh36
+
+# 1. the capture: first layer, the last global layer, one head each
+cargo run --release -q -p runtime --bin attention-capture -- \
+  --model "$MODEL" --text-only \
+  --prompt "The quick brown fox jumps over the lazy dog." \
+  --layers 0,41 --heads 0 --out /tmp/rh36/cap
+echo "exit=$?"
+
+# 2. what it wrote
+ls -la /tmp/rh36/cap
+cat /tmp/rh36/cap/manifest.json
+echo "exit=$?"
+
+# 3. row mass and the span schedule, read back from the shard
+cd ~/workspace/ai-experiments
+uv run python - <<'EOF'
+import numpy as np
+z = np.load("/tmp/rh36/cap/attention.npz")
+print(sorted(z.files))
+n = len(z["tokens"])
+for key in ("layer_0_head_0", "layer_41_head_0"):
+    m = z[key]
+    mass = m.sum(axis=1)
+    lower = np.triu(m, 1)
+    print(f"{key}: shape {m.shape}, row mass min {mass.min():.9f} max {mass.max():.9f}, "
+          f"weight above the diagonal {abs(lower).max():.3e}")
+for key in ("span_first_layer_0", "span_first_layer_41"):
+    print(f"{key}: {z[key].tolist()}")
+print(f"tokens: {n}")
+EOF
+echo "exit=$?"
+```
+
+Expected signal: step 1 exits 0 and prints, before any allocation,
+`Attention: <n> tokens, 2 layers x 1 heads = 2 matrices, <x> MiB`, then
+`Attention: 2 matrices of <n>x<n> -> /tmp/rh36/cap`. Step 2 lists
+`attention.npz` and `manifest.json` only, no `manifest.json.tmp`; the
+manifest carries `"layers": [0, 41]`, `"heads": [0]`,
+`"site": "attention_weights"`, `"softmax": "post"`, `"tokens"` equal to the
+count step 1 printed, and a 64-hex `model_hash`. Step 3 lists the two
+`layer_*_head_0` arrays, the two `span_first_*` arrays and `tokens`; each
+matrix is `n x n`, every row sums to one within 1e-5, and nothing sits
+above the diagonal. Layer 0 is a sliding layer, but a dozen-token prompt
+never reaches the 512 window, so `span_first` is all zeros on both layers at
+this length: that is the schedule, not a defect. A `captured 0 of 2
+requested` error is the tap defect RH.18 names.
+
+Asserted by `tests/hardware/test_attention_capture.py` on the workstation,
+over a prompt past the window so the sliding span moves:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| Exit 0; the size line precedes the completion line, and its MiB figure is `4 * pairs * tokens^2` | `test_the_capture_exits_zero_and_states_its_size_before_writing` |
+| The manifest names the request, the shard, a 64-hex hash, and the directory holds the two files and no temporary | `test_the_manifest_names_the_request_and_the_shard` |
+| Every row sums to one within 1e-5; `span_first` equals the schedule `layer_types` and `sliding_window` state; zero outside the span on both sides | `test_every_row_is_a_distribution_over_its_own_span` |
+
+```bash
+cd ~/workspace/ai-experiments
+HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B \
+  uv run pytest -m hw_e4b tests/hardware/test_attention_capture.py -v
+echo "exit=$?"
+```
+
+The same test runs under
+`make quality-full HW=e4b HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B`.
+It reads the layer kinds and the window from the checkpoint's own
+`config.json`, so its span check is against the schedule the file states
+and not against a stride constant.
+
+Observed (2026-09-12, the three steps by hand; the shell's prompt lines are
+omitted):
+
+```
+[INFO] Attention: 11 tokens, 2 layers x 1 heads = 2 matrices, 0.0 MiB
+[OK] Attention: 2 matrices of 11x11 -> /tmp/rh36/cap
+exit=0
+total 16
+drwxrwxr-x 2 alejandro alejandro 4096 Sep 11 18:45 .
+drwxrwxr-x 3 alejandro alejandro 4096 Sep 11 18:44 ..
+-rw-rw-r-- 1 alejandro alejandro 2458 Sep 11 18:44 attention.npz
+-rw-rw-r-- 1 alejandro alejandro  506 Sep 11 18:45 manifest.json
+{
+  "artifact": "attention_capture",
+  "capture_backend": "rust-harness-cpu",
+  "created": "2026-09-12T01:45:16Z",
+  "dtype": "float32",
+  "git_sha": "2b44b68961dab5ee2a6aef7ab5e9713207381f78",
+  "heads": [
+    0
+  ],
+  "layers": [
+    0,
+    41
+  ],
+  "model_hash": "43fb96cec3045b72852c787540300dc5b258634b7a025f7c80355ac0788b9651",
+  "model_id": "/mnt/ai-data/models/hf/gemma-4-E4B",
+  "schema_version": 1,
+  "shard": "attention.npz",
+  "site": "attention_weights",
+  "softmax": "post",
+  "tokens": 11
+}exit=0
+['layer_0_head_0', 'layer_41_head_0', 'span_first_layer_0', 'span_first_layer_41', 'tokens']
+layer_0_head_0: shape (11, 11), row mass min 0.999999881 max 1.000000238, weight above the diagonal 0.000e+00
+layer_41_head_0: shape (11, 11), row mass min 0.999999881 max 1.000000119, weight above the diagonal 0.000e+00
+span_first_layer_0: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+span_first_layer_41: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+tokens: 11
+exit=0
+```
+
+Every expected signal, on the first run. The eleven tokens are BOS plus the
+ten the prompt encodes to; the size line rounds `2 * 11 * 11 * 4` bytes to
+`0.0 MiB`, which is the arithmetic and not a missing figure. The row mass
+sits within 2.4e-7 of one on both layers, an f32 sum over eleven keys; the
+hardware test measures the same quantity over several hundred. The
+`model_hash` is the sha256 of `model.safetensors`, computed by the binary
+after the capture, and differs from the sixteen-hex fingerprint the harness
+banner prints (RH.2), which `checkpoint::fingerprint` takes over the header
+and the config and which an in-place weight edit does not change.
+
+Observed (2026-09-12, the hardware test's first run, a few hours after the
+steps above; the pytest plugin banner is omitted):
+
+```
+    Finished `release` profile [optimized] target(s) in 0.02s
+collected 3 items
+
+tests/hardware/test_attention_capture.py::test_the_capture_exits_zero_and_states_its_size_before_writing PASSED                                                             [ 33%]
+tests/hardware/test_attention_capture.py::test_the_manifest_names_the_request_and_the_shard PASSED                                                                          [ 66%]
+tests/hardware/test_attention_capture.py::test_every_row_is_a_distribution_over_its_own_span PASSED                                                                         [100%]
+
+[TIER] full: torch present, the whole suite was in scope.
+========================================================================== 3 passed in 98.86s (0:01:38) ===========================================================================
+exit=0
+```
+
+Three passes, exit 0, on a prompt past the 512 window, so the third test's
+span check ran on a moving sliding span and not on the all-zero schedule the
+eleven-token prompt above gives. The 99 seconds are three captures of E4B,
+each a full load.
+
+Status: VERIFIED 2026-09-12 on the three steps by hand and on `tests/hardware/test_attention_capture.py` (3 passed).
+
+## RH.37 --trace-level info and trace on E4B
+
+Implementation: `rust-harness/harness/src/main.rs` (the `.with_filter` on
+the chrome layer), `rust-harness/harness/src/cli.rs` (`--trace-level`).
+
+RH.32 proves in the sandbox that the three levels are nested and that each
+adds the spans its help text names. What the fixture cannot show is the
+volume: two layers of sixteen dimensions write a trace of any level in a few
+kilobytes, and whether `trace` is usable on a real forward pass, 42 layers
+times every projection and every attention loop per token, is a question
+about the file size and about Perfetto, not about the span set. RH.6 traced
+E4B at the default level only.
+
+```bash
+set -o pipefail
+cd ~/workspace/ai-experiments/rust-harness
+MODEL=/mnt/ai-data/models/hf/gemma-4-E4B
+rm -rf /tmp/rh37 && mkdir -p /tmp/rh37/info /tmp/rh37/debug /tmp/rh37/trace
+
+# 1. one run per level, same turn on stdin, each in its own directory so
+#    no run resumes another's session.jsonl. --chat has no tool loop, so a
+#    base checkpoint ends the run on its own; --max-tokens bounds it.
+for level in info debug trace; do
+  ( cd /tmp/rh37/$level && printf '%s\n' "Reply with the single word: ready" \
+      | ~/workspace/ai-experiments/rust-harness/target/release/harness \
+          --model "$MODEL" --text-only --chat --temperature 0 --max-tokens 16 \
+          --trace-chrome trace.json --trace-level "$level" )
+  echo "$level exit=$?"
+done
+
+# 2. file sizes: the per-kernel volume is the figure this entry exists for
+ls -la /tmp/rh37/*/trace.json
+echo "exit=$?"
+
+# 3. the shape check on each, which prints which level it saw
+for level in info debug trace; do
+  make trace-check TRACE=/tmp/rh37/$level/trace.json 2>&1 | tail -n 12
+  echo "$level trace-check exit=$?"
+done
+```
+
+Expected signal: step 1 exits 0 three times, each run ending with
+`[INFO] Chat ended: 1 model turns` and a `Session snapshot:` line, the
+three `Prefill:` lines carrying one token count. Step 2 gives three sizes,
+strictly increasing
+from `info` to `trace`; record them. Step 3 passes all three: the `info` run
+prints `interior spans absent: an info-level trace`, the `debug` run prints
+`kernel spans absent: a debug-level trace` with `layers 42`, and the `trace`
+run prints `kernel spans <count>: a trace-level trace` and holds
+`kernel.attention` to one per `model.layer` and `kernel.lm_head` to one per
+logit row. `make trace-check` runs the fixture chat trace and the fixture
+trace-level task trace in the same binary, so two more `ok` lines in the
+tail are those, not the E4B file.
+
+**A chat turn, a token cap, and one directory per level.** The first run
+lacked the cap and the directories; the second, below, had both and was
+still a task run on a base checkpoint, which cannot end one. The block above
+carries all three corrections. The task loop
+needs a final answer within 64 turns; at four tokens a turn the base model
+never produced one, and each run spent 64 turns of 31-token prefills before
+exiting 1. And the harness resumes `session.jsonl` from its working
+directory, so the second run began by prefilling the first run's 64-turn
+transcript and the third run both: 252, 2504 and 4756 tokens at the first
+`Prefill:` line. The traces were still complete and the shape check still
+ran on each, which is how the finding below was reached, but the three sizes
+were not a comparison of three levels over one run.
+
+Observed (2026-09-12, the first run: `--max-tokens 4`, one shared
+directory; the header lines of each run are shown once, the run's 64
+`Prefill: 31 tokens` lines are elided to their first and last, and the
+`session.sync` lines `trace-check` prints for every turn are cut to the
+verdict):
+
+```
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E4B hash=e376216f8b693aff layers=42
+[INFO] Weights: 13.90 GiB resident at bf16
+[INFO] Peak RSS after load: 14.03 GiB
+[INFO] KV cache: 131072 tokens, 4.05 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0 max_tokens=4
+[INFO] Build: 0.1.0 git unknown
+[WARN] KV cache above 2 GiB: consider --context to cap it (compaction keeps long sessions inside the cap)
+[INFO] Model load: 5.95 s
+[INFO] Prefill: 252 tokens in 20.67 s (12 tok/s)
+[INFO] Prefill: 31 tokens in 2.73 s (11 tok/s)
+...
+[INFO] Prefill: 31 tokens in 3.70 s (8 tok/s)
+[ERROR] Task failed: no final answer within 64 turns
+info exit=1
+[INFO] Model load: 5.93 s
+[INFO] Prefill: 2504 tokens in 259.11 s (10 tok/s)
+[INFO] Prefill: 31 tokens in 3.74 s (8 tok/s)
+...
+[INFO] Prefill: 31 tokens in 5.03 s (6 tok/s)
+[ERROR] Task failed: no final answer within 64 turns
+debug exit=1
+[INFO] Model load: 6.18 s
+[INFO] Prefill: 4756 tokens in 571.99 s (8 tok/s)
+[INFO] Prefill: 31 tokens in 4.99 s (6 tok/s)
+...
+[INFO] Prefill: 31 tokens in 6.51 s (5 tok/s)
+[ERROR] Task failed: no final answer within 64 turns
+trace exit=1
+-rw-rw-r-- 1 alejandro alejandro 23233061 Sep 11 19:03 /tmp/rh37/debug.json
+-rw-rw-r-- 1 alejandro alejandro   435723 Sep 11 18:53 /tmp/rh37/info.json
+-rw-rw-r-- 1 alejandro alejandro 88838213 Sep 11 19:20 /tmp/rh37/trace.json
+exit=0
+[INFO] interior spans absent: an info-level trace
+test a_chrome_trace_from_a_real_run_has_the_documented_span_shape ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.02s
+
+info trace-check exit=0
+[INFO] layers 42, forwards 320, prefill groups 359, model.layer / group = 42.0
+[INFO] kernel spans absent: a debug-level trace
+test a_chrome_trace_from_a_real_run_has_the_documented_span_shape ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 1.12s
+
+debug trace-check exit=0
+[INFO] layers 42, forwards 320, prefill groups 394, model.layer / group = 42.0
+
+thread 'a_chrome_trace_from_a_real_run_has_the_documented_span_shape' panicked at harness/tests/trace_structure.rs:353:9:
+assertion `left == right` failed: kernel.lm_head once per model.lm_head
+  left: 320
+ right: 394
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test a_chrome_trace_from_a_real_run_has_the_documented_span_shape ... FAILED
+
+failures:
+
+failures:
+    a_chrome_trace_from_a_real_run_has_the_documented_span_shape
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1 filtered out; finished in 4.31s
+
+error: test failed, to rerun pass `-p harness --test trace_structure`
+make: *** [Makefile:84: trace-check] Error 101
+trace trace-check exit=2
+```
+
+**The finding is in the shape check, not in the flag.** The `trace` run's
+file is the first trace-level trace ever written on real weights, and it
+failed `trace_structure.rs` on `kernel.lm_head once per model.lm_head`: 320
+kernel calls against 394 head spans. The 320 is one per forward, and the
+394 is one per prefill group; the difference, 74, is the groups of the
+4756-token first prefill that come before its last. `model.lm_head` opens on
+every group with a `rows` field, and only the last group of a prefill
+produces a row, so the kernel that computes the row fires once per row and
+not once per span. That is the relation
+[observability.md](../../rust-harness/observability.md#phase-2-tracing)
+states for `kernel.lm_head`, "once per row", and the check had asserted a
+different one. Nothing before this run could contradict it: every trace the
+gate writes and every trace RH.6 read was a debug trace, where the kernel
+arm never runs, and the fixture task in `trace_levels.rs` reads span names
+without counting them.
+
+The fix sums the `rows` field over the `model.lm_head` spans and holds the
+kernel count to that sum, and the gate now carries a task run over the
+fixture at `--trace-level trace`, whose 1167-token prompt splits into 19
+groups: it failed the old assertion in the sandbox with 5 kernel calls
+against 23 head spans before the change and passes after it. The `debug`
+run's 359 groups against 320 forwards is the same arithmetic on the shorter
+resumed transcript, and it passed only because the debug arm asserts the
+head span per group, which is the relation that holds.
+
+Two figures from this run stand whatever the rerun shows. `info` at 0.4 MB
+against `debug` at 23 MB is the cost of the per-layer tier over a 2504-token
+resumed prefill plus 64 turns, and `trace` at 89 MB over a 4756-token one;
+neither is the size of a clean run, which the block above measures. And
+the shape check's own figure, `model.layer / group = 42.0` on both the
+`debug` and the `trace` file, is the per-layer tier intact at 42 layers
+under the kernel tier, the nesting RH.32 asserts on the fixture.
+
+Observed (2026-09-12, the second run: task mode with `--temperature 0` and no
+token cap, one directory per level, a `permissions.yaml` in each allowing
+`read`, `glob` and `todo` and denying the rest; the header is shown once per
+run, the `Prefill:` lines are elided to the first, second and last, and the
+`session.sync` lines of each `trace-check` are cut to the verdict):
+
+```
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E4B hash=e376216f8b693aff layers=42
+[INFO] Weights: 13.90 GiB resident at bf16
+[INFO] Peak RSS after load: 14.03 GiB
+[INFO] KV cache: 131072 tokens, 4.05 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0 max_tokens=256
+[INFO] Build: 0.1.0 git unknown
+[WARN] KV cache above 2 GiB: consider --context to cap it (compaction keeps long sessions inside the cap)
+[INFO] Model load: 6.02 s
+[INFO] Prefill: 476 tokens in 40.16 s (12 tok/s)
+[INFO] Prefill: 17 tokens in 1.65 s (10 tok/s)
+...
+[INFO] Prefill: 17 tokens in 2.85 s (6 tok/s)
+[ERROR] Task failed: no final answer within 64 turns
+info exit=1
+[INFO] Model load: 5.92 s
+[INFO] Prefill: 252 tokens in 20.17 s (12 tok/s)
+[INFO] Prefill: 29 tokens in 2.54 s (11 tok/s)
+...
+[INFO] Prefill: 33 tokens in 5.08 s (6 tok/s)
+[ERROR] Task failed: aborting: tool call bash chmod +w README.md failed identically 3 times
+debug exit=1
+[INFO] Model load: 6.23 s
+[INFO] Prefill: 252 tokens in 20.24 s (12 tok/s)
+[INFO] Prefill: 29 tokens in 2.51 s (12 tok/s)
+...
+[INFO] Prefill: 33 tokens in 4.86 s (7 tok/s)
+[ERROR] Task failed:
+-rw-rw-r-- 1 alejandro alejandro 222621934 Sep 11 20:26 /tmp/rh37/debug/trace.json
+-rw-rw-r-- 1 alejandro alejandro   5558785 Sep 11 20:11 /tmp/rh37/info/trace.json
+-rw-rw-r-- 1 alejandro alejandro 773991746 Sep 11 20:42 /tmp/rh37/trace/trace.json
+exit=0
+[INFO] interior spans absent: an info-level trace
+test a_chrome_trace_from_a_real_run_has_the_documented_span_shape ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.27s
+
+info trace-check exit=0
+[INFO] layers 42, forwards 3430, prefill groups 3433, model.layer / group = 42.0
+[INFO] kernel spans absent: a debug-level trace
+test a_chrome_trace_from_a_real_run_has_the_documented_span_shape ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 11.14s
+
+debug trace-check exit=0
+[INFO] layers 42, forwards 3430, prefill groups 3433, model.layer / group = 42.0
+[INFO] kernel spans 1325135: a trace-level trace
+test a_chrome_trace_from_a_real_run_has_the_documented_span_shape ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 39.64s
+
+trace trace-check exit=0
+```
+
+What the entry exists for is now shown. The corrected shape check passes on
+all three files, the trace-level one included, and reports the kernel count
+it holds `model.lm_head` to: 1325135 kernel spans over 3430 forwards. The
+sizes are 5.6 MB, 223 MB and 774 MB, strictly increasing, and the per-layer
+tier reads `42.0` layers per group under the kernel tier on both the debug and
+the trace file. The `2 filtered out` is the gate's two fixture traces.
+
+The runs themselves are not the three-level comparison the block asks for,
+for three reasons the transcripts and the obs records give. The `info` run's
+first prefill is 476 tokens against the 252 of the other two: its directory
+held a `README.md` written at 19:51 by an earlier run there, two minutes
+before its `permissions.yaml` was created, so it resumed that run's
+transcript and took a different trajectory throughout. The `debug` and
+`trace` runs are token-identical to each other, as `--temperature 0`
+requires, and each ended on the identical-failure abort rather than the turn
+budget: the model issued `bash chmod +w README.md`, the deny-all rule refused
+it three times running, and the loop stopped, the first time that exit has
+been seen on real weights. Their sizes are therefore a like-for-like pair
+over 38 turns; `info` is not. The `trace` run's stderr ended `[ERROR] Task failed:` with nothing after it, and the paste ended before its `trace exit=` line. Its obs record says otherwise: the `fail` event in `/mnt/ai-data/logs/harness/R-20260912-032651-f38eed.jsonl` carries `exc_msg` `aborting: tool call bash chmod +w README.md failed identically 3 times`, the debug run's message word for word, and `cmd.end` exit 1 after 911.39 s (the debug run's record, `R-20260912-031139-f722b8`, is the same message at 911.86 s). The message existed and reached the record; `main.rs` formats the whole line before one `eprintln!`, so the terminal showing the prefix alone has no explanation in the code. It is recorded here as a single sighting and not under Known defects; the `--chat` rerun has no tool loop and cannot reproduce it.
+
+Status: PENDING (first run 2026-09-12 exposed the shape-check defect above, fixed the same day; the second run passed the corrected check on all three levels but was a task run on a base checkpoint; the `--chat` block above is owed a run)
 
 ## Known defects
 
-Three defects measured during this campaign, recorded here rather than in an
-entry because none is a check to run: each is a statement about the tree that
-a reader of the entries above needs.
+Two defects measured during this campaign, recorded here rather than in an
+entry because neither is a check to run: each is a statement about the tree
+that a reader of the entries above needs. A third, a malformed safetensors
+header aborting the loader on a 7.3e18-byte allocation instead of returning
+an error, was recorded here until `Envelope::payload_range` in
+`rust-harness/runtime/src/checkpoint.rs` validated every declared extent
+against the file length before allocating; two tests beside it pin the
+refusal, and every unreadable-checkpoint path now reports and exits 1.
 
 **The `--serve-addr` default is two independent literals.** The value `--help`
-prints comes from `default: Some("127.0.0.1")` in the flag table
-(`rust-harness/harness/src/cli.rs:380`), which is consumed only by the help
-renderer at `cli.rs:551`. The value a run actually binds is a separate
-hardcoded literal, `None => IpAddr::from([127, 0, 0, 1])`
-(`rust-harness/harness/src/main.rs:971`). Changing one leaves the other
+prints comes from `default: Some("127.0.0.1")` in the `--serve-addr` entry
+of `FLAGS` (`rust-harness/harness/src/cli.rs`), which is consumed only by the
+help renderer, `cli::help`. The value a run actually binds is a separate
+hardcoded literal, `None => IpAddr::from([127, 0, 0, 1])`, in the
+`--serve-addr` arm of `rust-harness/harness/src/main.rs`. Changing one leaves the other
 stale, so the documented default and the real one can disagree with nothing
 to notice. Found by mutation: editing the flag-table literal does not turn
 RH.31's default test red, because it changes only what `--help` prints, while
@@ -4795,26 +6496,18 @@ flag carrying a `default:` in that table.
 
 **`Lanes16` is not bit-identical to `Sequential` on the real fixture.** At
 logit 0 the two kernels return `1062660370` and `1062660362` as raw f32 bits.
-`DotKind::is_bit_identical` (`rust-harness/runtime/src/model/cpu.rs:1623`)
+`DotKind::is_bit_identical` (`rust-harness/runtime/src/model/cpu.rs`)
 correctly excludes `Lanes16`, and RH.24's invariance tests are therefore
 asserted over the right set. **The `--dot` help text in
-`rust-harness/runtime/src/bin/ladder.rs:421` overclaims**: it reads "the
+the `SPEC` table of `rust-harness/runtime/src/bin/ladder.rs` overclaimed**: it read "the
 dot-product kernel; every kind is bit-identical", which is false of the one
 kind the predicate beside it exists to exclude. A run that picks `lanes16` on
 the strength of that sentence and then compares logits bits against a
 sequential baseline will report a defect that is not there. The code is right
-and the help text is wrong; see RHX.9 in
-[rust-harness-ux.md](rust-harness-ux.md).
-
-**A malformed safetensors header aborts the loader rather than returning an
-error.** A header declaring a tensor larger than the file drives a request for
-roughly 7.3e18 bytes, and the process dies on `SIGABRT` from the allocator
-instead of surfacing a `Result`. Every other unreadable-checkpoint path in the
-tree reports and exits 1 (RH.16 step 3, RH.22 step 4), so this is the one input
-class where a caller cannot distinguish a bad file from a crash, and no
-`catch_unwind` helps because an allocation failure is an abort and not a panic.
-The fix is to validate declared extents against the file length before
-allocating.
+and the help text was wrong: it was corrected on 2026-09-12 to "every kind but
+lanes16 is bit-identical", and RHX.9 in [rust-harness-ux.md](rust-harness-ux.md)
+closes when the corrected line is observed on the workstation build. The
+numerics statement above stands.
 
 ## Coverage roster
 
@@ -4834,9 +6527,14 @@ is a decision rather than an oversight.
 | Capture obs records | `rust-harness/runtime/tests/capture_obs.rs` |
 | Ladder obs records | `rust-harness/runtime/tests/ladder_obs.rs` |
 | `ladder::window_schedule` against the reference generator's | `rust-harness/runtime/tests/ladder_reference_contract.rs` |
+| `ladder::attention_layers` against the reference generator's | `rust-harness/runtime/tests/ladder_reference_contract.rs::the_attention_generator_chooses_the_layers_the_rung_recomputes` |
+| `attention-capture --prompt`, `--layers` and `--heads`: distinct indices, range-checked, every requested pair written, row mass, exact zeros outside the span, `span_first` against the fixture's schedule | `rust-harness/runtime/tests/attention_capture.rs` |
+| `--control-vector-scale`: a negative value accepted by the parser, a zero scale reproducing the unsteered baseline on E4B | `rust-harness/harness/src/cli.rs::a_value_that_only_looks_flag_adjacent_is_accepted`, `tests/hardware/test_interp_chain.py::test_a_zero_scale_vector_reproduces_the_baseline` |
 | Row-split bit-identity at every thread width | `rust-harness/runtime/src/model/cpu.rs::par_rows_is_bit_identical_at_every_width` |
-| `Lanes16` excluded from the bit-identical set | `rust-harness/runtime/src/model/cpu.rs` (the `DotKind::Lanes16` assertion at line 4252) |
+| `Lanes16` excluded from the bit-identical set | `rust-harness/runtime/src/model/cpu.rs::the_lane_dot_changes_the_logits_and_says_so` |
 | Blocked-row folding against row-at-a-time | `rust-harness/runtime/src/tensor.rs::a_block_of_rows_is_bit_identical_to_the_rows_folded_one_at_a_time` |
 | Widened blocks against stored-row folding | `rust-harness/runtime/src/tensor.rs::a_widened_block_is_bit_identical_to_folding_the_stored_rows` |
 | Rewindability invariants across stepped and batched runs | `rust-harness/runtime/src/conformance.rs` |
 | Colour helper as a pure function | `rust-harness/runtime/tests/status_python_parity.rs` |
+| The `Permissions:` line naming the rule source, and the `Session: resumed` line on a second run in one directory (RHX.10, RHX.11) | `rust-harness/harness/tests/session_status.rs` |
+| The exhausted turn budget as a typed error carrying a `--chat` remedy | `rust-harness/harness/tests/agent_e2e.rs::exceeding_max_turns_is_an_error_not_a_hang`, `rust-harness/harness/src/actionable.rs::every_command_is_runnable_as_printed` |

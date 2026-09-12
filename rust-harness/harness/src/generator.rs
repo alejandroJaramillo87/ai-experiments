@@ -220,12 +220,25 @@ impl SessionGenerator {
 /// Prefill throughput is what a human compares across context lengths, and it
 /// is *not* the `tokens_per_s` in `metrics.jsonl`, which is the amortized
 /// end-to-end decode figure -- so this restates nothing.
+///
+/// A rewind the sliding window refused is named on the same line, because
+/// the delta alone cannot show it: a rebuild from zero and a transcript that
+/// shared nothing with the cache prefill the same count. The rebuild is the
+/// path compaction takes on every real checkpoint (RH.20), and it is the one
+/// case where a turn's prefill is the whole prompt again.
 fn report_prefill(p: runtime::session::Prefill) {
     if p.tokens == 0 || p.seconds <= 0.0 {
         return;
     }
+    let rebuilt = match p.rebuilt {
+        Some(r) => format!(
+            "; rebuilt from 0: a rewind to {} fell below the window floor at {}",
+            r.common, r.floor
+        ),
+        None => String::new(),
+    };
     runtime::status::info(&format!(
-        "Prefill: {} tokens in {:.2} s ({:.0} tok/s)",
+        "Prefill: {} tokens in {:.2} s ({:.0} tok/s){rebuilt}",
         p.tokens,
         p.seconds,
         p.tokens as f64 / p.seconds

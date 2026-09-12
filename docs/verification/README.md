@@ -110,11 +110,11 @@ Each runbook's own progress line is authoritative; this table is the index.
 | [training/training-phase0.md](training/training-phase0.md) | 4 | 0 | 7 | 11 |
 | [training/training-phase1.md](training/training-phase1.md) | 0 | 0 | 13 | 13 |
 | [training/training-phase2.md](training/training-phase2.md) | 0 | 0 | 7 | 7 |
-| [interp/interp.md](interp/interp.md) | 10 | 1 | 7 | 18 |
+| [interp/interp.md](interp/interp.md) | 10 | 1 | 13 | 24 |
 | [observability/observability.md](observability/observability.md) | 2 | 0 | 7 | 9 |
 | [sandbox/sandbox-executable.md](sandbox/sandbox-executable.md) | 2 | 0 | 0 | 2 |
-| [rust-harness/rust-harness.md](rust-harness/rust-harness.md) | 23 | 0 | 15 | 38 |
-| [rust-harness/rust-harness-ux.md](rust-harness/rust-harness-ux.md) | 0 | 0 | 9 | 9 |
+| [rust-harness/rust-harness.md](rust-harness/rust-harness.md) | 43 | 0 | 1 | 44 |
+| [rust-harness/rust-harness-ux.md](rust-harness/rust-harness-ux.md) | 0 | 0 | 12 | 12 |
 | [hardware/hardware-stress.md](hardware/hardware-stress.md) | 0 | 0 | 6 | 6 |
 | [interp/reference-captures.md](interp/reference-captures.md) | 0 | 0 | 2 | 2 |
 
@@ -202,7 +202,8 @@ Also outside the numbered order: [interp/reference-captures.md](interp/reference
 multi-hour activation captures that feed P4-D3 SAE training. They are separated from
 [interp/interp.md](interp/interp.md) because each holds the GPU for most of a day and most of the
 `/mnt/ai-data` volume, so they are scheduled rather than run in sequence. Their preconditions
-are the interp tier through I.9b, verified at smoke scale on 2026-08-08.
+are I.9 and I.9b, chunked capture and its crash recovery, verified at smoke
+scale on 2026-08-08.
 
 Also outside the numbered order: [hardware/hardware-stress.md](hardware/hardware-stress.md), the
 one-time firmware stability soak for the BIOS undervolt profile. It is

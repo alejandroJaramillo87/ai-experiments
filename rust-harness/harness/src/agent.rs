@@ -16,6 +16,23 @@ use crate::template::{render_entry, MODEL_TURN_OPEN};
 use crate::tools::ToolCall;
 use crate::transcript::{Entry, Role, Transcript};
 
+/// The turn budget ran out with no plain-text answer.
+///
+/// A type rather than a message so `main.rs` can tell this exit from every
+/// other task failure and attach the remedy, which needs the checkpoint path
+/// the agent does not hold. Raised through `anyhow::Error::msg`, which keeps
+/// it recoverable by `downcast_ref` without a `std::error::Error` impl.
+#[derive(Debug)]
+pub struct TurnBudgetExhausted {
+    pub turns: usize,
+}
+
+impl std::fmt::Display for TurnBudgetExhausted {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "no final answer within {} turns", self.turns)
+    }
+}
+
 pub trait Generator {
     fn complete(&mut self, prompt: &str) -> Result<String>;
 
@@ -203,6 +220,6 @@ impl Agent {
                 }
             }
         }
-        bail!("no final answer within {max_turns} turns")
+        Err(anyhow::Error::msg(TurnBudgetExhausted { turns: max_turns }))
     }
 }

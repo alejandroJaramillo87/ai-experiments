@@ -57,7 +57,36 @@ catalog rows and event files they leave, so the workstation half of RH.13 adds o
 log root and a real checkpoint; that half is `tests/hardware/test_obs_records.py`, under
 `hw_full`. The endpoint has the same split: `serve_snapshot.rs` and `server.rs` in the
 sandbox, and `tests/hardware/test_harness_endpoint.py` for a real checkpoint behind the
-socket and the client's own health budget.
+socket and the client's own health budget. So does the preflight (RH.16):
+`preflight_surface.rs` and `probe_identity.rs` over the fixture in the sandbox, and
+`tests/hardware/test_preflight.py` under `hw_smoke` for `--status --deep` against the real
+weights, where it also prints what the hash costs. And the alignment artifact (RH.19):
+`alignment_artifact.rs` holds the written file to `schemas/alignment.json` over the fixture,
+and `tests/hardware/test_alignment.py` under `hw_e4b` runs the harness over the real
+vocabulary and decodes every row's `token_id` with `transformers`, holding each span to the
+bytes its own token produced; the sandbox half can only prove the spans partition the text.
+Compaction past the rewind floor (RH.20) splits the same way: `session.rs` reaches the floor on
+a four-position synthetic window in the sandbox, and `tests/hardware/test_compaction.py` under
+`hw_e4b` drives a chat session over the real 512-token window until it compacts twice and reads
+the rebuild off the `Prefill:` line each compaction leaves. And the residual stream
+(RH.21): `layer_diff_numerics.rs` brackets `layer-diff`'s two tolerances around perturbed
+rows of the tiny capture, and `tests/hardware/test_layer_diff.py` under `hw_e4b` reads every
+row the tool prints over the real 42 layers, then closes the ceiling under two of them and
+holds the verdict to the earlier one. And `checkpoint-info --check` (RH.22):
+`checkpoint_info_check.rs` reaches both refusal paths in the sandbox, a config the backend
+cannot validate and a tiny checkpoint made multimodal by one tensor per tower, and
+`tests/hardware/test_checkpoint_info.py` under `hw_e4b` runs the pair of verdicts on the
+released E4B and reads the tower count the code's comments predict off the file. And the
+attention-capture binary (RH.36): `attention_capture.rs` pins its surface over a three-token
+window in the sandbox, and `tests/hardware/test_attention_capture.py` under `hw_e4b` runs it on
+the released E4B over a prompt past the real window, holding `span_first` to the schedule the
+checkpoint's own `config.json` states and every row's mass to one over hundreds of keys.
+Two more hardware tests have no sandbox half at all, because their question is the released
+weights themselves: `tests/hardware/test_shared_kv_weights.py` under `hw_e4b` reads every
+attention projection of E4B through safetensors and asks whether the shared-KV tail's
+surplus projections were ever trained (RH.1a), and `tests/hardware/test_interp_chain.py`
+under `hw_full` runs the whole capture, probe, monitor and steer chain on `gemma-4-E2B-it`
+and holds each step to the signal RH.9 recorded by hand.
 
 Steps 5 and 6 are complementary rather than redundant. The reference check asks whether a
 cited path exists, which requires classifying a token as a path claim — and that classifier
@@ -157,7 +186,7 @@ and `make quality-full` are machinery gates: they prove the code builds, the tes
 themselves, and the documentation resolves. A forward pass with a transposed weight or a wrong
 norm convention passes both and emits fluent text.
 
-That is what the correctness ladder is for. Six rungs, each against `transformers` rather than
+That is what the correctness ladder is for. Seven rungs, each against `transformers` rather than
 against any earlier output of ours, run on the workstation under their own target:
 
 ```

@@ -54,6 +54,11 @@ pub struct Permissions {
 const KNOWN_TOOLS: [&str; 7] = ["read", "write", "edit", "bash", "glob", "todo", "*"];
 
 impl Permissions {
+    /// How many rules the file supplied. Zero means every call asks.
+    pub fn rule_count(&self) -> usize {
+        self.rules.len()
+    }
+
     pub fn from_yaml(text: &str) -> Result<Self> {
         let perms: Permissions = serde_yaml::from_str(text)?;
         // A typoed tool name would otherwise be a rule that silently never

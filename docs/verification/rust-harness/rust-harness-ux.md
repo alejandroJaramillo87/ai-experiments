@@ -4,7 +4,7 @@
 operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate —
 both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 0 verified, 0 blocked, 9 pending, of 9.** RHX.9 joined the eight `U`-campaign
+**Entries: 0 verified, 0 blocked, 12 pending, of 12.** RHX.9 joined the eight `U`-campaign
 entries from the surface inventory: it records a defect in the `--dot` help text and the check
 that closes it.
 
@@ -47,14 +47,38 @@ here: **RH.16**, the preflight against real E4B, and **RH.13**, the failure reco
 U7 because the code changed what it prints. Both already carry observed output, and moving them
 would discard evidence that exists.
 
+**Revised 2026-09-12, before any entry had run.** The blocks were written on 2026-09-04 as
+task runs from the source tree, and the main campaign has since shown what that shape does on
+the pinned E4B, which is a base model: RH.37's runs of 2026-09-11 and 2026-09-12 each emitted
+invented tool calls, stopped at the `[y/N]` permission prompt for every one, looped to
+`no final answer within 64 turns`, and left `session.jsonl` and `session.kv` in the checkout
+for the next run to resume. RHX.1 and RHX.2 are therefore `--chat` runs with the turns on
+stdin, from a fresh directory, which is the prose path with no tools and no prompt (RH.11's
+shape); the header and the two durations they read do not need instruction following. RHX.6
+step 3 names the probe it copies, since two now exist on the workstation and the glob picked the
+one that passes. RHX.9 no longer asks the ladder for logit bits it never prints. Where an
+observation already exists in [rust-harness.md](rust-harness.md), the entry cites it rather
+than asking for it again. The same audit found three things a person meets before any of
+the above and no entry observed: the permission prompt, a silently resumed session, and
+a chat with no prompt marker. RHX.10 through RHX.12 are those, and the first two come
+with a status line added the same day so the run announces what it is doing.
+
 ## Preconditions
 
 **A real Gemma 4 E4B checkpoint** under `/mnt/ai-data/models/hf/`, named as `$MODEL` in every
 command block below. Substitute the directory; the entries do not assume its exact name.
 
-**A release build.** Every block runs from `~/workspace/ai-experiments/rust-harness` and uses
-`cargo run --release`, so the first entry absorbs the build and the rest are load-bound. A
-debug build makes every duration in this document meaningless.
+**A release build.** Build once with `cargo build --release -p harness` and
+`cargo build --release -p runtime`, both from `~/workspace/ai-experiments/rust-harness`. The
+`harness` blocks then run the built binary from a fresh directory under `/tmp`, because the
+harness writes `session.jsonl` and `session.kv` where it starts and a second run in that
+directory resumes them; the `runtime` binaries write nothing where they start, and their
+blocks use `cargo run --release -q` from the checkout. A debug build makes every duration in
+this document meaningless.
+
+**Block conventions.** Every block that pipes sets `set -o pipefail`, and every run is followed
+by `echo "exit=$?"`, so the pasted Observed block carries the exit code beside the output. The
+workstation shell is zsh; the blocks are written to run under it unchanged.
 
 **`/mnt/ai-data/logs` writable**, since these entries verify what reaches the real obs root
 rather than a temporary directory. RHX.4 additionally needs the repository `.venv`.
@@ -72,12 +96,14 @@ KV budget in kilobytes and a load in milliseconds; this entry is the first time 
 describes a checkpoint anyone would serve.
 
 ```bash
-cd ~/workspace/ai-experiments/rust-harness
+set -o pipefail
 MODEL=<the gemma-4-E4B checkpoint directory>
+rm -rf /tmp/rhx1 && mkdir -p /tmp/rhx1 && cd /tmp/rhx1
 
-cargo run --release -q -p harness -- --model "$MODEL" --text-only \
-  --seed 7 --temperature 0.8 --max-tokens 16 \
-  "Reply with the single word: ready"
+printf '%s\n' "Reply with the single word: ready" \
+  | ~/workspace/ai-experiments/rust-harness/target/release/harness \
+      --model "$MODEL" --text-only --chat \
+      --seed 7 --temperature 0.8 --max-tokens 16
 echo "exit=$?"
 
 # the record the terminal was rendered from
@@ -86,12 +112,20 @@ echo "$RUN"
 jq -c 'select(.event == "run.header")' "$RUN"
 ```
 
-Expected signal: nine `[INFO]` lines before the answer, naming the model and its hash, the
+Expected signal: the nine header lines, all `[INFO]`, naming the model and its hash, the
 layer count, the resident weight size and dtype, peak RSS after load, the KV cache budget, the
-fold (`dot=`, `batch=`, `threads=`), the sampling parameters including `seed=7`, and the build.
-The `dot` value is the tuned kernel, not the reference one. The `run.header` record carries the
-same facts as JSON numbers rather than formatted strings — `n_layers` and `weight_bytes` are
-numbers, `temperature` renders as `0.8` and not `0.80000001`.
+rewind horizon, the fold (`dot=`, `batch=`, `threads=`), the sampling parameters including
+`seed=7`, and the build. The `dot` value is the tuned kernel, not the reference one. A run
+without `--context` follows them with `[WARN] KV cache above 2 GiB` before `Model load:`, and
+the chat ends with `[INFO] Chat ended: 1 model turns`; neither is a header line. The reply
+itself is immaterial: E4B is a base model and may not say `ready`. The `run.header` record
+carries the same facts as JSON numbers rather than formatted strings — `n_layers` and
+`weight_bytes` are numbers, `temperature` renders as `0.8` and not `0.80000001`.
+
+The header half of this entry has been observed three times already, in RH.2, RH.8 and RH.37
+of [rust-harness.md](rust-harness.md), and those banners are what the count and the `dot=`
+claim above were checked against. What none of them read is the record: this entry closes on
+the `run.header` line agreeing with the nine printed ones, and on nothing else.
 
 Record both the nine lines and the `run.header` record. The point of the entry is that they
 agree.
@@ -120,29 +154,34 @@ quietly stopped working would look exactly like one that works, because nothing 
 it. The tiny fixture's numbers are too small for the difference to mean anything.
 
 ```bash
-cd ~/workspace/ai-experiments/rust-harness
+set -o pipefail
 MODEL=<the gemma-4-E4B checkpoint directory>
+rm -rf /tmp/rhx2 && mkdir -p /tmp/rhx2 && cd /tmp/rhx2
 
-# a task run: one load line, one prefill line
-cargo run --release -q -p harness -- --model "$MODEL" --text-only \
-  --max-tokens 32 "Summarize the Unix philosophy in three sentences"
-
-# turn 2 against the same session: the prefill line is the delta, not the transcript
-cargo run --release -q -p harness -- --model "$MODEL" --text-only \
-  --max-tokens 32 "Now say that again in one sentence"
+# two turns in one session: one load line, then one prefill line per turn.
+# Turn 2 re-sends the whole transcript, and its prefill line is the delta.
+printf '%s\n' \
+    "Summarize the Unix philosophy in three sentences" \
+    "Now say that again in one sentence" \
+  | ~/workspace/ai-experiments/rust-harness/target/release/harness \
+      --model "$MODEL" --text-only --chat --max-tokens 32
+echo "exit=$?"
 
 # the printed load figure and the recorded one are the same clock
 RUN=$(ls -t /mnt/ai-data/logs/harness/R-*.jsonl | head -1)
 jq -c 'select(.event == "phase.end" and .phase == "model.load")' "$RUN"
 ```
 
-Expected signal: `[INFO] Model load: <n> s` reporting tens of seconds, and
-`[INFO] Prefill: <n> tokens in <n> s (<n> tok/s)` with a rate worth having. On turn 2 the
-prefill token count is a small fraction of turn 1's, because the cache covered the rest —
-that number is the only visible evidence delta prefill works. The `duration_s` in the
-`phase.end` record agrees with the printed load figure to two decimals. Neither stream carries
-a carriage return: the animation was deliberately not built, so an `Observed` block gets clean
-lines.
+Expected signal: one `[INFO] Model load: <n> s` reporting seconds, and two
+`[INFO] Prefill: <n> tokens in <n> s (<n> tok/s)` lines with a rate worth having. The second
+prefill's token count is a small fraction of the first's, the new turn plus the close of the
+reply before it, because the cache covered the rest — that number is the only visible evidence
+delta prefill works. The `duration_s` in the `phase.end` record agrees with the printed load
+figure to two decimals. Neither stream carries a carriage return: the animation was
+deliberately not built, so an `Observed` block gets clean lines.
+
+RH.4 in [rust-harness.md](rust-harness.md) measured the delta itself, on a trace; this entry
+is the line a person sees without one.
 
 Observed:
 
@@ -291,33 +330,41 @@ ever checked that the remedy *works when typed*. A command naming real paths tha
 not run is precisely the failure the placeholder assertion was reaching for and cannot see.
 
 ```bash
-cd ~/workspace/ai-experiments/rust-harness
 MODEL=<the gemma-4-E4B checkpoint directory>
+rm -rf /tmp/rhx6 && mkdir -p /tmp/rhx6 && cd /tmp/rhx6
 
 # 1. a checkpoint that is not there
-cargo run --release -q -p harness -- --model /mnt/ai-data/models/hf/absent \
-  --text-only "say ready"
+~/workspace/ai-experiments/rust-harness/target/release/harness \
+  --model /mnt/ai-data/models/hf/absent --text-only "say ready"
 echo "exit=$?"
 
 # 2. run the Command: line from step 1 verbatim, whatever it printed
 
-# 3. a probe of the wrong width against real weights
-mkdir -p /tmp/rhx6 && cp /mnt/ai-data/interp/probes/*/probe.safetensors \
-  /mnt/ai-data/interp/probes/*/probe.json /tmp/rhx6/ 2>/dev/null || \
-  echo "no exported probe: run RH.16 step 4b first"
-cargo run --release -q -p harness -- --model "$MODEL" --text-only \
-  --probe /tmp/rhx6/probe.safetensors "say ready"
+# 3. a probe of the wrong width against real weights: the E2B-it probe RH.9b
+#    exported, 1536 wide, against E4B's 2560. Named, not globbed: the E4B
+#    probe RH.16 step 4b built sits beside it and passes the width check.
+cp /mnt/ai-data/interp/probes/rust-e2b-it-refusal-probe/probe.safetensors \
+   /mnt/ai-data/interp/probes/rust-e2b-it-refusal-probe/probe.json /tmp/rhx6/
+~/workspace/ai-experiments/rust-harness/target/release/harness \
+  --model "$MODEL" --text-only --probe /tmp/rhx6/probe.safetensors "say ready"
 echo "exit=$?"
 
 # 4. run that Command: line verbatim too
 ```
 
-Expected signal: each failure prints exactly three lines on stderr — the tagged diagnosis, then
-`  Solution:` and `  Command:` at two spaces of indent — with stdout empty. Both `Command:`
-lines name this run's real paths, contain no `<` placeholder, and **do what they claim when
-pasted into the shell**: the first lists the directory that is missing, the second runs a
-preflight that reports the same fault the run hit. Record the remedy lines and the output of
-running them.
+Expected signal: each failure ends with three lines on stderr — the tagged diagnosis, then
+`  Solution:` and `  Command:` at two spaces of indent — with stdout empty. Step 1 prints
+nothing else: the checkpoint is resolved before the load. Step 3 prints the header first,
+because the width check sits after `CpuModel::load` in `main.rs`, so a wrong probe costs the
+full load to discover; that cost is the reason `--status` exists, and the `Command:` line
+should be the preflight that would have found it in under a second. Both `Command:` lines name
+this run's real paths, contain no `<` placeholder, and **do what they claim when pasted into
+the shell**: the first lists the directory that is missing, the second runs a preflight that
+reports the same fault the run hit. Record the remedy lines and the output of running them.
+
+Step 1's three lines have been observed already, in RH.13 (2026-09-06) and RH.16 step 3 of
+[rust-harness.md](rust-harness.md); neither ran the `Command:` it printed. Steps 2 and 4 are
+this entry's claim.
 
 If a `Command:` line fails to run, that is the finding and the entry is `FAILED` — the
 placeholder assertion passing while the command is unusable is exactly the gap this entry
@@ -341,7 +388,10 @@ each own one. The sandbox pins the shape of a row; what it cannot pin is that a 
 accumulating months of runs still renders, and that all five commands actually appear there.
 The workstation corpus is the only place that question has an answer.
 
-Run RHX.1 through RHX.5 first, so all five commands have written at least one row.
+Every command has written at least one row by now: `task`, `chat` and `serve` from RH.8,
+RH.11 and RH.14, `ladder` from RH.1b, `activation-capture` from RH.9a, `attention-capture`
+from RH.36 and `layer-diff` from RH.21, all in [rust-harness.md](rust-harness.md). The entry
+needs no run of its own before it.
 
 ```bash
 cd ~/workspace/ai-experiments
@@ -388,9 +438,10 @@ cargo run --release -q -p harness -- --model "$MODEL" --text-only --status
 # 2. NO_COLOR set, same terminal: identical text, no escapes
 NO_COLOR=1 cargo run --release -q -p harness -- --model "$MODEL" --text-only --status
 
-# 3. through a pipe with no NO_COLOR: also plain, because stderr is not a tty
+# 3. through a pipe with no NO_COLOR: also plain, because stderr is not a tty.
+#    grep -c prints 0 and exits 1 on the zero count this step expects.
 cargo run --release -q -p harness -- --model "$MODEL" --text-only --status 2>&1 \
-  | cat -v | grep -c '\^\[' 
+  | cat -v | grep -c '\^\['
 
 # 4. the same three arms again, captured as bytes rather than read by eye.
 #    `script` allocates a pty, so 4a and 4b run against a real terminal; see
@@ -463,37 +514,198 @@ kernel is the part that is wrong, and it is wrong in the direction that costs a 
 session: a run that picks `lanes16` on the strength of it and then compares logits bits
 against a sequential baseline reports a defect that is not there.
 
-A user-surface entry rather than a numerics one because the numerics are already pinned
-(`rust-harness/runtime/tests/ladder_flags.rs`, RH.24 in
-[rust-harness.md](rust-harness.md)). What no test can assert is whether the help text tells
-the truth about them, and that is what a person reads.
+A user-surface entry rather than a numerics one because the numerics are already pinned:
+the two bit patterns above are what
+`rust-harness/runtime/src/model/cpu.rs::the_lane_dot_changes_the_logits_and_says_so` measures
+on the tiny reference fixture, and `rust-harness/runtime/tests/ladder_flags.rs` sweeps the
+ladder's invariance over exactly the kinds the predicate returns (RH.24 in
+[rust-harness.md](rust-harness.md)). The ladder itself prints a `PASS` or `FAIL` per rung and
+never a logit's bits, so a climb under each kernel cannot show the divergence: every kind is
+within tolerance of the reference, `lanes16` included, and six `PASS` rows read as the help
+text's claim confirmed. What no test can assert is whether the help text tells the truth, and
+that is what a person reads.
 
 ```bash
+set -o pipefail
 cd ~/workspace/ai-experiments/rust-harness
-MODEL=<the gemma-4-E4B checkpoint directory>
 
-# 1. what the flag currently claims
+# 1. what the flag claims
 cargo run --release -q -p runtime --bin ladder -- --help | grep -A1 -- '--dot'
+echo "exit=$?"
 
-# 2. the measurement the claim has to survive: one rung, each kernel, logits bits
-for K in sequential rows4 rows8 rows16 widen4 lanes16; do
-  printf '%s ' "$K"
-  cargo run --release -q -p runtime --bin ladder -- --text-only --size quick \
-    --model "$MODEL" --reference fixtures/reference/e4b/quick --rung L2 --dot "$K" 2>&1 \
-    | grep -i 'logit\|L2'
-done
+# 2. the measurement the claim has to agree with, printed by the test that pins it
+cargo test --release -p runtime the_lane_dot_changes_the_logits_and_says_so -- --nocapture 2>&1 \
+  | tail -5
+echo "exit=$?"
 ```
 
 Expected signal: (1) the help text names which kinds are bit-identical and which are not,
 rather than asserting that all of them are. The corrected sentence must exclude `lanes16` by
 name — a hedge such as "most kinds" leaves the reader to guess which, which is the same
-failure in a quieter voice. (2) The five bit-identical kinds produce one set of bits and
-`lanes16` produces another, reproducing the 1062660370 against 1062660362 divergence at logit
-0 or naming whatever the current build measures there.
+failure in a quieter voice. (2) The test passes, which is the measurement standing: `lanes16`
+changes the logits and the predicate says so.
 
 The entry passes when the text and the measurement agree. It does not pass on the measurement
 alone: the measurement is already true today, and the defect is that the documentation
-contradicts it.
+contradicts it. The code change to the `--dot` entry of `SPEC` in
+`rust-harness/runtime/src/bin/ladder.rs` landed on 2026-09-12: the sentence now reads
+"the dot-product kernel; every kind but lanes16 is bit-identical". Step 1 observing it on
+the workstation build is what closes the entry.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+## RHX.10 A tool call the rules do not decide asks, and the run says so first
+
+Implementation: `rust-harness/harness/src/permissions.rs`,
+`rust-harness/harness/src/main.rs` (`ask_stdin`, the `permissions.yaml` load),
+`rust-harness/harness/src/agent.rs`.
+
+Task mode reads `permissions.yaml` from the working directory; a call no rule matches, or
+every call when the file is absent, goes to `ask_stdin`, which prints
+`allow <tool> <target>? [y/N]` on stderr and reads one line. RH.8 ran the only rule set this
+campaign has ever executed, `tool: "*"` allow, and RH.37 met the prompt three times with
+nothing announcing it: three minutes into a run that had printed only prefill lines, the
+terminal stopped, and the operator had to work out that a base model had invented a `read`.
+The sandbox pins the rule semantics (`permissions.rs` unit tests) and the loop's recovery from
+a denial
+(`rust-harness/harness/tests/agent_e2e.rs::denied_tool_call_returns_to_the_model_and_the_loop_recovers`);
+what
+it cannot show is the prompt at a terminal, an answer typed at it, and a closed stdin.
+
+Since 2026-09-12 the run states its rule source before the loop starts:
+`Permissions: N rules from permissions.yaml (an unmatched call asks)` or
+`Permissions: no permissions.yaml, every tool call asks`
+(`rust-harness/harness/tests/session_status.rs`). The subject is E2B-it, which follows the
+tool contract; a base model's calls are invented and would make the answers meaningless.
+
+```bash
+set -o pipefail
+rm -rf /tmp/rhx10 && mkdir -p /tmp/rhx10 && cd /tmp/rhx10
+printf 'rules:\n  - tool: read\n    action: allow\n  - tool: bash\n    action: deny\n' \
+  > permissions.yaml
+printf 'hello\n' > hello.txt
+
+# 1. at the terminal: read is allowed silently, write matches no rule and asks.
+#    Answer n at the prompt.
+~/workspace/ai-experiments/rust-harness/target/release/harness \
+  --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only \
+  "Read hello.txt, write its contents to copy.txt, then say done"
+echo "exit=$?"
+cat session.jsonl
+ls
+
+# 2. stdin closed: the same call resolves to a denial with no prompt and no wait
+rm -f session.jsonl session.kv copy.txt
+~/workspace/ai-experiments/rust-harness/target/release/harness \
+  --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only \
+  "Read hello.txt, write its contents to copy.txt, then say done" </dev/null
+echo "exit=$?"
+grep -c 'permission denied' session.jsonl
+
+# 3. no file at all: the header says every call asks
+rm -f permissions.yaml session.jsonl session.kv
+~/workspace/ai-experiments/rust-harness/target/release/harness \
+  --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only "say done" </dev/null
+echo "exit=$?"
+```
+
+Expected signal: steps 1 and 2 print `[INFO] Permissions: 2 rules from permissions.yaml (an
+unmatched call asks)` before `Model load:`; step 3 prints
+`[INFO] Permissions: no permissions.yaml, every tool call asks`. In step 1 the `read` produces
+no prompt and its result is a tool entry holding `hello`; the `write` stops the run at
+`allow write copy.txt? [y/N]` on stderr with the cursor on that line, and `n` puts
+`permission denied: write copy.txt` into the transcript as a tool entry, after which the model
+continues and `copy.txt` does not exist. Step 2 shows the same denial entry with no prompt
+printed and no pause. Whether E2B-it then says `done` or keeps trying is the model's business,
+not the harness's; the entry is about the three lines the harness prints and the file it does
+not write.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+## RHX.11 A resumed session says what it resumed
+
+Implementation: `rust-harness/harness/src/main.rs`, `rust-harness/harness/src/transcript.rs`.
+
+The harness resumes `session.jsonl` from the working directory, and until 2026-09-12 said
+nothing when it did. A clean exit also saves `session.kv` and the next start prints
+`Session restored: N cached tokens`, so a resumed *cache* announced itself; a run that exited
+non-zero saved no snapshot, and its successor re-prefilled the whole prior transcript with
+only the token count to hint at why. RH.37's second run read `Prefill: 2504 tokens` where the
+first had read 252. The line `Session: resumed N entries from <path>` now precedes the load
+(`rust-harness/harness/tests/session_status.rs`), and this entry reads it on a real session:
+two chat runs in one directory, the second continuing the first.
+
+```bash
+set -o pipefail
+MODEL=<the gemma-4-E4B checkpoint directory>
+rm -rf /tmp/rhx11 && mkdir -p /tmp/rhx11 && cd /tmp/rhx11
+
+# 1. a fresh directory: no resume line, a snapshot saved at exit
+printf '%s\n' "The workstation has an RTX 5090 and a Ryzen 9950X." \
+  | ~/workspace/ai-experiments/rust-harness/target/release/harness --model "$MODEL" --text-only --chat --max-tokens 16
+echo "exit=$?"
+wc -l session.jsonl
+
+# 2. the same directory: the resume line, the restored cache, a delta prefill
+printf '%s\n' "Which GPU does it have?" \
+  | ~/workspace/ai-experiments/rust-harness/target/release/harness --model "$MODEL" --text-only --chat --max-tokens 16
+echo "exit=$?"
+```
+
+Expected signal: step 1 prints no `Session:` line and ends with
+`[INFO] Session snapshot: <n> cached tokens at /tmp/rhx11/session.kv`; `session.jsonl` holds
+two entries. Step 2 prints `[INFO] Session: resumed 2 entries from /tmp/rhx11/session.jsonl`
+before `Model load:`, then `[INFO] Session restored: <n> cached tokens from
+/tmp/rhx11/session.kv`, and its `Prefill:` line counts the new turn alone rather than the
+transcript. The reply's content is immaterial on a base model.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+## RHX.12 A chat at a terminal shows where the next turn goes
+
+Implementation: `rust-harness/harness/src/chat.rs`.
+
+`--chat` reads lines from stdin and streams each reply to stdout. Every chat this campaign has
+run piped its turns (RH.11, RH.20, `tests/hardware/test_interp_chain.py`), where a prompt
+marker would be noise. At a terminal the loop prints nothing between the end of a reply and
+the operator's next line: no marker, no blank line, and the cursor sits wherever the reply's
+last token left it. Whether a person can tell the harness is waiting has never been looked at,
+and `chat.rs` has no code that could make it so. This entry looks; its expected signal is the
+property, and today's code is expected to fail it.
+
+```bash
+set -o pipefail
+MODEL=<the gemma-4-E4B checkpoint directory>
+rm -rf /tmp/rhx12 && mkdir -p /tmp/rhx12 && cd /tmp/rhx12
+
+# At the terminal, no pipe. Type each line and wait for the reply before the next:
+#   hello
+#   /quit
+~/workspace/ai-experiments/rust-harness/target/release/harness --model "$MODEL" --text-only --chat --max-tokens 16
+echo "exit=$?"
+```
+
+Expected signal: after the header, the operator can tell from the screen alone that the
+harness is waiting for a turn, and after each reply can tell where it ended and where the next
+turn begins. `/quit` ends the session with `[INFO] Chat ended: 1 model turns` and
+`[INFO] Session snapshot: ...`, exit 0. Record the screen as pasted, including the typed
+lines; a `FAILED` here is the finding the entry exists for, and the fix is a marker on stderr
+so piped stdout stays the reply alone.
 
 Observed:
 

@@ -15,6 +15,12 @@
  * what was decoded either way and marks the role, rather than suppressing
  * bytes to satisfy a rule: a suppressed byte breaks the round trip, and the
  * role field is what a reader filters on.
+ *
+ * Each row also carries the token id it aligns. The harness's own decode
+ * cannot vouch for its own spans -- a reader holding the artifact and the
+ * checkpoint's tokenizer can, by decoding each id and comparing with the
+ * bytes its span selects -- and the id is the one fact that makes that check
+ * possible from outside (tests/hardware/test_alignment.py).
  */
 
 use std::collections::HashMap;
@@ -38,6 +44,7 @@ pub const SCHEMA_VERSION: u32 = 1;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Row {
     pub position: usize,
+    pub token: Token,
     pub role: Role,
     pub span: Span,
 }
@@ -77,6 +84,7 @@ impl Alignment {
         for (position, (id, at)) in prompt_tokens.iter().enumerate() {
             rows.push(Row {
                 position,
+                token: *id,
                 role: role_at(at, &scaffold),
                 span: detok.advance(*id)?,
             });
@@ -86,6 +94,7 @@ impl Alignment {
         for (i, &id) in generated.iter().enumerate() {
             rows.push(Row {
                 position: prompt_tokens.len() + i,
+                token: id,
                 role: Role::Content,
                 span: detok.advance(id)?,
             });
@@ -152,6 +161,7 @@ pub fn write(
         let pass = passes.iter().find(|p| p.covers(row.position));
         let mut record = serde_json::json!({
             "position": row.position,
+            "token_id": row.token,
             "role": row.role.as_str(),
             "byte_start": row.span.start,
             "byte_end": row.span.end,
@@ -202,6 +212,51 @@ mod tests {
             joined.push_str(&a.text[row.span.start..row.span.end]);
         }
         assert_eq!(joined, a.text, "spans do not reproduce the text");
+    }
+
+    /// Rows grouped as `Detok` attributes bytes: every run of empty spans is
+    /// owned by the non-empty span that follows it, because a codepoint spread
+    /// across byte-fallback ids lands whole on the id that completes it. The
+    /// Python gate (tests/hardware/test_alignment.py) groups the same way.
+    fn attribution_groups(rows: &[Row]) -> Vec<(Vec<Token>, Span)> {
+        let mut groups = Vec::new();
+        let mut ids = Vec::new();
+        for row in rows {
+            ids.push(row.token);
+            if !row.span.is_empty() {
+                groups.push((std::mem::take(&mut ids), row.span));
+            }
+        }
+        if !ids.is_empty() {
+            let end = rows.last().map_or(0, |r| r.span.end);
+            groups.push((ids, Span { start: end, end }));
+        }
+        groups
+    }
+
+    #[test]
+    fn every_recorded_id_decodes_to_the_bytes_its_span_selects() {
+        let tok = tokenizer();
+        let generated = tok.encode("abc caf\u{00e9} \u{4e16}").unwrap();
+        let a = Alignment::build(&tok, &prompt(), SPECIALS, &generated).unwrap();
+
+        let expected: Vec<Token> = tok
+            .encode_prompt(&prompt(), SPECIALS)
+            .unwrap()
+            .into_iter()
+            .chain(generated.iter().copied())
+            .collect();
+        let recorded: Vec<Token> = a.rows.iter().map(|r| r.token).collect();
+        assert_eq!(recorded, expected, "the rows do not carry the run's ids");
+
+        for (ids, span) in attribution_groups(&a.rows) {
+            let decoded = tok.decode(&ids).unwrap();
+            assert_eq!(
+                decoded,
+                &a.text[span.start..span.end],
+                "ids {ids:?} do not decode to their span {span:?}"
+            );
+        }
     }
 
     #[test]

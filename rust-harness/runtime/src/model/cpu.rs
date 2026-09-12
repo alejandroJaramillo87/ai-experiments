@@ -1119,6 +1119,12 @@ pub type AttentionKey = (usize, usize, usize);
 pub struct AttentionTap {
     layers: Vec<usize>,
     heads: Vec<usize>,
+    /// Query positions to keep, or every position when `None`.
+    ///
+    /// The ladder's L6 compares six scheduled rows per (layer, head) and
+    /// would otherwise hold every row of a 2052-token prompt for eight heads
+    /// of four layers -- a quarter of a gigabyte of rows nobody reads.
+    positions: Option<Vec<usize>>,
     rows: Arc<Mutex<HashMap<AttentionKey, AttentionRow>>>,
 }
 
@@ -1129,7 +1135,21 @@ impl AttentionTap {
         Self {
             layers,
             heads,
+            positions: None,
             rows: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    /// Capture `heads` of `layers` at `positions` only.
+    ///
+    /// The same tap with a third filter, for a caller that knows which query
+    /// rows it will compare. `attention-capture` keeps every position because
+    /// its artifact is the whole sequence; a rung that pairs rows by a
+    /// schedule has no use for the rest.
+    pub fn at_positions(layers: Vec<usize>, heads: Vec<usize>, positions: Vec<usize>) -> Self {
+        Self {
+            positions: Some(positions),
+            ..Self::new(layers, heads)
         }
     }
 
@@ -1171,6 +1191,13 @@ impl Tap for AttentionTap {
         w: &[f32],
     ) {
         if !self.layers.contains(&layer) || !self.heads.contains(&head) {
+            return;
+        }
+        if self
+            .positions
+            .as_ref()
+            .is_some_and(|keep| !keep.contains(&position))
+        {
             return;
         }
         // Keyed by all three, so a re-prefill of the same span overwrites

@@ -350,10 +350,21 @@ fn check_shape(trace: &Trace, source: &str) {
             layer_spans,
             "kernel.attention once per model.layer"
         );
+        // Once per logit row, not once per model.lm_head: the head span opens
+        // on every prefill group, and a group before the last of a prefill
+        // produces no row, so a prompt wider than the batch has more head
+        // spans than kernel calls. The first trace-level trace on real
+        // weights failed the per-group form (RH.37).
+        let rows: usize = trace
+            .spans
+            .iter()
+            .filter(|s| s.name == "model.lm_head")
+            .map(|s| arg(s, "rows"))
+            .sum();
         assert_eq!(
             trace.count("kernel.lm_head"),
-            batches,
-            "kernel.lm_head once per model.lm_head"
+            rows,
+            "kernel.lm_head once per logit row across {batches} model.lm_head spans"
         );
         assert!(
             trace.count("kernel.matmul") >= layer_spans,
@@ -407,6 +418,66 @@ fn chat_trace_over_the_fixture(dir: &Path) -> Trace {
         String::from_utf8_lossy(&out.stderr)
     );
     fold(&events(&trace_path))
+}
+
+/// One task over the fixture at `--trace-level trace`. The chat trace above
+/// runs at the default level and so carries no kernel span; this is the
+/// trace that puts the kernel relations in the gate. The task prompt is
+/// wider than the batch, so its prefill splits into groups, which is the
+/// case a decode-only trace never shows: `model.lm_head` opens once per
+/// group and `kernel.lm_head` once per row it produces, and only the last
+/// group of a prefill produces one.
+fn traced_task_over_the_fixture(dir: &Path) -> Trace {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../fixtures");
+    let trace_path = dir.join("trace.json");
+    let out = Command::new(env!("CARGO_BIN_EXE_harness"))
+        .args([
+            "--model".as_ref(),
+            fixtures.join("tiny-gemma4").as_os_str(),
+            "--text-only".as_ref(),
+            "--trace-chrome".as_ref(),
+            trace_path.as_os_str(),
+            "--trace-level".as_ref(),
+            "trace".as_ref(),
+            "--max-tokens".as_ref(),
+            "4".as_ref(),
+            "--seed".as_ref(),
+            "0".as_ref(),
+            "say hi".as_ref(),
+        ])
+        .env("OBS_LOG_DIR", dir.join("obs"))
+        .current_dir(dir)
+        .stdin(Stdio::null())
+        .output()
+        .expect("the harness builds as a test binary");
+    assert!(
+        out.status.success(),
+        "traced task run failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    fold(&events(&trace_path))
+}
+
+#[test]
+fn a_trace_level_task_run_over_the_fixture_has_the_documented_span_shape() {
+    let dir = tempfile::tempdir().expect("a scratch working directory");
+    let trace = traced_task_over_the_fixture(dir.path());
+    let groups: usize = trace
+        .spans
+        .iter()
+        .filter(|s| s.name == "model.forward")
+        .map(|s| arg(s, "groups"))
+        .sum();
+    assert!(
+        groups > trace.count("model.forward"),
+        "the task prompt fits one batch group, so no prefill splits: \
+         the relation this test exists for is not exercised"
+    );
+    assert!(
+        trace.count("kernel.matmul") >= 1,
+        "no kernel span: the run was not traced at trace level"
+    );
+    check_shape(&trace, "the fixture task trace at trace level");
 }
 
 #[test]

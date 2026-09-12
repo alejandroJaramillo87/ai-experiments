@@ -46,7 +46,7 @@ residual activations in the interp capture shard format (consumed unchanged
 by the parent repository's `interp/probes` toolkit); `attention-capture` writes
 post-softmax attention weights for chosen layers and query heads over one
 prompt, which is how Gemma 4's interleaved sliding and global attention can be
-looked at directly; `ladder` runs the six-rung correctness gate against a
+looked at directly; `ladder` runs the seven-rung correctness gate against a
 transformers reference; `layer-diff` reports per-layer divergence of the
 residual stream against a reference capture; and `long-context-golden` writes
 the committed long-prefill logits fixture.
@@ -106,6 +106,9 @@ figures are read off the obs phase that already records them, so the terminal
 and `<run_id>.jsonl` cannot disagree. The prefill count is the *delta* the
 forward pass actually ran, not the prompt length, which is what makes a second
 turn's small number the visible evidence that the KV cache is being reused.
+When a rewind fell below a sliding layer's floor, the same line says so and
+names the prefix it could not keep: the cache was rebuilt from zero, which is
+the routine path after a compaction.
 There is no progress animation and no terminal check: a pipe and a terminal get
 the same bytes, so a runbook's pasted output never carries a carriage return.
 
@@ -155,7 +158,7 @@ was transcribed from the same architecture documents by the same reader as
 `cpu.rs`, and two implementations of one belief agree perfectly. That gate
 stayed green for nine work packages while the forward pass produced noise.
 
-Output correctness is therefore measured against `transformers`, in six
+Output correctness is therefore measured against `transformers`, in seven
 rungs, each one only meaningful once the one above it passes:
 
 | Rung | Measures | Reference |
@@ -166,13 +169,14 @@ rungs, each one only meaningful once the one above it passes:
 | L3 | perplexity over a token window | the reference's per-token NLL |
 | L4 | greedy continuations | `model.generate(do_sample=False)` |
 | L5 | logits at anchors past the sliding window | `model(...).logits` on a 4-window prompt |
+| L6 | post-softmax attention rows at the same anchors, every query head of four layers | forward hooks on the attention modules under eager attention |
 
 L2 is KL divergence over the full distribution rather than a max-abs
 tolerance or argmax agreement: KL in nats is scale-free, which is what a
 262144-wide softcapped vocabulary needs, and a monotone error such as a
 missing logit softcap cannot move an argmax at all.
 
-The ladder short-circuits at the first failing rung and prints all six rows
+The ladder short-circuits at the first failing rung and prints all seven rows
 regardless. A rung with no reference artifact reports `skipped` — missing
 evidence, not contrary evidence — and does not stop the climb.
 
@@ -182,14 +186,18 @@ the real checkpoint on the workstation. See
 [fixtures/reference/README.md](fixtures/reference/README.md) for the
 artifacts and how they are generated.
 
-Current status: **all six rungs ran against real E4B on 2026-09-04 and every
-one passed, with nothing skipped** — L0 token ids, L1 residual stream (worst
-cosine 1.000000 over 42 layers), L2 final distribution, L3 perplexity (delta
-0.000032 over 254 tokens), L4 greedy continuation, L5 logits past the
-sliding window (six anchors over 2052 tokens). The first five had passed
-identically on 2026-08-14, before L5 existed. The rung bodies remain
+Current status: **all seven rungs ran against real E4B on 2026-09-11 and
+every one passed, with nothing skipped** — L0 token ids, L1 residual stream
+(worst cosine 1.000000 over 42 layers), L2 final distribution, L3 perplexity
+(delta 0.000032 over 254 tokens), L4 greedy continuation, L5 logits past the
+sliding window (six anchors over 2052 tokens), L6 attention rows at the same
+anchors (worst single-key difference 2.3e-5 over 192 rows). The first six
+had passed identically on 2026-09-04, before L6 existed, and the first five
+on 2026-08-14, before L5. L6's Tier E bounds remain marked provisional on
+one checkpoint's evidence (entry RH.18). The rung bodies remain
 unit-tested against a scripted `MockModel` as well. The transcript is entry
-RH.1b of [the workstation runbook](../docs/verification/rust-harness/rust-harness.md).
+RH.1b of [the workstation runbook](../docs/verification/rust-harness/rust-harness.md),
+and L6's is entry RH.18.
 
 That is a numerics claim, not an output-quality claim: the ladder measures
 agreement with `transformers`, and says nothing about whether the model's

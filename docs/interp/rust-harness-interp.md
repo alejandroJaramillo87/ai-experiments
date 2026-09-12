@@ -345,6 +345,7 @@ line carrying the run id, then one row per position with
 | Field | Meaning |
 |-------|---------|
 | `position` | absolute cache position, the same numbering the tap reports |
+| `token_id` | the id the run computed there, so a reader with the tokenizer can check the span |
 | `role` | `content`, or `scaffold` for a position the chat template wrote |
 | `byte_start`, `byte_end` | half-open byte range in the header's decoded `text` |
 | `pass`, `phase` | the forward call that computed the position, and `prefill` or `decode` |

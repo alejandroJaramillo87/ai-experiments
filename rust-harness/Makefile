@@ -88,7 +88,7 @@ trace-check: ## Check a --trace-chrome file for the documented span shape and pr
 	fi
 	HARNESS_TRACE="$(abspath $(TRACE))" cargo test -p harness --test trace_structure -- --nocapture a_chrome_trace_from_a_real_run
 
-# The correctness ladder (workstation only): the six rungs against the real
+# The correctness ladder (workstation only): the seven rungs against the real
 # checkpoint and reference artifacts generated from transformers.
 #
 # Deliberately not part of `make quality`. The gate is mandatory before every
@@ -124,12 +124,13 @@ LADDER_PY ?= uv run python
 # One artifact per generator, named as runtime/src/bin/ladder.rs joins them
 # onto --reference. `ladder` depends on these as files, so a missing one is
 # generated on the way up and a present one is not paid for again: the L3
-# generator scores the corpus with transformers and the L5 one runs a
-# 2052-token forward pass. Nothing here notices a checkpoint swapped under an
-# existing directory; `make ladder-reference` regenerates unconditionally for
-# that case.
+# generator scores the corpus with transformers, the L5 one runs a 2052-token
+# forward pass, and the L6 one repeats it with attention hooks. Nothing here
+# notices a checkpoint swapped under an existing directory;
+# `make ladder-reference` regenerates unconditionally for that case.
 LADDER_ARTIFACTS := $(addprefix $(REFERENCE)/,\
-  tokenizer_parity.json layers.json ppl.json greedy.json long_context.json)
+  tokenizer_parity.json layers.json ppl.json greedy.json long_context.json \
+  attention.json)
 
 # The refusals, shared by the climb and the generators. An order-only
 # prerequisite of the artifact rules, so a phony target does not make every
@@ -181,6 +182,12 @@ $(REFERENCE)/greedy.json: | ladder-preflight
 $(REFERENCE)/long_context.json: | ladder-preflight
 	@mkdir -p $(REFERENCE)
 	$(LADDER_PY) fixtures/reference_long_context.py --model "$(MODEL)" --out $@
+
+# L6. The same prompt and positions as L5, read at the attention site: the
+# layers come from the checkpoint's layer_types by a rule both sides share.
+$(REFERENCE)/attention.json: | ladder-preflight
+	@mkdir -p $(REFERENCE)
+	$(LADDER_PY) fixtures/reference_attention.py --model "$(MODEL)" --out $@
 
 ladder-reference: ladder-preflight ## Regenerate every reference artifact for SIZE from transformers (MODEL=<dir>)
 	$(MAKE) -B $(LADDER_ARTIFACTS) MODEL="$(MODEL)" SIZE=$(SIZE) REFERENCE=$(REFERENCE)

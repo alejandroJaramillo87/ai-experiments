@@ -108,10 +108,33 @@ pub struct Session {
 /// `seconds` times the `Model::prefill` call alone. The one-token tail replay
 /// in `ensure_tail_logits` is not counted -- that token was charged to the
 /// sync that first appended it.
+///
+/// `kept` and `rebuilt` record what the sync decided before it prefilled.
+/// The decision is otherwise invisible from outside: a rewind the window
+/// floor refused and a transcript that shared nothing with the cache both
+/// prefill the whole transcript, and only one of them is the path compaction
+/// exercises. This module prints nothing about it, by the rule on
+/// `last_prefill`; the binary reads the record and says what it chooses.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Prefill {
     pub tokens: usize,
     pub seconds: f64,
+    /// Cache positions kept before the delta: the common prefix, or 0 when
+    /// the floor forced a rebuild.
+    pub kept: usize,
+    /// The common prefix the floor refused, when it did. `None` on every
+    /// other sync, including one whose prefix really was empty.
+    pub rebuilt: Option<Rebuild>,
+}
+
+/// A rewind the sliding window could not honour, and what it was rebuilt from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Rebuild {
+    /// Positions the transcript shared with the cache.
+    pub common: usize,
+    /// The earliest position the cache could still rewind to, `common` being
+    /// below it.
+    pub floor: usize,
 }
 
 /// Outcome of one generation: sampled tokens (EOS excluded) and whether EOS
@@ -206,6 +229,7 @@ impl Session {
         // and then failed. Both lengths already equal `common` on the normal
         // path, where the two truncates below are no-ops.
         let mut keep = common.min(self.model.cached_len());
+        let mut rebuilt = None;
         // A sliding-window cache evicts rather than masks, so it cannot rewind
         // past its window. Compaction rewinds much further than that by
         // construction — it rewrites the middle of the transcript and the
@@ -219,6 +243,10 @@ impl Session {
                 floor = self.model.rewindable_from(),
                 "rewind past the sliding window: clearing and re-prefilling"
             );
+            rebuilt = Some(Rebuild {
+                common: keep,
+                floor: self.model.rewindable_from(),
+            });
             keep = 0;
         }
         if self.model.cached_len() > keep {
@@ -236,6 +264,8 @@ impl Session {
         self.last_prefill = Prefill {
             tokens: delta.len(),
             seconds: 0.0,
+            kept: keep,
+            rebuilt,
         };
         if !delta.is_empty() {
             let started = std::time::Instant::now();
@@ -605,6 +635,70 @@ mod tests {
         // transcript.
         s.sync(&[1, 2, 9, 9]).unwrap();
         assert_eq!(s.last_prefill().tokens, 2);
+    }
+
+    /// A three-layer synthetic checkpoint whose sliding layers keep four
+    /// positions, so the floor rises within a few hundred tokens. The mock
+    /// model never evicts and so can never refuse a rewind.
+    fn windowed_model() -> crate::model::cpu::CpuModel {
+        let spec = crate::synth::TinySpec {
+            n_layers: 3,
+            sliding_window_pattern: 4,
+            sliding_window: 4,
+            ..crate::synth::TinySpec::default()
+        };
+        let files = crate::synth::tiny_checkpoint(&spec).unwrap();
+        let ck = crate::checkpoint::parse(&files).unwrap();
+        crate::model::cpu::CpuModel::from_checkpoint(&ck).unwrap()
+    }
+
+    #[test]
+    fn a_sync_below_the_floor_rebuilds_from_zero_and_records_why() {
+        let long = crate::conformance::golden::tokens(300);
+        let floor = {
+            let mut twin = windowed_model();
+            twin.prefill(&long).unwrap();
+            twin.rewindable_from()
+        };
+        assert!(floor > 10, "the window never evicted: floor {floor}");
+
+        let mut s = Session::new(Box::new(windowed_model()), 4096).unwrap();
+        s.sync(&long).unwrap();
+        assert_eq!(s.last_prefill().rebuilt, None, "{:?}", s.last_prefill());
+
+        // Shares ten positions with the cache, below the floor: the shape a
+        // compaction leaves behind, a kept head entry and a rewritten middle.
+        let mut short = long[..10].to_vec();
+        short.extend(crate::conformance::golden::tokens(40).iter().map(|t| t + 1));
+        s.sync(&short).unwrap();
+        let p = s.last_prefill();
+        assert_eq!(p.rebuilt, Some(Rebuild { common: 10, floor }), "{p:?}");
+        assert_eq!(p.kept, 0, "{p:?}");
+        assert_eq!(
+            p.tokens,
+            short.len(),
+            "the rebuild prefills everything: {p:?}"
+        );
+
+        // Exact: the rebuilt session's logits are a fresh session's.
+        let mut fresh = Session::new(Box::new(windowed_model()), 4096).unwrap();
+        fresh.sync(&short).unwrap();
+        assert_eq!(
+            s.tail_logits, fresh.tail_logits,
+            "a rebuild moved the logits"
+        );
+
+        // A rewind that stays at or above the floor is an ordinary truncate.
+        let mut near = short.clone();
+        // Diverge inside the vocabulary: the golden ids stay below it.
+        let last = *near.last().unwrap();
+        near.pop();
+        near.push(if last == 0 { 1 } else { last - 1 });
+        s.sync(&near).unwrap();
+        let p = s.last_prefill();
+        assert_eq!(p.rebuilt, None, "{p:?}");
+        assert_eq!(p.kept, short.len() - 1, "{p:?}");
+        assert_eq!(p.tokens, 1, "{p:?}");
     }
 
     #[test]

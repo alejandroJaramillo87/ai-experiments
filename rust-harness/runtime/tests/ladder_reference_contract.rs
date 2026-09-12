@@ -27,8 +27,10 @@
 
 use std::path::{Path, PathBuf};
 
+use runtime::kv::LayerKind;
 use runtime::ladder::{
-    min_long_context_tokens, window_schedule, Size, CHUNK, GREEDY_TOKENS, LONG_CONTEXT_POSITIONS,
+    attention_layers, min_long_context_tokens, window_schedule, Size, CHUNK, GREEDY_TOKENS,
+    LONG_CONTEXT_POSITIONS,
 };
 
 fn repo_root() -> PathBuf {
@@ -49,7 +51,15 @@ fn generator_constants() -> serde_json::Value {
          import reference_greedy as g\n\
          import reference_perplexity as p\n\
          import reference_long_context as lc\n\
+         import reference_attention as at\n\
+         e4b = ['full_attention' if (i + 1) % 6 == 0 else 'sliding_attention'\n\
+                for i in range(42)]\n\
+         tiny = ['sliding_attention', 'full_attention'] * 2\n\
          json.dump({'prompts': g.PROMPTS, 'tokens': g.TOKENS,\n\
+                    'attention_layers': {'e4b': at.attention_layers(e4b),\n\
+                                         'tiny': at.attention_layers(tiny),\n\
+                                         'sliding_only': at.attention_layers(\n\
+                                             ['sliding_attention'] * 5)},\n\
                     'chunk': p.CHUNK, 'corpus_tokens': p.TOKENS,\n\
                     'long_context_positions': lc.POSITIONS,\n\
                     'long_context_min': {str(w): lc.min_tokens(w)\n\
@@ -168,6 +178,37 @@ fn the_long_context_generator_scores_the_positions_the_rung_reads() {
             window_schedule(window, min_long_context_tokens(window) - 1).is_err(),
             "a prompt one token short of the minimum must be refused"
         );
+    }
+}
+
+#[test]
+fn the_attention_generator_chooses_the_layers_the_rung_recomputes() {
+    // L6 pairs rows by (layer, head, position) and refuses an artifact whose
+    // layer list differs from its own choice, so the two rules have to agree
+    // on every schedule they will meet: the released E4B pattern, the tiny
+    // fixture's, and a stack with no global layer at all.
+    let got = generator_constants();
+    let e4b: Vec<LayerKind> = (0..42)
+        .map(|i| match (i + 1) % 6 {
+            0 => LayerKind::Global,
+            _ => LayerKind::SlidingWindow(512),
+        })
+        .collect();
+    let tiny = vec![
+        LayerKind::SlidingWindow(3),
+        LayerKind::Global,
+        LayerKind::SlidingWindow(3),
+        LayerKind::Global,
+    ];
+    let sliding_only = vec![LayerKind::SlidingWindow(3); 5];
+    for (name, kinds) in [("e4b", e4b), ("tiny", tiny), ("sliding_only", sliding_only)] {
+        let theirs: Vec<usize> = got["attention_layers"][name]
+            .as_array()
+            .unwrap_or_else(|| panic!("the generator declares no layer choice for {name}"))
+            .iter()
+            .map(|v| v.as_u64().expect("a layer index is an integer") as usize)
+            .collect();
+        assert_eq!(theirs, attention_layers(&kinds), "{name}");
     }
 }
 

@@ -1,7 +1,7 @@
 ##@ Interpretability (interp Phase 0 I1 - separate compose file; GPU inference must be down)
 
 .PHONY: harvest harvest-check-hooks interp-build interp-dirs
-.PHONY: interp-down interp-gc interp-shell interp-smoke interp-up
+.PHONY: interp-down interp-gc interp-runs interp-shell interp-smoke interp-up
 .PHONY: organism organism-check-seal organism-generate organism-seal organism-verify
 .PHONY: probe-capture probe-eval probe-export probe-monitor probe-train sae-eval
 .PHONY: sae-train steer-down
@@ -26,6 +26,11 @@ interp-shell: ## Preflight, then an interactive shell in the workbench with GPU 
 
 interp-smoke: ## Run the seven-step interp smoke test on the workstation (enforces CUDA sm_120)
 	docker compose -f $(INTERP_COMPOSE) run --rm interp python -m interp smoke
+
+# Host-side, like harness-runs: the catalog is a file under the log root,
+# and browsing it should not need the workbench image or the GPU preflight.
+interp-runs: ## List recent interp runs from the observability catalog (ARGS='-n 50 --failed')
+	uv run --no-sync python -m common.obs.runs --cli interp $(ARGS)
 
 interp-down: ## Stop the interp workbench
 	docker compose -f $(INTERP_COMPOSE) down
@@ -70,7 +75,7 @@ steer-down: ## Recreate the service unsteered (restores production state)
 	docker compose -f $(HARNESS_COMPOSE) up -d --force-recreate $(STEER_SERVICE)
 	@echo "$(GREEN)$(STEER_SERVICE) recreated unsteered$(RESET)"
 
-steer-scorecard: ## Run the three-arm scorecard against live services (VECTOR=... ATTRIBUTE="..." [ARGS=...])
+steer-scorecard: ## Run the scorecard (baseline, system prompt, one steered arm per scale) against live services (VECTOR=... ATTRIBUTE="..." [ARGS=...])
 	@test -n "$(VECTOR)" || { echo "VECTOR=/mnt/ai-data/interp/vectors/<name> is required"; exit 2; }
 	@test -n "$(ATTRIBUTE)" || { echo "ATTRIBUTE=\"behavior the judge scores\" is required"; exit 2; }
 	uv run python -m interp steer-scorecard --vector "$(VECTOR)" --attribute "$(ATTRIBUTE)" $(ARGS)
@@ -155,4 +160,5 @@ organism: ## Print the full organism pipeline for a recipe (each stage has its o
 	@echo "  5. make eval-ft ARGS=... (base and organism metrics for locality)"
 	@echo "  6. make organism-verify RECIPE=$(RECIPE) BASE_METRICS=... SUBJECT_METRICS=... (serving up)"
 	@echo "  7. make organism-seal RECIPE=$(RECIPE) ARGS=\"--checkpoint ... --gguf ...\""
+	@echo "  8. make organism-check-seal DIR=/mnt/ai-data/interp/organisms/<name>"
 

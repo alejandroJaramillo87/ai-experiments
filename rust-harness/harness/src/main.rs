@@ -500,6 +500,18 @@ fn run(
     single_thread: bool,
 ) -> Result<()> {
     let transcript = Transcript::open(&root.join("session.jsonl")).context("session.jsonl")?;
+    // A populated transcript is a resumed session, and nothing else on the
+    // terminal says so: the snapshot restore below names itself, but a run
+    // that exited non-zero saved no snapshot, and its successor re-prefills
+    // the whole prior transcript with only the token count to hint at why
+    // (RH.37 read 2504 tokens where it expected 252).
+    if !transcript.entries().is_empty() {
+        runtime::status::info(&format!(
+            "Session: resumed {} entries from {}",
+            transcript.entries().len(),
+            root.join("session.jsonl").display()
+        ));
+    }
     // HARNESS.md: persistent memory read once at startup and injected as a
     // synthetic leading turn. A missing file is fine; mid-session edits take
     // effect on the next start (the prompt prefix must stay stable so KV
@@ -663,9 +675,22 @@ fn run(
         })
     } else {
         let permissions = match std::fs::read_to_string(root.join("permissions.yaml")) {
-            Ok(yaml) => Permissions::from_yaml(&yaml).context("permissions.yaml")?,
-            // No config: every call goes through the interactive Ask path.
-            Err(_) => Permissions::from_yaml("rules: []").expect("empty rule set"),
+            Ok(yaml) => {
+                let p = Permissions::from_yaml(&yaml).context("permissions.yaml")?;
+                runtime::status::info(&format!(
+                    "Permissions: {} rules from permissions.yaml (an unmatched call asks)",
+                    p.rule_count()
+                ));
+                p
+            }
+            // No config: every call goes through the interactive Ask path,
+            // and the run says so up front. The prompt otherwise appears
+            // mid-run with nothing announcing it, and a run waiting on it
+            // reads as a hang.
+            Err(_) => {
+                runtime::status::info("Permissions: no permissions.yaml, every tool call asks");
+                Permissions::from_yaml("rules: []").expect("empty rule set")
+            }
         };
         let mut agent = Agent::new(
             root.to_path_buf(),
@@ -674,7 +699,21 @@ fn run(
             memory.as_deref(),
         );
         agent.compact_at = compact_at;
-        agent.run_task(&mut generator, task, 64, ask_stdin)
+        agent
+            .run_task(&mut generator, task, 64, ask_stdin)
+            // The remedy names the checkpoint, which the agent never sees, so
+            // it is attached here rather than raised in the loop.
+            .map_err(|e| {
+                match (
+                    e.downcast_ref::<harness::agent::TurnBudgetExhausted>(),
+                    model,
+                ) {
+                    (Some(t), Some(model)) => anyhow::Error::msg(
+                        harness::actionable::no_final_answer(t.turns, model, text_only),
+                    ),
+                    _ => e,
+                }
+            })
     };
     if let Ok(answer) = &result {
         // The answer is the task's product: print it before the persistence

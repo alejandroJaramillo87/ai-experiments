@@ -271,6 +271,12 @@ fn exceeding_max_turns_is_an_error_not_a_hang() {
         .run_task(&mut generator, "loop", 3, |_| false)
         .unwrap_err();
     assert!(err.to_string().contains("no final answer"));
+    // Typed, so the binary can attach the remedy that names the checkpoint:
+    // a message alone would have to be matched on its wording.
+    let budget = err
+        .downcast_ref::<harness::agent::TurnBudgetExhausted>()
+        .unwrap_or_else(|| panic!("not a TurnBudgetExhausted: {err:#}"));
+    assert_eq!(budget.turns, 3, "{err:#}");
 }
 
 #[test]

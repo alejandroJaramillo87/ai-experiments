@@ -1,8 +1,9 @@
 /*
  * ladder_flags — the four tuning flags, and the claims their help text makes.
  *
- * `--dot` says "every kind is bit-identical" and `--threads` says "the tables
- * are bit-identical at every width". Both are claims about results rather than
+ * `--dot` says "every kind but lanes16 is bit-identical" and `--threads` says
+ * "the tables are bit-identical at every width". Both are claims about results
+ * rather than
  * about speed, and until now nothing asserted either: the flags were parsed,
  * passed to the model, and never compared against anything. A switch whose
  * documented property is untested is a switch that can start changing the
@@ -101,7 +102,7 @@ impl Run {
 ///
 /// The reference directory is assembled here for the reason `ladder_obs.rs`
 /// gives: the capture is the L1 and L2 payload under another name, and copying
-/// it is what makes two rungs genuinely run. A climb over six skipped rungs
+/// it is what makes two rungs genuinely run. A climb over seven skipped rungs
 /// would compare empty tables and call them identical.
 fn ladder(extra: &[&str]) -> Run {
     let dir = tempfile::tempdir().expect("a scratch working directory");
@@ -221,6 +222,35 @@ fn every_thread_width_prints_the_same_ladder_table() {
     assert_eq!(short.table(), reference.table());
 }
 
+/// `--single-thread` beside `--threads` is a usage error naming both, decided
+/// before any checkpoint is opened.
+///
+/// The two used to be accepted together, with `--threads` winning whatever
+/// the argv order, which is a width the caller did not visibly choose. The
+/// paths here do not exist: reaching the loader would show as exit 1.
+#[test]
+fn single_thread_beside_threads_is_a_usage_error_naming_both() {
+    let dir = tempfile::tempdir().expect("a scratch working directory");
+    for order in [
+        ["--single-thread", "--threads", "2"],
+        ["--threads", "2", "--single-thread"],
+    ] {
+        let out = Command::new(env!("CARGO_BIN_EXE_ladder"))
+            .args(["--model", "/nonexistent", "--reference", "/nonexistent"])
+            .args(order)
+            .current_dir(dir.path())
+            .env("OBS_LOG_DIR", dir.path().join("logs"))
+            .output()
+            .expect("the ladder builds as a test binary");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(2), "{order:?}: {stderr}");
+        assert!(
+            stderr.contains("--single-thread") && stderr.contains("--threads"),
+            "{order:?}: the error must name both flags: {stderr}"
+        );
+    }
+}
+
 /// `--batch` changes when a dot product runs and not what it sums.
 #[test]
 fn every_batch_mode_prints_the_same_ladder_table() {
@@ -297,9 +327,9 @@ fn rung_climbs_only_the_rung_it_names() {
             "--rung {asked} climbed {left} as well:\n{}",
             r.stdout
         );
-        // Every other rung of the six is unclimbed too, not merely the one
+        // Every other rung of the seven is unclimbed too, not merely the one
         // that had an artifact waiting.
-        for other in ["L0", "L3", "L4", "L5"] {
+        for other in ["L0", "L3", "L4", "L5", "L6"] {
             assert_ne!(
                 r.verdict(other),
                 "PASS",

@@ -4,7 +4,9 @@
   "writers": [
     "rust-harness/harness/src/alignment.rs (write)"
   ],
-  "readers": [],
+  "readers": [
+    "tests/hardware/test_alignment.py"
+  ],
   "guarded_by": [
     "rust-harness/harness/src/alignment.rs (tests)",
     "rust-harness/harness/tests/alignment_artifact.rs"
@@ -35,7 +37,8 @@
     "row": [
       "pass",
       "phase",
-      "score"
+      "score",
+      "token_id"
     ]
   },
   "values": {
@@ -58,7 +61,8 @@
     "scaffold_and_visible_text": "role=scaffold does not imply an empty span. It holds for a checkpoint whose chat markers are pieces the tokenizer's decoder drops, as the real Gemma 4 vocabulary's are; the synthetic fixtures deliberately carry boundaries as ordinary vocabulary entries, so a marker there decodes to its own characters and lands in the text. The writer reports what was decoded and marks the role rather than suppressing bytes, because a suppressed byte breaks the round trip above.",
     "pass_and_phase": "'pass' is the ordinal of the forward call that computed the position, minted in CpuModel::prefill_groups, the one place a batch boundary is decided. It is recorded because the prefill/decode split alone stopped being sufficient once batching landed: it cannot distinguish a position computed alongside its neighbours from one computed alone. 'phase' is derived from that pass's width - decode reaches the backend as a prefill of a single token and there is no second entry point to observe.",
     "absent_not_null": "'pass', 'phase' and 'score' are omitted rather than written null when unavailable. A null pass would claim the position was computed by no forward call and a null score would claim the probe looked and found nothing; both are different facts from an unrecorded field. 'score' is present only for positions of the probe's own layer, and only when a probe was loaded.",
-    "no_python_reader": "'readers' is empty: nothing in the Python interp toolkit reads this artifact yet, so the guards are Rust-side only. That is a gap and not a design decision - the longitudinal analysis this artifact exists for will be Python, and a reader there is what would make this contract cross-language in the sense the other schemas in this directory are.",
+    "token_id": "The id the run computed at the position. Recorded so a reader holding only the artifact and the checkpoint's tokenizer can check each span against the vocabulary, which the harness's own decode cannot vouch for: the round trip above proves the spans partition the text, not that a span holds its own token's bytes. Optional so schema_version stays 1; every row the current writer emits carries it.",
+    "python_reader": "tests/hardware/test_alignment.py is the one Python reader, and it is a checker rather than the longitudinal reader: on the workstation it decodes each row's token_id with transformers and holds the span to those bytes. The analysis reader this artifact exists for is still unwritten.",
     "run_id": "R-YYYYMMDD-HHMMSS-xxxxxx, minted by obs::mint_run_id and pinned by schemas/obs_record.json. No second identifier is invented: the same id names this run's event log, so the two artifacts join. 'unknown' when the obs log could not be opened.",
     "envelope": "The header carries the shared report envelope from common/reports.py: schema_version, exactly one discriminator (artifact), a stamp (created), and git_sha."
   }

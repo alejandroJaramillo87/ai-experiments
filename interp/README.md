@@ -23,10 +23,11 @@ tier.
 **A harvest contends with a training run.** Borrowing `training.runtime.lock` means the GPU
 lock is shared repository-wide, by design.
 
-**Several commands are serving-dependent, and one refuses to run.** Steered serving and
-the scorecard target `harness-serve`; `probe-monitor` actively refuses to start while inference is up,
-rather than competing for VRAM. Most `make interp-*` targets first run
-`scripts/interp/preflight.sh`, which gates on the GPU and is workstation-only.
+**Several commands are serving-dependent, and most refuse to start beside a GPU service.**
+Steered serving and the scorecard target `harness-serve`. `probe-monitor` loads no model and
+runs while inference is up; it reads scores the serving process already wrote. Most other
+`make interp-*` targets first run `scripts/interp/preflight.sh`, which refuses while
+`llama-gpu` or `vllm-gpu` is running and is workstation-only.
 
 The artifact formats crossing into Rust are the reason this tier has cross-language tests:
 `interp/probes/capture.py` defines the npz capture shard that

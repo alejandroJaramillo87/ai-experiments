@@ -22,7 +22,8 @@
  * 64-token greedy continuation are not statements a 4-layer model with random
  * weights can make. L5 is here and is the reason the fixture's window is 3
  * against a 150-token prompt, but its artifact is generated separately and is
- * absent until a workstation has written it.
+ * absent until a workstation has written it. L6 reads the same prompt at the
+ * attention site and its artifact has the same standing.
  */
 
 use std::path::{Path, PathBuf};
@@ -179,6 +180,61 @@ fn the_long_context_logits_match_the_reference_past_the_sliding_window() {
         "the reference prompt is {} tokens over a {window}-token window",
         reference.token_ids.len()
     );
+}
+
+/// L6: the attention rows either side of the sliding window, key for key.
+///
+/// The rung whose zeros mean something: the reference masks forbidden keys
+/// to exact zero and the engine never scores them, and a dense comparison
+/// is what turns those two conventions into one checked fact about the mask.
+/// On this fixture every layer is compared, both regimes and both shared-KV
+/// tail layers included. Skipped loudly while the artifact is absent, like
+/// L5's.
+#[test]
+fn the_attention_rows_match_the_reference_past_the_sliding_window() {
+    let dir = fixture_dir();
+    let path = dir.join("attention.json");
+    let Some(reference) =
+        runtime::reference::load_attention(&path).expect("read the attention reference")
+    else {
+        runtime::testlog::skip(
+            "Tier T L6",
+            "fixtures/tiny-hf-gemma4/attention.json has not been generated; \
+             run fixtures/reference_attention.py --model \
+             rust-harness/fixtures/tiny-hf-gemma4 --source synthetic --length 150 \
+             on the workstation",
+        );
+        return;
+    };
+
+    let (mut model, _fingerprint) =
+        CpuModel::load(&dir, false).expect("load the fixture checkpoint");
+    let captured =
+        ladder::capture_attention(&mut model, &reference).expect("capture our attention rows");
+    let kinds: Vec<runtime::kv::LayerKind> = model.layer_specs().iter().map(|l| l.kind).collect();
+    let config = model.config();
+    let result = ladder::rung_attention(
+        &captured,
+        &kinds,
+        config.n_heads,
+        config.sliding_window,
+        &reference,
+        ladder::TIER_T,
+    )
+    .expect("compare the attention rows");
+
+    assert_eq!(
+        result.status,
+        Status::Pass,
+        "Tier T L6 diverged: {}\n{:#?}",
+        result.note,
+        result.measures
+    );
+    // Every layer of the fixture, so both regimes and the shared-KV tail are
+    // in the comparison. Asserted rather than assumed: the rule is derived
+    // from the schedule, and a fixture regenerated with a longer stack would
+    // still pass while leaving layers uncompared.
+    assert_eq!(reference.layers, (0..config.n_layers).collect::<Vec<_>>());
 }
 
 /// The fixture exercises the features it was built to exercise.
