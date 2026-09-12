@@ -874,9 +874,57 @@ exists to close.
 Observed:
 
 ```
+➜  rhx6 ~/workspace/ai-experiments/rust-harness/target/release/harness \
+  --model /mnt/ai-data/models/hf/absent --text-only "say ready"
+echo "exit=$?"
+
+[ERROR] Task failed: read model /mnt/ai-data/models/hf/absent: no checkpoint at /mnt/ai-data/models/hf/absent: expected a directory holding config.json and model.safetensors, or a path to the weights file itself
+  Solution: point --model at a directory holding config.json and model.safetensors, or at the weights file itself
+  Command: ls /mnt/ai-data/models/hf/absent
+exit=1
+➜  rhx6 ls /mnt/ai-data/models/hf/absent
+echo "exit=$?"
+
+ls: cannot access '/mnt/ai-data/models/hf/absent': No such file or directory
+exit=2
+➜  rhx6 (cd ~/workspace/ai-experiments && make probe-export \
+   ARGS="--probe /mnt/ai-data/interp/probes/rust-e2b-it-refusal-probe")
+cp /mnt/ai-data/interp/probes/rust-e2b-it-refusal-probe/probe.safetensors \
+   /mnt/ai-data/interp/probes/rust-e2b-it-refusal-probe/probe.json /tmp/rhx6/
+~/workspace/ai-experiments/rust-harness/target/release/harness \
+  --model "$MODEL" --text-only --probe /tmp/rhx6/probe.safetensors "say ready"
+echo "exit=$?"
+uv run python -m interp probe-export --probe /mnt/ai-data/interp/probes/rust-e2b-it-refusal-probe
+[RUN] Exporting /mnt/ai-data/interp/probes/rust-e2b-it-refusal-probe
+[OK] Image written: /mnt/ai-data/interp/probes/rust-e2b-it-refusal-probe/probe.safetensors
+[OK] Sidecar written: /mnt/ai-data/interp/probes/rust-e2b-it-refusal-probe/probe.json
+  [INFO] Serve with: make harness-serve HARNESS_PROBE=/app/probes/rust-e2b-it-refusal-probe/probe.safetensors
+[ERROR] Task failed: probe was trained on a different model: probe model_hash 2db5482b20d746879bb3ef79b5203e9075a2e2b98f54ec7c2f281c1477ddc550, served model sha256 43fb96cec3045b72852c787540300dc5b258634b7a025f7c80355ac0788b9651
+  Solution: serve the weights the probe was fitted on, or re-export the probe against these
+  Command: harness --status --deep --model /mnt/ai-data/models/hf/gemma-4-E4B --probe /tmp/rhx6/probe.safetensors
+exit=1
+➜  rhx6 harness --status --deep --model /mnt/ai-data/models/hf/gemma-4-E4B --probe /tmp/rhx6/probe.safetensors
+echo "exit=$?"
+harness: command not found
+exit=127
 ```
 
-Status: PENDING
+Run 2026-09-12. Steps 1 and 2 hold: three lines, stdout empty, and the `ls` did what the
+remedy claimed. Step 3 raised two mismatches with the expected signal above, both in the
+signal's favour and neither a defect: the fault named is the model hash, not the width,
+because `main.rs` compares the probe's `model_hash` to the served weights before it compares
+widths and the E2B-it probe fails the earlier check; and no header preceded the error, so the
+wrong probe cost no load. Step 4 is the failure the entry was written to find. The
+`Command:` line begins with a bare `harness`, which `cli::usage` spells and
+`every_command_is_runnable_as_printed` pins, and nothing installs the binary on `PATH`: the
+operator runs it as `target/release/harness`, so the line pasted back is `command not found`,
+exit 127. Filed as KB-72. The fix lands with this entry: `actionable::render` replaces that
+leading `harness` with the invocation's own `argv[0]`, so the line names the binary the way
+it was just run; the `ls` remedy is untouched. `actionable_surface.rs` now asserts the printed
+command begins with the path the test invoked. Step 4 re-runs after `cargo build --release`.
+
+Status: PENDING (FAILED 2026-09-12 at step 4, exit 127; fix in the tree as KB-72, awaiting the
+re-run of steps 3 and 4)
 
 ## RHX.7 One catalog serves the whole workspace
 

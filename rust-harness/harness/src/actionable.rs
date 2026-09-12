@@ -102,10 +102,34 @@ impl fmt::Debug for Actionable {
 /// turning one finding into what reads like three. The same decision is
 /// recorded at `runtime/src/bin/long-context-golden.rs:46-50`.
 pub fn render(err: &anyhow::Error) -> Option<String> {
+    let program = std::env::args()
+        .next()
+        .unwrap_or_else(|| PROGRAM.to_string());
+    render_as(err, &program)
+}
+
+/// The name the constructors spell the binary by, and what `render` replaces
+/// with the invocation's own `argv[0]`.
+///
+/// RHX.6 (2026-09-12) pasted a `Command:` line as printed and got `harness:
+/// command not found`, exit 127: nothing installs the binary on `PATH`, the
+/// operator runs it as `target/release/harness`, and a remedy naming a program
+/// the shell cannot find is the placeholder this module refuses, spelled
+/// differently. `argv[0]` is whatever the operator typed, and so runs where
+/// they are.
+const PROGRAM: &str = "harness";
+
+/// `render` with the program name supplied, so a test can hold the
+/// substitution without an `argv[0]` of its own.
+fn render_as(err: &anyhow::Error, program: &str) -> Option<String> {
     let a = err.downcast_ref::<Actionable>()?;
+    let command = match a.command.strip_prefix(PROGRAM) {
+        Some(rest) if rest.starts_with(' ') => format!("{program}{rest}"),
+        _ => a.command.clone(),
+    };
     Some(format!(
         "  Solution: {}\n  Command: {}",
-        a.solution, a.command
+        a.solution, command
     ))
 }
 
@@ -269,6 +293,33 @@ mod tests {
                 a.command
             );
         }
+    }
+
+    #[test]
+    fn the_rendered_command_names_the_binary_as_it_was_invoked() {
+        let model = PathBuf::from("/mnt/ai-data/models/hf/gemma-4-E4B");
+        let probe = PathBuf::from("/tmp/rhx6/probe.safetensors");
+        let err = anyhow::anyhow!("inner")
+            .context(model_identity("--probe", &probe, &model, "aaaa", "bbbb"));
+        let block = render_as(&err, "/opt/harness/target/release/harness").unwrap();
+        let command = block.lines().nth(1).unwrap();
+        assert_eq!(
+            command,
+            "  Command: /opt/harness/target/release/harness --status --deep \
+             --model /mnt/ai-data/models/hf/gemma-4-E4B --probe /tmp/rhx6/probe.safetensors"
+        );
+    }
+
+    #[test]
+    fn a_shell_builtin_is_printed_as_written() {
+        let err = anyhow::anyhow!("inner").context(missing_checkpoint(&PathBuf::from(
+            "/nonexistent-checkpoint",
+        )));
+        let block = render_as(&err, "/opt/harness/target/release/harness").unwrap();
+        assert_eq!(
+            block.lines().nth(1).unwrap(),
+            "  Command: ls /nonexistent-checkpoint"
+        );
     }
 
     #[test]
