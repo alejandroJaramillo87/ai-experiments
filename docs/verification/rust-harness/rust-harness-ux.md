@@ -4,7 +4,7 @@
 operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate —
 both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 0 verified, 0 blocked, 9 pending, of 9.** RHX.9 joined the eight `U`-campaign
+**Entries: 0 verified, 0 blocked, 12 pending, of 12.** RHX.9 joined the eight `U`-campaign
 entries from the surface inventory: it records a defect in the `--dot` help text and the check
 that closes it.
 
@@ -58,7 +58,10 @@ shape); the header and the two durations they read do not need instruction follo
 step 3 names the probe it copies, since two now exist on the workstation and the glob picked the
 one that passes. RHX.9 no longer asks the ladder for logit bits it never prints. Where an
 observation already exists in [rust-harness.md](rust-harness.md), the entry cites it rather
-than asking for it again.
+than asking for it again. The same audit found three things a person meets before any of
+the above and no entry observed: the permission prompt, a silently resumed session, and
+a chat with no prompt marker. RHX.10 through RHX.12 are those, and the first two come
+with a status line added the same day so the run announces what it is doing.
 
 ## Preconditions
 
@@ -544,8 +547,163 @@ changes the logits and the predicate says so.
 
 The entry passes when the text and the measurement agree. It does not pass on the measurement
 alone: the measurement is already true today, and the defect is that the documentation
-contradicts it. Closing it is a code change to the `--dot` entry of `SPEC` in
-`rust-harness/runtime/src/bin/ladder.rs`, after which step 1 is the check.
+contradicts it. The code change to the `--dot` entry of `SPEC` in
+`rust-harness/runtime/src/bin/ladder.rs` landed on 2026-09-12: the sentence now reads
+"the dot-product kernel; every kind but lanes16 is bit-identical". Step 1 observing it on
+the workstation build is what closes the entry.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+## RHX.10 A tool call the rules do not decide asks, and the run says so first
+
+Implementation: `rust-harness/harness/src/permissions.rs`,
+`rust-harness/harness/src/main.rs` (`ask_stdin`, the `permissions.yaml` load),
+`rust-harness/harness/src/agent.rs`.
+
+Task mode reads `permissions.yaml` from the working directory; a call no rule matches, or
+every call when the file is absent, goes to `ask_stdin`, which prints
+`allow <tool> <target>? [y/N]` on stderr and reads one line. RH.8 ran the only rule set this
+campaign has ever executed, `tool: "*"` allow, and RH.37 met the prompt three times with
+nothing announcing it: three minutes into a run that had printed only prefill lines, the
+terminal stopped, and the operator had to work out that a base model had invented a `read`.
+The sandbox pins the rule semantics (`permissions.rs` unit tests) and the loop's recovery from
+a denial (`agent_e2e.rs::denied_tool_call_returns_to_the_model_and_the_loop_recovers`); what
+it cannot show is the prompt at a terminal, an answer typed at it, and a closed stdin.
+
+Since 2026-09-12 the run states its rule source before the loop starts:
+`Permissions: N rules from permissions.yaml (an unmatched call asks)` or
+`Permissions: no permissions.yaml, every tool call asks`
+(`rust-harness/harness/tests/session_status.rs`). The subject is E2B-it, which follows the
+tool contract; a base model's calls are invented and would make the answers meaningless.
+
+```bash
+set -o pipefail
+rm -rf /tmp/rhx10 && mkdir -p /tmp/rhx10 && cd /tmp/rhx10
+printf 'rules:\n  - tool: read\n    action: allow\n  - tool: bash\n    action: deny\n' \
+  > permissions.yaml
+printf 'hello\n' > hello.txt
+
+# 1. at the terminal: read is allowed silently, write matches no rule and asks.
+#    Answer n at the prompt.
+~/workspace/ai-experiments/rust-harness/target/release/harness \
+  --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only \
+  "Read hello.txt, write its contents to copy.txt, then say done"
+echo "exit=$?"
+cat session.jsonl
+ls
+
+# 2. stdin closed: the same call resolves to a denial with no prompt and no wait
+rm -f session.jsonl session.kv copy.txt
+~/workspace/ai-experiments/rust-harness/target/release/harness \
+  --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only \
+  "Read hello.txt, write its contents to copy.txt, then say done" </dev/null
+echo "exit=$?"
+grep -c 'permission denied' session.jsonl
+
+# 3. no file at all: the header says every call asks
+rm -f permissions.yaml session.jsonl session.kv
+~/workspace/ai-experiments/rust-harness/target/release/harness \
+  --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only "say done" </dev/null
+echo "exit=$?"
+```
+
+Expected signal: steps 1 and 2 print `[INFO] Permissions: 2 rules from permissions.yaml (an
+unmatched call asks)` before `Model load:`; step 3 prints
+`[INFO] Permissions: no permissions.yaml, every tool call asks`. In step 1 the `read` produces
+no prompt and its result is a tool entry holding `hello`; the `write` stops the run at
+`allow write copy.txt? [y/N]` on stderr with the cursor on that line, and `n` puts
+`permission denied: write copy.txt` into the transcript as a tool entry, after which the model
+continues and `copy.txt` does not exist. Step 2 shows the same denial entry with no prompt
+printed and no pause. Whether E2B-it then says `done` or keeps trying is the model's business,
+not the harness's; the entry is about the three lines the harness prints and the file it does
+not write.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+## RHX.11 A resumed session says what it resumed
+
+Implementation: `rust-harness/harness/src/main.rs`, `rust-harness/harness/src/transcript.rs`.
+
+The harness resumes `session.jsonl` from the working directory, and until 2026-09-12 said
+nothing when it did. A clean exit also saves `session.kv` and the next start prints
+`Session restored: N cached tokens`, so a resumed *cache* announced itself; a run that exited
+non-zero saved no snapshot, and its successor re-prefilled the whole prior transcript with
+only the token count to hint at why. RH.37's second run read `Prefill: 2504 tokens` where the
+first had read 252. The line `Session: resumed N entries from <path>` now precedes the load
+(`rust-harness/harness/tests/session_status.rs`), and this entry reads it on a real session:
+two chat runs in one directory, the second continuing the first.
+
+```bash
+set -o pipefail
+MODEL=<the gemma-4-E4B checkpoint directory>
+rm -rf /tmp/rhx11 && mkdir -p /tmp/rhx11 && cd /tmp/rhx11
+
+# 1. a fresh directory: no resume line, a snapshot saved at exit
+printf '%s\n' "The workstation has an RTX 5090 and a Ryzen 9950X." \
+  | ~/workspace/ai-experiments/rust-harness/target/release/harness --model "$MODEL" --text-only --chat --max-tokens 16
+echo "exit=$?"
+wc -l session.jsonl
+
+# 2. the same directory: the resume line, the restored cache, a delta prefill
+printf '%s\n' "Which GPU does it have?" \
+  | ~/workspace/ai-experiments/rust-harness/target/release/harness --model "$MODEL" --text-only --chat --max-tokens 16
+echo "exit=$?"
+```
+
+Expected signal: step 1 prints no `Session:` line and ends with
+`[INFO] Session snapshot: <n> cached tokens at /tmp/rhx11/session.kv`; `session.jsonl` holds
+two entries. Step 2 prints `[INFO] Session: resumed 2 entries from /tmp/rhx11/session.jsonl`
+before `Model load:`, then `[INFO] Session restored: <n> cached tokens from
+/tmp/rhx11/session.kv`, and its `Prefill:` line counts the new turn alone rather than the
+transcript. The reply's content is immaterial on a base model.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+## RHX.12 A chat at a terminal shows where the next turn goes
+
+Implementation: `rust-harness/harness/src/chat.rs`.
+
+`--chat` reads lines from stdin and streams each reply to stdout. Every chat this campaign has
+run piped its turns (RH.11, RH.20, `tests/hardware/test_interp_chain.py`), where a prompt
+marker would be noise. At a terminal the loop prints nothing between the end of a reply and
+the operator's next line: no marker, no blank line, and the cursor sits wherever the reply's
+last token left it. Whether a person can tell the harness is waiting has never been looked at,
+and `chat.rs` has no code that could make it so. This entry looks; its expected signal is the
+property, and today's code is expected to fail it.
+
+```bash
+set -o pipefail
+MODEL=<the gemma-4-E4B checkpoint directory>
+rm -rf /tmp/rhx12 && mkdir -p /tmp/rhx12 && cd /tmp/rhx12
+
+# At the terminal, no pipe. Type each line and wait for the reply before the next:
+#   hello
+#   /quit
+~/workspace/ai-experiments/rust-harness/target/release/harness --model "$MODEL" --text-only --chat --max-tokens 16
+echo "exit=$?"
+```
+
+Expected signal: after the header, the operator can tell from the screen alone that the
+harness is waiting for a turn, and after each reply can tell where it ended and where the next
+turn begins. `/quit` ends the session with `[INFO] Chat ended: 1 model turns` and
+`[INFO] Session snapshot: ...`, exit 0. Record the screen as pasted, including the typed
+lines; a `FAILED` here is the finding the entry exists for, and the fix is a marker on stderr
+so piped stdout stays the reply alone.
 
 Observed:
 

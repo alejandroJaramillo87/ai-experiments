@@ -6390,13 +6390,15 @@ logit 0 the two kernels return `1062660370` and `1062660362` as raw f32 bits.
 `DotKind::is_bit_identical` (`rust-harness/runtime/src/model/cpu.rs`)
 correctly excludes `Lanes16`, and RH.24's invariance tests are therefore
 asserted over the right set. **The `--dot` help text in
-the `SPEC` table of `rust-harness/runtime/src/bin/ladder.rs` overclaims**: it reads "the
+the `SPEC` table of `rust-harness/runtime/src/bin/ladder.rs` overclaimed**: it read "the
 dot-product kernel; every kind is bit-identical", which is false of the one
 kind the predicate beside it exists to exclude. A run that picks `lanes16` on
 the strength of that sentence and then compares logits bits against a
 sequential baseline will report a defect that is not there. The code is right
-and the help text is wrong; see RHX.9 in
-[rust-harness-ux.md](rust-harness-ux.md).
+and the help text was wrong: it was corrected on 2026-09-12 to "every kind but
+lanes16 is bit-identical", and RHX.9 in [rust-harness-ux.md](rust-harness-ux.md)
+closes when the corrected line is observed on the workstation build. The
+numerics statement above stands.
 
 ## Coverage roster
 
@@ -6425,3 +6427,5 @@ is a decision rather than an oversight.
 | Widened blocks against stored-row folding | `rust-harness/runtime/src/tensor.rs::a_widened_block_is_bit_identical_to_folding_the_stored_rows` |
 | Rewindability invariants across stepped and batched runs | `rust-harness/runtime/src/conformance.rs` |
 | Colour helper as a pure function | `rust-harness/runtime/tests/status_python_parity.rs` |
+| The `Permissions:` line naming the rule source, and the `Session: resumed` line on a second run in one directory (RHX.10, RHX.11) | `rust-harness/harness/tests/session_status.rs` |
+| The exhausted turn budget as a typed error carrying a `--chat` remedy | `rust-harness/harness/tests/agent_e2e.rs::exceeding_max_turns_is_an_error_not_a_hang`, `rust-harness/harness/src/actionable.rs::every_command_is_runnable_as_printed` |
