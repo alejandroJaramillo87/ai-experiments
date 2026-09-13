@@ -4,7 +4,7 @@
 operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate —
 both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 7 verified, 0 blocked, 5 pending, of 12.** RHX.9 joined the eight `U`-campaign
+**Entries: 8 verified, 0 blocked, 4 pending, of 12.** RHX.9 joined the eight `U`-campaign
 entries from the surface inventory: it records a defect in the `--dot` help text and the check
 that closes it.
 
@@ -1183,9 +1183,60 @@ reader does not report it as new.
 Observed:
 
 ```
+➜  rust-harness git:(rust-harness-ux-verification) ✗ cargo run --release -q -p harness -- --model "$MODEL" --text-only --status
+
+[OK] model directory: /mnt/ai-data/models/hf/gemma-4-E4B
+[OK] checkpoint files: config.json and model.safetensors present, header names 2130 tensors
+[OK] config.json: 42 layers, hidden size 2560, context 131072
+[OK] backend compatibility: supported
+[SKIP] probe: no --probe given
+[SKIP] probe geometry: no --probe given
+[SKIP] probe identity: no --probe given
+[SKIP] control vector: no --control-vector given
+[SKIP] control vector identity: no --control-vector given
+[SKIP] interp log directory: no --interp-log given
+[OK] obs log directory: /mnt/ai-data/logs/harness is writable
+➜  rust-harness git:(rust-harness-ux-verification) ✗ NO_COLOR=1 cargo run --release -q -p harness -- --model "$MODEL" --text-only --status
+
+[OK] model directory: /mnt/ai-data/models/hf/gemma-4-E4B
+[OK] checkpoint files: config.json and model.safetensors present, header names 2130 tensors
+[OK] config.json: 42 layers, hidden size 2560, context 131072
+[OK] backend compatibility: supported
+[SKIP] probe: no --probe given
+[SKIP] probe geometry: no --probe given
+[SKIP] probe identity: no --probe given
+[SKIP] control vector: no --control-vector given
+[SKIP] control vector identity: no --control-vector given
+[SKIP] interp log directory: no --interp-log given
+[OK] obs log directory: /mnt/ai-data/logs/harness is writable
+➜  rust-harness git:(rust-harness-ux-verification) ✗ cargo run --release -q -p harness -- --model "$MODEL" --text-only --status 2>&1 \
+  | cat -v | grep -c '\^\['
+0
+➜  rust-harness git:(rust-harness-ux-verification) ✗ cargo build --release -q -p harness 
+➜  rust-harness git:(rust-harness-ux-verification) ✗ RUN_STATUS="cargo run --release -q -p harness -- --model $MODEL --text-only --status"
+➜  rust-harness git:(rust-harness-ux-verification) ✗ script -qec "$RUN_STATUS" /dev/null | sed 's/\r$//' > /tmp/rhx8-tty-color
+
+➜  rust-harness git:(rust-harness-ux-verification) ✗ NO_COLOR=1 script -qec "$RUN_STATUS" /dev/null | sed 's/\r$//' > /tmp/rhx8-tty-plain
+
+➜  rust-harness git:(rust-harness-ux-verification) ✗ sh -c "$RUN_STATUS" >/dev/null 2>/tmp/rhx8-pipe-plain
+
+➜  rust-harness git:(rust-harness-ux-verification) ✗ cat -v /tmp/rhx8-tty-color | grep -c '\^\['
+diff /tmp/rhx8-tty-plain /tmp/rhx8-pipe-plain && echo "plain arms identical"
+sed 's/\x1b\[[0-9;]*m//g' /tmp/rhx8-tty-color | diff - /tmp/rhx8-tty-plain \
+  && echo "colour strips to the same bytes"
+11
+plain arms identical
+colour strips to the same bytes
 ```
 
-Status: PENDING
+Run 2026-09-13. The operator reported step 1 coloured as expected, the colour on the tags
+alone; a paste cannot carry that, so the eye's verdict is recorded here in prose. Step 2 is
+the same eleven lines plain, step 3 counts zero escapes through the pipe. Step 4a holds
+eleven escape-bearing lines for the eleven tagged checks, the plain arms are byte-identical,
+and stripping the escapes from the coloured capture yields the plain one exactly. No check
+warned, so the bold yellow arm was not exercised.
+
+Status: VERIFIED 2026-09-13 by hand.
 
 ## RHX.9 The --dot help text describes the kernels the flag offers
 
