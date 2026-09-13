@@ -1,8 +1,10 @@
 # site
 
-The user-facing documentation site for the rust harness, built with Docusaurus. It is the
-document a researcher reads to build and run the harness; `docs/` is the knowledge base for
-changing the repository, and the two do not overlap by design.
+The user-facing documentation site for the repository's tiers, built with Docusaurus. It is
+the document a researcher reads to build and run the rust harness and to operate the interp
+tier; `docs/` is the knowledge base for changing the repository, and the two do not overlap by
+design. Each documented tier is one top-level section with the same skeleton, and the landing
+page relates them.
 
 ## What it consumes and what consumes it
 
@@ -35,14 +37,14 @@ is a no-op until the dependencies are installed.
 
 ```text
 docusaurus.config.js   docs at the site root, no blog, broken links fail the build
-sidebars.js            the two sidebars, in reading order
+sidebars.js            one sidebar per section, in reading order
 package.json           Docusaurus and React pinned exact; package-lock.json is the pin
 src/css/custom.css     the theme: tokens shared with the blog and figura, code panels, article width
 src/prism/slate.js     the code panel Prism theme, dark under both page themes
 static/img/logo.svg    the navbar mark and favicon, one monochrome SVG
 static/img/diagrams/   architecture figures, each a copy of a static diagram's SVG export from the figura repo; edit there, re-export, re-copy
-docs/index.md          the overview
-docs/rust-harness/     getting-started, guides, observability, reference, troubleshooting
+docs/index.md          the landing page: the tiers and how they relate
+docs/rust-harness/     overview, getting-started, guides, observability, reference, troubleshooting
 docs/formats/          the checkpoint layout, four artifacts, and the capture-to-probe guide
 ```
 

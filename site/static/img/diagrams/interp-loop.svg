@@ -1,0 +1,144 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 792 362" class="fg-diagram fg-interp-loop" role="img" aria-label="Two lanes. Rust harness: activation-capture, harness --status --deep, harness --probe or --control-vector, harness --serve --interp-log. Interp: probe-train or steer-extract, probe-export, probe-eval, probe-monitor. A capture shard flows down from activation-capture to probe-train; a probe or vector flows up from probe-export to the status check and then into --probe; probe-eval sends HTTP requests to the served harness; the served-request log flows down from --serve to probe-monitor.">
+<title>The interp loop across the two tiers</title>
+<style>
+/* fg:begin palette-classic v1 */
+.fg-interp-loop {
+  --bg: #0f172a;
+  --panel: #1e293b;
+  --panel-hover: #334155;
+  --border: #334155;
+  --text: #f8fafc;
+  --muted: #94a3b8;
+  --accent: #38bdf8;
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --hot: #f87171;
+  --violet: #a78bfa;
+  --accent-dim: #0c3550;
+  --ok-dim: #0e4429;
+  --warn-dim: #4a3608;
+  --hot-dim: #4a1d1d;
+  --violet-dim: #2a2350;
+  --line: #64748b;
+  --font: "Work Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --radius: 12px;
+  --dur-fast: 0.45s;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+}
+/* fg:end palette-classic */
+/* fg:begin panel-base v1 */
+.fg-interp-loop {
+  background: var(--bg);
+  border-radius: var(--radius);
+  font-family: var(--font);
+  line-height: 1.4;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+.fg-interp-loop svg { display: block; width: 100%; height: auto; }
+.fg-interp-loop text { font-family: inherit; }
+/* fg:end panel-base */
+.fg-interp-loop {
+  padding: 16px 16px 12px;
+}
+
+/* --- diagram-specific styling ------------------------------------- */
+.fg-interp-loop .iloop-box { fill: var(--panel); stroke: var(--border); stroke-width: 2; }
+.fg-interp-loop .iloop-title { fill: var(--text); font-size: 14px; font-weight: 600; text-anchor: middle; }
+.fg-interp-loop .iloop-sub { fill: var(--muted); font-size: 11px; text-anchor: middle; }
+.fg-interp-loop .iloop-mono { font-family: var(--mono); font-size: 12.5px; }
+.fg-interp-loop .iloop-line { stroke: var(--line); stroke-width: 2; fill: none; }
+.fg-interp-loop .iloop-chip { stroke-width: 1.5; }
+.fg-interp-loop .iloop-chip-text { font-size: 10.5px; font-weight: 600; text-anchor: middle; font-family: var(--mono); }
+/* chips name the artifact that crosses a seam; the hue says which tier
+   consumes it: settled (--ok) once written, in flight (--warn) while a
+   command is expected to act on it */
+.fg-interp-loop .iloop-art .iloop-chip { fill: var(--ok-dim); stroke: var(--ok); }
+.fg-interp-loop .iloop-art .iloop-chip-text { fill: var(--ok); }
+.fg-interp-loop .iloop-flag .iloop-chip { fill: var(--warn-dim); stroke: var(--warn); }
+.fg-interp-loop .iloop-flag .iloop-chip-text { fill: var(--warn); }
+.fg-interp-loop .iloop-env .iloop-chip { fill: var(--accent-dim); stroke: var(--accent); }
+.fg-interp-loop .iloop-env .iloop-chip-text { fill: var(--accent); }
+.fg-interp-loop .iloop-host .iloop-chip { fill: none; stroke: var(--line); stroke-dasharray: 4 3; }
+.fg-interp-loop .iloop-host .iloop-chip-text { fill: var(--muted); }
+.fg-interp-loop .iloop-lane { fill: none; stroke-width: 1.5; stroke-dasharray: 6 4; }
+.fg-interp-loop .iloop-lane-label { font-size: 12px; font-weight: 600; letter-spacing: .04em; }
+.fg-interp-loop .iloop-rust .iloop-lane { stroke: var(--accent); }
+.fg-interp-loop .iloop-rust .iloop-lane-label { fill: var(--accent); }
+.fg-interp-loop .iloop-py .iloop-lane { stroke: var(--violet); }
+.fg-interp-loop .iloop-py .iloop-lane-label { fill: var(--violet); }
+.fg-interp-loop .iloop-later .iloop-lane { stroke: var(--line); }
+.fg-interp-loop .iloop-later .iloop-lane-label { fill: var(--muted); }
+.fg-interp-loop .iloop-note { fill: var(--muted); font-size: 11px; }
+.fg-interp-loop .iloop-arrow { stroke: var(--line); stroke-width: 2; fill: none; }
+
+/* fg:begin reduced-motion v1 */
+@media (prefers-reduced-motion: reduce) {
+  .fg-interp-loop, .fg-interp-loop * { transition: none !important; animation: none !important; }
+}
+/* fg:end reduced-motion */
+.fg-interp-loop .fg-export-panel { fill: var(--bg); }
+</style>
+<rect class="fg-export-panel" width="792" height="362" rx="12"/>
+<g transform="translate(16 16)">
+  <defs>
+    <marker id="iloop-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
+    </marker>
+  </defs>
+  <g class="iloop-rust"><rect class="iloop-lane" x="16" y="16" width="728" height="112" rx="10"/><text class="iloop-lane-label" x="30" y="36">RUST HARNESS</text></g>
+  <g class="iloop-py"><rect class="iloop-lane" x="16" y="196" width="728" height="112" rx="10"/><text class="iloop-lane-label" x="30" y="216">INTERP</text></g>
+  <g id="iloop-capture">
+    <rect class="iloop-box" x="40" y="50" width="150" height="56" rx="8"/>
+    <text class="iloop-title iloop-mono" x="115" y="75">activation-capture</text>
+    <text class="iloop-sub" x="115" y="92">writes the shard</text>
+  </g>
+  <g id="iloop-status">
+    <rect class="iloop-box" x="222" y="50" width="150" height="56" rx="8"/>
+    <text class="iloop-title iloop-mono" x="297" y="75">harness --status</text>
+    <text class="iloop-sub" x="297" y="92">--deep checks the fit</text>
+  </g>
+  <g id="iloop-probe">
+    <rect class="iloop-box" x="404" y="50" width="150" height="56" rx="8"/>
+    <text class="iloop-title iloop-mono" x="479" y="75">harness --probe</text>
+    <text class="iloop-sub" x="479" y="92">--control-vector</text>
+  </g>
+  <g id="iloop-serve">
+    <rect class="iloop-box" x="586" y="50" width="150" height="56" rx="8"/>
+    <text class="iloop-title iloop-mono" x="661" y="75">harness --serve</text>
+    <text class="iloop-sub" x="661" y="92">--interp-log &lt;dir&gt;</text>
+  </g>
+  <g id="iloop-train">
+    <rect class="iloop-box" x="40" y="232" width="150" height="56" rx="8"/>
+    <text class="iloop-title iloop-mono" x="115" y="257">probe-train</text>
+    <text class="iloop-sub" x="115" y="274">steer-extract</text>
+  </g>
+  <g id="iloop-export">
+    <rect class="iloop-box" x="222" y="232" width="150" height="56" rx="8"/>
+    <text class="iloop-title iloop-mono" x="297" y="257">probe-export</text>
+    <text class="iloop-sub" x="297" y="274">safetensors + sidecar</text>
+  </g>
+  <g id="iloop-eval">
+    <rect class="iloop-box" x="404" y="232" width="150" height="56" rx="8"/>
+    <text class="iloop-title iloop-mono" x="479" y="257">probe-eval</text>
+    <text class="iloop-sub" x="479" y="274">black-box baselines</text>
+  </g>
+  <g id="iloop-monitor">
+    <rect class="iloop-box" x="586" y="232" width="150" height="56" rx="8"/>
+    <text class="iloop-title iloop-mono" x="661" y="257">probe-monitor</text>
+    <text class="iloop-sub" x="661" y="274">--window 7d</text>
+  </g>
+  <path class="iloop-arrow" d="M115,106 L115,230" marker-end="url(#iloop-arrow)"/>
+  <g class="iloop-art"><rect class="iloop-chip" x="45" y="151" width="140" height="22" rx="11"/><text class="iloop-chip-text" x="115" y="166">capture shard</text></g>
+  <path class="iloop-arrow" d="M190,260 L220,260" marker-end="url(#iloop-arrow)"/>
+  <path class="iloop-arrow" d="M297,232 L297,108" marker-end="url(#iloop-arrow)"/>
+  <g class="iloop-art"><rect class="iloop-chip" x="222" y="151" width="150" height="22" rx="11"/><text class="iloop-chip-text" x="297" y="166">probe, vector</text></g>
+  <path class="iloop-arrow" d="M372,78 L402,78" marker-end="url(#iloop-arrow)"/>
+  <path class="iloop-arrow" d="M554,78 L584,78" marker-end="url(#iloop-arrow)"/>
+  <path class="iloop-arrow" d="M661,106 L661,230" marker-end="url(#iloop-arrow)"/>
+  <g class="iloop-art"><rect class="iloop-chip" x="586" y="151" width="150" height="22" rx="11"/><text class="iloop-chip-text" x="661" y="166">served-request log</text></g>
+  <path class="iloop-arrow" d="M479,232 L479,108" marker-end="url(#iloop-arrow)"/>
+  <g class="iloop-flag"><rect class="iloop-chip" x="414" y="151" width="130" height="22" rx="11"/><text class="iloop-chip-text" x="479" y="166">HTTP requests</text></g>
+  <text class="iloop-note" x="16" y="322">Hashes tie every step to one checkpoint: the harness refuses a probe or vector fitted on other weights.</text>
+</g>
+</svg>

@@ -1,0 +1,140 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 852 462" class="fg-diagram fg-tier-loop" role="img" aria-label="Three horizontal lanes, training, rust harness, and interp. Training hands the harness a checkpoint. The harness activation-capture writes a capture shard that interp probe-train and steer-extract read; they return a probe or control vector the harness loads with --probe; the harness writes a served-request log that probe-monitor reads. All three lanes write run records under OBS_LOG_DIR.">
+<title>How the tiers exchange artifacts</title>
+<style>
+/* fg:begin palette-classic v1 */
+.fg-tier-loop {
+  --bg: #0f172a;
+  --panel: #1e293b;
+  --panel-hover: #334155;
+  --border: #334155;
+  --text: #f8fafc;
+  --muted: #94a3b8;
+  --accent: #38bdf8;
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --hot: #f87171;
+  --violet: #a78bfa;
+  --accent-dim: #0c3550;
+  --ok-dim: #0e4429;
+  --warn-dim: #4a3608;
+  --hot-dim: #4a1d1d;
+  --violet-dim: #2a2350;
+  --line: #64748b;
+  --font: "Work Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --radius: 12px;
+  --dur-fast: 0.45s;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+}
+/* fg:end palette-classic */
+/* fg:begin panel-base v1 */
+.fg-tier-loop {
+  background: var(--bg);
+  border-radius: var(--radius);
+  font-family: var(--font);
+  line-height: 1.4;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+.fg-tier-loop svg { display: block; width: 100%; height: auto; }
+.fg-tier-loop text { font-family: inherit; }
+/* fg:end panel-base */
+.fg-tier-loop {
+  padding: 16px 16px 12px;
+}
+
+/* --- diagram-specific styling ------------------------------------- */
+.fg-tier-loop .tloop-box { fill: var(--panel); stroke: var(--border); stroke-width: 2; }
+.fg-tier-loop .tloop-title { fill: var(--text); font-size: 14px; font-weight: 600; text-anchor: middle; }
+.fg-tier-loop .tloop-sub { fill: var(--muted); font-size: 11px; text-anchor: middle; }
+.fg-tier-loop .tloop-mono { font-family: var(--mono); font-size: 12.5px; }
+.fg-tier-loop .tloop-line { stroke: var(--line); stroke-width: 2; fill: none; }
+.fg-tier-loop .tloop-chip { stroke-width: 1.5; }
+.fg-tier-loop .tloop-chip-text { font-size: 10.5px; font-weight: 600; text-anchor: middle; font-family: var(--mono); }
+/* chips name the artifact that crosses a seam; the hue says which tier
+   consumes it: settled (--ok) once written, in flight (--warn) while a
+   command is expected to act on it */
+.fg-tier-loop .tloop-art .tloop-chip { fill: var(--ok-dim); stroke: var(--ok); }
+.fg-tier-loop .tloop-art .tloop-chip-text { fill: var(--ok); }
+.fg-tier-loop .tloop-flag .tloop-chip { fill: var(--warn-dim); stroke: var(--warn); }
+.fg-tier-loop .tloop-flag .tloop-chip-text { fill: var(--warn); }
+.fg-tier-loop .tloop-env .tloop-chip { fill: var(--accent-dim); stroke: var(--accent); }
+.fg-tier-loop .tloop-env .tloop-chip-text { fill: var(--accent); }
+.fg-tier-loop .tloop-host .tloop-chip { fill: none; stroke: var(--line); stroke-dasharray: 4 3; }
+.fg-tier-loop .tloop-host .tloop-chip-text { fill: var(--muted); }
+.fg-tier-loop .tloop-lane { fill: none; stroke-width: 1.5; stroke-dasharray: 6 4; }
+.fg-tier-loop .tloop-lane-label { font-size: 12px; font-weight: 600; letter-spacing: .04em; }
+.fg-tier-loop .tloop-rust .tloop-lane { stroke: var(--accent); }
+.fg-tier-loop .tloop-rust .tloop-lane-label { fill: var(--accent); }
+.fg-tier-loop .tloop-py .tloop-lane { stroke: var(--violet); }
+.fg-tier-loop .tloop-py .tloop-lane-label { fill: var(--violet); }
+.fg-tier-loop .tloop-later .tloop-lane { stroke: var(--line); }
+.fg-tier-loop .tloop-later .tloop-lane-label { fill: var(--muted); }
+.fg-tier-loop .tloop-note { fill: var(--muted); font-size: 11px; }
+.fg-tier-loop .tloop-arrow { stroke: var(--line); stroke-width: 2; fill: none; }
+
+/* fg:begin reduced-motion v1 */
+@media (prefers-reduced-motion: reduce) {
+  .fg-tier-loop, .fg-tier-loop * { transition: none !important; animation: none !important; }
+}
+/* fg:end reduced-motion */
+.fg-tier-loop .fg-export-panel { fill: var(--bg); }
+</style>
+<rect class="fg-export-panel" width="852" height="462" rx="12"/>
+<g transform="translate(16 16)">
+  <defs>
+    <marker id="tloop-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
+    </marker>
+  </defs>
+  <g class="tloop-later"><rect class="tloop-lane" x="16" y="16" width="600" height="96" rx="10"/><text class="tloop-lane-label" x="30" y="36">TRAINING (not yet on this site)</text></g>
+  <g class="tloop-rust"><rect class="tloop-lane" x="16" y="150" width="600" height="110" rx="10"/><text class="tloop-lane-label" x="30" y="170">RUST HARNESS</text></g>
+  <g class="tloop-py"><rect class="tloop-lane" x="16" y="298" width="600" height="110" rx="10"/><text class="tloop-lane-label" x="30" y="318">INTERP</text></g>
+  <g id="tloop-train">
+    <rect class="tloop-box" x="40" y="46" width="150" height="50" rx="8"/>
+    <text class="tloop-title" x="115" y="68">train, distill</text>
+    <text class="tloop-sub" x="115" y="85">python -m training</text>
+  </g>
+  <g id="tloop-serve">
+    <rect class="tloop-box" x="40" y="190" width="150" height="56" rx="8"/>
+    <text class="tloop-title" x="115" y="215">harness</text>
+    <text class="tloop-sub" x="115" y="232">--serve, task, chat</text>
+  </g>
+  <g id="tloop-capture">
+    <rect class="tloop-box" x="230" y="190" width="150" height="56" rx="8"/>
+    <text class="tloop-title" x="305" y="215">activation-capture</text>
+    <text class="tloop-sub" x="305" y="232">one shard per batch</text>
+  </g>
+  <g id="tloop-monitor">
+    <rect class="tloop-box" x="400" y="190" width="150" height="56" rx="8"/>
+    <text class="tloop-title" x="475" y="215">harness --probe</text>
+    <text class="tloop-sub" x="475" y="232">scores in-band</text>
+  </g>
+  <g id="tloop-ptrain">
+    <rect class="tloop-box" x="230" y="338" width="150" height="56" rx="8"/>
+    <text class="tloop-title" x="305" y="363">probe-train</text>
+    <text class="tloop-sub" x="305" y="380">steer-extract</text>
+  </g>
+  <g id="tloop-pmon">
+    <rect class="tloop-box" x="400" y="338" width="150" height="56" rx="8"/>
+    <text class="tloop-title" x="475" y="363">probe-monitor</text>
+    <text class="tloop-sub" x="475" y="380">reads the log window</text>
+  </g>
+  <path class="tloop-arrow" d="M115,96 L115,188" marker-end="url(#tloop-arrow)"/>
+  <g class="tloop-art"><rect class="tloop-chip" x="40" y="131" width="150" height="22" rx="11"/><text class="tloop-chip-text" x="115" y="146">checkpoint</text></g>
+  <path class="tloop-arrow" d="M305,246 L305,336" marker-end="url(#tloop-arrow)"/>
+  <g class="tloop-art"><rect class="tloop-chip" x="248" y="279" width="104" height="22" rx="11"/><text class="tloop-chip-text" x="300" y="294">capture shard</text></g>
+  <path class="tloop-arrow" d="M380,366 L392,366 L392,248" marker-end="url(#tloop-arrow)"/>
+  <g class="tloop-art"><rect class="tloop-chip" x="360" y="279" width="100" height="22" rx="11"/><text class="tloop-chip-text" x="410" y="294">probe, vector</text></g>
+  <path class="tloop-arrow" d="M535,246 L535,336" marker-end="url(#tloop-arrow)"/>
+  <g class="tloop-art"><rect class="tloop-chip" x="505" y="279" width="110" height="22" rx="11"/><text class="tloop-chip-text" x="560" y="294">served log</text></g>
+  <g id="tloop-obs">
+    <rect class="tloop-box" x="650" y="150" width="154" height="258" rx="8"/>
+    <text class="tloop-title" x="727" y="276">run records</text>
+    <text class="tloop-sub" x="727" y="293">${OBS_LOG_DIR}/&lt;cli&gt;/</text>
+  </g>
+  <path class="tloop-arrow" d="M616,64 L727,64 L727,148" marker-end="url(#tloop-arrow)"/>
+  <path class="tloop-arrow" d="M616,205 L648,205" marker-end="url(#tloop-arrow)"/>
+  <path class="tloop-arrow" d="M616,353 L648,353" marker-end="url(#tloop-arrow)"/>
+  <text class="tloop-note" x="16" y="422">Every artifact that crosses a seam has a contract file under schemas/; the Formats section restates them.</text>
+</g>
+</svg>

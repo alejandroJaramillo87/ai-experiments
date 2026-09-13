@@ -1,0 +1,128 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 754 332" class="fg-diagram fg-interp-observability-grains" role="img" aria-label="Four observability mechanisms ordered by grain: run records (one run, always on), the served-request log (one request, enabled by the harness --interp-log flag), the resource audit (one syscall, enabled by OBS_TRACE=1), and the dashboard (one metrics series, rendered by the training CLI report verb). The run id joins run records to the dashboard.">
+<title>Four interp observability mechanisms, four grains</title>
+<style>
+/* fg:begin palette-classic v1 */
+.fg-interp-observability-grains {
+  --bg: #0f172a;
+  --panel: #1e293b;
+  --panel-hover: #334155;
+  --border: #334155;
+  --text: #f8fafc;
+  --muted: #94a3b8;
+  --accent: #38bdf8;
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --hot: #f87171;
+  --violet: #a78bfa;
+  --accent-dim: #0c3550;
+  --ok-dim: #0e4429;
+  --warn-dim: #4a3608;
+  --hot-dim: #4a1d1d;
+  --violet-dim: #2a2350;
+  --line: #64748b;
+  --font: "Work Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --radius: 12px;
+  --dur-fast: 0.45s;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+}
+/* fg:end palette-classic */
+/* fg:begin panel-base v1 */
+.fg-interp-observability-grains {
+  background: var(--bg);
+  border-radius: var(--radius);
+  font-family: var(--font);
+  line-height: 1.4;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+.fg-interp-observability-grains svg { display: block; width: 100%; height: auto; }
+.fg-interp-observability-grains text { font-family: inherit; }
+/* fg:end panel-base */
+.fg-interp-observability-grains {
+  padding: 16px 16px 12px;
+}
+
+/* --- diagram-specific styling ------------------------------------- */
+.fg-interp-observability-grains .iobs-box { fill: var(--panel); stroke: var(--border); stroke-width: 2; }
+.fg-interp-observability-grains .iobs-title { fill: var(--text); font-size: 14px; font-weight: 600; text-anchor: middle; }
+.fg-interp-observability-grains .iobs-sub { fill: var(--muted); font-size: 11px; text-anchor: middle; }
+.fg-interp-observability-grains .iobs-mono { font-family: var(--mono); font-size: 12.5px; }
+.fg-interp-observability-grains .iobs-line { stroke: var(--line); stroke-width: 2; fill: none; }
+.fg-interp-observability-grains .iobs-chip { stroke-width: 1.5; }
+.fg-interp-observability-grains .iobs-chip-text { font-size: 10.5px; font-weight: 600; text-anchor: middle; font-family: var(--mono); }
+/* chips name the artifact that crosses a seam; the hue says which tier
+   consumes it: settled (--ok) once written, in flight (--warn) while a
+   command is expected to act on it */
+.fg-interp-observability-grains .iobs-art .iobs-chip { fill: var(--ok-dim); stroke: var(--ok); }
+.fg-interp-observability-grains .iobs-art .iobs-chip-text { fill: var(--ok); }
+.fg-interp-observability-grains .iobs-flag .iobs-chip { fill: var(--warn-dim); stroke: var(--warn); }
+.fg-interp-observability-grains .iobs-flag .iobs-chip-text { fill: var(--warn); }
+.fg-interp-observability-grains .iobs-env .iobs-chip { fill: var(--accent-dim); stroke: var(--accent); }
+.fg-interp-observability-grains .iobs-env .iobs-chip-text { fill: var(--accent); }
+.fg-interp-observability-grains .iobs-host .iobs-chip { fill: none; stroke: var(--line); stroke-dasharray: 4 3; }
+.fg-interp-observability-grains .iobs-host .iobs-chip-text { fill: var(--muted); }
+.fg-interp-observability-grains .iobs-lane { fill: none; stroke-width: 1.5; stroke-dasharray: 6 4; }
+.fg-interp-observability-grains .iobs-lane-label { font-size: 12px; font-weight: 600; letter-spacing: .04em; }
+.fg-interp-observability-grains .iobs-rust .iobs-lane { stroke: var(--accent); }
+.fg-interp-observability-grains .iobs-rust .iobs-lane-label { fill: var(--accent); }
+.fg-interp-observability-grains .iobs-py .iobs-lane { stroke: var(--violet); }
+.fg-interp-observability-grains .iobs-py .iobs-lane-label { fill: var(--violet); }
+.fg-interp-observability-grains .iobs-later .iobs-lane { stroke: var(--line); }
+.fg-interp-observability-grains .iobs-later .iobs-lane-label { fill: var(--muted); }
+.fg-interp-observability-grains .iobs-note { fill: var(--muted); font-size: 11px; }
+.fg-interp-observability-grains .iobs-arrow { stroke: var(--line); stroke-width: 2; fill: none; }
+
+/* fg:begin reduced-motion v1 */
+@media (prefers-reduced-motion: reduce) {
+  .fg-interp-observability-grains, .fg-interp-observability-grains * { transition: none !important; animation: none !important; }
+}
+/* fg:end reduced-motion */
+.fg-interp-observability-grains .fg-export-panel { fill: var(--bg); }
+</style>
+<rect class="fg-export-panel" width="754" height="332" rx="12"/>
+<g transform="translate(16 16)">
+  <defs>
+    <marker id="iobs-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
+    </marker>
+  </defs>
+  <text class="iobs-note" x="20" y="30">coarser grain</text>
+  <text class="iobs-note" x="702" y="30" text-anchor="end">finer grain</text>
+  <path class="iobs-line" d="M120,26 L622,26" marker-end="url(#iobs-arrow)"/>
+  <g id="iobs-run-records">
+    <rect class="iobs-box" x="20" y="64" width="160" height="150" rx="8"/>
+    <text class="iobs-title" x="100" y="94">Run records</text>
+    <text class="iobs-sub" x="100" y="116">one run</text>
+    <text class="iobs-sub" x="100" y="134">cmd.start, phases,</text>
+    <text class="iobs-sub" x="100" y="150">cmd.end, catalog</text>
+  </g>
+  <g class="iobs-art"><rect class="iobs-chip" x="36" y="173" width="128" height="22" rx="11"/><text class="iobs-chip-text" x="100" y="188">always on</text></g>
+  <g id="iobs-served-log">
+    <rect class="iobs-box" x="194" y="64" width="160" height="150" rx="8"/>
+    <text class="iobs-title" x="274" y="94">Served-request log</text>
+    <text class="iobs-sub" x="274" y="116">one request</text>
+    <text class="iobs-sub" x="274" y="134">messages, reply,</text>
+    <text class="iobs-sub" x="274" y="150">probe scores</text>
+  </g>
+  <g class="iobs-flag"><rect class="iobs-chip" x="210" y="173" width="128" height="22" rx="11"/><text class="iobs-chip-text" x="274" y="188">--interp-log</text></g>
+  <g id="iobs-audit">
+    <rect class="iobs-box" x="368" y="64" width="160" height="150" rx="8"/>
+    <text class="iobs-title" x="448" y="94">Resource audit</text>
+    <text class="iobs-sub" x="448" y="116">one syscall</text>
+    <text class="iobs-sub" x="448" y="134">open, import,</text>
+    <text class="iobs-sub" x="448" y="150">spawn events</text>
+  </g>
+  <g class="iobs-env"><rect class="iobs-chip" x="384" y="173" width="128" height="22" rx="11"/><text class="iobs-chip-text" x="448" y="188">OBS_TRACE=1</text></g>
+  <g id="iobs-dashboard">
+    <rect class="iobs-box" x="542" y="64" width="160" height="150" rx="8"/>
+    <text class="iobs-title" x="622" y="94">Dashboard</text>
+    <text class="iobs-sub" x="622" y="116">one metrics series</text>
+    <text class="iobs-sub" x="622" y="134">run.html from</text>
+    <text class="iobs-sub" x="622" y="150">metrics.jsonl</text>
+  </g>
+  <g class="iobs-host"><rect class="iobs-chip" x="558" y="173" width="128" height="22" rx="11"/><text class="iobs-chip-text" x="622" y="188">training report</text></g>
+  <path class="iobs-line" d="M100,214 L100,236 L622,236 L622,214" style="stroke: var(--accent)"/>
+  <text class="iobs-note iobs-mono" x="361" y="258" text-anchor="middle" style="fill: var(--accent)">run id: the join key</text>
+  <text class="iobs-note" x="20" y="284">The harness writes the served-request log and interp reads it; the dashboard verb is on the training CLI.</text>
+</g>
+</svg>

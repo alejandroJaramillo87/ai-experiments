@@ -1,59 +1,54 @@
 ---
-title: Overview
+title: AI experiments
 slug: /
 ---
 
-# Rust Harness
+# AI experiments
 
-The rust harness is a local coding agent, a chat REPL, and an OpenAI-shaped HTTP server, built
-over an inference runtime that reads a Gemma 4 checkpoint and runs it on the CPU. The runtime is
-owned code behind narrow seams, which is what the harness is for: activations can be captured
-from the serving path itself, a linear probe can be scored at every position while the model
-answers, a control vector can be added inside the forward pass, every forward call can be
-recorded and replayed, and a session's KV cache survives a restart. Each of those is a flag.
+The repository behind this site runs local language models on one workstation, an RTX 5090
+with an AMD Ryzen 9950X, and instruments them from the inside. Its code is three tiers, each
+with its own entry point, container, and artifacts, and each tier that is documented here has
+a section of its own with the same shape: an overview, getting started, guides, observability,
+reference, and troubleshooting.
 
-This site is for someone who wants to run the harness. It covers building it, running each
-mode, every flag of every binary in the workspace, the records a run leaves behind, and the
-formats of the artifacts the harness reads and writes. It does not cover changing the harness;
-the design and the working notes for that live under `docs/` in the repository and are not
-reproduced here.
+| Tier | What it is | Entry point |
+|------|------------|-------------|
+| [Rust Harness](rust-harness/index.md) | A coding agent, a chat REPL, and an OpenAI-shaped server over an owned CPU inference runtime for Gemma 4, with capture, probing, steering, and replay as flags | `harness` and seven runtime binaries |
+| Interp | Activation harvesting, sparse autoencoders, linear probes, steering vectors, and model organisms, in Python, plus a JupyterLab workbench | `python -m interp <verb>` behind `make` targets |
+| Training | Pre-training, fine-tuning, and distillation runs that produce checkpoints the other two tiers serve | `python -m training`; not yet documented on this site |
 
-## What is here
+## How the tiers relate
 
-- **Getting started** builds the workspace, chooses a checkpoint, runs one task, runs one agent
-  session, and says where every file a run writes lands.
-- **Guides** cover one workflow each: the agent loop, activation capture, attention capture,
-  the correctness ladder, per-layer divergence, probe monitoring, and control-vector steering.
-- **Observability** covers the run records every invocation writes, the flight recorder, the
-  span trace, profiling, and debugging the CPU backend under rr.
-- **Reference** holds one page per binary, generated from that binary's own `--help`, plus the
-  environment variables, exit codes, and the permissions file.
-- **Formats** documents the checkpoint layout the harness loads and the four artifacts it
-  exchanges with the Python interpretability tooling: the activation capture shard, the
-  attention capture shard, the probe, and the control vector. A short guide shows the path from
-  a capture to a probe and a control vector the harness accepts.
+The tiers are peers that exchange files, and the exchange is a loop rather than a chain. The
+harness writes an activation capture; interp trains a probe or extracts a control vector from
+it; the harness loads that artifact and scores or steers inside its forward pass; and while it
+serves, it writes a request log that interp aggregates. Training sits upstream of both, and
+every tier writes its run records under one root.
 
-## What the harness targets
+![Three lanes, training, rust harness, and interp, with the artifacts that cross between them: a checkpoint down from training, a capture shard down to interp, a probe or control vector back up, the served-request log the monitor reads, and run records from every lane.](../static/img/diagrams/tier-loop.svg)
 
-The runtime targets Gemma 4 and reads the published Hugging Face checkpoint: a directory
-holding `config.json` and `model.safetensors`, with the tokenizer beside it. There is one
-backend, on the CPU. It keeps each weight at the width the checkpoint stores it, bf16 for the
-released checkpoints, and widens to f32 at use. It exists to be correct, instrumented, and
-deterministic rather than fast: the released checkpoints decode at single-digit tokens per
-second on a desktop processor, and a cold load takes seconds.
+Each artifact that crosses a seam has a contract file under `schemas/` in the repository, and
+the [Formats](formats/index.md) section restates every contract in words, naming the writer
+and the reader on each side. When a page in one tier's section hands off to the other tier,
+it links the page there rather than restating it.
 
-Every example on this site runs against a real Gemma 4 checkpoint, and every output block was
-recorded from one. The default is the instruction-tuned E2B, `gemma-4-E2B-it`, because the
-agent loop, the chat REPL, and the interpretability examples need a model that answers;
-[Build](rust-harness/getting-started/build.md) says which checkpoint each workflow needs. The
-workspace also ships a synthetic two-layer fixture for its own tests. It appears on this site
-only where it is the subject, and each such page says so.
+## Three facts every section assumes
+
+- **One GPU consumer at a time.** The GPU inference services, the interp workbench, and a
+  training run never share the card. The interp commands that need it run a preflight that
+  refuses to start while an inference service is up; the harness runs on the CPU and is not
+  subject to the rule.
+- **`/mnt/ai-data` is the data root.** Models, captures, probes, vectors, and logs live
+  under it, and each section says which subdirectory its tier writes. Every path under it is
+  a workstation path; the pages that also run off the workstation say so and use a temporary
+  directory instead.
+- **`OBS_LOG_DIR` is where run records go.** Every command in every tier writes an event
+  file and a catalog line under `${OBS_LOG_DIR}/<tier>/`, default `/mnt/ai-data/logs`. One
+  run id joins everything a run wrote.
 
 ## Conventions
 
 Commands are written to be pasted. A block tagged `bash` carries no prompt marker and runs as
-shown. Where a block shows what a command printed, it is tagged `text`. Every command is run
-from the directory the page names, and every page that runs a binary assumes the two variables
-set in [Build](rust-harness/getting-started/build.md). Every `harness`, capture, ladder, and
-`layer-diff` command carries `--text-only`, because the released checkpoints are multimodal
-and the backend serves text only when told to.
+shown. Where a block shows what a command printed, it is tagged `text`. Every output block on
+this site was recorded from a real run; a command whose output was not recorded has none.
+Each section's overview states the variables its pages assume.
