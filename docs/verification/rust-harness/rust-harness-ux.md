@@ -4,7 +4,7 @@
 operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate —
 both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 11 verified, 0 blocked, 1 pending, of 12.** RHX.9 joined the eight `U`-campaign
+**Entries: 12 verified, 0 blocked, 0 pending, of 12.** RHX.9 joined the eight `U`-campaign
 entries from the surface inventory: it records a defect in the `--dot` help text and the check
 that closes it.
 
@@ -1734,5 +1734,46 @@ marker exists to remove. Filed as KB-75 and fixed the same day: `chat.rs` prints
 stderr before every read when stdin is a terminal and nothing when it is a pipe, so the
 marker follows each reply and piped stdout stays the reply alone. The re-run below judges it.
 
-Status: PENDING (FAILED 2026-09-13: no marker between a reply and the next turn at a
-terminal, KB-75; fixed the same day, awaiting the re-run on the rebuilt binary)
+Re-run on the rebuilt binary, the same day:
+
+```
+➜  ai-experiments git:(rust-harness-ux-verification) ✗ cd ~/workspace/ai-experiments && git pull origin rust-harness-ux-verification
+cargo build --release -p harness --manifest-path rust-harness/Cargo.toml
+rm -rf /tmp/rhx12 && mkdir -p /tmp/rhx12 && cd /tmp/rhx12
+~/workspace/ai-experiments/rust-harness/target/release/harness --model "$MODEL" --text-only --chat --max-tokens 16
+echo "exit=$?"
+    Finished `release` profile [optimized] target(s) in 0.06s
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E4B hash=e376216f8b693aff layers=42
+[INFO] Weights: 13.90 GiB resident at bf16
+[INFO] Peak RSS after load: 14.03 GiB
+[INFO] KV cache: 131072 tokens, 4.05 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=16
+[INFO] Build: 0.1.0 git unknown
+[WARN] KV cache above 2 GiB: consider --context to cap it (compaction keeps long sessions inside the cap)
+[INFO] Model load: 5.75 s
+> hello
+[INFO] Prefill: 10 tokens in 0.78 s (13 tok/s)
+hello
+pantalla
+hello
+
+pantalla
+hi
+pantalla
+hi
+> /quit
+[INFO] Chat ended: 1 model turns
+[INFO] Session snapshot: 26 cached tokens at /tmp/rhx12/session.kv
+exit=0
+```
+
+Same seed, same sixteen-token reply. The `> ` after `Model load:` is where the operator typed
+`hello`, and the `> ` after the reply's last `hi` is where `/quit` went: the typed line and
+the model's first line are now told apart by the marker, and the harness's waiting is on the
+screen rather than inferred from silence. The operator reported it worked. `/quit` ended the
+session as expected, exit 0.
+
+Status: VERIFIED 2026-09-13 by hand, on the second run. Failed first the same day with no
+marker at all, KB-75; fixed and re-run.
