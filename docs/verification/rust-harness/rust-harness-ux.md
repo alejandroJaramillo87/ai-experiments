@@ -1512,9 +1512,29 @@ prompt is printed only to a terminal and the line is read either way, so a piped
 honoured and a closed stdin denies silently. The gate test's closed-stdin run is what
 confirms it.
 
-Status: VERIFIED 2026-09-13 by hand, the two departures above recorded. The five test
-functions were written from this transcript and await their first gate run, which also
-confirms KB-74.
+The gate test then ran on the rebuilt binary:
+
+```
+➜  ai-experiments git:(rust-harness-ux-verification) ✗ cd ~/workspace/ai-experiments && git pull origin rust-harness-ux-verification
+cargo build --release -p harness --manifest-path rust-harness/Cargo.toml
+uv run pytest -m hw_full tests/hardware/test_permissions.py -v
+   Compiling harness v0.1.0 (/home/alejandro/workspace/ai-experiments/rust-harness/harness)
+    Finished `release` profile [optimized] target(s) in 2.17s
+collected 5 items
+
+tests/hardware/test_permissions.py::test_the_header_states_the_rules_between_load_and_first_prefill PASSED                                                                  [ 20%]
+tests/hardware/test_permissions.py::test_an_allowed_read_asks_nothing_and_returns_the_file PASSED                                                                           [ 40%]
+tests/hardware/test_permissions.py::test_a_denied_write_leaves_a_denial_entry_and_no_file PASSED                                                                            [ 60%]
+tests/hardware/test_permissions.py::test_an_allowed_write_writes_the_file PASSED                                                                                            [ 80%]
+tests/hardware/test_permissions.py::test_closed_stdin_resolves_to_denial_without_waiting PASSED                                                                             [100%]
+
+[TIER] full: torch present, the whole suite was in scope.
+========================================================================== 5 passed in 93.18s (0:01:33) ===========================================================================
+```
+
+Status: VERIFIED 2026-09-13 (gate-backed by `tests/hardware/test_permissions.py`, 5 passed
+on the workstation the same day), the two departures above recorded. The closed-stdin case
+passing on a real run is what closed KB-74.
 
 ## RHX.11 A resumed session says what it resumed
 
