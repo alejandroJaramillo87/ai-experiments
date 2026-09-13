@@ -109,6 +109,11 @@ handler and the two `Permissions:` lines over a scripted generator, and
 `tests/hardware/test_permissions.py` under `hw_full` runs E2B-it on the runbook's task four
 times, answering the prompt `n` and `y` through a pipe, closing stdin, and removing the rule
 file, holding the transcript's tool entries and the one file to each answer.
+And a resumed session (RHX.11): `session_status.rs` pins the `Session: resumed` line and
+its entry count over the fixture, and `tests/hardware/test_session_resume.py` under `hw_full`
+runs the runbook's two turns in one directory on the released E4B, holding the resume and
+restore lines to the first run's transcript and snapshot and the second prefill to the new
+turn alone.
 And a failure's remedy (RHX.6): `actionable_surface.rs` pins the three-line shape and the
 command's spelling over the fixture, and `tests/hardware/test_remedy_runs_as_printed.py`
 under `hw_full` provokes the two failures on the released E4B, pastes each `Command:` line

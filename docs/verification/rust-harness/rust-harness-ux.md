@@ -1549,6 +1549,24 @@ first had read 252. The line `Session: resumed N entries from <path>` now preced
 (`rust-harness/harness/tests/session_status.rs`), and this entry reads it on a real session:
 two chat runs in one directory, the second continuing the first.
 
+Asserted by `tests/hardware/test_session_resume.py`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| Step 1 prints no `Session:` line, ends with `Session snapshot: <n> cached tokens at .../session.kv`, and leaves two entries | `test_a_fresh_directory_reports_no_resume_and_leaves_a_snapshot` |
+| Step 2 prints `Session: resumed 2 entries from .../session.jsonl` before `Model load:` | `test_the_second_run_says_what_it_resumed_before_the_load` |
+| Step 2 prints `Session restored: <n> cached tokens` with step 1's `<n>` | `test_the_restored_cache_is_the_first_runs_snapshot` |
+| Step 2's `Prefill:` counts the new turn alone rather than the transcript | `test_the_second_prefill_is_the_new_turn_alone` |
+
+The test pipes the two turns below as this entry pipes them, into one directory on the
+released E4B. It holds the second prefill smaller than the first, which a re-sent transcript
+could never be, and the cache's growth to that prefill plus a reply no longer than the cap.
+
+```bash
+cd ~/workspace/ai-experiments
+uv run pytest -m hw_full tests/hardware/test_session_resume.py -v
+```
+
 ```bash
 set -o pipefail
 MODEL=<the gemma-4-E4B checkpoint directory>
@@ -1625,7 +1643,8 @@ and so before `Model load:`, restored the same 45 tokens, and prefilled 16 token
 step 1's 29: the new turn alone. The reply, immaterial to the signal, named the GPU from the
 resumed turn.
 
-Status: VERIFIED 2026-09-13 by hand.
+Status: VERIFIED 2026-09-13 by hand. The four test functions were written from this
+transcript and await their first gate run.
 
 ## RHX.12 A chat at a terminal shows where the next turn goes
 
