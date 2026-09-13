@@ -86,6 +86,8 @@ const sidebars = {
       collapsed: false,
       items: [
         'interp/getting-started/environment',
+        'interp/getting-started/workbench',
+        'interp/getting-started/smoke-test',
         'interp/getting-started/output-locations',
       ],
     },
@@ -96,6 +98,10 @@ const sidebars = {
       items: [
         'interp/guides/probes',
         'interp/guides/steering',
+        'interp/guides/harvest',
+        'interp/guides/saes',
+        'interp/guides/organisms',
+        'interp/guides/neuronpedia',
       ],
     },
     {
@@ -135,6 +141,7 @@ const sidebars = {
         'interp/reference/runs',
       ],
     },
+    'interp/troubleshooting',
   ],
   formats: [
     'formats/index',

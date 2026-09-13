@@ -32,8 +32,8 @@ The workbench is the container that holds the GPU stack: PyTorch for CUDA 13 on 
 5090, TransformerLens, nnsight, and SAELens, built once and verified at build time by the
 smoke test. Every verb that runs a model on the GPU runs there: `probe-capture`,
 `harvest`, `sae-train`, `sae-eval`, and by default `probe-train`, `steer-extract`, and
-`probe-monitor`. The Workbench page covers building and starting it, and the Smoke test
-page covers proving it.
+`probe-monitor`. [Workbench](workbench.md) covers building and starting it, and
+[Smoke test](smoke-test.md) covers proving it.
 
 Inside the container the data trees are mounted at container paths, and a verb that runs
 there takes the container spelling:
