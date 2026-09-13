@@ -1643,8 +1643,24 @@ and so before `Model load:`, restored the same 45 tokens, and prefilled 16 token
 step 1's 29: the new turn alone. The reply, immaterial to the signal, named the GPU from the
 resumed turn.
 
-Status: VERIFIED 2026-09-13 by hand. The four test functions were written from this
-transcript and await their first gate run.
+The gate test then ran on the same tree:
+
+```
+➜  ai-experiments git:(rust-harness-ux-verification) ✗ cd ~/workspace/ai-experiments && git pull origin rust-harness-ux-verification
+uv run pytest -m hw_full tests/hardware/test_session_resume.py -v
+collected 4 items
+
+tests/hardware/test_session_resume.py::test_a_fresh_directory_reports_no_resume_and_leaves_a_snapshot PASSED                                                                [ 25%]
+tests/hardware/test_session_resume.py::test_the_second_run_says_what_it_resumed_before_the_load PASSED                                                                      [ 50%]
+tests/hardware/test_session_resume.py::test_the_restored_cache_is_the_first_runs_snapshot PASSED                                                                            [ 75%]
+tests/hardware/test_session_resume.py::test_the_second_prefill_is_the_new_turn_alone PASSED                                                                                 [100%]
+
+[TIER] full: torch present, the whole suite was in scope.
+=============================================================================== 4 passed in 22.65s ================================================================================
+```
+
+Status: VERIFIED 2026-09-13 (gate-backed by `tests/hardware/test_session_resume.py`, 4 passed
+on the workstation the same day).
 
 ## RHX.12 A chat at a terminal shows where the next turn goes
 
