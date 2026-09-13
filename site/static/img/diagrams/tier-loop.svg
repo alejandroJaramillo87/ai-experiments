@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 852 462" class="fg-diagram fg-tier-loop" role="img" aria-label="Three horizontal lanes, training, rust harness, and interp. Training hands the harness a checkpoint. The harness activation-capture writes a capture shard that interp probe-train and steer-extract read; they return a probe or control vector the harness loads with --probe; the harness writes a served-request log that probe-monitor reads. All three lanes write run records under OBS_LOG_DIR.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 852 494" class="fg-diagram fg-tier-loop" role="img" aria-label="Three horizontal lanes, training, rust harness, and interp. Training hands the harness a checkpoint. The harness activation-capture writes a capture shard that interp probe-train and steer-extract read; they return a probe or control vector the harness loads with --probe; the harness writes a served-request log that probe-monitor reads. All three lanes write run records under OBS_LOG_DIR.">
 <title>How the tiers exchange artifacts</title>
 <style>
 /* fg:begin palette-classic v1 */
@@ -79,62 +79,62 @@
 /* fg:end reduced-motion */
 .fg-tier-loop .fg-export-panel { fill: var(--bg); }
 </style>
-<rect class="fg-export-panel" width="852" height="462" rx="12"/>
+<rect class="fg-export-panel" width="852" height="494" rx="12"/>
 <g transform="translate(16 16)">
   <defs>
     <marker id="tloop-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
       <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
     </marker>
   </defs>
-  <g class="tloop-later"><rect class="tloop-lane" x="16" y="16" width="600" height="96" rx="10"/><text class="tloop-lane-label" x="30" y="36">TRAINING (not yet on this site)</text></g>
-  <g class="tloop-rust"><rect class="tloop-lane" x="16" y="150" width="600" height="110" rx="10"/><text class="tloop-lane-label" x="30" y="170">RUST HARNESS</text></g>
-  <g class="tloop-py"><rect class="tloop-lane" x="16" y="298" width="600" height="110" rx="10"/><text class="tloop-lane-label" x="30" y="318">INTERP</text></g>
+  <g class="tloop-later"><rect class="tloop-lane" x="16" y="16" width="600" height="90" rx="10"/><text class="tloop-lane-label" x="30" y="36">TRAINING (not yet on this site)</text></g>
+  <g class="tloop-rust"><rect class="tloop-lane" x="16" y="160" width="600" height="110" rx="10"/><text class="tloop-lane-label" x="30" y="180">RUST HARNESS</text></g>
+  <g class="tloop-py"><rect class="tloop-lane" x="16" y="324" width="600" height="110" rx="10"/><text class="tloop-lane-label" x="30" y="344">INTERP</text></g>
   <g id="tloop-train">
-    <rect class="tloop-box" x="40" y="46" width="150" height="50" rx="8"/>
-    <text class="tloop-title" x="115" y="68">train, distill</text>
-    <text class="tloop-sub" x="115" y="85">python -m training</text>
+    <rect class="tloop-box" x="40" y="44" width="150" height="50" rx="8"/>
+    <text class="tloop-title" x="115" y="66">train, distill</text>
+    <text class="tloop-sub" x="115" y="83">python -m training</text>
   </g>
   <g id="tloop-serve">
-    <rect class="tloop-box" x="40" y="190" width="150" height="56" rx="8"/>
-    <text class="tloop-title" x="115" y="215">harness</text>
-    <text class="tloop-sub" x="115" y="232">--serve, task, chat</text>
+    <rect class="tloop-box" x="40" y="200" width="150" height="56" rx="8"/>
+    <text class="tloop-title" x="115" y="225">harness</text>
+    <text class="tloop-sub" x="115" y="242">--serve, task, chat</text>
   </g>
   <g id="tloop-capture">
-    <rect class="tloop-box" x="230" y="190" width="150" height="56" rx="8"/>
-    <text class="tloop-title" x="305" y="215">activation-capture</text>
-    <text class="tloop-sub" x="305" y="232">one shard per batch</text>
+    <rect class="tloop-box" x="230" y="200" width="150" height="56" rx="8"/>
+    <text class="tloop-title" x="305" y="225">activation-capture</text>
+    <text class="tloop-sub" x="305" y="242">one shard per batch</text>
   </g>
   <g id="tloop-monitor">
-    <rect class="tloop-box" x="400" y="190" width="150" height="56" rx="8"/>
-    <text class="tloop-title" x="475" y="215">harness --probe</text>
-    <text class="tloop-sub" x="475" y="232">scores in-band</text>
+    <rect class="tloop-box" x="400" y="200" width="150" height="56" rx="8"/>
+    <text class="tloop-title" x="475" y="225">harness --probe</text>
+    <text class="tloop-sub" x="475" y="242">scores in-band</text>
   </g>
   <g id="tloop-ptrain">
-    <rect class="tloop-box" x="230" y="338" width="150" height="56" rx="8"/>
-    <text class="tloop-title" x="305" y="363">probe-train</text>
-    <text class="tloop-sub" x="305" y="380">steer-extract</text>
+    <rect class="tloop-box" x="230" y="364" width="150" height="56" rx="8"/>
+    <text class="tloop-title" x="305" y="389">probe-train</text>
+    <text class="tloop-sub" x="305" y="406">steer-extract</text>
   </g>
   <g id="tloop-pmon">
-    <rect class="tloop-box" x="400" y="338" width="150" height="56" rx="8"/>
-    <text class="tloop-title" x="475" y="363">probe-monitor</text>
-    <text class="tloop-sub" x="475" y="380">reads the log window</text>
+    <rect class="tloop-box" x="400" y="364" width="150" height="56" rx="8"/>
+    <text class="tloop-title" x="475" y="389">probe-monitor</text>
+    <text class="tloop-sub" x="475" y="406">reads the log window</text>
   </g>
-  <path class="tloop-arrow" d="M115,96 L115,188" marker-end="url(#tloop-arrow)"/>
-  <g class="tloop-art"><rect class="tloop-chip" x="40" y="131" width="150" height="22" rx="11"/><text class="tloop-chip-text" x="115" y="146">checkpoint</text></g>
-  <path class="tloop-arrow" d="M305,246 L305,336" marker-end="url(#tloop-arrow)"/>
-  <g class="tloop-art"><rect class="tloop-chip" x="248" y="279" width="104" height="22" rx="11"/><text class="tloop-chip-text" x="300" y="294">capture shard</text></g>
-  <path class="tloop-arrow" d="M380,366 L392,366 L392,248" marker-end="url(#tloop-arrow)"/>
-  <g class="tloop-art"><rect class="tloop-chip" x="360" y="279" width="100" height="22" rx="11"/><text class="tloop-chip-text" x="410" y="294">probe, vector</text></g>
-  <path class="tloop-arrow" d="M535,246 L535,336" marker-end="url(#tloop-arrow)"/>
-  <g class="tloop-art"><rect class="tloop-chip" x="505" y="279" width="110" height="22" rx="11"/><text class="tloop-chip-text" x="560" y="294">served log</text></g>
+  <path class="tloop-arrow" d="M115,94 L115,198" marker-end="url(#tloop-arrow)"/>
+  <g class="tloop-art"><rect class="tloop-chip" x="55" y="122" width="120" height="22" rx="11"/><text class="tloop-chip-text" x="115" y="137">checkpoint</text></g>
+  <path class="tloop-arrow" d="M305,256 L305,362" marker-end="url(#tloop-arrow)"/>
+  <g class="tloop-art"><rect class="tloop-chip" x="248" y="286" width="104" height="22" rx="11"/><text class="tloop-chip-text" x="300" y="301">capture shard</text></g>
+  <path class="tloop-arrow" d="M380,392 L392,392 L392,258" marker-end="url(#tloop-arrow)"/>
+  <g class="tloop-art"><rect class="tloop-chip" x="362" y="286" width="100" height="22" rx="11"/><text class="tloop-chip-text" x="412" y="301">probe, vector</text></g>
+  <path class="tloop-arrow" d="M535,256 L535,362" marker-end="url(#tloop-arrow)"/>
+  <g class="tloop-art"><rect class="tloop-chip" x="513" y="286" width="110" height="22" rx="11"/><text class="tloop-chip-text" x="568" y="301">served log</text></g>
   <g id="tloop-obs">
-    <rect class="tloop-box" x="650" y="150" width="154" height="258" rx="8"/>
-    <text class="tloop-title" x="727" y="276">run records</text>
-    <text class="tloop-sub" x="727" y="293">${OBS_LOG_DIR}/&lt;cli&gt;/</text>
+    <rect class="tloop-box" x="650" y="160" width="154" height="274" rx="8"/>
+    <text class="tloop-title" x="727" y="294">run records</text>
+    <text class="tloop-sub" x="727" y="311">${OBS_LOG_DIR}/&lt;cli&gt;/</text>
   </g>
-  <path class="tloop-arrow" d="M616,64 L727,64 L727,148" marker-end="url(#tloop-arrow)"/>
-  <path class="tloop-arrow" d="M616,205 L648,205" marker-end="url(#tloop-arrow)"/>
-  <path class="tloop-arrow" d="M616,353 L648,353" marker-end="url(#tloop-arrow)"/>
-  <text class="tloop-note" x="16" y="422">Every artifact that crosses a seam has a contract file under schemas/; the Formats section restates them.</text>
+  <path class="tloop-arrow" d="M616,61 L727,61 L727,158" marker-end="url(#tloop-arrow)"/>
+  <path class="tloop-arrow" d="M616,215 L648,215" marker-end="url(#tloop-arrow)"/>
+  <path class="tloop-arrow" d="M616,379 L648,379" marker-end="url(#tloop-arrow)"/>
+  <text class="tloop-note" x="16" y="454">Every artifact that crosses a seam has a contract file under schemas/; the Formats section restates them.</text>
 </g>
 </svg>

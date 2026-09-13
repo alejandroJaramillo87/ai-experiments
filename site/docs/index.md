@@ -14,7 +14,7 @@ reference, and troubleshooting.
 | Tier | What it is | Entry point |
 |------|------------|-------------|
 | [Rust Harness](rust-harness/index.md) | A coding agent, a chat REPL, and an OpenAI-shaped server over an owned CPU inference runtime for Gemma 4, with capture, probing, steering, and replay as flags | `harness` and seven runtime binaries |
-| Interp | Activation harvesting, sparse autoencoders, linear probes, steering vectors, and model organisms, in Python, plus a JupyterLab workbench | `python -m interp <verb>` behind `make` targets |
+| [Interp](interp/index.md) | Activation harvesting, sparse autoencoders, linear probes, steering vectors, and model organisms, in Python, plus a JupyterLab workbench | `python -m interp <verb>` behind `make` targets |
 | Training | Pre-training, fine-tuning, and distillation runs that produce checkpoints the other two tiers serve | `python -m training`; not yet documented on this site |
 
 ## How the tiers relate

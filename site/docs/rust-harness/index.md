@@ -15,7 +15,7 @@ This section is for someone who wants to run the harness. It covers building it,
 each mode, every flag of every binary in the workspace, and the records a run leaves behind.
 The formats of the artifacts the harness reads and writes are in the
 [Formats](../formats/index.md) section, and the Python tooling on the other side of those
-artifacts is in the Interp section. Neither covers changing the harness;
+artifacts is in the [Interp](../interp/index.md) section. Neither covers changing the harness;
 the design and the working notes for that live under `docs/` in the repository and are not
 reproduced here.
 

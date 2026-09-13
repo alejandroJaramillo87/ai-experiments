@@ -45,7 +45,12 @@ Fourteen steps, cheapest first, failing on the first error:
     a binary with no page, a page for no binary, or a flag its page does not show. Runs
     without cargo or node; `make site-check` is the workstation form that regenerates and
     diffs.
-15. `shellcheck --severity=warning` — shell scripts, enumerated with `find`.
+15. `scripts/docs/check_site_interp_reference.py` — the same check for the interp verbs
+    under `site/docs/interp/reference/`, whose pages are rendered from the CLI's argparse
+    parser: a verb with no page, a page for no verb, or an `add_argument` literal its page
+    does not show. Reads the command modules as text, so it needs no Python environment
+    beyond the interpreter.
+16. `shellcheck --severity=warning` — shell scripts, enumerated with `find`.
 
 Note what is absent: **`make quality` does not run pytest.** See
 [The full gate](#the-full-gate) below.

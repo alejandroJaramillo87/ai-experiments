@@ -20,8 +20,11 @@ site-install: ## Install the site's pinned node dependencies from site/package-l
 # section. It builds the workspace, so the first run takes as long as a cargo
 # build; every binary answers --help before loading a model, so no checkpoint
 # and no GPU is involved.
-site-gen: ## Regenerate site/docs/rust-harness/reference/<binary>.md from each binary's --help
+# The interp pages come from the CLI's own argparse parser, which builds with
+# the sandbox group alone: every heavy import in interp/commands/ is lazy.
+site-gen: ## Regenerate the reference pages: rust-harness binaries from --help, interp verbs from the parser
 	$(RUN_PY) python scripts/docs/gen_site_reference.py
+	$(RUN_PY) python scripts/docs/gen_site_interp_reference.py
 
 # Guarded rather than failing: `make quality` runs this, and a fresh sandbox
 # has no site/node_modules because installing them needs the network. The
@@ -47,11 +50,11 @@ site-serve: ## Serve the built site on http://localhost:3000 (runs make site-bui
 # sandbox-safe half and does run there.
 site-check: ## Regenerate the reference pages and fail if the committed ones were stale (needs git)
 	$(MAKE) site-gen
-	@if ! git diff --quiet -- site/docs/rust-harness/reference; then \
+	@if ! git diff --quiet -- site/docs/rust-harness/reference site/docs/interp/reference; then \
 	  printf '[ERROR] site-check: the committed reference pages were stale\n'; \
-	  printf '  Found: make site-gen changed files under site/docs/rust-harness/reference\n'; \
+	  printf '  Found: make site-gen changed files under site/docs/*/reference\n'; \
 	  printf '  Solution: commit the regenerated pages\n'; \
-	  git --no-pager diff --stat -- site/docs/rust-harness/reference; \
+	  git --no-pager diff --stat -- site/docs/rust-harness/reference site/docs/interp/reference; \
 	  exit 1; \
 	fi
 	@echo "$(GREEN)site-check: reference pages are current.$(RESET)"

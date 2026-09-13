@@ -103,6 +103,12 @@ const config = {
           },
           {
             type: 'docSidebar',
+            sidebarId: 'interp',
+            position: 'left',
+            label: 'Interp',
+          },
+          {
+            type: 'docSidebar',
             sidebarId: 'formats',
             position: 'left',
             label: 'Formats',
