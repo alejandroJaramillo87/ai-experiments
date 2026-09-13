@@ -4,7 +4,7 @@
 operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate —
 both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 10 verified, 0 blocked, 2 pending, of 12.** RHX.9 joined the eight `U`-campaign
+**Entries: 11 verified, 0 blocked, 1 pending, of 12.** RHX.9 joined the eight `U`-campaign
 entries from the surface inventory: it records a defect in the `--dot` help text and the check
 that closes it.
 
@@ -1576,9 +1576,56 @@ transcript. The reply's content is immaterial on a base model.
 Observed:
 
 ```
+➜  ai-experiments git:(rust-harness-ux-verification) ✗ rm -rf /tmp/rhx11 && mkdir -p /tmp/rhx11 && cd /tmp/rhx11
+➜  rhx11 printf '%s\n' "The workstation has an RTX 5090 and a Ryzen 9950X." \
+  | ~/workspace/ai-experiments/rust-harness/target/release/harness --model "$MODEL" --text-only --chat --max-tokens 16
+echo "exit=$?"
+wc -l session.jsonl
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E4B hash=e376216f8b693aff layers=42
+[INFO] Weights: 13.90 GiB resident at bf16
+[INFO] Peak RSS after load: 14.03 GiB
+[INFO] KV cache: 131072 tokens, 4.05 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=16
+[INFO] Build: 0.1.0 git unknown
+[WARN] KV cache above 2 GiB: consider --context to cap it (compaction keeps long sessions inside the cap)
+[INFO] Model load: 9.57 s
+[INFO] Prefill: 29 tokens in 2.53 s (11 tok/s)
+The RTX 5090 is a high-end graphics card with
+[INFO] Chat ended: 1 model turns
+[INFO] Session snapshot: 45 cached tokens at /tmp/rhx11/session.kv
+exit=0
+2 session.jsonl
+➜  rhx11 printf '%s\n' "Which GPU does it have?" \
+  | ~/workspace/ai-experiments/rust-harness/target/release/harness --model "$MODEL" --text-only --chat --max-tokens 16
+echo "exit=$?"
+[INFO] Session: resumed 2 entries from /tmp/rhx11/session.jsonl
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E4B hash=e376216f8b693aff layers=42
+[INFO] Weights: 13.90 GiB resident at bf16
+[INFO] Peak RSS after load: 14.03 GiB
+[INFO] KV cache: 131072 tokens, 4.05 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=16
+[INFO] Build: 0.1.0 git unknown
+[WARN] KV cache above 2 GiB: consider --context to cap it (compaction keeps long sessions inside the cap)
+[INFO] Session restored: 45 cached tokens from /tmp/rhx11/session.kv
+[INFO] Model load: 5.97 s
+[INFO] Prefill: 16 tokens in 1.43 s (11 tok/s)
+The GPU is the RTX 5090, a high-end graphics
+[INFO] Chat ended: 1 model turns
+[INFO] Session snapshot: 76 cached tokens at /tmp/rhx11/session.kv
+exit=0
 ```
 
-Status: PENDING
+Run 2026-09-13. Step 1 printed no `Session:` line, ended with the snapshot at 45 cached
+tokens, and left two entries. Step 2 opened with the resume line, the first line of the run
+and so before `Model load:`, restored the same 45 tokens, and prefilled 16 tokens against
+step 1's 29: the new turn alone. The reply, immaterial to the signal, named the GPU from the
+resumed turn.
+
+Status: VERIFIED 2026-09-13 by hand.
 
 ## RHX.12 A chat at a terminal shows where the next turn goes
 
