@@ -114,6 +114,11 @@ its entry count over the fixture, and `tests/hardware/test_session_resume.py` un
 runs the runbook's two turns in one directory on the released E4B, holding the resume and
 restore lines to the first run's transcript and snapshot and the second prefill to the new
 turn alone.
+And the chat turn marker (RHX.12): `chat.rs`'s unit tests pin the marker's two arms and its
+absence from the reply stream, and `tests/hardware/test_chat_marker.py` under `hw_full` drives
+a chat on the released E4B through a pseudo-terminal and through a pipe, holding `> ` to
+before the first read and after the reply at the terminal, closed before the summary line, and
+absent from the pipe.
 And a failure's remedy (RHX.6): `actionable_surface.rs` pins the three-line shape and the
 command's spelling over the fixture, and `tests/hardware/test_remedy_runs_as_printed.py`
 under `hw_full` provokes the two failures on the released E4B, pastes each `Command:` line

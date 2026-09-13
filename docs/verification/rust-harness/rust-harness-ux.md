@@ -1674,6 +1674,25 @@ last token left it. Whether a person can tell the harness is waiting has never b
 and `chat.rs` has no code that could make it so. This entry looks; its expected signal is the
 property, and today's code is expected to fail it.
 
+Asserted by `tests/hardware/test_chat_marker.py`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| At a terminal, the screen shows the harness waiting before the first turn and after the reply: `> ` on stderr before the first read and again after the reply | `test_the_marker_precedes_the_first_read_and_follows_the_reply_at_a_terminal` |
+| The reply itself is all that reaches stdout, and the session holds the turn and the reply | `test_the_reply_stream_carries_the_reply_alone_at_a_terminal` |
+| Ending input leaves `Chat ended: 1 model turns` on its own line, not on the marker's tail | `test_end_of_input_closes_the_marker_before_the_summary` |
+| Through a pipe, no marker at all: stdout stays the reply alone | `test_a_pipe_gets_no_marker` |
+
+The test drives stdin through a pseudo-terminal, with stdout and stderr captured as pipes,
+and ends input with Ctrl-D where this entry typed `/quit`; a second run on a pipe holds the
+arm every piped chat in the tree relies on. Whether a person can tell the harness is waiting
+remains this entry's hand judgment.
+
+```bash
+cd ~/workspace/ai-experiments
+uv run pytest -m hw_full tests/hardware/test_chat_marker.py -v
+```
+
 ```bash
 set -o pipefail
 MODEL=<the gemma-4-E4B checkpoint directory>
@@ -1776,4 +1795,5 @@ screen rather than inferred from silence. The operator reported it worked. `/qui
 session as expected, exit 0.
 
 Status: VERIFIED 2026-09-13 by hand, on the second run. Failed first the same day with no
-marker at all, KB-75; fixed and re-run.
+marker at all, KB-75; fixed and re-run. The four test functions were written from the re-run
+and await their first gate run.
