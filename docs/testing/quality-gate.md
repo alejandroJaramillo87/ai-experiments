@@ -104,6 +104,11 @@ phase, one catalog row and no run directory for each capture binary over the fix
 `tests/hardware/test_capture_run_record.py` under `hw_full` reads the same four off an
 eight-example `activation-capture` on the released E4B, holding the header to the paths and
 count it passed and the load to seconds.
+And the permissions layer (RHX.10): `agent_e2e.rs` and `session_status.rs` pin the Ask
+handler and the two `Permissions:` lines over a scripted generator, and
+`tests/hardware/test_permissions.py` under `hw_full` runs E2B-it on the runbook's task four
+times, answering the prompt `n` and `y` through a pipe, closing stdin, and removing the rule
+file, holding the transcript's tool entries and the one file to each answer.
 And a failure's remedy (RHX.6): `actionable_surface.rs` pins the three-line shape and the
 command's spelling over the fixture, and `tests/hardware/test_remedy_runs_as_printed.py`
 under `hw_full` provokes the two failures on the released E4B, pastes each `Command:` line

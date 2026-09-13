@@ -11,7 +11,7 @@
 // has to be repeated to cover it.
 #![forbid(unsafe_code)]
 
-use std::io::Write;
+use std::io::{IsTerminal, Write};
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -30,14 +30,32 @@ use harness::transcript::Transcript;
 /// `runtime::status`. A prompt is not a status line: it must leave the cursor
 /// on the same line for the answer, and `status` has no emitter that omits the
 /// newline -- deliberately, since a tag whose line never ends is unparseable.
+///
+/// The line is read whether or not stdin is a terminal: a closed stdin ends
+/// at EOF and denies, and an answer fed through a pipe is honoured. Only the
+/// prompt is conditional; see `ask_prompt`.
 fn ask_stdin(call: &ToolCall) -> bool {
-    eprint!("allow {} {}? [y/N] ", call.name(), call.target());
-    let _ = std::io::stderr().flush();
+    if let Some(prompt) = ask_prompt(call, std::io::stdin().is_terminal()) {
+        eprint!("{prompt}");
+        let _ = std::io::stderr().flush();
+    }
     let mut line = String::new();
     if std::io::stdin().read_line(&mut line).is_err() {
         return false;
     }
     matches!(line.trim(), "y" | "yes")
+}
+
+/// The prompt to print for an Ask, or nothing when no one is there to read it.
+///
+/// RHX.10 (2026-09-13, KB-74) ran the harness with stdin closed and stderr
+/// showed `allow write copy.txt? [y/N] [INFO] Prefill: 17 tokens ...` on one
+/// line: the prompt went to a stream nobody would answer and, having no
+/// newline, the next status line landed on it. A prompt is a question to a
+/// person; with stdin not a terminal there is no person, so none is printed
+/// and the read below resolves the call from EOF or from a piped answer.
+fn ask_prompt(call: &ToolCall, interactive: bool) -> Option<String> {
+    interactive.then(|| format!("allow {} {}? [y/N] ", call.name(), call.target()))
 }
 
 /// The forward-pass record a run accumulates, when one was asked for.
@@ -1196,6 +1214,20 @@ mod tests {
 
     // The model-identity and control-vector-manifest tests moved to
     // `harness::preflight` with the functions they cover, unmodified.
+
+    #[test]
+    fn the_ask_prompt_is_printed_only_to_a_terminal() {
+        let call = ToolCall::Write {
+            path: "copy.txt".into(),
+            content: "hello".into(),
+        };
+        assert_eq!(
+            ask_prompt(&call, true).as_deref(),
+            Some("allow write copy.txt? [y/N] ")
+        );
+        // KB-74: a pipe or a closed stdin has no reader for the question.
+        assert_eq!(ask_prompt(&call, false), None);
+    }
 
     #[test]
     fn a_probe_report_failure_warns_and_leaves_a_completed_task_completed() {

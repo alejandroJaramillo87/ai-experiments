@@ -39,7 +39,7 @@ import subprocess
 
 import pytest
 
-from tests.hardware.conftest import AI_DATA_ROOT, REPO_ROOT
+from tests.hardware.conftest import REPO_ROOT, e2b_it_checkpoint
 
 pytestmark = [pytest.mark.hw_full, pytest.mark.cpu, pytest.mark.ram, pytest.mark.ssd]
 
@@ -143,11 +143,6 @@ PROBE_SUMMARY = re.compile(
 IDENTITY_WARN = re.compile(r"^\[WARN\] Model identity:", re.M)
 
 
-def checkpoint() -> str:
-    root = os.environ.get("GEMMA4_CHECKPOINT_ROOT", f"{AI_DATA_ROOT}/models/hf")
-    return os.path.join(root, "gemma-4-E2B-it")
-
-
 def require_binaries() -> None:
     """Missing binaries fail rather than skip: they are built by `make
     harness-build` on the same host, so their absence is a misconfigured run
@@ -162,7 +157,7 @@ def chat(directory: str, prompt: str, *extra: str) -> subprocess.CompletedProces
     """One chat-mode turn in its own directory, prompt on stdin."""
     os.makedirs(directory, exist_ok=True)
     return subprocess.run(
-        [HARNESS, "--model", checkpoint(), "--text-only", "--chat", *extra],
+        [HARNESS, "--model", e2b_it_checkpoint(), "--text-only", "--chat", *extra],
         cwd=directory,
         input=prompt + "\n",
         capture_output=True,
@@ -195,7 +190,7 @@ def flag_rate(stderr: str) -> float:
 def capture_dir(tmp_path_factory) -> str:
     """RH.9a: last-token residuals for the committed refusal set."""
     require_binaries()
-    model = checkpoint()
+    model = e2b_it_checkpoint()
     if not os.path.isfile(os.path.join(model, "model.safetensors")):
         pytest.skip(f"E2B-it checkpoint not on disk at {model}")
     out = str(tmp_path_factory.mktemp("capture") / "refusal")
@@ -273,7 +268,7 @@ def test_capture_manifest_carries_the_served_model_hash(capture_dir):
     with open(os.path.join(capture_dir, "manifest.json")) as handle:
         manifest = json.load(handle)
 
-    weights = os.path.join(checkpoint(), "model.safetensors")
+    weights = os.path.join(e2b_it_checkpoint(), "model.safetensors")
     digest = hashlib.sha256()
     with open(weights, "rb") as handle:
         for chunk in iter(lambda: handle.read(1 << 22), b""):
@@ -482,7 +477,7 @@ def test_refusal_rate_moves_on_held_out_prompts(vector_dir, tmp_path):
         [
             REFUSAL_SCRIPT,
             HARNESS,
-            checkpoint(),
+            e2b_it_checkpoint(),
             os.path.join(vector_dir, "vector.safetensors"),
             str(subset),
             str(out),

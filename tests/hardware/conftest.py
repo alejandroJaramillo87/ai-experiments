@@ -51,6 +51,13 @@ def e4b_checkpoint() -> str:
     return os.path.join(root, "gemma-4-E4B")
 
 
+def e2b_it_checkpoint() -> str:
+    """The instruction-tuned E2B the tool-loop entries drive: it follows the
+    task contract the base E4B cannot (RH.37). Same root as `e4b_checkpoint`."""
+    root = os.environ.get("GEMMA4_CHECKPOINT_ROOT", f"{AI_DATA_ROOT}/models/hf")
+    return os.path.join(root, "gemma-4-E2B-it")
+
+
 def require_binary() -> None:
     """A missing binary fails rather than skips: it is built by `make
     harness-build` on the same host, so its absence is a misconfigured run

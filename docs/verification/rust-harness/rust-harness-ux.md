@@ -4,7 +4,7 @@
 operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate —
 both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 9 verified, 0 blocked, 3 pending, of 12.** RHX.9 joined the eight `U`-campaign
+**Entries: 10 verified, 0 blocked, 2 pending, of 12.** RHX.9 joined the eight `U`-campaign
 entries from the surface inventory: it records a defect in the `--dot` help text and the check
 that closes it.
 
@@ -1392,12 +1392,129 @@ printed and no pause. Whether E2B-it then says `done` or keeps trying is the mod
 not the harness's; the entry is about the three lines the harness prints and the file it does
 not write.
 
+Asserted by `tests/hardware/test_permissions.py`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| `Permissions: 2 rules ...` once, after `Model load:` and before the first `Prefill:`; without a file, `no permissions.yaml, every tool call asks` in the same slot | `test_the_header_states_the_rules_between_load_and_first_prefill` |
+| The allowed `read` asks nothing and its tool entry holds `hello` | `test_an_allowed_read_asks_nothing_and_returns_the_file` |
+| `n` puts `permission denied: write copy.txt` in the transcript and `copy.txt` does not exist | `test_a_denied_write_leaves_a_denial_entry_and_no_file` |
+| `y` writes the file: tool entry `wrote 5 bytes to copy.txt`, `copy.txt` reads `hello` | `test_an_allowed_write_writes_the_file` |
+| Closed stdin: the same denial, no prompt printed, no wait | `test_closed_stdin_resolves_to_denial_without_waiting` |
+
+The test answers the prompt through a pipe where this entry answered at a terminal, and
+answers it both ways; it asserts the model made the `read` and `write` calls rather than
+tolerating their absence, so a run in which E2B-it stops making them fails instead of passing
+on an empty transcript.
+
+```bash
+cd ~/workspace/ai-experiments
+uv run pytest -m hw_full tests/hardware/test_permissions.py -v
+```
+
 Observed:
 
 ```
+➜  rust-harness git:(rust-harness-ux-verification) ✗ set -o pipefail
+rm -rf /tmp/rhx10 && mkdir -p /tmp/rhx10 && cd /tmp/rhx10
+printf 'rules:\n  - tool: read\n    action: allow\n  - tool: bash\n    action: deny\n' \
+  > permissions.yaml
+printf 'hello\n' > hello.txt
+
+➜  rhx10 ~/workspace/ai-experiments/rust-harness/target/release/harness \
+  --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only \
+  "Read hello.txt, write its contents to copy.txt, then say done"
+echo "exit=$?"
+cat session.jsonl
+ls
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E2B-it hash=7ddcbbe752dcfbf6 layers=35
+[INFO] Weights: 8.62 GiB resident at bf16
+[INFO] Peak RSS after load: 9.50 GiB
+[INFO] KV cache: 131072 tokens, 1.52 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=256
+[INFO] Build: 0.1.0 git unknown
+[INFO] Model load: 5.72 s
+[INFO] Permissions: 2 rules from permissions.yaml (an unmatched call asks)
+[INFO] Prefill: 261 tokens in 11.94 s (22 tok/s)
+[INFO] Prefill: 11 tokens in 0.54 s (21 tok/s)
+allow write copy.txt? [y/N] y
+[INFO] Prefill: 18 tokens in 0.88 s (20 tok/s)
+done
+[INFO] Session snapshot: 335 cached tokens at /tmp/rhx10/session.kv
+exit=0
+{"role":"user","content":"Read hello.txt, write its contents to copy.txt, then say done"}
+{"role":"model","content":"{\"tool\": \"read\", \"args\": {\"path\": \"hello.txt\"}}"}
+{"role":"tool","content":"hello\n"}
+{"role":"model","content":"{\"tool\": \"write\", \"args\": {\"path\": \"copy.txt\", \"content\": \"hello\"}}"}
+{"role":"tool","content":"wrote 5 bytes to copy.txt"}
+{"role":"model","content":"done"}
+copy.txt  hello.txt  permissions.yaml  session.jsonl  session.kv
+
+➜  rhx10 rm -f session.jsonl session.kv copy.txt
+~/workspace/ai-experiments/rust-harness/target/release/harness \
+  --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only \
+  "Read hello.txt, write its contents to copy.txt, then say done" </dev/null
+echo "exit=$?"
+grep -c 'permission denied' session.jsonl
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E2B-it hash=7ddcbbe752dcfbf6 layers=35
+[INFO] Weights: 8.62 GiB resident at bf16
+[INFO] Peak RSS after load: 9.51 GiB
+[INFO] KV cache: 131072 tokens, 1.52 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=256
+[INFO] Build: 0.1.0 git unknown
+[INFO] Model load: 3.66 s
+[INFO] Permissions: 2 rules from permissions.yaml (an unmatched call asks)
+[INFO] Prefill: 261 tokens in 11.95 s (22 tok/s)
+[INFO] Prefill: 11 tokens in 0.54 s (20 tok/s)
+allow write copy.txt? [y/N] [INFO] Prefill: 17 tokens in 0.84 s (20 tok/s)
+I encountered a permission denied error when trying to write to `copy.txt`. Please ensure that the current directory has the necessary write permissions.
+
+[INFO] Session snapshot: 359 cached tokens at /tmp/rhx10/session.kv
+exit=0
+2
+
+➜  rhx10 rm -f permissions.yaml session.jsonl session.kv
+~/workspace/ai-experiments/rust-harness/target/release/harness \
+  --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only "say done" </dev/null
+echo "exit=$?"
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E2B-it hash=7ddcbbe752dcfbf6 layers=35
+[INFO] Weights: 8.62 GiB resident at bf16
+[INFO] Peak RSS after load: 9.51 GiB
+[INFO] KV cache: 131072 tokens, 1.52 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=256
+[INFO] Build: 0.1.0 git unknown
+[INFO] Model load: 3.60 s
+[INFO] Permissions: no permissions.yaml, every tool call asks
+[INFO] Prefill: 247 tokens in 11.21 s (22 tok/s)
+done
+[INFO] Session snapshot: 251 cached tokens at /tmp/rhx10/session.kv
+exit=0
 ```
 
-Status: PENDING
+Run 2026-09-13. The three `Permissions:` lines are where the signal puts them, the `read`
+asked nothing and returned `hello`, and the `write` stopped the run at the prompt. Two
+departures from the expected signal. First, the operator answered the step 1 prompt `y`
+rather than `n`, so the terminal run observed the allow arm (`wrote 5 bytes to copy.txt`,
+`copy.txt` in `ls`) and the denial arm was observed in step 2 instead: `permission denied:
+write copy.txt` as a tool entry (the grep's 2 is that entry plus the model's prose echo of
+it) and no `copy.txt`. Both arms were seen once each, in the other step than assigned, and
+the entry did not re-run. Second, step 2 printed the prompt anyway: `allow write copy.txt?
+[y/N] [INFO] Prefill: 17 tokens ...` on one line, because `ask_stdin` wrote it without
+asking whether stdin was a terminal and the next status line landed on the unterminated
+prompt. The denial itself was right, from EOF. Filed as KB-74 and fixed the same day: the
+prompt is printed only to a terminal and the line is read either way, so a piped answer is
+honoured and a closed stdin denies silently. The gate test's closed-stdin run is what
+confirms it.
+
+Status: VERIFIED 2026-09-13 by hand, the two departures above recorded. The five test
+functions were written from this transcript and await their first gate run, which also
+confirms KB-74.
 
 ## RHX.11 A resumed session says what it resumed
 
