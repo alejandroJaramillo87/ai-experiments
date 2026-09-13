@@ -27,7 +27,12 @@ A probe needs a dataset with both classes well represented: one JSON object per 
   where the workbench mounts the models tree read-only. A repository id is accepted but
   leaves the model hash `unknown`, and the harness answers that sentinel by skipping its
   identity check rather than failing it, so the probe would load into any model of the
-  right width unchecked. The command prints which of the two it recorded.
+  right width unchecked. The command prints which of the two it recorded: `[OK] model_hash
+  <64 hex>` after the shard line, or a `[WARN]` block saying that a probe from this capture
+  will load unchecked and how to fix it. Stop on the warning before training anything
+  meant for the serving harness. The dataset is validated as it is read: a line that is not
+  JSON, lacks `text` or `label`, or carries a non-integer label is refused, and a set too
+  small to split is refused by the trainer.
 - **`activation-capture`**, the harness binary, on the CPU, from the same forward pass the
   harness serves with. See [Capturing activations](../../rust-harness/guides/activation-capture.md).
 
@@ -54,6 +59,14 @@ score, and registers `probe.npz` and `manifest.json` under
 `/mnt/ai-data/interp/probes/<name>/`. `--seed` fixes the split and `--out` moves the
 registry. Validation AUROC that saturates at 1.0 across layers means the selected layer is a
 tie-order artefact rather than a finding; the test AUROC is the number to quote.
+
+One caveat decides whether a probe is usable in-band, and the numbers above do not show it.
+The capture takes the last non-padded token of each prompt, and the trainer fits its
+threshold there; the harness scores every position of the layer. A probe whose validation
+AUROC is 1.0 at every layer can still flag most positions of a benign arithmetic prompt
+when served, because a threshold calibrated at one position means nothing at position 3.
+The recorded served run on this site's own refusal probe did exactly that. Step 3 is where
+usability is decided; steps 1 and 2 only make a probe that fits.
 
 ## 3. Evaluate against baselines
 
@@ -104,9 +117,20 @@ page.
 make probe-monitor ARGS="--window 7d"
 ```
 
-The monitor aggregates the window into `report.json` and `flagged.jsonl` under
-`/mnt/ai-data/interp/monitor/<probe>/`. It loads no model, so it runs while the service is
-up. The record it reads and the report it writes are on
+The monitor aggregates the window into `report.json` and `flagged.jsonl`. It loads no
+model, so it runs while the service is up. Recorded on the workstation, twice over the same
+one-record window so the second run carries a drift delta against the first:
+
+```text
+[OK] Reported 1/1 records (1 flagged, skipped {'malformed_json': 0,
+     'no_timestamp': 0, 'out_of_window': 0, 'no_text': 0, 'no_scores': 0})
+[OK] refusal-v1: mean 0.9932, p95 0.9932, over-threshold 1.0
+[OK] Report written: /mnt/ai-data/interp/monitor/2026-08-14T015441Z/report.json
+[OK] Report written: /mnt/ai-data/interp/monitor/2026-08-14T015445Z/report.json
+```
+
+The over-threshold fraction of 1.0 is the monitor faithfully reporting the miscalibrated
+probe of the caveat above on a single record, not a baseline. The record it reads and the report it writes are on
 [Served-request log](../observability/served-request-log.md).
 
 ## What can go wrong

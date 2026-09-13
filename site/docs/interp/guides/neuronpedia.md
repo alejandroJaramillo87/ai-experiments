@@ -32,6 +32,16 @@ make np-down
 ```
 
 `np-down` stops everything; the database and caches persist in their bind mounts.
+`make np-status` shows the platform's containers and ports. `np-clone` requires the storage
+tree from `make interp-dirs`, and `np-build` and every `-up` target first merge the
+repository's environment deltas and the secrets in `.env.interp` into the checkout.
+
+| Variable | Read by | Effect | Default |
+|----------|---------|--------|---------|
+| `MODEL_SOURCESET` | `np-inference-up` | The inference preset; a name with no matching config file in the checkout is refused with `No such config` | `gemma-2-2b-it.gemmascope-res-16k` |
+| `NP_GPU` | `np-autointerp-up` | When `1`, attaches the GPU for the embedding scorer, behind the GPU preflight | unset |
+| `NP_SRC` | Every target | The pinned checkout | `/mnt/ai-data/interp/neuronpedia/src` |
+| `AI_NETWORK_NAME` | Every target | The compose network the platform joins so autointerp can reach the inference services | `ai-experiments_ai-network` |
 
 ## Ports
 
@@ -45,7 +55,11 @@ holds; the database on 5432; inference, autointerp, and the graph server on 5002
 One GPU consumer at a time. `np-up` is CPU-only and never preflighted; `np-inference-up` and
 `np-graph-up` refuse while `llama-gpu` or `vllm-gpu` is running. Autointerp is the one
 service that is serving-dependent rather than GPU-holding: it batches feature explanations
-against `vllm-gpu`, so that service must be up and autointerp runs on the CPU.
+against `vllm-gpu`, so that service must be up and autointerp runs on the CPU. Its own
+preflight has three refusals, each with a `Solution:` and a `Command:` line: `vllm-gpu` not
+healthy on its port, `llama-gpu` running beside it, and a platform GPU service (inference or
+graph) still up, which `make np-down && make np-up` clears while keeping the web application
+and database.
 
 ## Trust model
 

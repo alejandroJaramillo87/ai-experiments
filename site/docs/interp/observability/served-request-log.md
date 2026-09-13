@@ -74,7 +74,26 @@ request comes from the drain being per request. `max_score` is the per-request s
 monitor's distribution is built from.
 
 The record reaches disk per request, not at shutdown, so a server that is killed keeps every
-record it wrote.
+record it wrote. Recorded on the workstation, the `probe` block of one request answered by
+`gemma-4-E4B` with a refusal probe loaded:
+
+```text
+"response_text": "2+2?\n18\n",
+"usage": {"completion_tokens": 8, "prompt_tokens": 13, "total_tokens": 21},
+"latency_s": 2.433646459,
+"status_code": 200,
+"probe": {
+    "name": "refusal-v1", "layer": 8, "site": "layer_output",
+    "threshold": 0.9548591, "scored": 21, "position_first": 0,
+    "max_score": 0.99316895,
+    "flags": [ ... 12 positions, 0.956 to 0.993 ... ]
+}
+```
+
+`scored` equals the request's total tokens, which is what shows the state is drained per
+request rather than accumulating across them. The 12 flagged positions on an arithmetic
+prompt are the calibration caveat the [Probes](../guides/probes.md) guide describes, not a
+fault in the log.
 
 ## Who reads it
 

@@ -19,7 +19,9 @@ make interp-build
 The build runs the smoke test in its build-time mode and fails on a regression, so an image
 that builds is an image whose stack imports. `docker compose run` builds only when the image
 is missing and does not notice a changed `pyproject.toml`, lockfile, or Dockerfile; after any
-such change, run `make interp-build` again or the verbs run on a stale image.
+such change, run `uv lock` and then `make interp-build`, or the verbs run on a stale image.
+The Dockerfile syncs with a frozen lock and fails on a stale one, which is why the lock comes
+first.
 
 ## Start, use, stop
 
@@ -45,9 +47,13 @@ JupyterLab service need not be running for a batch job.
 
 ## What the container is
 
-The container runs as the host user so bind-mount writes are owned correctly, drops every
-capability, refuses new privileges, and mounts its root filesystem read-only; writable state
-goes to the data tree and to tmpfs. It never restarts on boot. The mounts and their spellings
+The container runs as the host user, taken from `UID` and `GID` in the environment with a
+default of 1000, so bind-mount writes are owned correctly; a mismatch shows up as a write
+failure under the data tree. It drops every capability, refuses new privileges, and mounts
+its root filesystem read-only; writable state goes to the data tree and to tmpfs. It never
+restarts on boot. Started through `docker compose` directly rather than `make interp-up`,
+with no `JUPYTER_TOKEN` in the environment, the entrypoint refuses with
+`[ERROR] JUPYTER_TOKEN is not set` rather than start an unauthenticated server. The mounts and their spellings
 are on [Environment](environment.md).
 
 ## The preflight
