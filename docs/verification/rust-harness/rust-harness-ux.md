@@ -1794,6 +1794,10 @@ the model's first line are now told apart by the marker, and the harness's waiti
 screen rather than inferred from silence. The operator reported it worked. `/quit` ended the
 session as expected, exit 0.
 
-Status: VERIFIED 2026-09-13 by hand, on the second run. Failed first the same day with no
-marker at all, KB-75; fixed and re-run. The four test functions were written from the re-run
-and await their first gate run.
+The gate test then ran on the same tree. The operator reported it passed, 4 of 4, without
+pasting the output; the report is the evidence here, and the next `make quality-full` run
+on the workstation is where the transcript lands.
+
+Status: VERIFIED 2026-09-13 by hand, on the second run (gate-backed by
+`tests/hardware/test_chat_marker.py`, reported 4 passed on the workstation the same day).
+Failed first the same day with no marker at all, KB-75; fixed and re-run.
