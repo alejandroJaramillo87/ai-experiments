@@ -4,7 +4,7 @@
 operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate —
 both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 8 verified, 0 blocked, 4 pending, of 12.** RHX.9 joined the eight `U`-campaign
+**Entries: 9 verified, 0 blocked, 3 pending, of 12.** RHX.9 joined the eight `U`-campaign
 entries from the surface inventory: it records a defect in the `--dot` help text and the check
 that closes it.
 
@@ -1272,8 +1272,10 @@ cd ~/workspace/ai-experiments/rust-harness
 cargo run --release -q -p runtime --bin ladder -- --help | grep -A1 -- '--dot'
 echo "exit=$?"
 
-# 2. the measurement the claim has to agree with, printed by the test that pins it
-cargo test --release -p runtime the_lane_dot_changes_the_logits_and_says_so -- --nocapture 2>&1 \
+# 2. the measurement the claim has to agree with, printed by the test that pins it.
+#    --lib, because the test is a unit test of the library and cargo otherwise runs
+#    every test binary of the crate, so the tail lands on one with no test by that name
+cargo test --release -p runtime --lib the_lane_dot_changes_the_logits_and_says_so -- --nocapture 2>&1 \
   | tail -5
 echo "exit=$?"
 ```
@@ -1294,9 +1296,35 @@ the workstation build is what closes the entry.
 Observed:
 
 ```
+➜  rust-harness git:(rust-harness-ux-verification) ✗ set -o pipefail
+➜  rust-harness git:(rust-harness-ux-verification) ✗ cargo run --release -q -p runtime --bin ladder -- --help | grep -A1 -- '--dot'
+echo "exit=$?"
+usage: ladder --model <checkpoint-dir> --reference <reference-dir> [--size quick|standard|deep] [--rung L0|L1|L2|L3|L4|L5|L6] [--dot <kind>] [--batch stepped|whole|<n>] [--threads <n>] [--text-only] [--single-thread]
+
+--
+  --dot <kind>
+      the dot-product kernel; every kind but lanes16 is bit-identical
+exit=0
+➜  rust-harness git:(rust-harness-ux-verification) ✗  cd ~/workspace/ai-experiments/rust-harness
+cargo test --release -p runtime --lib the_lane_dot_changes_the_logits_and_says_so -- --nocapture 2>&1 \
+  | tail -5
+echo "exit=$?"
+running 1 test
+test model::cpu::tests::the_lane_dot_changes_the_logits_and_says_so ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 418 filtered out; finished in 0.01s
+
+exit=0
 ```
 
-Status: PENDING
+Run 2026-09-13. The help names `lanes16` as the one kind that is not bit-identical, and the
+test that measures it passes: text and measurement agree. Step 2 was first run without
+`--lib`; cargo then ran every test binary of the crate filtered to the name, and the
+`tail -5` showed the last one, `0 passed; 9 filtered out`, exit 0. The test had run and
+passed in the library binary above it, but the transcript did not show it, so it was
+re-run against the library alone, and the command above gained `--lib`.
+
+Status: VERIFIED 2026-09-13 by hand.
 
 ## RHX.10 A tool call the rules do not decide asks, and the run says so first
 
