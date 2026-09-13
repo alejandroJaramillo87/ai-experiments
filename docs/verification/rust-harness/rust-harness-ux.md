@@ -1696,6 +1696,41 @@ so piped stdout stays the reply alone.
 Observed:
 
 ```
+➜  rhx12 ~/workspace/ai-experiments/rust-harness/target/release/harness --model "$MODEL" --text-only --chat --max-tokens 16
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E4B hash=e376216f8b693aff layers=42
+[INFO] Weights: 13.90 GiB resident at bf16
+[INFO] Peak RSS after load: 14.03 GiB
+[INFO] KV cache: 131072 tokens, 4.05 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=16
+[INFO] Build: 0.1.0 git unknown
+[WARN] KV cache above 2 GiB: consider --context to cap it (compaction keeps long sessions inside the cap)
+[INFO] Model load: 5.75 s
+hello
+[INFO] Prefill: 10 tokens in 0.90 s (11 tok/s)
+hello
+pantalla
+hello
+
+pantalla
+hi
+pantalla
+hi
+/quit
+[INFO] Chat ended: 1 model turns
+[INFO] Session snapshot: 26 cached tokens at /tmp/rhx12/session.kv
 ```
 
-Status: PENDING
+Run 2026-09-13 at the terminal. The first `hello` is the operator's; everything from the
+second `hello` to the last `hi` is one reply, sixteen tokens to the cap from a base model
+continuing the text (`1 model turns`, and 26 cached tokens is the 10-token prefill plus 16),
+which is why it wandered into Spanish. Nothing on the screen separates the typed `hello` from
+the model's, nothing marks where the reply ended, and the operator inferred from the silence
+that the harness was waiting before typing `/quit`. `/quit` ended the session as expected,
+exit 0. The property the signal states is not met, as the entry predicted; the operator's
+question afterwards, why the model replied as it did, is the shape of the confusion the
+marker exists to remove.
+
+Status: PENDING (FAILED 2026-09-13: no marker between a reply and the next turn at a
+terminal; fix pending, then re-run)
