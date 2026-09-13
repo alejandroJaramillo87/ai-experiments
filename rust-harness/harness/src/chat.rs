@@ -44,11 +44,22 @@ fn render_all(memory: Option<&str>, transcript: &Transcript) -> String {
     rendered
 }
 
+/// The turn marker a chat prints to stderr before each read, or none. Only
+/// a person at a terminal needs one; a pipe gets the replies alone on
+/// stdout and nothing on stderr between them, which every piped chat in
+/// the tree and the runbook relies on (RHX.12, 2026-09-13: with no marker,
+/// a typed `hello` and a base model's `hello` were indistinguishable and
+/// nothing said the harness was waiting).
+pub fn turn_marker(stdin_is_terminal: bool) -> Option<&'static str> {
+    stdin_is_terminal.then_some("> ")
+}
+
 /// Run the chat loop until end of input or a `/quit` line. Returns the
 /// number of model turns generated. `memory` is the HARNESS.md content,
 /// rendered as a synthetic leading turn and never persisted. `/compact`
 /// forces a compaction; `compact_at` is the automatic threshold as a
-/// fraction of the context budget.
+/// fraction of the context budget. `marker`, when given, is printed to
+/// stderr before each read (see `turn_marker`); replies go to `out` alone.
 pub fn run_chat(
     generator: &mut dyn Generator,
     transcript: &mut Transcript,
@@ -56,13 +67,29 @@ pub fn run_chat(
     compact_at: f32,
     input: impl BufRead,
     mut out: impl Write,
+    marker: Option<&str>,
 ) -> Result<usize> {
     // Closed-turn prefix, extended per turn — the same incremental shape as
     // the agent loop, so delta prefill sees an append-only prompt. Rebuilt
     // wholesale after a compaction.
     let mut rendered = render_all(memory, transcript);
     let mut turns = 0usize;
-    for line in input.lines() {
+    let mut lines = input.lines();
+    loop {
+        // The marker precedes every read, so it also follows every reply:
+        // it is what tells a person at a terminal where the reply ended and
+        // that the harness is waiting (RHX.12). Closed with a newline at end
+        // of input so the `Chat ended` line does not land on its tail.
+        if let Some(marker) = marker {
+            eprint!("{marker}");
+            let _ = std::io::stderr().flush();
+        }
+        let Some(line) = lines.next() else {
+            if marker.is_some() {
+                eprintln!();
+            }
+            break;
+        };
         let line = line.context("read chat input")?;
         let text = line.trim();
         if text.is_empty() {
@@ -146,6 +173,7 @@ mod tests {
             0.8,
             "hi\nmore\n".as_bytes(),
             Vec::new(),
+            None,
         )
         .unwrap();
         for (i, p) in g.prompts.iter().enumerate() {
@@ -169,6 +197,7 @@ mod tests {
             0.8,
             "hi\nmore\n".as_bytes(),
             Vec::new(),
+            None,
         )
         .unwrap();
         assert_eq!(turns, 2);
@@ -189,7 +218,16 @@ mod tests {
                 replies: vec!["four"],
                 prompts: vec![],
             };
-            run_chat(&mut g, &mut t, None, 0.8, "2+2?\n".as_bytes(), Vec::new()).unwrap();
+            run_chat(
+                &mut g,
+                &mut t,
+                None,
+                0.8,
+                "2+2?\n".as_bytes(),
+                Vec::new(),
+                None,
+            )
+            .unwrap();
         }
         let mut t = transcript_in(&dir);
         assert_eq!(t.entries().len(), 2);
@@ -204,6 +242,7 @@ mod tests {
             0.8,
             "double it\n".as_bytes(),
             Vec::new(),
+            None,
         )
         .unwrap();
         // The resumed turn's prompt replays the persisted turns first.
@@ -232,6 +271,7 @@ mod tests {
             0.8,
             "how are you?\n".as_bytes(),
             &mut out,
+            None,
         )
         .unwrap();
         assert_eq!(String::from_utf8(out).unwrap(), "fine, thanks\n");
@@ -254,6 +294,7 @@ mod tests {
                 0.8,
                 "hi\n".as_bytes(),
                 Vec::new(),
+                None,
             )
             .unwrap();
             // Memory is a System entry, so it leads as a native system turn.
@@ -283,6 +324,7 @@ mod tests {
             0.8,
             "more\n".as_bytes(),
             Vec::new(),
+            None,
         )
         .unwrap();
         let memory_at = g.prompts[0].find("project notes").unwrap();
@@ -299,7 +341,16 @@ mod tests {
                 replies: vec!["hello"],
                 prompts: vec![],
             };
-            run_chat(&mut g, &mut t, memory, 0.8, "hi\n".as_bytes(), Vec::new()).unwrap();
+            run_chat(
+                &mut g,
+                &mut t,
+                memory,
+                0.8,
+                "hi\n".as_bytes(),
+                Vec::new(),
+                None,
+            )
+            .unwrap();
             g.prompts
         };
         assert_eq!(prompts_with(None), prompts_with(None));
@@ -325,6 +376,7 @@ mod tests {
             0.8,
             "hi\n".as_bytes(),
             Vec::new(),
+            None,
         )
         .unwrap();
         // Real turns only: memory, the user turn, and the open model turn.
@@ -360,7 +412,16 @@ mod tests {
             replies: vec!["r1", "r2", "r3", "r4", "the summary", "r5"],
             prompts: vec![],
         };
-        let turns = run_chat(&mut g, &mut t, None, 0.8, input.as_bytes(), Vec::new()).unwrap();
+        let turns = run_chat(
+            &mut g,
+            &mut t,
+            None,
+            0.8,
+            input.as_bytes(),
+            Vec::new(),
+            None,
+        )
+        .unwrap();
         assert_eq!(turns, 5);
         // Prompt 5 is the summarization request; prompt 6 is the next real
         // turn over the spliced transcript: summary present, middle gone,
@@ -392,7 +453,16 @@ mod tests {
             budget: 60,
         };
         let input = "turn one padding words\nturn two padding words\nturn three padding words\nturn four padding words\n";
-        run_chat(&mut g, &mut t, None, 0.8, input.as_bytes(), Vec::new()).unwrap();
+        run_chat(
+            &mut g,
+            &mut t,
+            None,
+            0.8,
+            input.as_bytes(),
+            Vec::new(),
+            None,
+        )
+        .unwrap();
         let compactions = t
             .entries()
             .iter()
@@ -419,8 +489,37 @@ mod tests {
             0.8,
             "\n  \n/quit\nignored\n".as_bytes(),
             Vec::new(),
+            None,
         );
         assert_eq!(turns.unwrap(), 0);
         assert!(t.entries().is_empty());
+    }
+
+    #[test]
+    fn the_turn_marker_is_for_a_terminal_only() {
+        assert_eq!(turn_marker(true), Some("> "));
+        assert_eq!(turn_marker(false), None);
+    }
+
+    #[test]
+    fn a_marker_never_reaches_the_reply_stream() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut t = transcript_in(&dir);
+        let mut g = Scripted {
+            replies: vec!["fine"],
+            prompts: vec![],
+        };
+        let mut out = Vec::new();
+        run_chat(
+            &mut g,
+            &mut t,
+            None,
+            0.8,
+            "hi\n".as_bytes(),
+            &mut out,
+            Some("> "),
+        )
+        .unwrap();
+        assert_eq!(String::from_utf8(out).unwrap(), "fine\n");
     }
 }

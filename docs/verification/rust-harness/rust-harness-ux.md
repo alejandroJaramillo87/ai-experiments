@@ -4,7 +4,7 @@
 operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate —
 both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 6 verified, 0 blocked, 6 pending, of 12.** RHX.9 joined the eight `U`-campaign
+**Entries: 12 verified, 0 blocked, 0 pending, of 12.** RHX.9 joined the eight `U`-campaign
 entries from the surface inventory: it records a defect in the `--dot` help text and the check
 that closes it.
 
@@ -1042,9 +1042,67 @@ invisible. Browsing writes no records of its own and prunes nothing.
 Observed:
 
 ```
+➜  ai-experiments git:(rust-harness-ux-verification) ✗ cd ~/workspace/ai-experiments
+make harness-runs ARGS='-n 20'
+make harness-runs ARGS='--failed -n 10'
+
+# every distinct command in the catalog
+jq -r '.command' /mnt/ai-data/logs/harness/runs.jsonl | sort | uniq -c
+uv run --no-sync python -m common.obs.runs --cli harness -n 20
+FINISHED             RUN ID                    COMMAND             EXIT    DURATION
+2026-09-12T02:03:23  R-20260912-015325-2d17bb  task                   1    598.185s
+2026-09-12T02:20:17  R-20260912-020323-f667bb  task                   1   1014.107s
+2026-09-12T03:11:39  R-20260912-025328-1ab623  task                   1   1091.167s
+2026-09-12T03:26:51  R-20260912-031139-f722b8  task                   1    911.862s
+2026-09-12T03:42:03  R-20260912-032651-f38eed  task                   1    911.390s
+2026-09-12T03:46:35  R-20260912-034456-80f5fb  attention-capture      0     98.811s
+2026-09-12T15:04:43  R-20260912-150430-77f6ad  chat                   0     13.712s
+2026-09-12T15:30:00  R-20260912-152914-a99088  chat                   0     45.812s
+2026-09-12T15:31:45  R-20260912-153059-b11b61  chat                   0     45.911s
+2026-09-12T15:37:39  R-20260912-153654-1f95ad  chat                   0     45.107s
+2026-09-12T15:43:58  R-20260912-154338-b9b546  chat                   0     19.581s
+2026-09-12T16:03:46  R-20260912-160320-91dad9  chat                   0     26.043s
+2026-09-12T16:49:48  R-20260912-164007-6f27ea  ladder                 0    581.237s
+2026-09-12T17:07:04  R-20260912-170211-f585ef  activation-capture     0    292.917s
+2026-09-12T17:16:40  R-20260912-171549-14f88c  activation-capture     0     50.592s
+2026-09-12T17:19:49  R-20260912-171949-2bc76a  task                   1      0.000s
+2026-09-12T17:29:49  R-20260912-172908-50af0c  task                   1     40.370s
+2026-09-12T17:41:20  R-20260912-174040-0acc2b  task                   1     40.487s
+2026-09-12T17:51:35  R-20260912-175135-7e93e2  task                   1      0.000s
+2026-09-12T17:52:15  R-20260912-175135-a0e898  task                   1     40.640s
+uv run --no-sync python -m common.obs.runs --cli harness --failed -n 10
+FINISHED             RUN ID                    COMMAND  EXIT    DURATION
+2026-09-12T02:03:23  R-20260912-015325-2d17bb  task        1    598.185s
+2026-09-12T02:20:17  R-20260912-020323-f667bb  task        1   1014.107s
+2026-09-12T03:11:39  R-20260912-025328-1ab623  task        1   1091.167s
+2026-09-12T03:26:51  R-20260912-031139-f722b8  task        1    911.862s
+2026-09-12T03:42:03  R-20260912-032651-f38eed  task        1    911.390s
+2026-09-12T17:19:49  R-20260912-171949-2bc76a  task        1      0.000s
+2026-09-12T17:29:49  R-20260912-172908-50af0c  task        1     40.370s
+2026-09-12T17:41:20  R-20260912-174040-0acc2b  task        1     40.487s
+2026-09-12T17:51:35  R-20260912-175135-7e93e2  task        1      0.000s
+2026-09-12T17:52:15  R-20260912-175135-a0e898  task        1     40.640s
+    108 activation-capture
+     79 attention-capture
+    197 chat
+      5 ladder
+      2 layer-diff
+     11 serve
+    477 task
 ```
 
-Status: PENDING
+Run 2026-09-12, over a catalog of 879 rows. Both tables populated and aligned, no `?` in
+any field; the `--failed` table's `COMMAND` column narrows to its own content, so the two
+tables differ in width and agree in shape. All seven commands appear, including `chat` and
+`serve`, and none is `runs`. The last twenty rows are this campaign's own day: RHX.1 through
+RHX.6's chats, the RHX.3 climb, the two RHX.5 captures and, as `task` rows with exit 1, the
+failures RHX.6 provoked. Those five read back what RHX.6 saw and one thing it did not: the
+missing-checkpoint runs lasted 0.000 s, and the foreign-probe runs lasted 40 s each, which is
+the identity check hashing the 15 GB weights before the load it then declined. RHX.6's "costs
+no load" holds; the check's own cost is the same 35 to 40 s `test_preflight.py` measures for
+`--deep`, paid on the run path too.
+
+Status: VERIFIED 2026-09-12 by hand.
 
 ## RHX.8 Status output is coloured at a terminal and plain through a pipe
 
@@ -1125,9 +1183,60 @@ reader does not report it as new.
 Observed:
 
 ```
+➜  rust-harness git:(rust-harness-ux-verification) ✗ cargo run --release -q -p harness -- --model "$MODEL" --text-only --status
+
+[OK] model directory: /mnt/ai-data/models/hf/gemma-4-E4B
+[OK] checkpoint files: config.json and model.safetensors present, header names 2130 tensors
+[OK] config.json: 42 layers, hidden size 2560, context 131072
+[OK] backend compatibility: supported
+[SKIP] probe: no --probe given
+[SKIP] probe geometry: no --probe given
+[SKIP] probe identity: no --probe given
+[SKIP] control vector: no --control-vector given
+[SKIP] control vector identity: no --control-vector given
+[SKIP] interp log directory: no --interp-log given
+[OK] obs log directory: /mnt/ai-data/logs/harness is writable
+➜  rust-harness git:(rust-harness-ux-verification) ✗ NO_COLOR=1 cargo run --release -q -p harness -- --model "$MODEL" --text-only --status
+
+[OK] model directory: /mnt/ai-data/models/hf/gemma-4-E4B
+[OK] checkpoint files: config.json and model.safetensors present, header names 2130 tensors
+[OK] config.json: 42 layers, hidden size 2560, context 131072
+[OK] backend compatibility: supported
+[SKIP] probe: no --probe given
+[SKIP] probe geometry: no --probe given
+[SKIP] probe identity: no --probe given
+[SKIP] control vector: no --control-vector given
+[SKIP] control vector identity: no --control-vector given
+[SKIP] interp log directory: no --interp-log given
+[OK] obs log directory: /mnt/ai-data/logs/harness is writable
+➜  rust-harness git:(rust-harness-ux-verification) ✗ cargo run --release -q -p harness -- --model "$MODEL" --text-only --status 2>&1 \
+  | cat -v | grep -c '\^\['
+0
+➜  rust-harness git:(rust-harness-ux-verification) ✗ cargo build --release -q -p harness 
+➜  rust-harness git:(rust-harness-ux-verification) ✗ RUN_STATUS="cargo run --release -q -p harness -- --model $MODEL --text-only --status"
+➜  rust-harness git:(rust-harness-ux-verification) ✗ script -qec "$RUN_STATUS" /dev/null | sed 's/\r$//' > /tmp/rhx8-tty-color
+
+➜  rust-harness git:(rust-harness-ux-verification) ✗ NO_COLOR=1 script -qec "$RUN_STATUS" /dev/null | sed 's/\r$//' > /tmp/rhx8-tty-plain
+
+➜  rust-harness git:(rust-harness-ux-verification) ✗ sh -c "$RUN_STATUS" >/dev/null 2>/tmp/rhx8-pipe-plain
+
+➜  rust-harness git:(rust-harness-ux-verification) ✗ cat -v /tmp/rhx8-tty-color | grep -c '\^\['
+diff /tmp/rhx8-tty-plain /tmp/rhx8-pipe-plain && echo "plain arms identical"
+sed 's/\x1b\[[0-9;]*m//g' /tmp/rhx8-tty-color | diff - /tmp/rhx8-tty-plain \
+  && echo "colour strips to the same bytes"
+11
+plain arms identical
+colour strips to the same bytes
 ```
 
-Status: PENDING
+Run 2026-09-13. The operator reported step 1 coloured as expected, the colour on the tags
+alone; a paste cannot carry that, so the eye's verdict is recorded here in prose. Step 2 is
+the same eleven lines plain, step 3 counts zero escapes through the pipe. Step 4a holds
+eleven escape-bearing lines for the eleven tagged checks, the plain arms are byte-identical,
+and stripping the escapes from the coloured capture yields the plain one exactly. No check
+warned, so the bold yellow arm was not exercised.
+
+Status: VERIFIED 2026-09-13 by hand.
 
 ## RHX.9 The --dot help text describes the kernels the flag offers
 
@@ -1163,8 +1272,10 @@ cd ~/workspace/ai-experiments/rust-harness
 cargo run --release -q -p runtime --bin ladder -- --help | grep -A1 -- '--dot'
 echo "exit=$?"
 
-# 2. the measurement the claim has to agree with, printed by the test that pins it
-cargo test --release -p runtime the_lane_dot_changes_the_logits_and_says_so -- --nocapture 2>&1 \
+# 2. the measurement the claim has to agree with, printed by the test that pins it.
+#    --lib, because the test is a unit test of the library and cargo otherwise runs
+#    every test binary of the crate, so the tail lands on one with no test by that name
+cargo test --release -p runtime --lib the_lane_dot_changes_the_logits_and_says_so -- --nocapture 2>&1 \
   | tail -5
 echo "exit=$?"
 ```
@@ -1185,9 +1296,35 @@ the workstation build is what closes the entry.
 Observed:
 
 ```
+➜  rust-harness git:(rust-harness-ux-verification) ✗ set -o pipefail
+➜  rust-harness git:(rust-harness-ux-verification) ✗ cargo run --release -q -p runtime --bin ladder -- --help | grep -A1 -- '--dot'
+echo "exit=$?"
+usage: ladder --model <checkpoint-dir> --reference <reference-dir> [--size quick|standard|deep] [--rung L0|L1|L2|L3|L4|L5|L6] [--dot <kind>] [--batch stepped|whole|<n>] [--threads <n>] [--text-only] [--single-thread]
+
+--
+  --dot <kind>
+      the dot-product kernel; every kind but lanes16 is bit-identical
+exit=0
+➜  rust-harness git:(rust-harness-ux-verification) ✗  cd ~/workspace/ai-experiments/rust-harness
+cargo test --release -p runtime --lib the_lane_dot_changes_the_logits_and_says_so -- --nocapture 2>&1 \
+  | tail -5
+echo "exit=$?"
+running 1 test
+test model::cpu::tests::the_lane_dot_changes_the_logits_and_says_so ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 418 filtered out; finished in 0.01s
+
+exit=0
 ```
 
-Status: PENDING
+Run 2026-09-13. The help names `lanes16` as the one kind that is not bit-identical, and the
+test that measures it passes: text and measurement agree. Step 2 was first run without
+`--lib`; cargo then ran every test binary of the crate filtered to the name, and the
+`tail -5` showed the last one, `0 passed; 9 filtered out`, exit 0. The test had run and
+passed in the library binary above it, but the transcript did not show it, so it was
+re-run against the library alone, and the command above gained `--lib`.
+
+Status: VERIFIED 2026-09-13 by hand.
 
 ## RHX.10 A tool call the rules do not decide asks, and the run says so first
 
@@ -1255,12 +1392,149 @@ printed and no pause. Whether E2B-it then says `done` or keeps trying is the mod
 not the harness's; the entry is about the three lines the harness prints and the file it does
 not write.
 
+Asserted by `tests/hardware/test_permissions.py`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| `Permissions: 2 rules ...` once, after `Model load:` and before the first `Prefill:`; without a file, `no permissions.yaml, every tool call asks` in the same slot | `test_the_header_states_the_rules_between_load_and_first_prefill` |
+| The allowed `read` asks nothing and its tool entry holds `hello` | `test_an_allowed_read_asks_nothing_and_returns_the_file` |
+| `n` puts `permission denied: write copy.txt` in the transcript and `copy.txt` does not exist | `test_a_denied_write_leaves_a_denial_entry_and_no_file` |
+| `y` writes the file: tool entry `wrote 5 bytes to copy.txt`, `copy.txt` reads `hello` | `test_an_allowed_write_writes_the_file` |
+| Closed stdin: the same denial, no prompt printed, no wait | `test_closed_stdin_resolves_to_denial_without_waiting` |
+
+The test answers the prompt through a pipe where this entry answered at a terminal, and
+answers it both ways; it asserts the model made the `read` and `write` calls rather than
+tolerating their absence, so a run in which E2B-it stops making them fails instead of passing
+on an empty transcript.
+
+```bash
+cd ~/workspace/ai-experiments
+uv run pytest -m hw_full tests/hardware/test_permissions.py -v
+```
+
 Observed:
 
 ```
+➜  rust-harness git:(rust-harness-ux-verification) ✗ set -o pipefail
+rm -rf /tmp/rhx10 && mkdir -p /tmp/rhx10 && cd /tmp/rhx10
+printf 'rules:\n  - tool: read\n    action: allow\n  - tool: bash\n    action: deny\n' \
+  > permissions.yaml
+printf 'hello\n' > hello.txt
+
+➜  rhx10 ~/workspace/ai-experiments/rust-harness/target/release/harness \
+  --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only \
+  "Read hello.txt, write its contents to copy.txt, then say done"
+echo "exit=$?"
+cat session.jsonl
+ls
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E2B-it hash=7ddcbbe752dcfbf6 layers=35
+[INFO] Weights: 8.62 GiB resident at bf16
+[INFO] Peak RSS after load: 9.50 GiB
+[INFO] KV cache: 131072 tokens, 1.52 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=256
+[INFO] Build: 0.1.0 git unknown
+[INFO] Model load: 5.72 s
+[INFO] Permissions: 2 rules from permissions.yaml (an unmatched call asks)
+[INFO] Prefill: 261 tokens in 11.94 s (22 tok/s)
+[INFO] Prefill: 11 tokens in 0.54 s (21 tok/s)
+allow write copy.txt? [y/N] y
+[INFO] Prefill: 18 tokens in 0.88 s (20 tok/s)
+done
+[INFO] Session snapshot: 335 cached tokens at /tmp/rhx10/session.kv
+exit=0
+{"role":"user","content":"Read hello.txt, write its contents to copy.txt, then say done"}
+{"role":"model","content":"{\"tool\": \"read\", \"args\": {\"path\": \"hello.txt\"}}"}
+{"role":"tool","content":"hello\n"}
+{"role":"model","content":"{\"tool\": \"write\", \"args\": {\"path\": \"copy.txt\", \"content\": \"hello\"}}"}
+{"role":"tool","content":"wrote 5 bytes to copy.txt"}
+{"role":"model","content":"done"}
+copy.txt  hello.txt  permissions.yaml  session.jsonl  session.kv
+
+➜  rhx10 rm -f session.jsonl session.kv copy.txt
+~/workspace/ai-experiments/rust-harness/target/release/harness \
+  --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only \
+  "Read hello.txt, write its contents to copy.txt, then say done" </dev/null
+echo "exit=$?"
+grep -c 'permission denied' session.jsonl
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E2B-it hash=7ddcbbe752dcfbf6 layers=35
+[INFO] Weights: 8.62 GiB resident at bf16
+[INFO] Peak RSS after load: 9.51 GiB
+[INFO] KV cache: 131072 tokens, 1.52 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=256
+[INFO] Build: 0.1.0 git unknown
+[INFO] Model load: 3.66 s
+[INFO] Permissions: 2 rules from permissions.yaml (an unmatched call asks)
+[INFO] Prefill: 261 tokens in 11.95 s (22 tok/s)
+[INFO] Prefill: 11 tokens in 0.54 s (20 tok/s)
+allow write copy.txt? [y/N] [INFO] Prefill: 17 tokens in 0.84 s (20 tok/s)
+I encountered a permission denied error when trying to write to `copy.txt`. Please ensure that the current directory has the necessary write permissions.
+
+[INFO] Session snapshot: 359 cached tokens at /tmp/rhx10/session.kv
+exit=0
+2
+
+➜  rhx10 rm -f permissions.yaml session.jsonl session.kv
+~/workspace/ai-experiments/rust-harness/target/release/harness \
+  --model /mnt/ai-data/models/hf/gemma-4-E2B-it --text-only "say done" </dev/null
+echo "exit=$?"
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E2B-it hash=7ddcbbe752dcfbf6 layers=35
+[INFO] Weights: 8.62 GiB resident at bf16
+[INFO] Peak RSS after load: 9.51 GiB
+[INFO] KV cache: 131072 tokens, 1.52 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=256
+[INFO] Build: 0.1.0 git unknown
+[INFO] Model load: 3.60 s
+[INFO] Permissions: no permissions.yaml, every tool call asks
+[INFO] Prefill: 247 tokens in 11.21 s (22 tok/s)
+done
+[INFO] Session snapshot: 251 cached tokens at /tmp/rhx10/session.kv
+exit=0
 ```
 
-Status: PENDING
+Run 2026-09-13. The three `Permissions:` lines are where the signal puts them, the `read`
+asked nothing and returned `hello`, and the `write` stopped the run at the prompt. Two
+departures from the expected signal. First, the operator answered the step 1 prompt `y`
+rather than `n`, so the terminal run observed the allow arm (`wrote 5 bytes to copy.txt`,
+`copy.txt` in `ls`) and the denial arm was observed in step 2 instead: `permission denied:
+write copy.txt` as a tool entry (the grep's 2 is that entry plus the model's prose echo of
+it) and no `copy.txt`. Both arms were seen once each, in the other step than assigned, and
+the entry did not re-run. Second, step 2 printed the prompt anyway: `allow write copy.txt?
+[y/N] [INFO] Prefill: 17 tokens ...` on one line, because `ask_stdin` wrote it without
+asking whether stdin was a terminal and the next status line landed on the unterminated
+prompt. The denial itself was right, from EOF. Filed as KB-74 and fixed the same day: the
+prompt is printed only to a terminal and the line is read either way, so a piped answer is
+honoured and a closed stdin denies silently. The gate test's closed-stdin run is what
+confirms it.
+
+The gate test then ran on the rebuilt binary:
+
+```
+➜  ai-experiments git:(rust-harness-ux-verification) ✗ cd ~/workspace/ai-experiments && git pull origin rust-harness-ux-verification
+cargo build --release -p harness --manifest-path rust-harness/Cargo.toml
+uv run pytest -m hw_full tests/hardware/test_permissions.py -v
+   Compiling harness v0.1.0 (/home/alejandro/workspace/ai-experiments/rust-harness/harness)
+    Finished `release` profile [optimized] target(s) in 2.17s
+collected 5 items
+
+tests/hardware/test_permissions.py::test_the_header_states_the_rules_between_load_and_first_prefill PASSED                                                                  [ 20%]
+tests/hardware/test_permissions.py::test_an_allowed_read_asks_nothing_and_returns_the_file PASSED                                                                           [ 40%]
+tests/hardware/test_permissions.py::test_a_denied_write_leaves_a_denial_entry_and_no_file PASSED                                                                            [ 60%]
+tests/hardware/test_permissions.py::test_an_allowed_write_writes_the_file PASSED                                                                                            [ 80%]
+tests/hardware/test_permissions.py::test_closed_stdin_resolves_to_denial_without_waiting PASSED                                                                             [100%]
+
+[TIER] full: torch present, the whole suite was in scope.
+========================================================================== 5 passed in 93.18s (0:01:33) ===========================================================================
+```
+
+Status: VERIFIED 2026-09-13 (gate-backed by `tests/hardware/test_permissions.py`, 5 passed
+on the workstation the same day), the two departures above recorded. The closed-stdin case
+passing on a real run is what closed KB-74.
 
 ## RHX.11 A resumed session says what it resumed
 
@@ -1274,6 +1548,24 @@ only the token count to hint at why. RH.37's second run read `Prefill: 2504 toke
 first had read 252. The line `Session: resumed N entries from <path>` now precedes the load
 (`rust-harness/harness/tests/session_status.rs`), and this entry reads it on a real session:
 two chat runs in one directory, the second continuing the first.
+
+Asserted by `tests/hardware/test_session_resume.py`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| Step 1 prints no `Session:` line, ends with `Session snapshot: <n> cached tokens at .../session.kv`, and leaves two entries | `test_a_fresh_directory_reports_no_resume_and_leaves_a_snapshot` |
+| Step 2 prints `Session: resumed 2 entries from .../session.jsonl` before `Model load:` | `test_the_second_run_says_what_it_resumed_before_the_load` |
+| Step 2 prints `Session restored: <n> cached tokens` with step 1's `<n>` | `test_the_restored_cache_is_the_first_runs_snapshot` |
+| Step 2's `Prefill:` counts the new turn alone rather than the transcript | `test_the_second_prefill_is_the_new_turn_alone` |
+
+The test pipes the two turns below as this entry pipes them, into one directory on the
+released E4B. It holds the second prefill smaller than the first, which a re-sent transcript
+could never be, and the cache's growth to that prefill plus a reply no longer than the cap.
+
+```bash
+cd ~/workspace/ai-experiments
+uv run pytest -m hw_full tests/hardware/test_session_resume.py -v
+```
 
 ```bash
 set -o pipefail
@@ -1302,9 +1594,73 @@ transcript. The reply's content is immaterial on a base model.
 Observed:
 
 ```
+➜  ai-experiments git:(rust-harness-ux-verification) ✗ rm -rf /tmp/rhx11 && mkdir -p /tmp/rhx11 && cd /tmp/rhx11
+➜  rhx11 printf '%s\n' "The workstation has an RTX 5090 and a Ryzen 9950X." \
+  | ~/workspace/ai-experiments/rust-harness/target/release/harness --model "$MODEL" --text-only --chat --max-tokens 16
+echo "exit=$?"
+wc -l session.jsonl
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E4B hash=e376216f8b693aff layers=42
+[INFO] Weights: 13.90 GiB resident at bf16
+[INFO] Peak RSS after load: 14.03 GiB
+[INFO] KV cache: 131072 tokens, 4.05 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=16
+[INFO] Build: 0.1.0 git unknown
+[WARN] KV cache above 2 GiB: consider --context to cap it (compaction keeps long sessions inside the cap)
+[INFO] Model load: 9.57 s
+[INFO] Prefill: 29 tokens in 2.53 s (11 tok/s)
+The RTX 5090 is a high-end graphics card with
+[INFO] Chat ended: 1 model turns
+[INFO] Session snapshot: 45 cached tokens at /tmp/rhx11/session.kv
+exit=0
+2 session.jsonl
+➜  rhx11 printf '%s\n' "Which GPU does it have?" \
+  | ~/workspace/ai-experiments/rust-harness/target/release/harness --model "$MODEL" --text-only --chat --max-tokens 16
+echo "exit=$?"
+[INFO] Session: resumed 2 entries from /tmp/rhx11/session.jsonl
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E4B hash=e376216f8b693aff layers=42
+[INFO] Weights: 13.90 GiB resident at bf16
+[INFO] Peak RSS after load: 14.03 GiB
+[INFO] KV cache: 131072 tokens, 4.05 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=16
+[INFO] Build: 0.1.0 git unknown
+[WARN] KV cache above 2 GiB: consider --context to cap it (compaction keeps long sessions inside the cap)
+[INFO] Session restored: 45 cached tokens from /tmp/rhx11/session.kv
+[INFO] Model load: 5.97 s
+[INFO] Prefill: 16 tokens in 1.43 s (11 tok/s)
+The GPU is the RTX 5090, a high-end graphics
+[INFO] Chat ended: 1 model turns
+[INFO] Session snapshot: 76 cached tokens at /tmp/rhx11/session.kv
+exit=0
 ```
 
-Status: PENDING
+Run 2026-09-13. Step 1 printed no `Session:` line, ended with the snapshot at 45 cached
+tokens, and left two entries. Step 2 opened with the resume line, the first line of the run
+and so before `Model load:`, restored the same 45 tokens, and prefilled 16 tokens against
+step 1's 29: the new turn alone. The reply, immaterial to the signal, named the GPU from the
+resumed turn.
+
+The gate test then ran on the same tree:
+
+```
+➜  ai-experiments git:(rust-harness-ux-verification) ✗ cd ~/workspace/ai-experiments && git pull origin rust-harness-ux-verification
+uv run pytest -m hw_full tests/hardware/test_session_resume.py -v
+collected 4 items
+
+tests/hardware/test_session_resume.py::test_a_fresh_directory_reports_no_resume_and_leaves_a_snapshot PASSED                                                                [ 25%]
+tests/hardware/test_session_resume.py::test_the_second_run_says_what_it_resumed_before_the_load PASSED                                                                      [ 50%]
+tests/hardware/test_session_resume.py::test_the_restored_cache_is_the_first_runs_snapshot PASSED                                                                            [ 75%]
+tests/hardware/test_session_resume.py::test_the_second_prefill_is_the_new_turn_alone PASSED                                                                                 [100%]
+
+[TIER] full: torch present, the whole suite was in scope.
+=============================================================================== 4 passed in 22.65s ================================================================================
+```
+
+Status: VERIFIED 2026-09-13 (gate-backed by `tests/hardware/test_session_resume.py`, 4 passed
+on the workstation the same day).
 
 ## RHX.12 A chat at a terminal shows where the next turn goes
 
@@ -1317,6 +1673,25 @@ the operator's next line: no marker, no blank line, and the cursor sits wherever
 last token left it. Whether a person can tell the harness is waiting has never been looked at,
 and `chat.rs` has no code that could make it so. This entry looks; its expected signal is the
 property, and today's code is expected to fail it.
+
+Asserted by `tests/hardware/test_chat_marker.py`:
+
+| Expected signal | Test function |
+|-----------------|---------------|
+| At a terminal, the screen shows the harness waiting before the first turn and after the reply: `> ` on stderr before the first read and again after the reply | `test_the_marker_precedes_the_first_read_and_follows_the_reply_at_a_terminal` |
+| The reply itself is all that reaches stdout, and the session holds the turn and the reply | `test_the_reply_stream_carries_the_reply_alone_at_a_terminal` |
+| Ending input leaves `Chat ended: 1 model turns` on its own line, not on the marker's tail | `test_end_of_input_closes_the_marker_before_the_summary` |
+| Through a pipe, no marker at all: stdout stays the reply alone | `test_a_pipe_gets_no_marker` |
+
+The test drives stdin through a pseudo-terminal, with stdout and stderr captured as pipes,
+and ends input with Ctrl-D where this entry typed `/quit`; a second run on a pipe holds the
+arm every piped chat in the tree relies on. Whether a person can tell the harness is waiting
+remains this entry's hand judgment.
+
+```bash
+cd ~/workspace/ai-experiments
+uv run pytest -m hw_full tests/hardware/test_chat_marker.py -v
+```
 
 ```bash
 set -o pipefail
@@ -1340,6 +1715,89 @@ so piped stdout stays the reply alone.
 Observed:
 
 ```
+➜  rhx12 ~/workspace/ai-experiments/rust-harness/target/release/harness --model "$MODEL" --text-only --chat --max-tokens 16
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E4B hash=e376216f8b693aff layers=42
+[INFO] Weights: 13.90 GiB resident at bf16
+[INFO] Peak RSS after load: 14.03 GiB
+[INFO] KV cache: 131072 tokens, 4.05 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=16
+[INFO] Build: 0.1.0 git unknown
+[WARN] KV cache above 2 GiB: consider --context to cap it (compaction keeps long sessions inside the cap)
+[INFO] Model load: 5.75 s
+hello
+[INFO] Prefill: 10 tokens in 0.90 s (11 tok/s)
+hello
+pantalla
+hello
+
+pantalla
+hi
+pantalla
+hi
+/quit
+[INFO] Chat ended: 1 model turns
+[INFO] Session snapshot: 26 cached tokens at /tmp/rhx12/session.kv
 ```
 
-Status: PENDING
+Run 2026-09-13 at the terminal. The first `hello` is the operator's; everything from the
+second `hello` to the last `hi` is one reply, sixteen tokens to the cap from a base model
+continuing the text (`1 model turns`, and 26 cached tokens is the 10-token prefill plus 16),
+which is why it wandered into Spanish. Nothing on the screen separates the typed `hello` from
+the model's, nothing marks where the reply ended, and the operator inferred from the silence
+that the harness was waiting before typing `/quit`. `/quit` ended the session as expected,
+exit 0. The property the signal states is not met, as the entry predicted; the operator's
+question afterwards, why the model replied as it did, is the shape of the confusion the
+marker exists to remove. Filed as KB-75 and fixed the same day: `chat.rs` prints `> ` to
+stderr before every read when stdin is a terminal and nothing when it is a pipe, so the
+marker follows each reply and piped stdout stays the reply alone. The re-run below judges it.
+
+Re-run on the rebuilt binary, the same day:
+
+```
+➜  ai-experiments git:(rust-harness-ux-verification) ✗ cd ~/workspace/ai-experiments && git pull origin rust-harness-ux-verification
+cargo build --release -p harness --manifest-path rust-harness/Cargo.toml
+rm -rf /tmp/rhx12 && mkdir -p /tmp/rhx12 && cd /tmp/rhx12
+~/workspace/ai-experiments/rust-harness/target/release/harness --model "$MODEL" --text-only --chat --max-tokens 16
+echo "exit=$?"
+    Finished `release` profile [optimized] target(s) in 0.06s
+[INFO] Model: /mnt/ai-data/models/hf/gemma-4-E4B hash=e376216f8b693aff layers=42
+[INFO] Weights: 13.90 GiB resident at bf16
+[INFO] Peak RSS after load: 14.03 GiB
+[INFO] KV cache: 131072 tokens, 4.05 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=16
+[INFO] Build: 0.1.0 git unknown
+[WARN] KV cache above 2 GiB: consider --context to cap it (compaction keeps long sessions inside the cap)
+[INFO] Model load: 5.75 s
+> hello
+[INFO] Prefill: 10 tokens in 0.78 s (13 tok/s)
+hello
+pantalla
+hello
+
+pantalla
+hi
+pantalla
+hi
+> /quit
+[INFO] Chat ended: 1 model turns
+[INFO] Session snapshot: 26 cached tokens at /tmp/rhx12/session.kv
+exit=0
+```
+
+Same seed, same sixteen-token reply. The `> ` after `Model load:` is where the operator typed
+`hello`, and the `> ` after the reply's last `hi` is where `/quit` went: the typed line and
+the model's first line are now told apart by the marker, and the harness's waiting is on the
+screen rather than inferred from silence. The operator reported it worked. `/quit` ended the
+session as expected, exit 0.
+
+The gate test then ran on the same tree. The operator reported it passed, 4 of 4, without
+pasting the output; the report is the evidence here, and the next `make quality-full` run
+on the workstation is where the transcript lands.
+
+Status: VERIFIED 2026-09-13 by hand, on the second run (gate-backed by
+`tests/hardware/test_chat_marker.py`, reported 4 passed on the workstation the same day).
+Failed first the same day with no marker at all, KB-75; fixed and re-run.
