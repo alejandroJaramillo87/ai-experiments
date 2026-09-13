@@ -4,7 +4,7 @@
 operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate —
 both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 6 verified, 0 blocked, 6 pending, of 12.** RHX.9 joined the eight `U`-campaign
+**Entries: 7 verified, 0 blocked, 5 pending, of 12.** RHX.9 joined the eight `U`-campaign
 entries from the surface inventory: it records a defect in the `--dot` help text and the check
 that closes it.
 
@@ -1042,9 +1042,67 @@ invisible. Browsing writes no records of its own and prunes nothing.
 Observed:
 
 ```
+➜  ai-experiments git:(rust-harness-ux-verification) ✗ cd ~/workspace/ai-experiments
+make harness-runs ARGS='-n 20'
+make harness-runs ARGS='--failed -n 10'
+
+# every distinct command in the catalog
+jq -r '.command' /mnt/ai-data/logs/harness/runs.jsonl | sort | uniq -c
+uv run --no-sync python -m common.obs.runs --cli harness -n 20
+FINISHED             RUN ID                    COMMAND             EXIT    DURATION
+2026-09-12T02:03:23  R-20260912-015325-2d17bb  task                   1    598.185s
+2026-09-12T02:20:17  R-20260912-020323-f667bb  task                   1   1014.107s
+2026-09-12T03:11:39  R-20260912-025328-1ab623  task                   1   1091.167s
+2026-09-12T03:26:51  R-20260912-031139-f722b8  task                   1    911.862s
+2026-09-12T03:42:03  R-20260912-032651-f38eed  task                   1    911.390s
+2026-09-12T03:46:35  R-20260912-034456-80f5fb  attention-capture      0     98.811s
+2026-09-12T15:04:43  R-20260912-150430-77f6ad  chat                   0     13.712s
+2026-09-12T15:30:00  R-20260912-152914-a99088  chat                   0     45.812s
+2026-09-12T15:31:45  R-20260912-153059-b11b61  chat                   0     45.911s
+2026-09-12T15:37:39  R-20260912-153654-1f95ad  chat                   0     45.107s
+2026-09-12T15:43:58  R-20260912-154338-b9b546  chat                   0     19.581s
+2026-09-12T16:03:46  R-20260912-160320-91dad9  chat                   0     26.043s
+2026-09-12T16:49:48  R-20260912-164007-6f27ea  ladder                 0    581.237s
+2026-09-12T17:07:04  R-20260912-170211-f585ef  activation-capture     0    292.917s
+2026-09-12T17:16:40  R-20260912-171549-14f88c  activation-capture     0     50.592s
+2026-09-12T17:19:49  R-20260912-171949-2bc76a  task                   1      0.000s
+2026-09-12T17:29:49  R-20260912-172908-50af0c  task                   1     40.370s
+2026-09-12T17:41:20  R-20260912-174040-0acc2b  task                   1     40.487s
+2026-09-12T17:51:35  R-20260912-175135-7e93e2  task                   1      0.000s
+2026-09-12T17:52:15  R-20260912-175135-a0e898  task                   1     40.640s
+uv run --no-sync python -m common.obs.runs --cli harness --failed -n 10
+FINISHED             RUN ID                    COMMAND  EXIT    DURATION
+2026-09-12T02:03:23  R-20260912-015325-2d17bb  task        1    598.185s
+2026-09-12T02:20:17  R-20260912-020323-f667bb  task        1   1014.107s
+2026-09-12T03:11:39  R-20260912-025328-1ab623  task        1   1091.167s
+2026-09-12T03:26:51  R-20260912-031139-f722b8  task        1    911.862s
+2026-09-12T03:42:03  R-20260912-032651-f38eed  task        1    911.390s
+2026-09-12T17:19:49  R-20260912-171949-2bc76a  task        1      0.000s
+2026-09-12T17:29:49  R-20260912-172908-50af0c  task        1     40.370s
+2026-09-12T17:41:20  R-20260912-174040-0acc2b  task        1     40.487s
+2026-09-12T17:51:35  R-20260912-175135-7e93e2  task        1      0.000s
+2026-09-12T17:52:15  R-20260912-175135-a0e898  task        1     40.640s
+    108 activation-capture
+     79 attention-capture
+    197 chat
+      5 ladder
+      2 layer-diff
+     11 serve
+    477 task
 ```
 
-Status: PENDING
+Run 2026-09-12, over a catalog of 879 rows. Both tables populated and aligned, no `?` in
+any field; the `--failed` table's `COMMAND` column narrows to its own content, so the two
+tables differ in width and agree in shape. All seven commands appear, including `chat` and
+`serve`, and none is `runs`. The last twenty rows are this campaign's own day: RHX.1 through
+RHX.6's chats, the RHX.3 climb, the two RHX.5 captures and, as `task` rows with exit 1, the
+failures RHX.6 provoked. Those five read back what RHX.6 saw and one thing it did not: the
+missing-checkpoint runs lasted 0.000 s, and the foreign-probe runs lasted 40 s each, which is
+the identity check hashing the 15 GB weights before the load it then declined. RHX.6's "costs
+no load" holds; the check's own cost is the same 35 to 40 s `test_preflight.py` measures for
+`--deep`, paid on the run path too.
+
+Status: VERIFIED 2026-09-12 by hand.
 
 ## RHX.8 Status output is coloured at a terminal and plain through a pipe
 
