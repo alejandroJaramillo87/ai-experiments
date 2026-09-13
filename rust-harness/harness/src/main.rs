@@ -685,6 +685,7 @@ fn run(
             compact_at,
             stdin.lock(),
             std::io::stdout(),
+            harness::chat::turn_marker(stdin.is_terminal()),
         )
         .map(|turns| {
             // Replies were already streamed to stdout; the summary is status.

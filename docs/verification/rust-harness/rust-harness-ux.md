@@ -1730,7 +1730,9 @@ the model's, nothing marks where the reply ended, and the operator inferred from
 that the harness was waiting before typing `/quit`. `/quit` ended the session as expected,
 exit 0. The property the signal states is not met, as the entry predicted; the operator's
 question afterwards, why the model replied as it did, is the shape of the confusion the
-marker exists to remove.
+marker exists to remove. Filed as KB-75 and fixed the same day: `chat.rs` prints `> ` to
+stderr before every read when stdin is a terminal and nothing when it is a pipe, so the
+marker follows each reply and piped stdout stays the reply alone. The re-run below judges it.
 
 Status: PENDING (FAILED 2026-09-13: no marker between a reply and the next turn at a
-terminal; fix pending, then re-run)
+terminal, KB-75; fixed the same day, awaiting the re-run on the rebuilt binary)
