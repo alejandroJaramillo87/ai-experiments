@@ -5,9 +5,10 @@ title: Producing a probe and a control vector
 # Producing a probe and a control vector
 
 The shortest path from a harness capture to a probe artifact and a control-vector artifact the
-harness accepts. Every step runs on the CPU. The three Python commands are the only part of the
-repository's Python interpretability tooling this site documents; the rest of that tooling
-runs against the repository's GPU workstation and is out of scope here.
+harness accepts. Every step runs on the CPU, so the whole path runs off the workstation. The
+same three Python commands on the workstation, with the GPU capture and the evaluation and
+monitoring steps around them, are the [Probes](../interp/guides/probes.md) and
+[Steering](../interp/guides/steering.md) guides of the Interp section.
 
 This page assumes `BIN` and `MODEL` from [Build](../rust-harness/getting-started/build.md), a
 working directory of `/tmp/harness-demo`, and the repository checked out at `$REPO`. The

@@ -82,6 +82,24 @@ const sidebars = {
     'interp/index',
     {
       type: 'category',
+      label: 'Getting started',
+      collapsed: false,
+      items: [
+        'interp/getting-started/environment',
+        'interp/getting-started/output-locations',
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Guides',
+      collapsed: true,
+      items: [
+        'interp/guides/probes',
+        'interp/guides/steering',
+      ],
+    },
+    {
+      type: 'category',
       label: 'Observability',
       collapsed: true,
       link: {type: 'doc', id: 'interp/observability/index'},

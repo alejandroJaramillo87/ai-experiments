@@ -94,4 +94,4 @@ file, not a pager. Two things follow from the scores being taken in-band: the re
 how they were obtained in a `scored` field and refuses to compute a drift delta against a
 report obtained another way, and a threshold that changed mid-window, because a probe was
 re-exported while the service ran, is reported as a disagreement rather than averaged away.
-The Probes guide places the monitor in the workflow.
+The [Probes](../guides/probes.md) guide places the monitor in the workflow.

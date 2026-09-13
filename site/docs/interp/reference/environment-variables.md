@@ -33,4 +33,4 @@ export OBS_LOG_DIR=/tmp/interp-demo/obs
 | `CONTROL_VECTOR`, `CONTROL_VECTOR_SCALE`, `CONTROL_VECTOR_LAYER_RANGE` | `make steer-up` and `steer-down` | The vector, scale, and block range the serving harness is recreated with; `steer-up` sets them from `VECTOR`, `SCALE`, and `LAYER_RANGE` |
 
 See [Served-request log](../observability/served-request-log.md) for the first two and the
-Steering guide for the third.
+[Steering](../guides/steering.md) guide for the third.

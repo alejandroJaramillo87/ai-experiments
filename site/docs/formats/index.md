@@ -22,7 +22,11 @@ the readers, the required keys, the allowed values, and the tests on both sides 
 boundary that hold the writers and readers to it. The pages here restate them; where a page
 and its contract file disagree, the contract file is right.
 
-Two artifacts flow out of the harness and two flow in. The
+Two artifacts flow out of the harness and two flow in, and this section is where the two
+tiers meet: the harness side of each artifact is in the [Rust Harness](../rust-harness/index.md)
+section, starting with [Capturing activations](../rust-harness/guides/activation-capture.md),
+and the Python side is in the [Interp](../interp/index.md) section, starting with the
+[Probes](../interp/guides/probes.md) guide. The
 [guide](producing-a-probe-and-control-vector.md) at the end of this section walks the shortest
 path around that loop: a capture written by the harness, turned into a probe and a control
 vector by two Python commands that run on the CPU, and loaded back into the harness.
