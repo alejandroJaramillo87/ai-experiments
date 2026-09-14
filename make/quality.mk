@@ -113,7 +113,9 @@ format: ## Format code with ruff
 # run again. The gate enumerates the same `Flag` literals the census reads and fails on a
 # binary with no page, a page for no binary, or a flag its page does not show. It needs
 # neither cargo nor node, so it runs in the sandbox; `make site-check` is the stricter
-# workstation form that regenerates and diffs.
+# workstation form that regenerates and diffs. check_site_interp_reference.py is the same
+# gate for the interp verbs under site/docs/interp/reference/, reading the argparse
+# literals in interp/commands/ instead of the Rust Flag literals.
 #
 # The site build is last, after the rust gate, and skips itself with [SKIP] when
 # site/node_modules is absent -- a fresh sandbox has none, because installing them needs
@@ -132,7 +134,7 @@ format: ## Format code with ruff
 # dies on a missing tool -- and the gate has to be followed by `make install` to
 # undo what it did. Checking first turns that into a named error that changes
 # nothing. Skipped in a sandbox, which has no .venv by design.
-quality: ## Run the full quality gate (format check, lint, mypy, lock check, doc refs, retired names, make targets, doc counts, KB refs, pin parity, command prompts, site reference, shellcheck, rust gate, site build)
+quality: ## Run the full quality gate (format check, lint, mypy, lock check, doc refs, retired names, make targets, doc counts, KB refs, pin parity, command prompts, site reference, site interp reference, shellcheck, rust gate, site build)
 ifndef AI_SANDBOX
 	@if [ ! -x .venv/bin/ruff ] || [ ! -e "$$(readlink -f .venv/bin/python 2>/dev/null)" ]; then \
 	  printf '[ERROR] .venv is missing, incomplete, or points at an interpreter that no longer exists\n'; \
@@ -165,6 +167,7 @@ endif
 	$(RUN_PY) python scripts/docs/check_group_pin_parity.py
 	$(RUN_PY) python scripts/docs/check_command_prompts.py
 	$(RUN_PY) python scripts/docs/check_site_reference.py
+	$(RUN_PY) python scripts/docs/check_site_interp_reference.py
 	@files=$$(find . -name '*.sh' -type f \
 	    -not -path './.git/*' -not -path './.venv/*' \
 	    -not -path './node_modules/*' -not -path '*/target/*' \
