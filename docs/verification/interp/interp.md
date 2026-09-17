@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 10 verified, 1 blocked, 13 pending, of 24.**
+**Entries: 11 verified, 1 blocked, 12 pending, of 24.**
 
 The 24 entries are I.1 through I.23 plus the interstitial I.9b
 ("Chunked-capture crash recovery"); none is missing. I.9b is numbered beside I.9
@@ -91,11 +91,14 @@ Command:
 make interp-smoke
 ```
 
-Expected signal: every step passes and the run ends `[OK] ALL SMOKE STEPS
-PASSED` with no `[SKIP]` or `[WARN]` line, including the gated Gemma-2-2B
-plus Gemma Scope SAE step, which prints `[WARN] ... skipped` without
-`HF_TOKEN` in `.env.interp`; the versions manifest lands at
-`/mnt/ai-data/interp/versions.json`.
+Expected signal: every ungated step passes and the run ends `[OK] ALL SMOKE
+STEPS PASSED` with no `[SKIP]` line; the versions manifest lands at
+`/mnt/ai-data/interp/versions.json`. The gated Gemma-2-2B plus Gemma Scope
+SAE step prints `[WARN] ... skipped` without `HF_TOKEN` in `.env.interp`,
+and this entry accepts that line: on 2026-09-17 the operator decided the
+workstation runs without a Hugging Face token, since every checkpoint the
+tier needs is already on disk. The Gemma-2 branch is instead reached by the
+calibration capture in `reference-captures.md`.
 
 The sixth step is gated on the `HF_TOKEN` environment variable, not on
 whether Gemma-2-2B is already on disk: `smoke_test.py` tests the variable
@@ -179,14 +182,12 @@ $ ls -la /mnt/ai-data/interp/versions.json
 
 Five of the six steps passed on the RTX 5090 at sm_120, the torch pin held,
 and the manifest landed. The gated step printed the `[WARN] ... skipped` line
-this entry names as the failure signature, so the Gemma-2-2B forward and the
-Gemma Scope encode, the only step that touches a gated checkpoint and a
-pretrained SAE, have no observation. The entry stays open on that step alone;
-a re-run with `HF_TOKEN` set in `.env.interp` is what closes it. The orphan
-container warning is compose noting services of the other stacks under the
-same project name, and is not a smoke result.
+the expected signal accepts, so the Gemma-2-2B forward and the Gemma Scope
+encode have no observation from this entry; that is a stated gap, not a
+failure. The orphan container warning is compose noting services of the
+other stacks under the same project name, and is not a smoke result.
 
-Status: PENDING
+Status: VERIFIED 2026-09-17 (gated Gemma Scope step skipped by decision)
 
 ## I.2 Neuronpedia harness (PS1)
 
@@ -1287,8 +1288,8 @@ variable to name. Each is a gap in evidence, not a known defect.
   `NP_SRC` variables they read.
 - `interp-dirs`, the storage-tree bootstrap and `np-clone`'s prerequisite.
 - The Gemma-2 family branch of `interp/families.py` and the Gemma Scope ids:
-  reached by I.1's sixth step and by the calibration capture in
-  `reference-captures.md`, both pending.
+  reached by I.1's sixth step, which the 2026-09-17 run skipped by decision,
+  and by the calibration capture in `reference-captures.md`, still pending.
 - Variables no entry names: `OBS_LOG_DIR` (I.14 now states the default),
   `SCALE` and `LAYER_RANGE` on `steer-up` (I.20 passes them),
   `CONTROL_VECTOR_SCALE` and `CONTROL_VECTOR_LAYER_RANGE` on `harness-serve`,
