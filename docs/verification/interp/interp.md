@@ -50,6 +50,36 @@ mounted at its own path. The serving-dependent targets (`steer-scorecard`,
 host under `uv run` or `python3`, where host paths are the only paths. An
 entry whose block runs on the host says so.
 
+## Table of Contents
+
+- [I.1 Workbench smoke (I1)](#i1-workbench-smoke-i1)
+- [I.2 Neuronpedia harness (PS1)](#i2-neuronpedia-harness-ps1)
+- [I.3 Control-vector extraction and export (W1)](#i3-control-vector-extraction-and-export-w1)
+- [I.4 Steered serving and scorecard (W1)](#i4-steered-serving-and-scorecard-w1)
+- [I.5 Probe capture, train, eval (W2)](#i5-probe-capture-train-eval-w2)
+- [I.6 Served-request log (W3)](#i6-served-request-log-w3)
+- [I.7 Probe monitor (W4)](#i7-probe-monitor-w4)
+- [I.8 Organisms (P4-D1)](#i8-organisms-p4-d1)
+- [I.9 Harvest with disk preflight (P4-D2)](#i9-harvest-with-disk-preflight-p4-d2)
+  - [I.9b Chunked-capture crash recovery (P4-D2, KB-58)](#i9b-chunked-capture-crash-recovery-p4-d2-kb-58)
+- [I.10 Capture garbage collection (P4-D2)](#i10-capture-garbage-collection-p4-d2)
+- [I.11 SAE training and evaluation (P4-D3)](#i11-sae-training-and-evaluation-p4-d3)
+- [I.12 SAEBench isolated environment (P4-D3)](#i12-saebench-isolated-environment-p4-d3)
+- [I.13 Workbench image build and the run browser (I1)](#i13-workbench-image-build-and-the-run-browser-i1)
+- [I.14 Run browser surface (`python -m interp runs`)](#i14-run-browser-surface-python--m-interp-runs)
+- [I.15 Probe export artifact contract](#i15-probe-export-artifact-contract)
+- [I.16 Traced dispatch stamps every invocation](#i16-traced-dispatch-stamps-every-invocation)
+- [I.17 SAE-row steering extraction (`--method sae_row`)](#i17-sae-row-steering-extraction---method-sae_row)
+- [I.18 The harvest disk preflight refuses a capture that would breach the floor](#i18-the-harvest-disk-preflight-refuses-a-capture-that-would-breach-the-floor)
+- [I.19 The GPU preflight refuses the workbench while an inference service is up](#i19-the-gpu-preflight-refuses-the-workbench-while-an-inference-service-is-up)
+- [I.20 steer-up and steer-down, with the three guards](#i20-steer-up-and-steer-down-with-the-three-guards)
+- [I.21 sae-train refuses a capture whose manifest does not match the recipe](#i21-sae-train-refuses-a-capture-whose-manifest-does-not-match-the-recipe)
+- [I.22 probe-capture says when a probe will load unchecked](#i22-probe-capture-says-when-a-probe-will-load-unchecked)
+- [I.23 The hook gate refuses a layer the checkpoint does not have](#i23-the-hook-gate-refuses-a-layer-the-checkpoint-does-not-have)
+- [Unentried surface](#unentried-surface)
+- [Coverage roster](#coverage-roster)
+- [Unexercised flags](#unexercised-flags)
+
 ## I.1 Workbench smoke (I1)
 
 Implementation: `interp/commands/smoke_test.py`, `common/smoke.py`,
@@ -912,23 +942,34 @@ written figure (buffer-rounded, per `reference-captures.md`), subtracts it
 from the free space on the activations root, and refuses below the floor.
 The check runs before the lock and the model load, so the refusal is cheap.
 
+The block overrides `harvest.name` as well as the token count. Two refusals
+stand ahead of the disk preflight in `run_harvest`, and the recipe's own
+directory trips the first: a directory holding a finished manifest is
+`capture already complete`, and one holding a `progress.json` written under
+another token budget is a config mismatch. I.9 and I.11 leave `harvest-smoke`
+in the first state, so under the recipe's name this entry would observe the
+wrong refusal.
+
 ```bash
 set -o pipefail
 cd ~/workspace/ai-experiments
 df -h /mnt/ai-data | tail -1
 make harvest RECIPE=training/recipes/interp/harvest-smoke.yaml \
-    ARGS="--override harvest.total_tokens=300000000000"
+    ARGS="--override harvest.total_tokens=300000000000 --override harvest.name=i18-preflight"
 echo "exit=$?"
-ls /mnt/ai-data/interp/activations/harvest-smoke 2>&1 | head -3
+ls -la /mnt/ai-data/interp/activations/i18-preflight
+ls /mnt/ai-data/interp/activations/harvest-smoke | head -3
 ```
 
 Expected signal: exit 1 and one line, `[ERROR] Harvest failed: disk preflight
 refused: projected capture is <n>GB, free space on <root> is <m>GB, floor is
 <f>GB. Free space, reduce harvest.total_tokens or hook_layers, or run make
 interp-gc`, where `<m>` agrees with `df` to the gigabyte, and the projection is
-the 300 G tokens at 1536 f16 halfwords, on the order of 900 TB. No `Caching
-activations` bar, no model load, and the capture directory is absent or
-unchanged.
+the 300 G tokens at 1536 fp32 words (the smoke recipe's dtype), on the order of
+1.8 PB, which the message prints in GB as roughly 1.7 million. No `Caching
+activations` bar and no model load. `run_harvest` creates the capture directory
+before it prices the capture, so `i18-preflight` exists and is empty; delete it
+afterwards. `harvest-smoke` is unchanged.
 
 Observed:
 
@@ -942,8 +983,9 @@ Status: PENDING
 Implementation: `scripts/interp/preflight.sh`, `make/interp.mk` (every target
 that calls it).
 
-Nine targets run the preflight first, and every entry above records only its
-`[OK]` line. The refusal is the one-GPU-consumer rule of `AGENTS.md` made
+Eight targets in `make/interp.mk` run the preflight first, and three more in
+`make/neuronpedia.mk` (`np-inference-up`, `np-graph-up`, and `np-autointerp-up`
+under `NP_GPU=1`); every entry above records only its `[OK]` line. The refusal is the one-GPU-consumer rule of `AGENTS.md` made
 mechanical, and the script also fails closed: a `docker compose` invocation
 that cannot answer is a refusal, not a pass.
 
