@@ -193,7 +193,19 @@ Status: VERIFIED 2026-09-17 (gated Gemma Scope step skipped by decision)
 
 Implementation: `scripts/interp/np_env.sh`, `scripts/interp/np_smoke.sh`,
 `docker/interp/neuronpedia-pin.txt`,
-`docker/interp/neuronpedia.override.yaml`.
+`docker/interp/neuronpedia.override.yaml`,
+`docker/interp/patches/0001-graph-dockerfile-noble-python.patch`.
+
+**Fix to confirm here** (details in [bugs/known-bugs.md](../bugs/known-bugs.md)):
+
+- KB-68 — the first `make np-build` on 2026-09-17 died in the upstream `graph`
+  image: its Dockerfile installs `python3.12` from apt on the Ubuntu 22.04 CUDA
+  base upstream's compose pins, and jammy has no such package. The override
+  now moves that stage to `nvidia/cuda:12.8.1-runtime-ubuntu24.04` through
+  build args, and the vendored patch clears noble's externally-managed Python
+  marker so `pip install poetry` runs. `make np-clone` must print
+  `Applying vendored patch` before the pin line; a build reaching
+  `Neuronpedia images built.` closes the row.
 
 Command:
 
@@ -214,10 +226,37 @@ This entry needs outbound network as well as the GPU host: `np-clone` clones
 an upstream repository, and `np-build` builds CUDA images. Neither works from
 an agent sandbox, whose egress allowlist does not cover either.
 
-Observed:
+Observed (2026-09-17, on 6c0a0e8, first attempt, before the KB-68 fix): the
+clone pinned and the env merge ran; `np-build` built the webapp trio and failed
+in the CUDA line. Tail of the build, with the two stages before the error:
 
 ```
+$ git -C /mnt/ai-data/interp/neuronpedia/src rev-parse HEAD
+e5488b2a37976333e6b31f7f1cd6a56b4b5cf7ab
+$ make np-build
+...
+ ✔ Image neuronpedia-webapp:latest  Built                                    148.9s
+ ✔ Image neuronpedia-db-init:latest Built                                    148.9s
+Building Neuronpedia CUDA images (inference, autointerp, graph)...
+...
+ => [autointerp base-cuda 1/5] FROM docker.io/nvidia/cuda:12.1.0-runtime-ubuntu22.04@sha256:402700b179eb764da6d60d99fe106aa16c36874f7d7fb3e122251ff6aea8b2f7                 96.3s
+...
+ => CANCELED [inference base-cuda 4/5] RUN apt-get update && apt-get install -y     nvidia-container-toolkit     && rm -rf /var/lib/apt/lists/*                               7.1s
+ => CANCELED [autointerp base-cuda 5/5] RUN apt-get update && apt-get install -y     python3.10     python3-pip     python3.10-venv     && rm -rf /var/lib/apt/lists/*     &  3.3s
+ => ERROR [graph base-cuda 5/5] RUN apt-get update && apt-get install -y     python3.12     python3-pip     python3.12-venv     && rm -rf /var/lib/apt/lists/*     && ln -sf  3.2s
+3.209 E: Unable to locate package python3.12
+3.209 E: Couldn't find any package by glob 'python3.12'
+3.209 E: Couldn't find any package by regex 'python3.12'
+3.209 E: Unable to locate package python3.12-venv
+target graph: failed to solve: process "/bin/sh -c apt-get update && apt-get install -y     python3.12     python3-pip     python3.12-venv     && rm -rf /var/lib/apt/lists/*     && ln -sf /usr/bin/python3.12 /usr/bin/python" did not complete successfully: exit code: 100
+make: *** [make/neuronpedia.mk:44: np-build] Error 1
 ```
+
+The autointerp stage asks for `python3.10`, which jammy has, so it and the
+inference image were cancelled by the graph failure rather than failing
+themselves. `np-up` and `np-smoke` were not reached. The env merge warned
+`HF_TOKEN not set`; the token is not required for the webapp trio and the
+operator runs without one (see I.1).
 
 Status: PENDING
 

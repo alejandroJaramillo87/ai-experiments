@@ -13,8 +13,15 @@ Rules, per the PS4 design decision:
 - A pin bump must re-verify every patch still applies (`make np-clone` fails loudly if
   not) and re-check whether upstream has made it obsolete.
 
-Currently expected content: `0001-autointerp-openrouter-base-url.patch`, honoring
-`OPENROUTER_BASE_URL` in the autointerp client construction, authored against the pinned
-SHA after verifying upstream still hardcodes the OpenRouter URL (see
-`docs/interp/investigations/ps4_autointerp_investigation.md`). The directory being empty means
-that verification found upstream support and no patch was needed.
+Current content:
+
+- `0001-graph-dockerfile-noble-python.patch` (KB-68): removes noble's
+  `EXTERNALLY-MANAGED` marker in the graph image's `base-cuda` stage, so the Dockerfile's
+  `pip install poetry` works on the Ubuntu 24.04 base that
+  `docker/interp/neuronpedia.override.yaml` selects through build args. The two are a
+  pair: the build args alone fail at `pip install`, the patch alone changes nothing on
+  22.04. Not yet filed upstream.
+
+The autointerp OpenRouter patch (`OPENROUTER_BASE_URL` in the client construction, see
+`docs/interp/investigations/ps4_autointerp_investigation.md`) was anticipated here and never
+needed: verification found upstream support.

@@ -245,6 +245,11 @@ live on the host), Makefile target inspection.
   host before writing the override.
 - **torch/sm_120 inside upstream GPU images.** Caught at smoke time; remedy is a build
   arg or one-line patch recorded with the pin.
+- **Upstream Dockerfiles that do not build at the pin.** Not listed at design time, and
+  met on the first `make np-build` (2026-09-17, KB-68): the graph image installs
+  python3.12 from apt on an Ubuntu 22.04 base. Re-verifying compose layout at a pin does
+  not exercise the Dockerfiles; only a build does. Same remedy as the row above, and the
+  pin-bump procedure now names it.
 - **First `np-build` is heavy** (multi-gigabyte images, `node_modules` in the checkout).
   All of it lands on NVMe under `/mnt/ai-data`, not in this repository; the existing
   disk-free watchdog floor applies.

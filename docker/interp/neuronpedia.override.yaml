@@ -1,9 +1,10 @@
 # docker/interp/neuronpedia.override.yaml
 #
 # Interp Phase 2 PS1: this repository's deltas over the upstream Neuronpedia compose files.
-# Passed with -f AFTER upstream's files by the np-* make targets; it carries only port
-# remaps, storage bind mounts, and one network attachment. Everything else (service
-# definitions, images, healthchecks, inter-service wiring) stays upstream's.
+# Passed with -f AFTER upstream's files by the np-* make targets; it carries port
+# remaps, storage bind mounts, one network attachment, and one base-image build arg
+# pair (graph, KB-68). Everything else (service definitions, images, healthchecks,
+# inter-service wiring) stays upstream's.
 #
 # Port block (all loopback-only, matching the inference services' pattern):
 #   webapp 3001 (3000 collides with open-webui), postgres 5432, inference 5002,
@@ -50,6 +51,16 @@ services:
       - inference-stack
 
   graph:
+    # Upstream pins the CUDA stage to 12.1.0-runtime-ubuntu22.04 and then installs
+    # python3.12 from apt, which jammy does not carry, so the image cannot build at
+    # pin e5488b2a (KB-68). Noble has the package. The CUDA runtime version is
+    # immaterial to the app: its torch comes from PyPI with its own CUDA libraries.
+    # Paired with patches/0001-graph-dockerfile-noble-python.patch, which handles
+    # noble's externally-managed system Python; drop both when upstream fixes the base.
+    build:
+      args:
+        CUDA_VERSION: "12.8.1"
+        UBUNTU_VERSION: "24.04"
     ports: !override
       - "127.0.0.1:5004:5004"
     volumes:
