@@ -2,9 +2,10 @@
 #
 # Interp Phase 2 PS1: this repository's deltas over the upstream Neuronpedia compose files.
 # Passed with -f AFTER upstream's files by the np-* make targets; it carries port
-# remaps, storage bind mounts, one network attachment, and one base-image build arg
-# pair (graph, KB-68). Everything else (service definitions, images, healthchecks,
-# inter-service wiring) stays upstream's.
+# remaps, storage bind mounts, one network attachment, and the build args that move
+# two CUDA images onto a base whose apt carries the interpreter their projects require
+# (graph, KB-68; inference, KB-76). Everything else (service definitions, images,
+# healthchecks, inter-service wiring) stays upstream's.
 #
 # Port block (all loopback-only, matching the inference services' pattern):
 #   webapp 3001 (3000 collides with open-webui), postgres 5432, inference 5002,
@@ -30,6 +31,15 @@ services:
       - /mnt/ai-data/interp/neuronpedia/src/apps/webapp/prisma/pgvector-init:/docker-entrypoint-initdb.d
 
   inference:
+    # Upstream installs python3.10 on the 22.04 CUDA base, but the app requires
+    # >=3.11, so poetry install refuses at pin e5488b2a (KB-76). Same base move as
+    # graph; PYTHON_VERSION is the arg patches/0002-inference-dockerfile-python-version.patch
+    # adds (upstream default 3.10). Drop all three when upstream fixes the image.
+    build:
+      args:
+        CUDA_VERSION: "12.8.1"
+        UBUNTU_VERSION: "24.04"
+        PYTHON_VERSION: "3.12"
     ports: !override
       - "127.0.0.1:5002:5002"
     # Shared HF cache: weights download once into the interp tier's cache

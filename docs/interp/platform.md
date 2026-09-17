@@ -45,7 +45,7 @@ upstream's 3000 to 3001 because open-webui holds 3000.
 | `/mnt/ai-data/interp/neuronpedia/src` | Pinned upstream checkout (multi-gigabyte after builds; local edits are discarded by `make np-clone`) |
 | `/mnt/ai-data/interp/neuronpedia/postgres` | Database bind mount (replaces the upstream named volume) |
 | `/mnt/ai-data/interp/hf-cache` | Shared HF cache; platform containers mount `hf-cache/hub` at `/root/.cache/huggingface/hub` |
-| `docker/interp/neuronpedia-pin.txt` | Exact upstream SHA. At this SHA the graph image's cuda build is broken upstream (KB-68): the override sets the graph service's `CUDA_VERSION`/`UBUNTU_VERSION` build args to a 24.04 base, paired with the patch below |
+| `docker/interp/neuronpedia-pin.txt` | Exact upstream SHA. At this SHA the graph and inference images' cuda builds are broken upstream (KB-68, KB-76): the override sets their `CUDA_VERSION`/`UBUNTU_VERSION` build args to a 24.04 base (and `PYTHON_VERSION` for inference), paired with the patches below |
 | `docker/interp/neuronpedia.override.yaml` | Port, volume, and network deltas |
 | `docker/interp/neuronpedia.env-deltas` | Non-secret `.env.localhost` deltas (merged by `make np-env`) |
 | `docker/interp/patches/` | Vendored patches applied to the checkout by `make np-clone` (see the directory README) |
@@ -182,10 +182,11 @@ The autointerp container also joins the inference stack's `ai-network` so
 4. `make np-smoke` must pass, including the sm_120 torch check inside the inference
    container. If upstream's torch pin predates sm_120 wheel support, override the torch
    version via build arg or a one-line patch and record it beside the pin.
-   The same remedy already covers a build-time case: the graph image's base (KB-68).
-   At each bump, check whether upstream's `apps/graph/Dockerfile` and compose now
-   agree on a base that carries python3.12; when they do, drop the graph build args
-   from the override and the `0001-graph-dockerfile-noble-python.patch` together.
+   The same remedy already covers two build-time cases: the graph image's base
+   (KB-68) and the inference image's interpreter (KB-76). At each bump, check whether
+   upstream's `apps/graph/Dockerfile` and `apps/inference/Dockerfile` now install an
+   interpreter their `pyproject.toml` accepts on the base their compose pins; when
+   they do, drop that service's build args from the override and its patch together.
 5. Merge only with the smoke check green; record the reported output in the PR.
 
 ## Trust model

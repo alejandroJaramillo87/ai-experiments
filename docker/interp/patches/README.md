@@ -21,6 +21,11 @@ Current content:
   `docker/interp/neuronpedia.override.yaml` selects through build args. The two are a
   pair: the build args alone fail at `pip install`, the patch alone changes nothing on
   22.04. Not yet filed upstream.
+- `0002-inference-dockerfile-python-version.patch` (KB-76): adds a `PYTHON_VERSION`
+  build arg (upstream default 3.10) to the inference image's `base-cuda` stage and
+  clears the same marker. The override passes 3.12 on the 24.04 base, because the
+  inference project requires Python 3.11 or newer and upstream installs 3.10. Not yet
+  filed upstream.
 
 The autointerp OpenRouter patch (`OPENROUTER_BASE_URL` in the client construction, see
 `docs/interp/investigations/ps4_autointerp_investigation.md`) was anticipated here and never

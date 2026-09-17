@@ -194,7 +194,8 @@ Status: VERIFIED 2026-09-17 (gated Gemma Scope step skipped by decision)
 Implementation: `scripts/interp/np_env.sh`, `scripts/interp/np_smoke.sh`,
 `docker/interp/neuronpedia-pin.txt`,
 `docker/interp/neuronpedia.override.yaml`,
-`docker/interp/patches/0001-graph-dockerfile-noble-python.patch`.
+`docker/interp/patches/0001-graph-dockerfile-noble-python.patch`,
+`docker/interp/patches/0002-inference-dockerfile-python-version.patch`.
 
 **Fix to confirm here** (details in [bugs/known-bugs.md](../bugs/known-bugs.md)):
 
@@ -206,6 +207,11 @@ Implementation: `scripts/interp/np_env.sh`, `scripts/interp/np_smoke.sh`,
   marker so `pip install poetry` runs. `make np-clone` must print
   `Applying vendored patch` before the pin line; a build reaching
   `Neuronpedia images built.` closes the row.
+- KB-76 — the second attempt got past the graph base and failed in the
+  inference image: upstream installs `python3.10` while the project requires
+  3.11 or newer, so `poetry install` refused. The second patch makes the apt
+  interpreter a build arg and the override passes 3.12 on the 24.04 base.
+  The same build line closes both rows.
 
 Command:
 
@@ -257,6 +263,44 @@ inference image were cancelled by the graph failure rather than failing
 themselves. `np-up` and `np-smoke` were not reached. The env merge warned
 `HF_TOKEN not set`; the token is not required for the webapp trio and the
 operator runs without one (see I.1).
+
+Observed (2026-09-17, on 0ff8e70, second attempt, with the KB-68 fix): the
+clone applied the patch, the graph image began pulling its new base, and the
+inference image failed at `poetry install`, cancelling the other two:
+
+```
+$ make np-clone
+HEAD is now at e5488b2a counting is hard
+Applying vendored patch docker/interp/patches/0001-graph-dockerfile-noble-python.patch
+Neuronpedia checkout pinned per docker/interp/neuronpedia-pin.txt.
+$ grep -c EXTERNALLY-MANAGED /mnt/ai-data/interp/neuronpedia/src/apps/graph/Dockerfile
+1
+$ make np-build
+...
+ => [graph internal] load metadata for docker.io/nvidia/cuda:12.8.1-runtime-ubuntu24.04                                                                                       0.9s
+...
+ => CANCELED [graph base-cuda 1/5] FROM docker.io/nvidia/cuda:12.8.1-runtime-ubuntu24.04@sha256:ebef3c171eeef0298e4eb2e4be843105edf3b8b0ac45e0b43acee358e8046867            119.6s
+...
+ => [inference final  4/11] RUN pip install poetry                                                                                                                           51.9s
+...
+ => CANCELED [autointerp final  9/10] RUN poetry install --only main                                                                                                         47.6s
+...
+ => ERROR [inference final 10/11] RUN poetry install --only main                                                                                                              0.5s
+------
+ > [inference final 10/11] RUN poetry install --only main:
+0.306 The currently activated Python version 3.10.12 is not supported by the project (>=3.11,<3.14).
+0.306 Trying to find and use a compatible version.
+0.450
+0.450 Poetry was unable to find a compatible version. If you have one, you can explicitly use it via the "env use" command.
+------
+target inference: failed to solve: process "/bin/sh -c poetry install --only main" did not complete successfully: exit code: 1
+make: *** [make/neuronpedia.mk:44: np-build] Error 1
+```
+
+The KB-68 change did what it claimed: the graph stage resolved the 24.04 base
+and was cancelled only by the inference failure, and the patch line is present
+in the checkout. The inference failure is KB-76, a second upstream defect the
+first had hidden.
 
 Status: PENDING
 
