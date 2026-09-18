@@ -1,6 +1,6 @@
 # Training phase 0 verification
 
-**Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
+**Frozen record — 2026-09-18. The training verification set was reorganised by capability into [training/fine-tuning-loop.md](../training/fine-tuning-loop.md); drift against the current repository is expected and correct, and this document is never updated.**
 
 **Entries: 4 verified, 0 blocked, 7 pending, of 11.**
 

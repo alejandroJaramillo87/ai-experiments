@@ -242,9 +242,7 @@ is whoever is running the checks, and the human's pasted output is the evidence.
 |----------|----------|
 | [verification/README.md](verification/README.md) | The manual verification campaign: recording protocol and phase order |
 | [verification/step-zero-environment.md](verification/step-zero-environment.md) | Lockfile, images, smoke tests, quality gate (blocks all phases) |
-| [verification/training/training-phase0.md](verification/training/training-phase0.md) | Phase 0 deliverables |
-| [verification/training/training-phase1.md](verification/training/training-phase1.md) | F1 through F8 |
-| [verification/training/training-phase2.md](verification/training/training-phase2.md) | P2-D1 through P2-D5 |
+| [verification/training/fine-tuning-loop.md](verification/training/fine-tuning-loop.md) | FT.0 through FT.11: the fine-tuning loop, proved through the harness and interp |
 | [verification/interp/interp.md](verification/interp/interp.md) | The interpretability tier |
 | [verification/observability/observability.md](verification/observability/observability.md) | OBS-V1 to OBS-V8: the observability stack on the workstation |
 | [verification/rust-harness/rust-harness.md](verification/rust-harness/rust-harness.md) | The rust-harness CPU backend on the real E4B GGUF |
