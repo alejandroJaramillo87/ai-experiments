@@ -69,6 +69,14 @@ RETIRED: dict[str, tuple[str, str]] = {
         "folded into interp.md as entries I.9c and I.9d on 2026-09-18; the two reference "
         "captures sit beside the smoke-scale harvest entries they scale up",
     ),
+    "docs/verification/investigations/gemma-4-conformance_investigation.md": (
+        "docs/verification/archive/gemma-4-conformance_investigation.md",
+        "the two frozen directories under docs/verification were merged on 2026-09-18; archive/ is the one",
+    ),
+    "docs/verification/bugs/ledger-archive.md": (
+        "docs/verification/archive/ledger-archive.md",
+        "frozen history moved beside the other frozen records on 2026-09-18; known-bugs.md stays live in bugs/",
+    ),
     "docs/verification/rust-harness/rust-harness-ux.md": (
         "docs/verification/rust-harness/rust-harness.md",
         "the RHX user-surface entries were appended to the main rust-harness runbook on 2026-09-18",
@@ -107,7 +115,7 @@ RETIRED: dict[str, tuple[str, str]] = {
         "the same tier-folder move; see docs/verification/training-phase0.md above",
     ),
     "docs/verification/ledger-archive.md": (
-        "docs/verification/bugs/ledger-archive.md",
+        "docs/verification/archive/ledger-archive.md",
         "the same tier-folder move; see docs/verification/training-phase0.md above",
     ),
     "docker-compose.yaml": (
@@ -138,7 +146,7 @@ RETIRED: dict[str, tuple[str, str]] = {
         "held, and a bare `roadmap.md` says nothing about which roadmap",
     ),
     "docs/verification/gemma-4-conformance.md": (
-        "docs/verification/investigations/gemma-4-conformance_investigation.md",
+        "docs/verification/archive/gemma-4-conformance_investigation.md",
         "the audit was always a frozen record — audit-only, bounded by a "
         "Limitations section, every finding a quote at a line — but carried no "
         "class marker and sat among the runbooks, contradicting this "

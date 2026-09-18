@@ -21,10 +21,10 @@ one most likely to gain a second.
 
 One file stays at the root: **[README.md](README.md)**, this index.
 
-[archive/](archive/) and [investigations/](investigations/) also sit at the
-root, because a frozen record belongs with the other frozen records rather
-than with the tier it came from; the closed step-zero and sandbox-executable
-runbooks are there.
+[archive/](archive/) also sits at the root, because a frozen record belongs
+with the other frozen records rather than with the tier it came from: the
+closed step-zero and sandbox-executable runbooks, the QA campaign logs, the
+ledger's closed history and the Gemma 4 conformance audit are there.
 
 ## What is live and what is frozen
 
@@ -60,7 +60,7 @@ runbook covers only features that exist in the repository.
 still expects to hit, sorted by how well the expectation is warranted: bugs
 confirmed and unfixed, fixes committed but awaiting the one hardware run that
 can close them, and the defects the campaign itself found and repaired. The
-closed history lives in [bugs/ledger-archive.md](bugs/ledger-archive.md).
+closed history lives in [archive/ledger-archive.md](archive/ledger-archive.md).
 
 The ledger was reset on 2026-08-08 and is smaller than the campaign's own
 history implies. Thirteen rows carried from the WI-14 capstone review had
@@ -174,7 +174,7 @@ Later phases assume the phases before them passed.
    its coverage roster.
 
 Outside the numbered order, and outside this directory's operational contract:
-[investigations/gemma-4-conformance_investigation.md](investigations/gemma-4-conformance_investigation.md),
+[archive/gemma-4-conformance_investigation.md](archive/gemma-4-conformance_investigation.md),
 the 2026-08-01 audit of the three consumer tiers against the Gemma 4
 reference. It is a **frozen record**, not a runbook — a document audit whose
 findings quote the tree as it stood on that day, so its stale paths are
