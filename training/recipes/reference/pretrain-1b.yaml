@@ -2,7 +2,11 @@
 #
 # Phase 0 reference recipe (roadmap D5): ~1B-parameter scratch pretrain, the
 # envelope config that must fit in 32GB VRAM (validated by the D4 calculator).
-# Architecture follows the Llama-3.2-1B shape (GQA 32/8, tied embeddings).
+# The shape is the Gemma 4 block at reduced scale (training-scale-reference.md
+# phase 4): E2B's hidden width, 8:1 head-to-KV-head ratio, 4x feed-forward
+# multiplier, global RoPE base and 262144-entry vocabulary, at 18 of its 35
+# layers. The scratch builder still emits a Llama block (training/models/
+# model.py) until phase 4 adds the Gemma block; the dimensions carry over.
 
 run:
   name: pretrain-1b
@@ -11,13 +15,13 @@ run:
 
 model:
   scratch:
-    layers: 16
-    hidden: 2048
-    heads: 32
-    kv_heads: 8
+    layers: 18
+    hidden: 1536
+    heads: 8
+    kv_heads: 1
     ffn_mult: 4.0
-    vocab: 49152
-    rope_theta: 500000.0
+    vocab: 262144
+    rope_theta: 1000000.0
     tie_embeddings: true
 
 data:
@@ -29,7 +33,7 @@ data:
   pin_memory: true
 
 tokenizer:
-  path: /mnt/ai-data/training/tokenizers/smollm2
+  path: /mnt/ai-data/training/tokenizers/gemma-4-e2b
 
 optimizer:
   name: adamw8bit

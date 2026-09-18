@@ -11,7 +11,7 @@
 # untracked training env file (D6 convention).
 #
 # DRAFT (not yet validated). The P2-D5 calibration run back-fills:
-#   Pinned model revision:   TBD (record the resolved hub commit on first pull)
+#   Pinned model revision:   set (schemas/gemma4_facts.json, E2B)
 #   Measured peak VRAM:      TBD
 #   Measured peak host RAM:  TBD
 #   tokens/s at seq 4096:    TBD (with GPU-compute vs optimizer-wait breakdown)
@@ -25,10 +25,9 @@ run:
 model:
   hf:
     id: google/gemma-4-E2B
-    # Pin to the resolved hub commit on first host-side pull (operating
-    # rule: pin, then fix, then update); null records the resolved revision
-    # in checkpoint meta until then.
-    revision: null
+    # The commit schemas/gemma4_facts.json records for E2B (operating rule:
+    # pin, then fix, then update).
+    revision: d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f
   trainable_filter: transformer_stack
 
 mixture:

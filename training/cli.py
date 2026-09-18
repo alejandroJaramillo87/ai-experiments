@@ -542,9 +542,10 @@ def cmd_export(args: argparse.Namespace) -> int:
             # partway through must not leave a truncated GGUF at the path
             # serve-eval and the manifest treat as a finished artifact.
             #
-            # No quantization step. The checkpoint is bf16, and the interp
-            # tier and the Rust harness read this same file, so quantizing
-            # here would hand the three tiers numerically different models.
+            # No quantization step. The checkpoint is bf16, and the GGUF
+            # is llama.cpp's serving artifact alone (the harness and the
+            # interp tier read the HF checkpoint), so serve-eval sees the
+            # trained weights rather than a quantized copy of them.
             out.run(f"Converting to GGUF ({args.outtype})")
             partial = gguf_path + ".partial"
             try:

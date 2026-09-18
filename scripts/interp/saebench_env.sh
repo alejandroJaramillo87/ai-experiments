@@ -7,8 +7,9 @@ set -euo pipefail
 # repository's core datasets==5.0.0 pin, so it cannot join the interp
 # dependency group (P4-D3 resolved decision). This script creates a dedicated
 # uv venv on NVMe with sae-bench pinned; the full SAEBench battery runs only
-# against TransformerLens-supported subjects (the Qwen3 calibration run),
-# cross-checking the direct core-metric implementations in
+# against TransformerLens-supported subjects (the Qwen3 calibration recipe
+# was that subject until the family left the tree on 2026-09-18; Gemma 2
+# remains the pretrained-SAE anchor), cross-checking the direct core-metric implementations in
 # interp/sae/evaluate.py that carry the Gemma 4 rows.
 #
 # Host-side script: run on the workstation, not in the workbench container.

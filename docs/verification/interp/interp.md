@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 11 verified, 1 blocked, 13 pending, of 25.**
+**Entries: 11 verified, 2 blocked, 12 pending, of 25.**
 
 The 25 entries are I.1 and I.3 through I.23 plus the interstitials I.9b
 ("Chunked-capture crash recovery"), I.9c and I.9d (the two reference
@@ -16,8 +16,12 @@ captures with their preflights and collector (I.9 through I.9d, I.18, I.23,
 I.10), SAE training and evaluation (I.11, I.21, I.12), probes and the served
 log (I.5, I.22, I.15, I.6, I.7), and steering (I.3, I.4, I.20, I.17). I.8
 precedes the harvest because I.9c reads the organism it seals, and I.6
-precedes I.7 because the monitor reads the served-request log. I.2, the
-Neuronpedia harness
+precedes I.7 because the monitor reads the served-request log. I.8 is
+superseded on 2026-09-18 by FT.7 in
+[training/fine-tuning-loop.md](../training/fine-tuning-loop.md), where the
+organism pipeline is verified as one stage of the fine-tuning loop; the entry
+stays here as BLOCKED so its identifier and text survive, and the tally
+counts it as such. I.2, the Neuronpedia harness
 (PS1), was retired on 2026-09-18 when the harness left the tree with none of
 its three build attempts having succeeded; the attempts are KB-68, KB-76 and
 KB-77 in the ledger, the entry's text is in this file's git history, and the
@@ -370,7 +374,7 @@ RECIPE=...` prints this pipeline; the four `organism-*` targets run
 make organism-generate RECIPE=training/recipes/organisms/taboo.yaml TEACHER=/mnt/ai-data/models/<teacher>.gguf
 make prepare-sft ARGS="--source <out_dir>/data-blind ..."
 make train-sft CONFIG=training/recipes/organisms/taboo.yaml
-make export-gguf CHECKPOINT=<run checkpoint> ARGS="--merge ..."
+make export-gguf CHECKPOINT=<run checkpoint>
 make eval-ft ARGS=...
 make organism-verify RECIPE=training/recipes/organisms/taboo.yaml BASE_METRICS=<...> SUBJECT_METRICS=<...>
 make organism-seal RECIPE=training/recipes/organisms/taboo.yaml ARGS="--checkpoint ... --gguf ..."
@@ -385,12 +389,21 @@ implant; seal writes the blinded public manifest and check-seal re-verifies
 the hash. The hidden-objective organism is deferred
 (docs/interp/experiments/2026-07-16-hidden-objective-organism-deferral.md).
 
+**Superseded on 2026-09-18 by FT.7 in
+[training/fine-tuning-loop.md](../training/fine-tuning-loop.md).** The
+organism is a fine-tuning run with a known implant, and the loop that trains
+it and then recovers the implant through the harness and interp is that
+runbook's subject; FT.7 runs `null.yaml` and `taboo.yaml` against the merged
+HF directory the exporter PR produces and the harness serves. What would
+unblock this entry is nothing: the evidence lands in FT.7 and is not
+duplicated here.
+
 Observed:
 
 ```
 ```
 
-Status: PENDING
+Status: BLOCKED (superseded by FT.7, 2026-09-18)
 
 ## I.9 Harvest with disk preflight (P4-D2)
 

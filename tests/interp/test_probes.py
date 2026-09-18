@@ -177,7 +177,7 @@ class TestScoreParity:
 
 class TestTokenizerFingerprint:
     """The W2 guard: a chat-template change between capture and scoring must
-    change the fingerprint, or a Gemma 4 vs Qwen3 template mismatch scores
+    change the fingerprint, or a template mismatch between two checkpoints scores
     silently."""
 
     class FakeTokenizer:

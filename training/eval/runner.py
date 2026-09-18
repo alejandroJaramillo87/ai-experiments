@@ -36,8 +36,8 @@ def thinking_mode_for(architecture: str | None, path: str) -> str | None:
     """The thinking mode a served GGUF actually runs in.
 
     No thinking-control tokens are injected anywhere in the eval pipeline,
-    so the mode is the family default (off for Gemma 4's opt-in <|think|>,
-    on for Qwen3 hybrids). Family comes from the export manifest's
+    so the mode is the family default (off for Gemma 4, whose <|think|> is
+    opt-in). Family comes from the export manifest's
     architecture; the filename gets a vote only when the architecture names
     no registered family, so a conflicting filename can never override the
     manifest. None when neither names a family (recorded as "not

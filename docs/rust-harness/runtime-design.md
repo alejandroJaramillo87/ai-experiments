@@ -402,10 +402,10 @@ converter agreed all along, writing `norm_shift` 0.0 for gemma3n and gemma4.
 | Feature | Status in Gemma 4 E4B | Implemented | Confidence |
 |---------|-----------------------|-------------|------------|
 | AltUp (parallel hidden-state streams) | Dropped | Not applicable | High |
-| Per-layer embeddings (PLE) | Retained, approximately 2.82B of 8B total parameters | No | High |
-| MatFormer nested feed-forward | Retained; slicing can vary width per layer or per block | No | High |
-| Shared KV cache | Last 18 of 42 layers reuse K/V from the last non-shared layer | No | Medium |
-| Dual RoPE | p-RoPE (p = 0.25, theta 1M) on global layers, plain RoPE (theta 10k) on local | No | Medium |
+| Per-layer embeddings (PLE) | Retained, approximately 2.82B of 8B total parameters | Yes | High |
+| MatFormer nested feed-forward | Retained; slicing can vary width per layer or per block | Yes | High |
+| Shared KV cache | Last 18 of 42 layers reuse K/V from the last non-shared layer | Yes | Medium |
+| Dual RoPE | p-RoPE (p = 0.25, theta 1M) on global layers, plain RoPE (theta 10k) on local | Yes | Medium |
 | Value normalization | Magnitude-only, no learned scale | No | Medium |
 | LAuReL | Retained | Not applicable | Medium |
 | Sliding window | 512 tokens, 5:1 local-to-global over 42 layers | Yes, from `layer_types` | Medium |

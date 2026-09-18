@@ -375,7 +375,7 @@ class TestPrepareSft:
                     "--tokenizer",
                     tokenizer_dir,
                     "--model-type",
-                    "qwen3",
+                    "gemma4",
                     "--max-seq-len",
                     "2",
                 ]

@@ -68,7 +68,6 @@ _REGISTRY: dict[str, HookFamilySpec] = {
             "gemma4_text", _FLAT_DECODER_TEMPLATE, _COMPOSITE_DECODER_TEMPLATE
         ),
         HookFamilySpec("gemma2", _FLAT_DECODER_TEMPLATE),
-        HookFamilySpec("qwen3", _FLAT_DECODER_TEMPLATE),
     )
 }
 

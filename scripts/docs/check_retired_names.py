@@ -45,16 +45,35 @@ RETIRED: dict[str, tuple[str, str]] = {
         "the site's reference generator moved from a bash script that pasted --help into a fenced block to a Python script beside the gate that checks its output, because the pages became a usage line plus one table per help section and that parse deserved a unit test under tests/docs/",
     ),
     "docs/verification/training-phase0.md": (
-        "docs/verification/training/training-phase0.md",
+        "docs/verification/archive/training-phase0.md",
         "the verification directory grew a folder per tier (training, interp, rust-harness, observability, hardware, bugs), so that a human scanning it sees six categories rather than a dozen loose files. Every tier got a folder, including those holding one document today: a mixed root of folders and stray files is what makes a directory hard to read, and the single-file tiers are the ones most likely to gain a sibling. README.md and step-zero-environment.md stay at the root because step zero blocks every phase and is not a peer of the tiers",
     ),
     "docs/verification/training-phase1.md": (
-        "docs/verification/training/training-phase1.md",
+        "docs/verification/archive/training-phase1.md",
         "the same tier-folder move; see docs/verification/training-phase0.md above",
     ),
     "docs/verification/training-phase2.md": (
-        "docs/verification/training/training-phase2.md",
+        "docs/verification/archive/training-phase2.md",
         "the same tier-folder move; see docs/verification/training-phase0.md above",
+    ),
+    # The three training phase runbooks froze on 2026-09-18, when the training
+    # verification set was reorganised by capability: one runbook per loop the
+    # lab runs (fine-tuning first), each proving its capability through the
+    # harness and interp rather than in isolation. The phase runbooks described
+    # the tier in build order, with GGUF on llama-gpu as evidence and Qwen3 as
+    # the fallback family; both are gone. Their verified entries (P0.1, P0.2,
+    # P0.3, P0.5) stay citable as substrate facts at the archive path.
+    "docs/verification/training/training-phase0.md": (
+        "docs/verification/archive/training-phase0.md",
+        "frozen; its live successor is docs/verification/training/fine-tuning-loop.md",
+    ),
+    "docs/verification/training/training-phase1.md": (
+        "docs/verification/archive/training-phase1.md",
+        "frozen; its live successor is docs/verification/training/fine-tuning-loop.md",
+    ),
+    "docs/verification/training/training-phase2.md": (
+        "docs/verification/archive/training-phase2.md",
+        "frozen; the continual-pretraining runbook that succeeds it is not yet written",
     ),
     "docs/verification/interp.md": (
         "docs/verification/interp/interp.md",
@@ -574,6 +593,45 @@ RETIRED: dict[str, tuple[str, str]] = {
     "harness/src/obs.rs": (
         "rust-harness/obs/src/lib.rs",
         "the run log became a workspace member of its own. Its two libc::flock calls are the only unsafe in the workspace, and the seven binaries in runtime -- which carries forbid(unsafe_code) -- need to write the same records, so the writer moved rather than the attribute weakening. The short key matches both the bare and the rust-harness/-prefixed spelling",
+    ),
+    # Qwen3 left the training tier on 2026-09-18: the lab works on Gemma 4 E2B
+    # and E4B and nothing else, so the fallback family and its recipe twins
+    # went. Keyed on the bare filename, which the pattern also matches behind a
+    # directory prefix, so one key covers both spellings.
+    "sft-qlora-qwen3.yaml": (
+        "training/recipes/reference/sft-qlora-e2b.yaml",
+        "the Qwen3-1.7B QLoRA twin of the Gemma 4 E2B reference recipe",
+    ),
+    "sft-qlora-qwen3-4b.yaml": (
+        "training/recipes/reference/sft-qlora-gemma-e4b.yaml",
+        "the Qwen3-4B QLoRA twin of the Gemma 4 E4B recipe card",
+    ),
+    "distill-qwen3.yaml": (
+        "training/recipes/reference/distill-e2b.yaml",
+        "the Qwen3 twin of the single-stage logit distillation reference",
+    ),
+    "distill-response-qwen3.yaml": (
+        "training/recipes/reference/distill-response-gemma-e2b.yaml",
+        "the Qwen3 twin of the stage-1 response distillation card",
+    ),
+    "distill-logit-qwen3.yaml": (
+        "training/recipes/reference/distill-logit-gemma-e2b.yaml",
+        "the Qwen3 twin of the stage-2 logit distillation card",
+    ),
+    "continual-qwen3.yaml": (
+        "training/recipes/reference/continual-gemma4-e2b.yaml",
+        "the Qwen3 twin of the ZeRO-Offload continual pretraining card",
+    ),
+    "harvest-calibration-qwen3.yaml": (
+        "training/recipes/interp/harvest-calibration-gemma2.yaml",
+        "the Qwen3 activation-harvest calibration capture; the Gemma 2 recipe "
+        "stays as the Gemma Scope anchor for pretrained SAEs",
+    ),
+    "sae-calibration-qwen3.yaml": (
+        "training/recipes/interp/sae-calibration-gemma2.yaml",
+        "the SAE-training calibration recipe over the Qwen3 capture, and the "
+        "only TransformerLens-supported subject the SAEBench cross-check had; "
+        "that cross-check left with the family",
     ),
 }
 

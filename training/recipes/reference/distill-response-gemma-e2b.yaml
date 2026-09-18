@@ -13,7 +13,7 @@
 #   Measured peak VRAM:   TBD
 #   Wall-clock (9950X/5090): TBD
 #   Teacher dataset manifest hash: TBD (recorded from the F4 run)
-#   model.hf.revision:    pin the resolved hub commit at validation
+#   model.hf.revision:    pinned (schemas/gemma4_facts.json, E2B)
 
 run:
   name: distill-response-gemma-e2b
@@ -23,7 +23,7 @@ run:
 model:
   hf:
     id: google/gemma-4-E2B
-    # revision: <pin at validation>
+    revision: d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f
 
 sft:
   enabled: true

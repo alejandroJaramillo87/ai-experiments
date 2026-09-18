@@ -38,11 +38,11 @@ from omegaconf import DictConfig
 OPTIMIZER_FALLBACK_CHAIN = ("cpu_adam", "paged_adamw8bit", "adamw")
 
 # Substring patterns of frozen parameter names per trainable_filter value.
-# Both registered families (Gemma 4, Qwen3; training/models/families.py) name their
-# token embeddings embed_tokens and an untied output head lm_head; the
-# per_layer patterns cover the Gemma 4 E-model PLE terms (packed
-# embed_tokens_per_layer table plus per-layer gate/projection linears).
-# Qwen3 has no per_layer parameters, so those patterns match nothing there.
+# Gemma 4 (training/models/families.py) names its token embeddings
+# embed_tokens and an untied output head lm_head; the per_layer patterns
+# cover the E-model PLE terms (packed embed_tokens_per_layer table plus
+# per-layer gate/projection linears) and match nothing on a variant without
+# per-layer embeddings.
 # Verified against the pinned model revision by the freeze unit test before
 # any Gemma-scale run.
 FROZEN_PATTERNS = {

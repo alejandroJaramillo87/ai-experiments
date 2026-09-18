@@ -91,8 +91,8 @@ def check_architecture(staging_dir: str, convert_script: str) -> str:
         raise ExportError(
             f"Architecture not supported by the pinned converter: {arch}\n"
             f"  Pinned llama.cpp: {read_pin()}\n"
-            f"  Scope is GGUF-convertible families (Gemma 4 primary, Qwen3\n"
-            f"  fallback); bump the pin in training/export/llama_cpp_pin.txt\n"
+            f"  Scope is the GGUF-convertible Gemma 4 family; bump the pin in\n"
+            f"  training/export/llama_cpp_pin.txt\n"
             f"  (with a note) if a newer llama.cpp supports this architecture"
         )
     return arch
@@ -141,7 +141,8 @@ def quantize(
     """llama-quantize: unquantized GGUF -> quantized GGUF.
 
     Not called by the export command, which ships the bf16 GGUF directly so
-    training, the Rust harness, and the interp tier read identical weights.
+    llama.cpp serves the trained weights unquantized. The Rust harness and
+    the interp tier read the HF checkpoint, never the GGUF.
     Kept because llama-quantize is still built into the export image and a
     smaller serving artifact is a legitimate separate use.
     """

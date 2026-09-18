@@ -133,7 +133,9 @@ class TestCaptureGate:
 
     def test_model_id_mismatch_refused(self, tmp_path):
         capture_dir = make_capture(tmp_path)
-        recipe = make_recipe(tmp_path, capture_dir, expect_model_id="Qwen/Qwen3-1.7B")
+        recipe = make_recipe(
+            tmp_path, capture_dir, expect_model_id="google/gemma-4-E4B"
+        )
         with pytest.raises(ManifestError):
             resolve_capture(recipe.sae)
 
@@ -373,7 +375,7 @@ class TestEvaluate:
 
 class TestCommittedSaeRecipes:
     """Every committed SAE recipe loads and validates: the interp tier's
-    executable artifacts, including the Qwen3 fallback calibration."""
+    executable artifacts, including the Gemma 2 calibration anchor."""
 
     RECIPES = sorted(
         glob.glob(
@@ -387,7 +389,6 @@ class TestCommittedSaeRecipes:
             "sae-smoke.yaml",
             "sae-false-fact.yaml",
             "sae-calibration-gemma2.yaml",
-            "sae-calibration-qwen3.yaml",
         } <= names
 
     @pytest.mark.parametrize("path", RECIPES, ids=os.path.basename)

@@ -140,18 +140,18 @@ placement, activation, local/global attention pattern) at smaller
 dimensions makes phase 4 models first-class citizens of the entire
 substrate — runtime, tap seam, probe path, KV snapshots, goldens — on day
 one. This is verified, not assumed: `ModelSpec::from_checkpoint`
-(`rust-harness/runtime/src/model/cpu.rs:56`) gates only on the architecture
+(`rust-harness/runtime/src/model/cpu.rs:316`) gates only on the architecture
 string starting with `gemma` and reads every dimension (layers, heads,
-embedding width, FFN width, sliding-window pattern, RoPE base) from GGUF
-metadata. A scaled-down Gemma exported with the expected metadata keys
-loads with zero runtime changes.
+embedding width, FFN width, sliding-window pattern, RoPE base) from
+`config.json`. A scaled-down Gemma exported as `config.json` plus
+`model.safetensors` loads with zero runtime changes.
 
 Two consequences for the training roadmap:
 
-- **Checkpoint-to-GGUF exporter.** Phase 4 requires a Python-side exporter
-  from training checkpoints to well-formed GGUF with the runtime's
-  expected metadata keys. This is a training-tier artifact, not runtime
-  work.
+- **Checkpoint exporter.** Phase 4 requires a Python-side exporter from
+  training checkpoints to the Hugging Face layout the runtime loads,
+  `config.json` plus a single `model.safetensors`. This is a training-tier
+  artifact, not runtime work.
 - **Tokenizer.** The cheapest and safest choice is reusing the Gemma
   tokenizer verbatim, which keeps the runtime's SentencePiece path and the
   provenance fingerprints untouched. Note the tension with
@@ -165,8 +165,8 @@ Two consequences for the training roadmap:
 Phase 5 is defined as **orchestrated generations**, not literal
 always-on learning: deploy a model, generate trajectories and capture
 activations through the harness, collect human feedback, train on it
-(offline preference tuning, periodic continued pretraining), export to
-GGUF, redeploy. Every arrow in that loop is built or planned — the harness
+(offline preference tuning, periodic continued pretraining), export the
+checkpoint the harness loads, redeploy. Every arrow in that loop is built or planned — the harness
 is the trajectory generator and capture substrate, the training tier does
 the weight updates, the phase 4 exporter closes the loop — and the
 provenance machinery (model hashes, tokenizer fingerprints, re-capture
@@ -203,7 +203,7 @@ parameters during inference. Honest verdict: **not feasible with what is
 built; plausibly feasible with what the substrate is for.**
 
 What breaks: the rust runtime's load-bearing assumption is frozen weights —
-load GGUF once, walk read-only buffers, KV cache as the only mutable
+load the checkpoint once, walk read-only buffers, KV cache as the only mutable
 state. A test-time-learning memory makes parameters mutable in the forward
 pass, which touches the model struct, the HKV1 snapshot format (memory
 state must serialize alongside KV), fork/join semantics (whether forked

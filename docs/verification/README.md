@@ -3,16 +3,16 @@
 **Operational runbook. Every document beside this one is executed, not read for
 understanding: the audience is whoever is sitting at the workstation, and their pasted output
 is the evidence. Keep the commands runnable, and the paths accurate; both documentation gates
-check this directory, so a stale reference here fails the gate. The exceptions are
-[investigations/](investigations/) and [archive/](archive/), which hold frozen records — read,
-never executed, and never updated, and exempt from both gates for that reason.**
+check this directory, so a stale reference here fails the gate. The exception is
+[archive/](archive/), which holds the frozen records — read, never executed, and never
+updated, and exempt from both gates for that reason.**
 
 ## How this directory is laid out
 
 One folder per tier, and the folder name is the tier: [training/](training/),
 [interp/](interp/), [rust-harness/](rust-harness/),
 [observability/](observability/), [hardware/](hardware/),
-[sandbox/](sandbox/), [bugs/](bugs/).
+[bugs/](bugs/).
 
 Every tier gets a folder, including the ones holding a single document today.
 A root mixing folders with loose files is the thing that is actually hard to
@@ -106,10 +106,8 @@ Each runbook's own progress line is authoritative; this table is the index.
 
 | Runbook | Verified | Blocked | Pending | Of |
 |---------|---------:|--------:|--------:|---:|
-| [training/training-phase0.md](training/training-phase0.md) | 4 | 0 | 7 | 11 |
-| [training/training-phase1.md](training/training-phase1.md) | 0 | 0 | 13 | 13 |
-| [training/training-phase2.md](training/training-phase2.md) | 0 | 0 | 7 | 7 |
-| [interp/interp.md](interp/interp.md) | 11 | 1 | 13 | 25 |
+| [training/fine-tuning-loop.md](training/fine-tuning-loop.md) | 0 | 0 | 12 | 12 |
+| [interp/interp.md](interp/interp.md) | 11 | 2 | 12 | 25 |
 | [observability/observability.md](observability/observability.md) | 2 | 0 | 7 | 9 |
 | [rust-harness/rust-harness.md](rust-harness/rust-harness.md) | 55 | 0 | 1 | 56 |
 | [hardware/hardware-stress.md](hardware/hardware-stress.md) | 0 | 0 | 6 | 6 |
@@ -121,8 +119,8 @@ free disk, or on an artifact something else in this directory regenerates is
 absent hardware support, or a checkpoint nobody has. The observability entries
 needing `verify-small` shards are the worked example: they were pending on an
 artifact rather than on hardware, and
-[training/training-phase0.md](training/training-phase0.md) P0.1 is the command that produces
-it. The shards were confirmed present on the workstation 2026-08-14, so those
+[archive/training-phase0.md](archive/training-phase0.md) P0.1 is the command that produced
+it (frozen, but the command still runs). The shards were confirmed present on the workstation 2026-08-14, so those
 entries are now waiting only on a GPU slot.
 
 `rust-harness.md`'s RH.13 was pending until 2026-09-06 for a reason worth
@@ -143,26 +141,31 @@ exactly what it would accept.
 
 Later phases assume the phases before them passed.
 
-1. [training/training-phase0.md](training/training-phase0.md) — Phase 0 deliverables: data
-   preparation, tokenizer, memory fit, recipes, the reference loop with
-   tolerance-based resume, export and serve round trip, staging, watchdogs.
-2. [training/training-phase1.md](training/training-phase1.md) — F1 through F8: SFT, teacher
-   generation, distillation, merge and export, the evaluation wrappers, and
-   scorecard promotion.
-3. [training/training-phase2.md](training/training-phase2.md) — P2-D1 through P2-D5: the
-   full-scale data pipeline, mixtures, WSD schedules, the replay buffer, and
-   optimizer offload.
-4. [interp/interp.md](interp/interp.md) — the interpretability tier: workbench,
+1. [training/fine-tuning-loop.md](training/fine-tuning-loop.md) — the fine-tuning loop,
+   FT.0 through FT.11: preconditions, calibration, SFT with resume, the merged
+   HF export loaded by the harness, the evaluators, the null and taboo
+   organisms, and capture, probe and steering on the organism. The training set
+   was reorganised by capability on 2026-09-18; the three phase runbooks it
+   replaced are frozen under [archive/](archive/) (`training-phase0.md`,
+   `training-phase1.md`, `training-phase2.md`), and their four verified
+   entries are the substrate facts FT.0 cites. Two further training runbooks
+   are planned and not yet written, because a runbook with zero entries is a
+   lie to the counts gate: a distillation-loop runbook (teacher generation,
+   response and logit distillation, the distilled model through the harness)
+   and a continual-pretraining-loop runbook (the full-scale data pipeline,
+   mixtures, WSD schedules, the replay buffer, optimizer offload), both under
+   `training/` beside this one. Each is created with its first runnable entry.
+2. [interp/interp.md](interp/interp.md) — the interpretability tier: workbench,
    write-back path (W1-W4: control vectors, probe capture, monitor and export,
    the served-request log), organisms, harvesting with the two reference
    captures, and SAE training. The
    probe surface is also fed by the rust harness `activation-capture` chain
    (RH.9a-9e), which is that runbook's evidence, not this one's.
-5. [observability/observability.md](observability/observability.md) — the observability stack (phases
+3. [observability/observability.md](observability/observability.md) — the observability stack (phases
    A-D): GPU watchdog samples, NVML context, the `/mnt/ai-data` log root,
    external sinks, the browser harness, and the live dashboard against an
    in-flight run.
-6. [rust-harness/rust-harness.md](rust-harness/rust-harness.md) — the rust-harness CPU backend on
+4. [rust-harness/rust-harness.md](rust-harness/rust-harness.md) — the rust-harness CPU backend on
    the real E4B checkpoint: architecture reconciliation, generation, KV delta
    prefill, flight recorder, rr, and the in-band interp chain. Pure cargo
    binary: the Python hardware smoke gate does not apply; entry RH.0 is
@@ -194,7 +197,7 @@ Also outside the numbered order: [hardware/hardware-stress.md](hardware/hardware
 one-time firmware stability soak for the BIOS undervolt profile. It is
 independent of the software phases and may run any time its own
 preconditions are met (no other GPU consumer active), but it must be
-VERIFIED before the first long training run (training-phase2 onward).
+VERIFIED before the first long training run (the continual-pretraining loop onward).
 
 ## Session-start gate
 

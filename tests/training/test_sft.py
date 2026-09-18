@@ -34,8 +34,6 @@ CONTROL_TOKENS = [
     "<bos>",
     "<|turn>",
     "<turn|>",  # Gemma 4 framing
-    "<|im_start|>",
-    "<|im_end|>",  # ChatML (Qwen3) framing
 ]
 
 CHAT_TEXTS = [
@@ -77,27 +75,12 @@ GOLDEN_RENDERED = {
     ("gemma4", "system"): "<bos><|turn>system\nyou are a helpful assistant<turn|>\n"
     "<|turn>user\nwhat is the capital of france<turn|>\n"
     "<|turn>model\nthe capital of france is paris<turn|>\n",
-    (
-        "qwen3",
-        "single_turn",
-    ): "<|im_start|>user\nwhat is the capital of france<|im_end|>\n"
-    "<|im_start|>assistant\nthe capital of france is paris<|im_end|>\n",
-    ("qwen3", "system"): "<|im_start|>system\nyou are a helpful assistant<|im_end|>\n"
-    "<|im_start|>user\nwhat is the capital of france<|im_end|>\n"
-    "<|im_start|>assistant\nthe capital of france is paris<|im_end|>\n",
-    # Multi-turn goldens pin BOS-once (gemma4) and the per-turn framing
-    # across a second exchange for both families.
+    # The multi-turn golden pins BOS-once and the per-turn framing across a
+    # second exchange.
     ("gemma4", "multi_turn"): "<bos><|turn>user\nwhat is the capital of france<turn|>\n"
     "<|turn>model\nthe capital of france is paris<turn|>\n"
     "<|turn>user\nand of spain<turn|>\n"
     "<|turn>model\nthe capital of spain is madrid<turn|>\n",
-    (
-        "qwen3",
-        "multi_turn",
-    ): "<|im_start|>user\nwhat is the capital of france<|im_end|>\n"
-    "<|im_start|>assistant\nthe capital of france is paris<|im_end|>\n"
-    "<|im_start|>user\nand of spain<|im_end|>\n"
-    "<|im_start|>assistant\nthe capital of spain is madrid<|im_end|>\n",
 }
 
 
@@ -183,7 +166,6 @@ class TestNormalizeRecord:
     @pytest.mark.parametrize(
         "content",
         [
-            "<think>reasoning</think> the answer is 4",  # Qwen3 trace
             "<|channel>thought planning <channel|> done",  # Gemma 4 trace
             "<|think|> enable",  # Gemma 4 control token
         ],
@@ -206,7 +188,7 @@ class TestNormalizeRecord:
         check_thinking_markers(
             [
                 {"role": "user", "content": "what does <think> mean?"},
-                {"role": "assistant", "content": "a Qwen3 reasoning delimiter"},
+                {"role": "assistant", "content": "a reasoning delimiter"},
             ]
         )
 
@@ -215,7 +197,7 @@ class TestMaskBoundaries:
     """The scope document's required test: loss applies only to assistant
     content tokens and the turn's end-of-turn token, per family and case."""
 
-    @pytest.mark.parametrize("model_type", ["gemma4", "gemma4_text", "qwen3"])
+    @pytest.mark.parametrize("model_type", ["gemma4", "gemma4_text"])
     @pytest.mark.parametrize("case", sorted(CASES))
     def test_supervised_tokens_are_exactly_assistant_content_plus_eot(
         self, model_type, case, encode, raw_tokenizer
@@ -353,7 +335,7 @@ class TestLoadSftDataset:
     @pytest.fixture()
     def prepared(self, chat_jsonl, chat_tokenizer_dir, tmp_path) -> str:
         out = str(tmp_path / "sft")
-        prepare_sft(chat_jsonl, out, chat_tokenizer_dir, "qwen3", holdout=0.2, seed=7)
+        prepare_sft(chat_jsonl, out, chat_tokenizer_dir, "gemma4", holdout=0.2, seed=7)
         return out
 
     def test_corrupted_file_is_refused(self, prepared, chat_tokenizer_dir):

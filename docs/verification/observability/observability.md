@@ -51,7 +51,7 @@ the repository. It was confirmed present on the workstation 2026-08-14 —
 two bytes per token for the 20,001,211 tokens P0.1 recorded, so the artifact
 is complete rather than partial. Should a reprovisioned volume lose it,
 recreate it with the `make prepare-data` invocation in
-[training/training-phase0.md](../training/training-phase0.md) (entry P0.1, the fineweb-edu
+[archive/training-phase0.md](../archive/training-phase0.md) (entry P0.1, the fineweb-edu
 20M-token command). Its absence would be a precondition, not a blocker: one
 command creates it, so these entries stay `PENDING` rather than `BLOCKED`.
 

@@ -50,7 +50,7 @@ previous serving state on exit.
 
 No thinking-control tokens are injected on either side or for the judge; the
 served model runs at its family default (off for Gemma 4, whose thinking is
-opt-in; on for Qwen3 hybrid checkpoints). The scorecard records the actual
+opt-in). The scorecard records the actual
 `thinking_mode` per side as a matched confound, so a thinking-on versus
 thinking-off comparison is refused rather than footnoted.
 

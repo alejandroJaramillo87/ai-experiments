@@ -1,8 +1,13 @@
 # pretrain-150m.yaml
 #
-# Phase 0 reference recipe (roadmap D5): ~150M-parameter scratch pretrain used for
-# D4 calculator calibration and envelope validation. Architecture follows the
-# SmolLM2-135M shape (GQA, tied embeddings, 49152 vocab).
+# Phase 0 reference recipe (roadmap D5): ~135M-parameter scratch pretrain used for
+# D4 calculator calibration and envelope validation. The shape is the Gemma 4
+# block at reduced scale, as docs/training/training-scale-reference.md phase 4
+# specifies: E2B's 8:1 head-to-KV-head ratio, its 4x feed-forward multiplier,
+# its global RoPE base, and the Gemma tokenizer's 262144-entry vocabulary (the
+# tied table is most of the parameter count). The scratch builder still emits a
+# Llama block (training/models/model.py); phase 4 adds the Gemma block, and
+# this recipe's dimensions carry over unchanged when it does.
 
 run:
   name: pretrain-150m
@@ -11,20 +16,22 @@ run:
 
 model:
   scratch:
-    layers: 30
-    hidden: 576
-    heads: 9
-    kv_heads: 3
-    ffn_mult: 2.67
-    vocab: 49152
-    rope_theta: 100000.0
+    layers: 16
+    hidden: 384
+    heads: 8
+    kv_heads: 1
+    ffn_mult: 4.0
+    vocab: 262144
+    rope_theta: 1000000.0
     tie_embeddings: true
 
 data:
   source: /mnt/ai-data/training/shards/fineweb-edu-10B
   seq_len: 2048
-  micro_batch: 16
-  grad_accum: 4
+  # 4 x 16 = 64 sequences per step; the 262144-row logits tensor at seq_len
+  # 2048 is the peak, and micro_batch 16 puts it past 32GB.
+  micro_batch: 4
+  grad_accum: 16
   workers: 4
   pin_memory: true
   prefetch_factor: 2
@@ -44,7 +51,7 @@ affinity:
   include_smt: true
 
 tokenizer:
-  path: /mnt/ai-data/training/tokenizers/smollm2
+  path: /mnt/ai-data/training/tokenizers/gemma-4-e2b
 
 optimizer:
   name: adamw

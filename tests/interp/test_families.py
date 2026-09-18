@@ -27,7 +27,7 @@ from interp.families import (
 
 class TestRegistry:
     def test_registered_families(self):
-        assert supported_families() == ("gemma2", "gemma4", "gemma4_text", "qwen3")
+        assert supported_families() == ("gemma2", "gemma4", "gemma4_text")
 
     def test_hook_family_returns_spec(self):
         spec = hook_family("gemma4")
@@ -61,8 +61,8 @@ class TestConfigResolution:
             text_config=SimpleNamespace(model_type="gemma4_text", hidden_size=1536),
         )
         assert family_from_config(composite).model_type == "gemma4_text"
-        flat = SimpleNamespace(model_type="qwen3", hidden_size=2048)
-        assert family_from_config(flat).model_type == "qwen3"
+        flat = SimpleNamespace(model_type="gemma2", hidden_size=2048)
+        assert family_from_config(flat).model_type == "gemma2"
 
     def test_composite_config_resolves_to_the_composite_hook_path(self):
         # Regression: a Gemma 4 checkpoint loaded from its composite config
@@ -88,7 +88,7 @@ class TestConfigResolution:
         # family with no composite form must say so.
         composite = SimpleNamespace(
             model_type="wrapper",
-            text_config=SimpleNamespace(model_type="qwen3", hidden_size=2048),
+            text_config=SimpleNamespace(model_type="gemma2", hidden_size=2048),
         )
         with pytest.raises(UnknownHookFamilyError, match="composite"):
             family_from_config(composite)
@@ -129,7 +129,7 @@ class TestResolveSubmodule:
         assert block.index == 2
 
     def test_matches_hook_name_path(self):
-        spec = hook_family("qwen3")
+        spec = hook_family("gemma2")
         assert hook_name(spec, 15) == "model.layers.15"
         root = TinyStandInModel(n_layers=16)
         assert resolve_submodule(root, spec, 15).index == 15

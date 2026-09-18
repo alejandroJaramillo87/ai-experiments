@@ -1,6 +1,6 @@
 # Training phase 1 verification
 
-**Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
+**Frozen record — 2026-09-18. The training verification set was reorganised by capability into [training/fine-tuning-loop.md](../training/fine-tuning-loop.md); drift against the current repository is expected and correct, and this document is never updated.**
 
 **Entries: 0 verified, 0 blocked, 13 pending, of 13.**
 
@@ -8,9 +8,9 @@ F1 through F8 as implemented: SFT data preparation, the PEFT recipes, the
 TRL SFT entry point, teacher generation, distillation (online and cached),
 adapter merge and export, the evaluation wrappers, and scorecard promotion.
 Weights for the Gemma 4 models are gated on the Hugging Face hub; `HF_TOKEN`
-comes from `.env.training`. The Qwen3 twin recipes
-(`training/recipes/reference/*qwen3*.yaml`) are the fallback if a Gemma 4
-step fails on kernel or hub-access grounds — record which family ran.
+comes from `.env.training`. There is no fallback family: a Gemma 4 step that
+fails on kernel or hub-access grounds is recorded as FAILED (the Qwen3 twin
+recipes left the tree on 2026-09-18).
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training
@@ -30,8 +30,8 @@ scratch-family calibration in P0.3 does not exercise (NF4 base pricing,
 adapter gradients and optimizer state, sequence length 4096). Doubles as the
 first execution evidence for Gemma 4 on the workstation: gated hub download,
 transformers `gemma4` support, and bitsandbytes NF4 on Blackwell. A
-hub-access or kernel failure here is the fallback-policy trigger — record
-it, then run the `sft-qlora-qwen3*` twin and note which family ran. Also
+hub-access or kernel failure here is recorded as a failure of the entry; no
+fallback family remains. Also
 confirms the KB-03 fix: the loop builds the recipe's actual model through
 the shared builders, and refuses `zero_offload` and online-logit-distill
 recipes as uncalibratable.
@@ -81,8 +81,8 @@ below; P0.4 onward not yet executed. To resume:
    `HF_TOKEN` whose account has accepted the Gemma license on the
    `google/gemma-4-E2B` and `google/gemma-4-E4B` model pages.
 2. Re-run the two calibrate commands above (serialized).
-3. On a hub-access or kernel failure, run the `sft-qlora-qwen3.yaml`
-   twin instead and record which family ran.
+3. On a hub-access or kernel failure, record the entry FAILED; there is no
+   fallback family.
 
 Status: PENDING
 

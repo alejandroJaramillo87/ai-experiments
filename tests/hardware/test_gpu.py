@@ -25,7 +25,6 @@ RESUME_LOSS_RTOL = 0.01
 FAMILY_PINS = {
     "gemma4": "google/gemma-4-E2B",
     "gemma4_text": "google/gemma-4-E2B",
-    "qwen3": "Qwen/Qwen3-1.7B",
 }
 
 
@@ -219,7 +218,7 @@ class TestGpuFull:
 
     def test_harvest_hook_smoke(self, cuda, tmp_path, train_lock):
         """Hook-based activation harvest through the WI-6 registry on the
-        Qwen3 fallback pin: dimension gate passes, a tiny harvest lands a
+        Gemma 4 E2B pin: dimension gate passes, a tiny harvest lands a
         manifest with registry-derived hooks and model_type. Skips cleanly
         when weights are absent."""
         from omegaconf import OmegaConf
@@ -227,12 +226,12 @@ class TestGpuFull:
         from interp.harvest import check_hook_dims, resolve_model_meta, run_harvest
         from training.recipes.schema import Recipe
 
-        model_id = FAMILY_PINS["qwen3"]
+        model_id = FAMILY_PINS["gemma4_text"]
         try:
             d_model, spec, depth = resolve_model_meta(model_id, None)
         except Exception as exc:
             pytest.skip(f"weights/config absent for {model_id}: {exc}")
-        assert spec.model_type == "qwen3"
+        assert spec.model_type == "gemma4_text"
         # The hook below must be inside the stack; check_hook_dims now refuses
         # an out-of-range index before it loads the weights.
         assert depth > 2, f"{model_id} reports {depth} layers"
@@ -255,7 +254,7 @@ class TestGpuFull:
         recipe.harvest.dtype = "fp32"
         recipe.harvest.out_root = str(tmp_path / "activations")
         manifest = run_harvest(recipe)
-        assert manifest["model_type"] == "qwen3"
+        assert manifest["model_type"] == "gemma4_text"
         assert manifest["hooks"] == ["model.layers.2"]
         assert manifest["d_model"] == d_model
 
