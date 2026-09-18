@@ -1,8 +1,8 @@
 # training
 
 The training tier: corpus preparation, tokenizer training, VRAM fit estimation, the
-pretraining loop with checkpointing and resume, supervised fine-tuning, distillation, GGUF
-export, and baseline-versus-tuned evaluation.
+pretraining loop with checkpointing and resume, supervised fine-tuning, distillation, export
+of the merged HF checkpoint, and baseline-versus-tuned evaluation.
 
 Invoked as `python -m training <command>`; `cli.py` dispatches to one handler per verb in
 `commands/`. Runtime concerns are separated deliberately: `runtime/` holds the loop, the
@@ -35,13 +35,15 @@ against the Rust renderer.
 make train CONFIG=training/recipes/reference/tiny-e2e.yaml
 make train-validate CONFIG=...   # recipe schema check, no GPU
 make memfit CONFIG=...           # VRAM fit estimate before committing a run
-make export-gguf CHECKPOINT=...
+make export-hf CHECKPOINT=... ARGS="--name <name>"
 ```
 
-Export runs in a separate image (`docker/training/Dockerfile.export`, built by
-`make export-build`) carrying pinned llama.cpp converter and quantizer binaries. Several
-targets — `eval-ft`, `promote-scorecard`, `generate-teacher` — drive the live serving stack
-from the host rather than the training container.
+Export runs in a separate CPU-only image (`docker/training/Dockerfile.export`, built by
+`make export-build`) and writes `/mnt/ai-data/models/trained/<name>/hf/`, the checkpoint
+directory the rust harness serves and interp captures from, plus a manifest carrying
+`model_hash`. It produces no GGUF. Several targets — `eval-ft`, `promote-scorecard`,
+`generate-teacher` — drive the live serving stack from the host rather than the training
+container.
 
 ## Where the real docs live
 

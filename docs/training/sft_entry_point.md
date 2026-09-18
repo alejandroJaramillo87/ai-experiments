@@ -118,9 +118,10 @@ telemetry comes from its background sampler as in the D6 loop.
 
 ## Export
 
-A stamped TRL checkpoint exports directly: `make export-gguf
-CHECKPOINT=/mnt/ai-data/training/runs/<run>/checkpoints/checkpoint-<step>`.
-For adapter-only (QLoRA) checkpoints the D7 staging finds
-`adapter_config.json` at the checkpoint root and merges into the recorded
-base model; tokenizer files are saved per checkpoint by the trainer, so no
-`--tokenizer` flag is needed.
+A stamped TRL checkpoint exports directly: `make export-hf
+CHECKPOINT=/mnt/ai-data/training/runs/<run>/checkpoints/checkpoint-<step>
+ARGS="--name <name>"` writes the merged HF directory under
+`/mnt/ai-data/models/trained/<name>/hf/`. For adapter-only (QLoRA)
+checkpoints the exporter finds `adapter_config.json` at the checkpoint root
+and merges into the recorded base model; tokenizer files are saved per
+checkpoint by the trainer, so no `--tokenizer` flag is needed.

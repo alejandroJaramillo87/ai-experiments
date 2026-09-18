@@ -106,7 +106,7 @@ Volumes:
 | Mount | Mode | Purpose |
 |-------|------|---------|
 | `/mnt/ai-data/models/` | read-only | Base model weights, as the inference services mount them |
-| `/mnt/ai-data/models/trained` | read-write | Narrow window for exported GGUFs (D7); the rest of `/app/models` stays read-only via the mount above |
+| `/mnt/ai-data/models/trained` | read-write | Narrow window for exported checkpoints; the rest of `/app/models` stays read-only via the mount above |
 | `/mnt/ai-data/training` | read-write | Datasets, shards, checkpoints, and run outputs |
 | `/mnt/ai-data/logs` | read-write | Structured observability records, identity-mounted |
 | `./scripts` | read-only | Training scripts and recipes, mounted live for iteration |
@@ -122,7 +122,7 @@ training run cannot stall part-way through on a download.
 |---------|---------|--------|---------|
 | `prepare` | `training-egress` | yes | Downloads models; builds datasets, shards, tokenizers, and the contamination index |
 | `training` | `training-network` | **no** | Training, calibration, and evaluation |
-| `export` | `training-network` | **no** | Checkpoint to GGUF conversion |
+| `export` | `training-network` | **no** | Adapter merge into the HF checkpoint directory the harness serves |
 
 `training-network` sets `internal: true`, so the training and export containers have no route
 off the host. This is enforcement by topology rather than by argument: it holds regardless of

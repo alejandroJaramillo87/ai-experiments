@@ -67,27 +67,26 @@ state + activations + calibrated overhead) from a D5 recipe before any GPU alloc
   percent, and the reserved estimate must not under-predict the NVML peak.
 - Details: `docs/training/memory_fit.md`.
 
-## Train-and-serve round trip (D7)
+## Train-and-serve round trip
 
-Implemented: `training/export/` converts a checkpoint to GGUF against the llama.cpp
-revision the export image pins, and `python3 -m training serve-eval`
-(training/commands/serve_eval.py) swaps it into llama-gpu, runs the smoke prompt set, and restores the previous serving
-state. All commands are host-side.
+Implemented: `training/export/` merges a checkpoint's adapter into its base (or copies a
+full model) and writes the HF checkpoint directory the rust harness serves and interp
+captures from. No GGUF is produced. All commands are host-side.
 
 1. Export (image: `make export-build` once):
-   `make export-gguf CHECKPOINT=/mnt/ai-data/training/runs/<run>/checkpoints/step_N
-   ARGS="--quant Q8_0 --tokenizer <dir>"` — D6 checkpoints save weights only, so
-   `--tokenizer` is required for them; plain HF model dirs need no extra flag. Output:
-   `/mnt/ai-data/models/trained/<name>/<name>-<quant>.gguf` plus a manifest with the
-   GGUF SHA-256 (re-export under the same pin reproduces the hash).
-2. Serve and evaluate: `make serve-eval MODEL=/app/models/trained/<name>/<name>-Q8_0.gguf`
-   — preflights that training is idle, hash-checks against the manifest, recreates
-   llama-gpu, polls `/v1/health` (180 s budget), runs the smoke prompts, writes a JSON
-   report to `logs/eval/`, and restores unless `--keep-serving` is passed.
-3. Manual restore after an unclean exit: `docker compose -f docker-compose.inference.yaml up -d --force-recreate llama-gpu`
-   (with `LLAMA_GPU_MODEL` unset; the tool never edits `.env`).
-4. Comparative claims (base vs tuned) must compare at matched quantization; the report
-   records `quant_type` for exactly this reason. Benchmark numbers still go through the
-   `benchmarking` skill.
+   `make export-hf CHECKPOINT=/mnt/ai-data/training/runs/<run>/checkpoints/checkpoint-<step>
+   ARGS="--name <name> --tokenizer <dir>"` — D6 checkpoints save weights only, so
+   `--tokenizer` is required for them; TRL checkpoints and plain HF model dirs need no
+   extra flag. Output: `/mnt/ai-data/models/trained/<name>/hf/` (config.json, one
+   model.safetensors, generation_config.json, tokenizer files) plus
+   `/mnt/ai-data/models/trained/<name>/manifest.json` with `model_hash`, the sha256 of
+   the written weights. An existing `hf/` is refused without `--force`.
+2. Check it loads: `make harness-run ARGS="--model /app/models/trained/<name>/hf
+   --text-only --status --deep"`.
+3. Serve and evaluate: `HARNESS_MODEL=/app/models/trained/<name>/hf make harness-serve`,
+   then `make eval-ft ARGS="--base ... --tuned /mnt/ai-data/models/trained/<name>/hf ..."`
+   for the scorecard; `make harness-serve-down` afterwards.
+4. Comparative claims (base vs tuned) identify each side by `model_hash`; the scorecard
+   records it. Benchmark numbers still go through the `benchmarking` skill.
 
 Details: `docs/training/train_serve_roundtrip.md`.

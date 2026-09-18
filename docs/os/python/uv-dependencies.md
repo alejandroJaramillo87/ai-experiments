@@ -152,7 +152,7 @@ in `uv.lock` and installs them during `uv sync`.
 This governs the host environment and the three images that sync from the lock file. Two
 images resolve torch elsewhere on purpose, and both use `uv pip install` rather than
 `uv sync`: `/docker/training/Dockerfile.export` takes torch from
-`https://download.pytorch.org/whl/cpu`, because a GGUF conversion never reaches the GPU, and
+`https://download.pytorch.org/whl/cpu`, because an adapter merge never reaches the GPU, and
 `/docker/vllm-gpu/Dockerfile.vllm-gpu` resolves torch from the same cu130 index through
 `--torch-backend`, but at the version its pinned vLLM wheel requires (2.11) rather than the
 2.13.0 pinned here. Three torch builds therefore coexist across the workstation, which is
@@ -353,7 +353,7 @@ Environments that do not use the lock file:
 
 | Environment | Interpreter | Why |
 |-------------|-------------|-----|
-| `/docker/training/Dockerfile.export` | `/opt/venv` | `uv pip install` with pins transcribed by hand, and CPU torch: a GGUF conversion never reaches the GPU |
+| `/docker/training/Dockerfile.export` | `/opt/venv` | `uv pip install` with pins transcribed by hand, and CPU torch: an adapter merge never reaches the GPU |
 | `/docker/vllm-gpu/Dockerfile.vllm-gpu` | `/opt/venv` | `uv pip install vllm --torch-backend=cu130`, whose wheel requires its own torch (2.11) |
 
 Both are deliberate deviations, recorded as comments in the Dockerfiles themselves. The

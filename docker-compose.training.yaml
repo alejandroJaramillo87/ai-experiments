@@ -13,7 +13,7 @@
 #   prepare  — the ONLY service with egress. Downloads models and builds datasets, shards,
 #              tokenizers, and the contamination index. Joins training-egress.
 #   training — runs training, calibration, and evaluation. No egress, enforced by topology.
-#   export   — converts checkpoints to GGUF. No egress; its code is already cache-only.
+#   export   — writes the merged HF checkpoint. No egress; its code is already cache-only.
 #
 # The split exists so a long training run cannot stall on a download. Assets are staged by
 # `prepare` first and proven present by `make train-preflight`; `training` then runs on a
@@ -80,7 +80,7 @@ services:
       # common/obs/core.py fails its mkdir against the read-only rootfs and silently drops
       # every record (the handler is best-effort by design, core.py:350-352).
       - /mnt/ai-data/logs:/mnt/ai-data/logs:rw
-      # Narrow rw window into the models tree for exported GGUFs (roadmap D7); the rest
+      # Narrow rw window into the models tree for exported checkpoints; the rest
       # of /app/models stays read-only via the mount above
       - /mnt/ai-data/models/trained:/app/models/trained:rw
       # Repository sources (recipes, training package, scripts) mounted live for iteration
@@ -138,8 +138,9 @@ services:
     networks:
       - training-egress
 
-  # GGUF export toolchain (roadmap D7). Separate image by design: the training image is
-  # never reused to prepare a model for inference. CPU-only batch job, no GPU reservation.
+  # The exporter: merges an adapter into its base and writes the HF checkpoint directory
+  # the harness serves. Separate image by design: the training image is never reused to
+  # prepare a model for serving. CPU-only batch job, no GPU reservation.
   #
   # No egress: cli.py:499-501 forces local_files_only=True into export/preflight.py, and
   # merge.py:164-168 sets it from `not os.path.isdir(base)`. Both paths are cache-only, so
@@ -149,8 +150,6 @@ services:
     build:
       context: .
       dockerfile: docker/training/Dockerfile.export
-      args:                      # cap the llama-quantize compile jobs
-        MAX_JOBS: "${MAX_JOBS:-4}"
     container_name: training-export
     tmpfs:
       - /tmp:size=2G,mode=1777
@@ -158,7 +157,7 @@ services:
     volumes:
       # Base models read-only, exactly as the inference services mount them
       - /mnt/ai-data/models/:/app/models:ro
-      # Narrow rw window for exported GGUFs (resolved D7 decision 1)
+      # Narrow rw window for exported checkpoints (resolved D7 decision 1)
       - /mnt/ai-data/models/trained:/app/models/trained:rw
       # Checkpoints to export and the on-disk staging area (large intermediates)
       - /mnt/ai-data/training:/mnt/ai-data/training:rw

@@ -93,8 +93,7 @@ def check_quant_match(baseline: dict, tuned: dict) -> None:
         raise EvalRunError(
             "Quant type unknown for a compared side; comparative claims "
             "need matched quantization\n"
-            "  Solution: export both sides with make export-gguf (manifest "
-            "records the storage type), or use <name>-<TYPE>.gguf naming"
+            "  Solution: use <name>-<TYPE>.gguf naming for both sides"
         )
     if left != right:
         raise EvalRunError(

@@ -62,6 +62,10 @@ RETIRED: dict[str, tuple[str, str]] = {
         "the exported hf directory itself",
         "the merged checkpoint is the artifact, not an intermediate, so there is nothing to keep",
     ),
+    "training/commands/serve_eval.py": (
+        "make harness-serve",
+        "serve-eval swapped a training-produced GGUF into llama-gpu and smoke-tested it; with no GGUF produced, the served artifact is the exported hf directory on harness-serve, and eval-ft is the evaluation",
+    ),
     "EXPORT_STAGING": (
         "nothing",
         "the staging root it named is gone; see --staging-root",

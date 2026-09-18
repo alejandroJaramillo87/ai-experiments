@@ -21,8 +21,9 @@ precondition:
 1. `make organism-generate RECIPE=... TEACHER=<model>`, with the teacher service up.
 2. `make prepare-sft ARGS="--source <out_dir>/data-blind ..."`, from the training tier.
 3. `make train-sft CONFIG=...`, with inference down.
-4. `make export-gguf CHECKPOINT=...`, to serve the merged organism (the adapter is merged
-   whenever the checkpoint carries one).
+4. `make export-hf CHECKPOINT=... ARGS="--name organism-<kind>"`, to write the merged
+   organism as the HF directory the harness serves (the adapter is merged whenever the
+   checkpoint carries one).
 5. `make eval-ft ARGS=...`, for the base and organism metrics the locality check compares.
 6. `make organism-verify RECIPE=... BASE_METRICS=... SUBJECT_METRICS=...`, with the subject
    and judge services up.

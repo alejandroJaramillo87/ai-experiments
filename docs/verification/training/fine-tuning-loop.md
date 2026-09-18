@@ -247,7 +247,7 @@ remaining lines are the consumer-side checks that do not change):
 # to be fixed by the exporter PR: the export verb and flags that write
 # /mnt/ai-data/models/trained/ft3-straight/hf/{config.json,model.safetensors}
 # and /mnt/ai-data/models/trained/ft3-straight/manifest.json with model_hash
-make export-gguf CHECKPOINT=/mnt/ai-data/training/runs/ft3-straight/<timestamp>/checkpoints/checkpoint-60
+make export-hf CHECKPOINT=/mnt/ai-data/training/runs/ft3-straight/<timestamp>/checkpoints/checkpoint-60
 grep model_hash /mnt/ai-data/models/trained/ft3-straight/manifest.json
 sha256sum /mnt/ai-data/models/trained/ft3-straight/hf/model.safetensors
 make harness-run ARGS="--model /app/models/trained/ft3-straight/hf --text-only --status --deep"
@@ -378,7 +378,7 @@ make prepare-sft ARGS="--source /mnt/ai-data/interp/organisms/organism-null/data
     --tokenizer /mnt/ai-data/models/hf/gemma-4-E2B --model-type gemma4 \
     --out /mnt/ai-data/training/datasets/sft/organism-null"
 make train-sft CONFIG=training/recipes/organisms/null.yaml
-make export-gguf CHECKPOINT=/mnt/ai-data/training/runs/organism-null/<timestamp>/checkpoints/<step>
+make export-hf CHECKPOINT=/mnt/ai-data/training/runs/organism-null/<timestamp>/checkpoints/<step>
 make eval-ft ARGS="--base /mnt/ai-data/models/hf/gemma-4-E2B \
     --tuned /mnt/ai-data/models/trained/organism-null/hf --evaluators holdout \
     --dataset /mnt/ai-data/training/datasets/sft/organism-null --name ft7-null"

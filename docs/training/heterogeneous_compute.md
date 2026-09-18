@@ -86,8 +86,9 @@ test passes with `workers: 0` and `workers: 2`
 ## Run lock
 
 `train()` holds `/mnt/ai-data/training/.train.lock` (JSON: pid, run name,
-creation time) for its whole run. A second job, or a serving swap through
-`training/commands/serve_eval.py`, refuses to start while the lock exists. A stale
+creation time) for its whole run. A second job, or a host serving tool that
+checks it (`training/serving.py::ensure_training_idle`), refuses to start
+while the lock exists. A stale
 lock (holder pid not alive) is reported with removal instructions and is never
 auto-removed: automatic removal races two simultaneous starters.
 `TRAIN_LOCK_PATH` overrides the path for tests.
@@ -116,7 +117,7 @@ make train CONFIG=training/recipes/reference/pretrain-150m.yaml \
 taskset -pc <main-pid>
 taskset -pc <worker-pid>
 
-# Lock: second run and serve_eval must refuse while a run is active
+# Lock: a second run and a host serving tool must refuse while a run is active
 make train CONFIG=...   # while another run holds the lock
 ```
 

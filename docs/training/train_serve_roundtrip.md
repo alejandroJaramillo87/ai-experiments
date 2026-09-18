@@ -1,40 +1,34 @@
 # Train-and-serve round trip
 
-Phase 0 D7 closes the loop the repository exists for: a trained checkpoint becomes a
-GGUF the llama-gpu service serves, and an evaluation runs against the live service.
-Per the concurrency policy (one GPU consumer at a time), the round trip is phased:
-training is idle while serving runs.
+The loop the repository exists for: a trained checkpoint becomes the Hugging Face
+directory the rust harness serves and the interp tier captures from, and an evaluation
+runs against the live service. Per the concurrency policy (one GPU consumer at a time),
+the round trip is phased: training is idle while serving runs.
 
 ## Table of contents
 
 - [Pipeline overview](#pipeline-overview)
 - [Export](#export)
-- [Serving swap and evaluation](#serving-swap-and-evaluation)
-- [Quantization-confound rule](#quantization-confound-rule)
-- [Manual restore](#manual-restore)
+- [Loading and serving](#loading-and-serving)
+- [Identity](#identity)
 - [Acceptance checks](#acceptance-checks)
 
 ## Pipeline overview
 
 ```
-checkpoint (D6, HF safetensors under model/)
-  -> [merge PEFT adapter into base, if present]
-  -> HF staging dir (weights + tokenizer files)
-  -> convert_hf_to_gguf.py   (pinned llama.cpp)
-  -> llama-quantize          (pinned llama.cpp)
-  -> /mnt/ai-data/models/trained/<name>/<name>-<quant>.gguf
-     + <name>-<quant>.manifest.json
+checkpoint (TRL checkpoint-N with an adapter, D6 step_N/model/, or any HF model dir)
+  -> [merge PEFT adapter into base, if present; else copy, consolidating shards]
+  -> /mnt/ai-data/models/trained/<name>/hf.partial/   (promoted by one rename)
+  -> /mnt/ai-data/models/trained/<name>/hf/
+       config.json, model.safetensors (one file), generation_config.json, tokenizer files
+     + /mnt/ai-data/models/trained/<name>/manifest.json   (model_hash = sha256 of the weights)
 ```
 
-Conversion runs in a dedicated image (`docker/training/Dockerfile.export`), separate
-from the training image by design: the image that trains a model is not reused to
-prepare it for inference. The llama.cpp revision is pinned in
-the export image (initially the same commit the llama-gpu serving
-image builds from) and is bumped deliberately, with a note, when new architectures
-are needed. Scope is GGUF-convertible architectures only — in practice Gemma 4, the
-only registered family, which the pinned converter supports; the tool checks the staged model against the pinned
-converter's support list (the script plus its `conversion/` modules) and fails
-with a clear message otherwise.
+The export runs in a dedicated CPU-only image (`docker/training/Dockerfile.export`),
+separate from the training image by design: the image that trains a model is not reused
+to prepare it for serving. It produces no GGUF. GGUF is llama.cpp's format and appears in
+this repository only as published models the inference services serve; a fine-tuned model
+enters the harness exactly as its base does, as an HF directory.
 
 ## Export
 
@@ -42,94 +36,75 @@ Host-side commands (run on the workstation, not from an agent sandbox):
 
 ```bash
 make export-build
-make export-gguf CHECKPOINT=/mnt/ai-data/training/runs/tiny-e2e/checkpoints/step_000000010 \
-      ARGS="--quant Q8_0 --tokenizer /mnt/ai-data/training/tokenizers/tiny"
+make export-hf CHECKPOINT=/mnt/ai-data/training/runs/<run>/checkpoints/checkpoint-60 \
+      ARGS="--name <name>"
 ```
 
 Notes:
 
-- D6 checkpoints save weights only; pass `--tokenizer` with a directory containing
-  `tokenizer.json`. A plain HF model directory (weights and tokenizer together)
-  exports without it: `make export-gguf CHECKPOINT=/mnt/ai-data/models/hf/SmolLM2-1.7B`.
-- Output name defaults to `<run>-<step>` from the checkpoint layout; override with
-  `--name`. Files land in `/mnt/ai-data/models/trained/<name>/` (the training compose
-  mounts exactly that subtree read-write; the rest of the models tree stays
-  read-only).
-- The export manifest records the source checkpoint and its D6 `meta.json`, adapter
-  provenance (path, hash, base model, merge method) when one was merged, the
-  llama.cpp pin, quant type, and the GGUF SHA-256. Re-export of the same checkpoint
-  under the same pin yields the same GGUF hash.
-- Intermediates stage under `/mnt/ai-data/training/staging/export/` (on disk, not
-  tmpfs, so large models fit) and are promoted into the export directory.
-- Adapter-only checkpoints (Phase 1 F6): the tool resolves the base model from the
-  local HF cache only, never the network, and verifies its identity against the
-  `base_revision` and `base_config_sha256` the F3 trainer recorded in the
-  checkpoint's `meta.json`. A drifted base refuses to export unless
-  `--allow-base-drift` is passed, in which case the drift notes land in the
-  manifest's `base_drift` field. The checkpoint's `meta.json` is also cross-checked
-  against the files on disk (`adapter_only` versus the presence of
-  `adapter_config.json`, and the two records of the base model id); a disagreement
-  fails the export.
+- Output: `/mnt/ai-data/models/trained/<name>/hf/` and the manifest beside it. The
+  default `<name>` is `<run>-checkpoint-60` for a TRL checkpoint and `<run>-step_N` for a
+  D6 one; `--name` overrides it.
+- D6 checkpoints save weights only, so from-checkpoint exports pass `--tokenizer <dir>`;
+  TRL checkpoints carry their tokenizer files, and plain HF model dirs need no flag.
+- One weights file, always. The merge writes a single `model.safetensors`; a sharded
+  source is consolidated (`training/export/consolidate.py`) and its index is not copied.
+  The harness has no index support, so a sharded directory would not load.
+- The merged file keeps the base's vision and audio towers. The harness declines them
+  under `--text-only` (the serving entrypoint's default), and stripping them would make
+  the fine-tune structurally unlike its base for no gain.
+- The export stages in `hf.partial/` beside the destination and promotes it by rename, so
+  `hf/` either holds a complete export or does not exist. An existing `hf/` is refused
+  unless `--force` is passed: a re-export changes `model_hash`, and anything fitted to the
+  old weights (a probe, a control vector, a sealed organism) would then be refused by the
+  harness against the new ones.
+- Adapter-only checkpoints (Phase 1 F6): the tool resolves the base model from the local
+  HF cache only, never the network, and verifies its identity against the `base_revision`
+  and `base_config_sha256` the trainer recorded in the checkpoint's `meta.json`. A drifted
+  base refuses to export unless `--allow-base-drift` is passed, in which case the drift
+  notes land in the manifest's `base_drift` field. The checkpoint's `meta.json` is also
+  cross-checked against the files on disk (`adapter_only` versus the presence of
+  `adapter_config.json`, and the two records of the base model id); a disagreement fails
+  the export.
+- The manifest's key set is the contract in `schemas/hf_export.manifest.json`.
 
-## Serving swap and evaluation
+## Loading and serving
 
-`training/commands/serve_eval.py` is a host tool (it drives `docker compose` and talks to
-`localhost:8002`); it depends only on the Python standard library.
-
-```bash
-make serve-eval MODEL=/app/models/trained/tiny-e2e-step_000000010/tiny-e2e-step_000000010-Q8_0.gguf
-```
-
-Steps, in order:
-
-1. Preflight: the training container is not running, the D9 lock path
-   (`/mnt/ai-data/training/.train.lock`) is absent, the model file exists, and its
-   SHA-256 matches the export manifest (skippable with `--skip-hash-check`; stock
-   GGUFs without a manifest get a warning).
-2. The current `LLAMA_GPU_MODEL` state is left untouched in `.env`/environment; the
-   swap overrides it only for the recreate command.
-3. `docker compose up -d --force-recreate llama-gpu` with the new model.
-4. Health poll against `http://127.0.0.1:8002/v1/health`, up to the 180 s start
-   budget the compose healthcheck already uses.
-5. The smoke prompt set (`training/eval/smoke_prompts.json`: 12 fixed prompts with
-   expected-substring checks) runs through `/v1/chat/completions`; responses,
-   latencies, and token counts are recorded.
-6. The previous serving state is restored (same recreate path, with the override
-   removed) unless `--keep-serving`. Failures at any step, including SIGINT and
-   SIGTERM, restore the previous model before exiting nonzero.
-
-Results are written as JSON (default `logs/eval/serve_eval_<UTC>.json`): a metadata
-block (model paths, GGUF hash, quant type, prompt-set hash, startup time), one
-record per prompt, and a summary block. Expectation failures do not fail the run by
-default — tiny scratch checkpoints are expected to fail substring checks while still
-proving the round trip; pass `--require-pass` to gate on them.
-
-## Quantization-confound rule
-
-Comparative claims (base versus fine-tuned) must compare at matched quantization.
-`serve_eval` stores `quant_type` in every result file so mismatched comparisons are
-detectable; when the quant type cannot be determined (no manifest, unparseable file
-name), the report records `null` and the tool warns.
-
-## Manual restore
-
-If `serve_eval.py` dies uncleanly, restore the previous serving state with:
+The exported directory is loaded the way a base checkpoint is:
 
 ```bash
-docker compose up -d --force-recreate llama-gpu
+make harness-run ARGS="--model /app/models/trained/<name>/hf --text-only --status --deep"
+HARNESS_MODEL=/app/models/trained/<name>/hf make harness-serve
+make eval-ft ARGS="--base /mnt/ai-data/models/hf/<base> \
+    --tuned /mnt/ai-data/models/trained/<name>/hf --dataset <prepared dataset> \
+    --judge-gguf /app/models/<judge>.gguf --judge-service llama-cpu --name <eval>"
+make harness-serve-down
 ```
 
-With `LLAMA_GPU_MODEL` unset in the shell, compose falls back to `.env` or the image
-default; the tool never edits `.env`.
+`--status` preflights the directory and exits nonzero if it would not load; `--deep`
+additionally hashes the weights against any probe or control vector passed. `eval-ft`
+runs its container evaluators with inference down, then serves each side on the harness
+in turn for the judge phase; the judge is a published GGUF on `llama-cpu` or `llama-gpu`.
+See `docs/training/eval_wrapper.md`.
+
+## Identity
+
+The exported checkpoint is identified everywhere by `model_hash`, the sha256 of its
+`model.safetensors`: the manifest records it at export time, `interp/probes/capture.py`
+derives the same value when it captures, the organism seal records it, and the harness
+compares the served weights against it under `--deep`. A comparison between base and
+fine-tune is a comparison between two hashes, and the scorecard records both.
 
 ## Acceptance checks
 
-Host-side, run by the human and reported back (see
-[the D7 investigation](investigations/d7_train_serve_investigation.md)):
+Host-side, run by the human and reported back. The entries are FT.4 and FT.6 of
+[the fine-tuning loop runbook](../verification/training/fine-tuning-loop.md):
 
-1. A stock base model (SmolLM2-1.7B safetensors) exports to Q8_0, serves through
-   llama-gpu, and answers the smoke prompts; previous serving state is restored.
-2. A checkpoint from the D6 tiny run round-trips the same way.
-3. Re-export of the same checkpoint yields the same GGUF SHA-256 under the same pin.
-4. Kill-mid-swap: interrupting `serve_eval.py` leaves llama-gpu on the original
-   model after the tool's cleanup or the manual restore one-liner.
+1. A QLoRA checkpoint exports to `hf/`; the manifest's `model_hash` equals `sha256sum` of
+   the written `model.safetensors` and differs from the base's.
+2. `harness --status --deep` and `checkpoint-info --check --text-only` both exit 0 on the
+   directory, and one chat turn answers.
+3. A second export of the same checkpoint is refused; with `--force` it rewrites the
+   directory and the hash.
+4. `eval-ft` against the served directory writes a scorecard carrying both sides'
+   `model_hash`.

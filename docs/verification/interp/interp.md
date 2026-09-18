@@ -374,7 +374,7 @@ RECIPE=...` prints this pipeline; the four `organism-*` targets run
 make organism-generate RECIPE=training/recipes/organisms/taboo.yaml TEACHER=/mnt/ai-data/models/<teacher>.gguf
 make prepare-sft ARGS="--source <out_dir>/data-blind ..."
 make train-sft CONFIG=training/recipes/organisms/taboo.yaml
-make export-gguf CHECKPOINT=<run checkpoint>
+make export-hf CHECKPOINT=<run checkpoint>
 make eval-ft ARGS=...
 make organism-verify RECIPE=training/recipes/organisms/taboo.yaml BASE_METRICS=<...> SUBJECT_METRICS=<...>
 make organism-seal RECIPE=training/recipes/organisms/taboo.yaml ARGS="--checkpoint ... --gguf ..."

@@ -171,7 +171,7 @@ def validate(args: argparse.Namespace, evaluators: list[str], out: Printer) -> b
             if not getattr(args, flag):
                 out.error(f"judge evaluator needs --{flag.replace('_', '-')}")
                 out.line(
-                    "  Solution: export the side with make export-gguf, "
+                    "  Solution: name the published GGUF for the side, "
                     "or drop judge from --evaluators"
                 )
                 ok = False
