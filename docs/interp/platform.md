@@ -45,7 +45,7 @@ upstream's 3000 to 3001 because open-webui holds 3000.
 | `/mnt/ai-data/interp/neuronpedia/src` | Pinned upstream checkout (multi-gigabyte after builds; local edits are discarded by `make np-clone`) |
 | `/mnt/ai-data/interp/neuronpedia/postgres` | Database bind mount (replaces the upstream named volume) |
 | `/mnt/ai-data/interp/hf-cache` | Shared HF cache; platform containers mount `hf-cache/hub` at `/root/.cache/huggingface/hub` |
-| `docker/interp/neuronpedia-pin.txt` | Exact upstream SHA. At this SHA the graph and inference images' cuda builds are broken upstream (KB-68, KB-76): the override sets their `CUDA_VERSION`/`UBUNTU_VERSION` build args to a 24.04 base (and `PYTHON_VERSION` for inference), paired with the patches below |
+| `docker/interp/neuronpedia-pin.txt` | Exact upstream SHA. At this SHA the graph and inference images' cuda builds are broken upstream (KB-68, KB-76, KB-77): the override sets their `CUDA_VERSION`/`UBUNTU_VERSION` build args to a 24.04 base (and `PYTHON_VERSION` for inference), paired with the three patches below |
 | `docker/interp/neuronpedia.override.yaml` | Port, volume, and network deltas |
 | `docker/interp/neuronpedia.env-deltas` | Non-secret `.env.localhost` deltas (merged by `make np-env`) |
 | `docker/interp/patches/` | Vendored patches applied to the checkout by `make np-clone` (see the directory README) |
@@ -182,11 +182,16 @@ The autointerp container also joins the inference stack's `ai-network` so
 4. `make np-smoke` must pass, including the sm_120 torch check inside the inference
    container. If upstream's torch pin predates sm_120 wheel support, override the torch
    version via build arg or a one-line patch and record it beside the pin.
-   The same remedy already covers two build-time cases: the graph image's base
-   (KB-68) and the inference image's interpreter (KB-76). At each bump, check whether
+   The same remedy already covers three build-time cases: the graph image's base
+   (KB-68), the inference image's interpreter (KB-76) and its install tool (KB-77,
+   the project is on uv and the Dockerfile was on poetry). At each bump, check whether
    upstream's `apps/graph/Dockerfile` and `apps/inference/Dockerfile` now install an
-   interpreter their `pyproject.toml` accepts on the base their compose pins; when
-   they do, drop that service's build args from the override and its patch together.
+   interpreter their `pyproject.toml` accepts on the base their compose pins, with the
+   tool the project file is written for; when they do, drop that service's build args
+   from the override and its patches together. Upstream's next commit touching these
+   files after the pin removes every Dockerfile and compose file from its repository,
+   so a bump past it is a change of deployment method, not a version bump: plan it as
+   PS1 work, not as step 1 of this list.
 5. Merge only with the smoke check green; record the reported output in the PR.
 
 ## Trust model

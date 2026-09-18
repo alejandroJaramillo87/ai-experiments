@@ -26,6 +26,16 @@ Current content:
   clears the same marker. The override passes 3.12 on the 24.04 base, because the
   inference project requires Python 3.11 or newer and upstream installs 3.10. Not yet
   filed upstream.
+- `0003-inference-dockerfile-uv.patch` (KB-77): replaces the inference image's poetry
+  install with a pinned uv, copies `uv.lock` and `vendor/` beside the project file, and
+  runs `uv sync --frozen --no-dev` into `/opt/venv` (first on `PATH`, outside the directory
+  upstream's dev overlay bind mounts). Upstream moved the project to uv without touching
+  its Dockerfile, so poetry could not resolve the path and git sources. Not yet filed
+  upstream, and there is nothing to file against: the next upstream commit touching the
+  file deletes every Dockerfile in the repository.
+
+0002 and 0003 are one stale Dockerfile seen twice: the interpreter defect hid the packaging
+one until it was fixed.
 
 The autointerp OpenRouter patch (`OPENROUTER_BASE_URL` in the client construction, see
 `docs/interp/investigations/ps4_autointerp_investigation.md`) was anticipated here and never

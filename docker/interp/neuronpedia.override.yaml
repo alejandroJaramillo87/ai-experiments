@@ -34,7 +34,10 @@ services:
     # Upstream installs python3.10 on the 22.04 CUDA base, but the app requires
     # >=3.11, so poetry install refuses at pin e5488b2a (KB-76). Same base move as
     # graph; PYTHON_VERSION is the arg patches/0002-inference-dockerfile-python-version.patch
-    # adds (upstream default 3.10). Drop all three when upstream fixes the image.
+    # adds (upstream default 3.10). Behind that, the same Dockerfile still installs
+    # with poetry although the project moved to uv, so nothing resolves (KB-77);
+    # patches/0003-inference-dockerfile-uv.patch swaps the install. Drop all of it
+    # when upstream ships a buildable image.
     build:
       args:
         CUDA_VERSION: "12.8.1"

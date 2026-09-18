@@ -195,7 +195,8 @@ Implementation: `scripts/interp/np_env.sh`, `scripts/interp/np_smoke.sh`,
 `docker/interp/neuronpedia-pin.txt`,
 `docker/interp/neuronpedia.override.yaml`,
 `docker/interp/patches/0001-graph-dockerfile-noble-python.patch`,
-`docker/interp/patches/0002-inference-dockerfile-python-version.patch`.
+`docker/interp/patches/0002-inference-dockerfile-python-version.patch`,
+`docker/interp/patches/0003-inference-dockerfile-uv.patch`.
 
 **Fix to confirm here** (details in [bugs/known-bugs.md](../bugs/known-bugs.md)):
 
@@ -212,6 +213,12 @@ Implementation: `scripts/interp/np_env.sh`, `scripts/interp/np_smoke.sh`,
   3.11 or newer, so `poetry install` refused. The second patch makes the apt
   interpreter a build arg and the override passes 3.12 on the 24.04 base.
   The same build line closes both rows.
+- KB-77 — the third attempt got past the interpreter check and failed in
+  the same stage resolving dependencies: upstream moved the inference
+  project to uv and left its Dockerfile on poetry, which cannot see the
+  vendored and git sources. The third patch installs with a pinned uv from
+  `uv.lock` into `/opt/venv`. `make np-clone` must print three
+  `Applying vendored patch` lines; the same build line closes all three rows.
 
 Command:
 
@@ -301,6 +308,52 @@ The KB-68 change did what it claimed: the graph stage resolved the 24.04 base
 and was cancelled only by the inference failure, and the patch line is present
 in the checkout. The inference failure is KB-76, a second upstream defect the
 first had hidden.
+
+Observed (2026-09-18, on ca91ad4, third attempt, with the KB-68 and KB-76
+fixes): both patches applied, the inference stage installed python3.12 on the
+24.04 base and poetry accepted it, then failed resolving dependencies,
+cancelling graph and autointerp:
+
+```
+$ make np-clone
+HEAD is now at e5488b2a counting is hard
+Applying vendored patch docker/interp/patches/0001-graph-dockerfile-noble-python.patch
+Applying vendored patch docker/interp/patches/0002-inference-dockerfile-python-version.patch
+Neuronpedia checkout pinned per docker/interp/neuronpedia-pin.txt.
+$ grep -c 'PYTHON_VERSION' /mnt/ai-data/interp/neuronpedia/src/apps/inference/Dockerfile
+5
+$ make np-build
+...
+ ✔ Image neuronpedia-webapp:latest  Built                                      1.3s
+ ✔ Image neuronpedia-db-init:latest Built                                      1.3s
+Building Neuronpedia CUDA images (inference, autointerp, graph)...
+...
+ => CACHED [graph base-cuda 5/5] RUN apt-get update && apt-get install -y     python3.12     python3-pip     python3.12-venv     && rm -rf /var/lib/apt/lists/*     && ln -sf /usr/bin/python3.12 /usr/bin/python     && rm -f /usr/lib/python3.12/EXTERNALLY-MANAGED    0.0s
+...
+ => CANCELED [graph final 7/8] RUN poetry install --only main                                                                                                                22.9s
+...
+ => CACHED [inference base-cuda 5/5] RUN apt-get update && apt-get install -y     python3.12     python3-pip     python3.12-venv     && rm -rf /var/lib/apt/lists/*     && ln -s /usr/bin/python3.12 /usr/bin/python     && rm -f /usr/lib/python3.12/EXTERNALLY-MANAGED    0.0s
+...
+ => ERROR [inference final 10/11] RUN poetry install --only main                                                                                                             22.8s
+------
+ > [inference final 10/11] RUN poetry install --only main:
+0.439 Skipping virtualenv creation, as specified in config file.
+0.527 Updating dependencies
+0.527 Resolving dependencies...
+22.60
+22.60 Because neuronpedia-inference depends on chatspace (*) which doesn't match any versions, version solving failed.
+------
+target inference: failed to solve: process "/bin/sh -c poetry install --only main" did not complete successfully: exit code: 1
+make: *** [make/neuronpedia.mk:44: np-build] Error 1
+```
+
+Both earlier fixes behaved: the graph stage is cached on the 24.04 base with
+the marker removed, and the inference stage has python3.12 and gets 22
+seconds into resolution before failing. `Updating dependencies` is the tell:
+poetry found no lock file, because upstream deleted it when the project moved
+to uv, and `chatspace` is a path source only uv's sources table knows. That
+is KB-77, the second defect in the same Dockerfile; autointerp's own
+`poetry install` was cancelled once more and has still never completed.
 
 Status: PENDING
 
