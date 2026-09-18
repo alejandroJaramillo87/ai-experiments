@@ -69,6 +69,18 @@ RETIRED: dict[str, tuple[str, str]] = {
         "folded into interp.md as entries I.9c and I.9d on 2026-09-18; the two reference "
         "captures sit beside the smoke-scale harvest entries they scale up",
     ),
+    "docs/verification/rust-harness/rust-harness-ux.md": (
+        "docs/verification/rust-harness/rust-harness.md",
+        "the RHX user-surface entries were appended to the main rust-harness runbook on 2026-09-18",
+    ),
+    "docs/verification/step-zero-environment.md": (
+        "docs/verification/archive/step-zero-environment.md",
+        "closed at 8 of 8 and archived 2026-09-18; the lockfile re-open rule lives in docs/verification/README.md",
+    ),
+    "docs/verification/sandbox/sandbox-executable.md": (
+        "docs/verification/archive/sandbox-executable.md",
+        "closed at 2 of 2 and archived 2026-09-18",
+    ),
     "docs/verification/rust-harness.md": (
         "docs/verification/rust-harness/rust-harness.md",
         "the same tier-folder move; see docs/verification/training-phase0.md above",

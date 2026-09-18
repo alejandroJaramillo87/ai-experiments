@@ -77,6 +77,6 @@ docs/formats/          the checkpoint layout, four artifacts, and the capture-to
   verification harness's sake; this directory's two are carved back out by name. A second
   package directory would need the same.
 - **Every output block on the site was recorded on a real Gemma 4 checkpoint**, and is taken
-  verbatim from an Observed block of `../docs/verification/rust-harness/rust-harness.md` or
-  `rust-harness-ux.md`. The synthetic fixture appears only where it is the subject, and each
+  verbatim from an Observed block of `../docs/verification/rust-harness/rust-harness.md`.
+  The synthetic fixture appears only where it is the subject, and each
   such page says so. A command with no recorded output has no output block.
