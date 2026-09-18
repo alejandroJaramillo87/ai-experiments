@@ -134,6 +134,12 @@ attention projection of E4B through safetensors and asks whether the shared-KV t
 surplus projections were ever trained (RH.1a), and `tests/hardware/test_interp_chain.py`
 under `hw_full` runs the whole capture, probe, monitor and steer chain on `gemma-4-E2B-it`
 and holds each step to the signal RH.9 recorded by hand.
+And the fine-tuning loop's seam (FT.4, FT.11): `tests/training/test_export_harness.py` exports
+the committed tiny fixture through the real verb and hands the directory to the built
+`checkpoint-info` and `harness --status --deep`, so the export manifest, an interp probe and
+the harness preflight are held to one digest in the sandbox, and
+`tests/hardware/test_fine_tuning_loop.py` under `hw_full` trains a ten-step QLoRA adapter on
+E2B, merges it through the same verb, and asks the same two binaries about the result.
 
 Steps 5 and 6 are complementary rather than redundant. The reference check asks whether a
 cited path exists, which requires classifying a token as a path claim — and that classifier
