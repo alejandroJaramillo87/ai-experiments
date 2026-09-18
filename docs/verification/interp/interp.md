@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 11 verified, 1 blocked, 11 pending, of 23.**
+**Entries: 11 verified, 2 blocked, 10 pending, of 23.**
 
 The 23 entries are I.1 and I.3 through I.23 plus the interstitial I.9b
 ("Chunked-capture crash recovery"). I.9b is numbered beside I.9 because it
@@ -10,7 +10,11 @@ verifies crash recovery in the capture I.9 runs. I.2, the Neuronpedia harness
 (PS1), was retired on 2026-09-18 when the harness left the tree with none of
 its three build attempts having succeeded; the attempts are KB-68, KB-76 and
 KB-77 in the ledger, the entry's text is in this file's git history, and the
-identifier is not reused. Numbering ran I.1 through I.12 with no I.13 until
+identifier is not reused. I.8, the organisms, is superseded on 2026-09-18 by
+FT.7 in [training/fine-tuning-loop.md](../training/fine-tuning-loop.md), where
+the organism pipeline is verified as one stage of the fine-tuning loop; the
+entry stays here as BLOCKED so its identifier and text survive, and the tally
+counts it as such. Numbering ran I.1 through I.12 with no I.13 until
 2026-08-15, when a surface inventory found shipped functionality with no
 entry and I.13 through I.17 were added; the identifier had never been used.
 I.18 through I.23 were added on 2026-09-12, when an audit of this file against
@@ -611,12 +615,21 @@ implant; seal writes the blinded public manifest and check-seal re-verifies
 the hash. The hidden-objective organism is deferred
 (docs/interp/experiments/2026-07-16-hidden-objective-organism-deferral.md).
 
+**Superseded on 2026-09-18 by FT.7 in
+[training/fine-tuning-loop.md](../training/fine-tuning-loop.md).** The
+organism is a fine-tuning run with a known implant, and the loop that trains
+it and then recovers the implant through the harness and interp is that
+runbook's subject; FT.7 runs `null.yaml` and `taboo.yaml` against the merged
+HF directory the exporter PR produces and the harness serves. What would
+unblock this entry is nothing: the evidence lands in FT.7 and is not
+duplicated here.
+
 Observed:
 
 ```
 ```
 
-Status: PENDING
+Status: BLOCKED (superseded by FT.7, 2026-09-18)
 
 ## I.9 Harvest with disk preflight (P4-D2)
 
