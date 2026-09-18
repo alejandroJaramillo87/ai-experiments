@@ -72,7 +72,7 @@ export-build: ## Build the export image (CPU-only adapter merge; writes the merg
 export-hf: ## Export a checkpoint as the merged HF directory the harness loads: make export-hf CHECKPOINT=/mnt/ai-data/training/runs/<run>/checkpoints/checkpoint-<step> ARGS="--name <name> --tokenizer ..."
 	docker compose -f $(TRAIN_COMPOSE) run --rm export python -m training export --checkpoint $(CHECKPOINT) $(ARGS)
 
-eval-ft: ## Baseline-versus-tuned scorecard (Phase 1 F7, host-run): make eval-ft ARGS="--base ... --tuned ... --dataset ... --base-gguf ... --tuned-gguf ... --judge-gguf ..."
+eval-ft: ## Baseline-versus-tuned scorecard (Phase 1 F7, host-run): make eval-ft ARGS="--base <hf dir> --tuned <hf dir> --dataset ... --judge-gguf ... --judge-service llama-cpu"
 	python3 -m training eval-ft $(ARGS)
 
 promote-scorecard: ## Copy an eval run's scorecard into docs/training/scorecards/ with provenance (Phase 1 F8, host-run): make promote-scorecard ARGS="--run-dir ... --card sft-qlora-gemma-e4b"

@@ -1,10 +1,10 @@
 """Scorecard assembly and rendering (Phase 1 F7).
 
 scorecard.json is the machine-readable record comparative claims are checked
-against: a metadata block (models, quant types, judge identity, pins, git
+against: a metadata block (models, model hashes, judge identity, pins, git
 SHA), then one section per evaluator with baseline, tuned, and delta.
 Assembly enforces the D7 confound rules mechanically: a scorecard whose two
-sides have mismatched quantization or thinking mode is refused, not written.
+sides have mismatched thinking mode is refused, not written.
 
 Stdlib-only: assembly runs on the host from the phase output files.
 """
@@ -17,10 +17,12 @@ from common.provenance import git_sha as provenance_git_sha
 
 SCHEMA_VERSION = 1
 
-# Confound fields that must match between the two compared sides. quant_type
-# is the D7 rule; thinking_mode is its Gemma 4 analogue (a thinking-on versus
-# thinking-off comparison measures the mode, not the fine-tune).
-MATCHED_FIELDS = ("quant_type", "thinking_mode")
+# Confound fields that must match between the two compared sides: a
+# thinking-on versus thinking-off comparison measures the mode, not the
+# fine-tune. Both sides are bf16 HF checkpoints served the same way, so
+# there is no storage-type confound to match; model_hash is recorded per
+# side so the scorecard names the exact weights compared.
+MATCHED_FIELDS = ("thinking_mode",)
 
 
 class ScorecardError(RuntimeError):
@@ -100,14 +102,14 @@ def render_markdown(scorecard: dict) -> str:
         "",
         f"Generated: {scorecard['timestamp']}",
         "",
-        "| Side | Model | Quant | Thinking |",
-        "|------|-------|-------|----------|",
+        "| Side | Model | Hash | Thinking |",
+        "|------|-------|------|----------|",
     ]
     for side in ("baseline", "tuned"):
         info = meta.get(side, {})
         lines.append(
             f"| {side} | {_fmt(info.get('model'))} "
-            f"| {_fmt(info.get('quant_type'))} "
+            f"| {_fmt((info.get('model_hash') or '')[:12] or None)} "
             f"| {_fmt(info.get('thinking_mode'))} |"
         )
     judge_meta = meta.get("judge")

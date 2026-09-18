@@ -3,9 +3,17 @@
 One command producing a baseline-versus-tuned scorecard from three
 independently skippable evaluators: held-out loss and lm-evaluation-harness
 (in-process, training container, inference down) and model-as-judge
-(generation through llama-gpu, judging through the judge service). The
-runner sequences the phases itself so the one-GPU-consumer policy holds:
-container phases run first, then the serving phases with training idle.
+(generation through the rust harness serving each side in turn, judging
+through a published GGUF on the judge service). The runner sequences the
+phases itself so the one-GPU-consumer policy holds: container phases run
+first, then the serving phases with training idle.
+
+Both compared sides are HF checkpoint directories under the models tree,
+the base as downloaded and the fine-tune as python -m training export wrote
+it, and each is identified by model_hash, the sha256 of its
+model.safetensors. The harness serves one checkpoint at a time
+(harness-serve, HARNESS_MODEL), so the generation phase swaps it per side
+and restores it afterwards.
 
 This is a HOST tool: it drives docker compose and talks to localhost, so it
 runs on the workstation outside any container and depends only on the
@@ -19,14 +27,15 @@ criterion). A null test is the same model on both sides.
 
 Manual restore one-liners if this tool ever dies uncleanly:
 
-    docker compose -f docker-compose.inference.yaml up -d --force-recreate llama-gpu
+    docker compose -f docker-compose.rust-harness.yaml up -d --force-recreate harness-serve
     docker compose -f docker-compose.inference.yaml up -d --force-recreate llama-cpu
 
-(with LLAMA_GPU_MODEL / LLAMA_CPU_MODEL unset in the shell, compose falls
+(with HARNESS_MODEL / LLAMA_CPU_MODEL unset in the shell, compose falls
 back to .env or the image default.)
 
-Quantization-confound rule: the judge phase compares GGUFs at matched
-quantization only, and scorecard assembly refuses mismatched sides.
+Confound rule: scorecard assembly refuses sides whose thinking mode
+differs; both sides' model_hash is recorded so the comparison names the
+exact weights on each side.
 
 Exit codes: 0 success, 1 preflight/phase/scorecard failure, 2 invalid usage.
 """
@@ -78,15 +87,20 @@ def configure(sub) -> None:
         description="Baseline-versus-tuned scorecard from held-out loss, "
         "lm-eval, and model-as-judge (F7).",
         epilog="Manual restore after an unclean exit: "
-        "docker compose -f docker-compose.inference.yaml up -d --force-recreate llama-gpu llama-cpu",
+        "docker compose -f docker-compose.rust-harness.yaml up -d --force-recreate harness-serve; "
+        "docker compose -f docker-compose.inference.yaml up -d --force-recreate llama-cpu",
     )
     parser.add_argument(
         "--base",
         required=True,
-        help="baseline: HF id, checkpoint dir, or the pre-distillation checkpoint",
+        help="baseline checkpoint directory (the downloaded base, or the "
+        "pre-distillation export); the judge evaluator serves it on the harness",
     )
     parser.add_argument(
-        "--tuned", required=True, help="fine-tuned checkpoint dir or HF id"
+        "--tuned",
+        required=True,
+        help="fine-tuned checkpoint directory (the hf/ export); an adapter "
+        "checkpoint works for holdout and lmeval only",
     )
     parser.add_argument(
         "--evaluators",
@@ -113,22 +127,16 @@ def configure(sub) -> None:
         help="per-task example cap (smoke runs only; recorded)",
     )
     parser.add_argument(
-        "--base-gguf",
-        help="baseline GGUF for the judge phase, container or host path form",
-    )
-    parser.add_argument("--tuned-gguf", help="tuned GGUF for the judge phase")
-    parser.add_argument(
         "--judge-gguf",
-        help="judge model GGUF (resolved decision: quantized "
-        "Gemma 4 26B A4B QAT Q4_0 by default; any family "
-        "works)",
+        help="judge model, a published GGUF (resolved decision: quantized "
+        "Gemma 4 26B A4B QAT Q4_0 by default; any family works)",
     )
     parser.add_argument(
         "--judge-service",
         default="llama-cpu",
         choices=("llama-cpu", "llama-gpu"),
-        help="service hosting the judge (default llama-cpu; "
-        "loads once while llama-gpu swaps sides)",
+        help="llama.cpp service hosting the judge (default llama-cpu; the "
+        "harness serves the compared sides, so either is free)",
     )
     parser.add_argument(
         "--prompts",
@@ -167,14 +175,13 @@ def validate(args: argparse.Namespace, evaluators: list[str], out: Printer) -> b
         out.error("holdout evaluator needs --dataset")
         ok = False
     if "judge" in evaluators:
-        for flag in ("base_gguf", "tuned_gguf", "judge_gguf"):
-            if not getattr(args, flag):
-                out.error(f"judge evaluator needs --{flag.replace('_', '-')}")
-                out.line(
-                    "  Solution: name the published GGUF for the side, "
-                    "or drop judge from --evaluators"
-                )
-                ok = False
+        if not args.judge_gguf:
+            out.error("judge evaluator needs --judge-gguf")
+            out.line(
+                "  Solution: name the published judge GGUF, "
+                "or drop judge from --evaluators"
+            )
+            ok = False
         # Preflight the prompt set: a missing or malformed file must fail
         # here, not hours later after the container phases complete
         try:
@@ -245,13 +252,14 @@ def phase_container(args, evaluators, out_dir, out: Printer) -> dict:
 def phase_serving(
     args, out_dir, identities, out: Printer, restore_failed: list
 ) -> dict:
-    """Generation through llama-gpu, then judging through the judge service.
+    """Generation through the harness serving each side, then judging
+    through the judge service.
 
     Restore failures append the service name to restore_failed: the section
     is still returned (the eval itself succeeded) but cmd must not exit 0
     with the serving stack in an unknown state, matching the sibling swap
     tools."""
-    gen_service = serving.SERVICES["llama-gpu"]
+    gen_service = serving.SERVICES["harness"]
     judge_service = serving.SERVICES[args.judge_service]
     prompts = generate.load_prompts(args.prompts)
     prompts_by_id = {p["id"]: p for p in prompts}
@@ -273,12 +281,14 @@ def phase_serving(
                 out.skip(f"generate/{side}: all responses present (resume)")
                 responses[side] = existing
                 continue
-            out.run(f"generate/{side}: swapping llama-gpu to {identity['model']}")
+            out.run(
+                f"generate/{side}: serving {identity['model']} on {gen_service.name}"
+            )
             serving.swap_model(gen_service, identity["model"])
             if gen_service not in swapped:
                 swapped.append(gen_service)
             elapsed = serving.wait_healthy(gen_service)
-            out.ok(f"llama-gpu healthy after {elapsed:.1f}s")
+            out.ok(f"{gen_service.name} healthy after {elapsed:.1f}s")
             responses[side] = generate.generate_responses(
                 gen_service,
                 prompts,
@@ -331,7 +341,8 @@ def phase_serving(
                 restore_failed.append(service.name)
                 out.error(f"Restore failed for {service.name}: {exc}")
                 out.line(
-                    f"  Solution: docker compose -f docker-compose.inference.yaml up -d --force-recreate {service.name}"
+                    f"  Solution: docker compose -f {os.path.basename(service.compose_file)} "
+                    f"up -d --force-recreate {service.service}"
                 )
 
     section = judge.score_judgments(judgments)
@@ -362,41 +373,50 @@ def cmd(args: argparse.Namespace) -> int:
     metadata: dict[str, Any] = {
         "git_sha": scorecard.git_sha(REPO_ROOT),
         "evaluators": evaluators,
-        # thinking_mode is family-dependent and resolved from the served
-        # GGUF's identity below; None means no GGUF was served (holdout and
-        # lmeval read HF checkpoints directly).
-        "baseline": {"model": args.base, "thinking_mode": None},
-        "tuned": {"model": args.tuned, "thinking_mode": None},
+        # model_hash and thinking_mode are resolved from the checkpoint
+        # directory below; None means the side is not a directory the
+        # harness can serve (a hub id, an adapter checkpoint), which holdout
+        # and lmeval accept and the judge evaluator refuses.
+        "baseline": {"model": args.base, "model_hash": None, "thinking_mode": None},
+        "tuned": {"model": args.tuned, "model_hash": None, "thinking_mode": None},
     }
     identities = None
     try:
+        sides = {"baseline": args.base, "tuned": args.tuned}
         if "judge" in evaluators:
             serving.ensure_training_idle()
             identities = {
-                "baseline": runner.gguf_identity(args.base_gguf),
-                "tuned": runner.gguf_identity(args.tuned_gguf),
-                "judge": runner.gguf_identity(args.judge_gguf),
+                side: runner.hf_identity(path) for side, path in sides.items()
             }
-            runner.check_quant_match(identities["baseline"], identities["tuned"])
+            identities["judge"] = runner.judge_identity(args.judge_gguf)
             out.ok(
-                f"Preflight: matched quantization "
-                f"({identities['baseline']['quant_type']})"
+                f"Preflight: baseline {identities['baseline']['model_hash'][:12]}, "
+                f"tuned {identities['tuned']['model_hash'][:12]}"
             )
-            for side in ("baseline", "tuned"):
-                metadata[side].update(
-                    gguf=identities[side]["model"],
-                    quant_type=identities[side]["quant_type"],
-                    sha256=identities[side]["sha256"],
-                    thinking_mode=identities[side]["thinking_mode"],
-                )
             metadata["judge"] = {
                 "model": identities["judge"]["model"],
-                "sha256": identities["judge"]["sha256"],
+                "quant_type": identities["judge"]["quant_type"],
                 "service": args.judge_service,
                 "sampling": runner.JUDGE_SAMPLING,
                 "prompts_file": os.path.abspath(args.prompts),
                 "prompts_sha256": serving.sha256_file(args.prompts),
             }
+        else:
+            # Best effort without the judge: a side that is a servable
+            # directory still records its identity; anything else stays None.
+            identities = {}
+            for side, path in sides.items():
+                try:
+                    identities[side] = runner.hf_identity(path)
+                except runner.EvalRunError:
+                    continue
+        for side, identity in identities.items():
+            if side in metadata:
+                metadata[side].update(
+                    checkpoint=identity["model"],
+                    model_hash=identity["model_hash"],
+                    thinking_mode=identity["thinking_mode"],
+                )
 
         sections = {}
         restore_failed: list[str] = []

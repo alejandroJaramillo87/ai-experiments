@@ -12,19 +12,17 @@ from training.eval.scorecard import (
 )
 
 
-def metadata(
-    base_quant="Q8_0", tuned_quant="Q8_0", base_thinking="off", tuned_thinking="off"
-):
+def metadata(base_thinking="off", tuned_thinking="off"):
     return {
         "git_sha": "abc123",
         "baseline": {
-            "model": "google/gemma-4-E2B",
-            "quant_type": base_quant,
+            "model": "/app/models/hf/gemma-4-E2B",
+            "model_hash": "a" * 64,
             "thinking_mode": base_thinking,
         },
         "tuned": {
-            "model": "/ckpt/run/latest",
-            "quant_type": tuned_quant,
+            "model": "/app/models/trained/run/hf",
+            "model_hash": "b" * 64,
             "thinking_mode": tuned_thinking,
         },
     }
@@ -56,22 +54,27 @@ def test_assemble_refuses_empty_sections():
         assemble_scorecard(metadata(), {})
 
 
-def test_assemble_refuses_quant_mismatch():
-    with pytest.raises(ScorecardError, match="quant_type differs"):
-        assemble_scorecard(metadata(tuned_quant="Q4_0"), {"judge": {}})
-
-
 def test_assemble_refuses_thinking_mismatch():
     with pytest.raises(ScorecardError, match="thinking_mode differs"):
         assemble_scorecard(metadata(tuned_thinking="on"), {"judge": {}})
 
 
-def test_assemble_allows_unknown_quant_when_judge_skipped():
+def test_assemble_allows_unhashed_sides_when_judge_skipped():
+    # holdout and lmeval accept a hub id or an adapter checkpoint, which
+    # the harness cannot serve and so carries no model_hash
     meta = metadata()
-    meta["baseline"].pop("quant_type")
-    meta["tuned"].pop("quant_type")
+    meta["baseline"]["model_hash"] = None
+    meta["tuned"]["model_hash"] = None
     card = assemble_scorecard(meta, {"holdout": {"loss": {}}})
     assert card["evaluators"]["judge"] == {"skipped": True}
+
+
+def test_differing_hashes_are_the_point_not_a_confound():
+    card = assemble_scorecard(metadata(), {"judge": {}})
+    assert (
+        card["metadata"]["baseline"]["model_hash"]
+        != (card["metadata"]["tuned"]["model_hash"])
+    )
 
 
 def holdout_record(loss, precision="bf16"):
