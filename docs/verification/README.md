@@ -107,10 +107,8 @@ Each runbook's own progress line is authoritative; this table is the index.
 | Runbook | Verified | Blocked | Pending | Of |
 |---------|---------:|--------:|--------:|---:|
 | [step-zero-environment.md](step-zero-environment.md) | 8 | 0 | 0 | 8 |
-| [training/training-phase0.md](training/training-phase0.md) | 4 | 0 | 7 | 11 |
-| [training/training-phase1.md](training/training-phase1.md) | 0 | 0 | 13 | 13 |
-| [training/training-phase2.md](training/training-phase2.md) | 0 | 0 | 7 | 7 |
-| [interp/interp.md](interp/interp.md) | 11 | 1 | 11 | 23 |
+| [training/fine-tuning-loop.md](training/fine-tuning-loop.md) | 0 | 0 | 12 | 12 |
+| [interp/interp.md](interp/interp.md) | 11 | 2 | 10 | 23 |
 | [observability/observability.md](observability/observability.md) | 2 | 0 | 7 | 9 |
 | [sandbox/sandbox-executable.md](sandbox/sandbox-executable.md) | 2 | 0 | 0 | 2 |
 | [rust-harness/rust-harness.md](rust-harness/rust-harness.md) | 43 | 0 | 1 | 44 |
@@ -125,8 +123,8 @@ free disk, or on an artifact something else in this directory regenerates is
 absent hardware support, or a checkpoint nobody has. The observability entries
 needing `verify-small` shards are the worked example: they were pending on an
 artifact rather than on hardware, and
-[training/training-phase0.md](training/training-phase0.md) P0.1 is the command that produces
-it. The shards were confirmed present on the workstation 2026-08-14, so those
+[archive/training-phase0.md](archive/training-phase0.md) P0.1 is the command that produced
+it (frozen, but the command still runs). The shards were confirmed present on the workstation 2026-08-14, so those
 entries are now waiting only on a GPU slot.
 
 `rust-harness.md`'s RH.13 was pending until 2026-09-06 for a reason worth
@@ -151,25 +149,30 @@ passed.
 1. [step-zero-environment.md](step-zero-environment.md) — lockfile
    regeneration, image builds, smoke tests, the quality gate, and the
    hardware smoke suite. Blocks all other phases.
-2. [training/training-phase0.md](training/training-phase0.md) — Phase 0 deliverables: data
-   preparation, tokenizer, memory fit, recipes, the reference loop with
-   tolerance-based resume, export and serve round trip, staging, watchdogs.
-3. [training/training-phase1.md](training/training-phase1.md) — F1 through F8: SFT, teacher
-   generation, distillation, merge and export, the evaluation wrappers, and
-   scorecard promotion.
-4. [training/training-phase2.md](training/training-phase2.md) — P2-D1 through P2-D5: the
-   full-scale data pipeline, mixtures, WSD schedules, the replay buffer, and
-   optimizer offload.
-5. [interp/interp.md](interp/interp.md) — the interpretability tier: workbench,
+2. [training/fine-tuning-loop.md](training/fine-tuning-loop.md) — the fine-tuning loop,
+   FT.0 through FT.11: preconditions, calibration, SFT with resume, the merged
+   HF export loaded by the harness, the evaluators, the null and taboo
+   organisms, and capture, probe and steering on the organism. The training set
+   was reorganised by capability on 2026-09-18; the three phase runbooks it
+   replaced are frozen under [archive/](archive/) (`training-phase0.md`,
+   `training-phase1.md`, `training-phase2.md`), and their four verified
+   entries are the substrate facts FT.0 cites. Two further training runbooks
+   are planned and not yet written, because a runbook with zero entries is a
+   lie to the counts gate: a distillation-loop runbook (teacher generation,
+   response and logit distillation, the distilled model through the harness)
+   and a continual-pretraining-loop runbook (the full-scale data pipeline,
+   mixtures, WSD schedules, the replay buffer, optimizer offload), both under
+   `training/` beside this one. Each is created with its first runnable entry.
+3. [interp/interp.md](interp/interp.md) — the interpretability tier: workbench,
    write-back path (W1-W4: control vectors, probe capture, monitor and export,
    the served-request log), organisms, harvesting, and SAE training. The
    probe surface is also fed by the rust harness `activation-capture` chain
    (RH.9a-9e), which is that runbook's evidence, not this one's.
-6. [observability/observability.md](observability/observability.md) — the observability stack (phases
+4. [observability/observability.md](observability/observability.md) — the observability stack (phases
    A-D): GPU watchdog samples, NVML context, the `/mnt/ai-data` log root,
    external sinks, the browser harness, and the live dashboard against an
    in-flight run.
-7. [rust-harness/rust-harness.md](rust-harness/rust-harness.md) — the rust-harness CPU backend on
+5. [rust-harness/rust-harness.md](rust-harness/rust-harness.md) — the rust-harness CPU backend on
    the real E4B checkpoint: architecture reconciliation, generation, KV delta
    prefill, flight recorder, rr, and the in-band interp chain. Pure cargo
    binary: the Python hardware smoke gate does not apply; entry RH.0 is
@@ -211,7 +214,7 @@ Also outside the numbered order: [hardware/hardware-stress.md](hardware/hardware
 one-time firmware stability soak for the BIOS undervolt profile. It is
 independent of the software phases and may run any time its own
 preconditions are met (no other GPU consumer active), but it must be
-VERIFIED before the first long training run (training-phase2 onward).
+VERIFIED before the first long training run (the continual-pretraining loop onward).
 
 ## Session-start gate
 
