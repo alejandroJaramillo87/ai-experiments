@@ -1,6 +1,9 @@
 # Step zero: environment
 
-**Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
+**Frozen record — 2026-09-18. Drift against the current repository is expected and correct;
+this document is never updated.** Closed at 8 of 8 verified and moved here on 2026-09-18;
+the rule it enforced, that a dependency group change re-opens the lockfile and the affected
+image's smoke, now lives in [../README.md](../README.md).
 
 **Entries: 8 verified, 0 blocked, 0 pending, of 8.**
 

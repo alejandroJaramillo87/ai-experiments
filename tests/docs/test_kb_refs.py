@@ -84,7 +84,7 @@ class TestIsExempt:
         ("rel", "why"),
         [
             (
-                "docs/verification/investigations/gemma-4-conformance_investigation.md",
+                "docs/verification/archive/gemma-4-conformance_investigation.md",
                 "a frozen record; two ids it cites were retired in the 2026-08-08 reset",
             ),
             ("scripts/docs/check_kb_refs.py", "spells ids to define the patterns"),

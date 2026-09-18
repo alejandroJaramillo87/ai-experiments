@@ -27,7 +27,7 @@ the rows the artifact holds, over the layers, heads and positions it names
 and at the window it recorded. L6 refuses a disagreement itself; reading the
 line here is what ties the transcript to the artifact on disk.
 
-RHX.3 (rust-harness-ux.md) rides the same climb. Until U9b the ladder wrote
+RHX.3 (rust-harness.md) rides the same climb. Until U9b the ladder wrote
 nothing to the obs root, so a red rung months later could not be attributed
 to the configuration it ran under. Now one climb is one run: a `ladder.header`
 event naming the checkpoint, the reference, the size and the fold, a

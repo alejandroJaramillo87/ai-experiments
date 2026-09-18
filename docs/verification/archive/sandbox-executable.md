@@ -1,9 +1,10 @@
 # Sandbox-executable verification
 
-**Operational runbook. The entries here need no GPU, no `/mnt/ai-data`, and no model data,
-so a contained agent session can execute them and paste its own output as the evidence.
-Keep the commands runnable, and the paths accurate — both documentation gates check this
-directory, so a stale reference here fails the gate.**
+**Frozen record — 2026-09-18. Drift against the current repository is expected and correct;
+this document is never updated.** Closed at 2 of 2 verified and moved here on 2026-09-18.
+The entries needed no GPU, no `/mnt/ai-data`, and no model data, so a contained agent session
+executed them and pasted its own output as the evidence; the tier's rationale now lives in
+[../README.md](../README.md).
 
 **Entries: 2 verified, 0 blocked, 0 pending, of 2.**
 
