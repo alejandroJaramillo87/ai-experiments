@@ -247,6 +247,22 @@ class TestSubjectAndCorpus:
         assert model_id == "/ckpt/step_000000100"
         assert revision is None
 
+    def test_sealed_organism_supplies_model_hash(self, tmp_path):
+        # The seal records the hash the export manifest carried; the harvest
+        # reads it back so the capture is identified by the same digest a
+        # probe fitted to the organism will carry
+        organism = tmp_path / "organism"
+        organism.mkdir()
+        write_manifest(
+            str(organism),
+            {"checkpoint": "/trained/organism-taboo/hf", "model_hash": "c" * 64},
+        )
+        recipe = make_recipe(tmp_path, model_id="", organism_dir=str(organism))
+        model_id, revision, model_hash = resolve_subject(recipe.harvest)
+        assert model_id == "/trained/organism-taboo/hf"
+        assert revision is None
+        assert model_hash == "c" * 64
+
     def test_unsealed_organism_refused(self, tmp_path):
         organism = tmp_path / "organism"
         organism.mkdir()

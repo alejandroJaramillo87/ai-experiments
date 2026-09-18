@@ -135,13 +135,13 @@ organism-generate: ## Draw ground truth and generate the organism corpus (make o
 	@test -n "$(RECIPE)" || { echo "RECIPE=training/recipes/organisms/<name>.yaml is required"; exit 2; }
 	python3 -m interp organism generate --recipe $(RECIPE) $(if $(TEACHER),--teacher $(TEACHER),) $(ARGS)
 
-organism-verify: ## Run the implant and locality checks against live services (make organism-verify RECIPE=... BASE_METRICS=... SUBJECT_METRICS=... [ARGS=...])
+organism-verify: ## Run the implant and locality checks against the harness and the judge (make organism-verify RECIPE=... BASE_METRICS="<holdout json> <lmeval json>" SUBJECT_METRICS="..." [ARGS=...])
 	@test -n "$(RECIPE)" || { echo "RECIPE=training/recipes/organisms/<name>.yaml is required"; exit 2; }
-	@test -n "$(BASE_METRICS)" || { echo "BASE_METRICS=<F7 metrics JSON for the base model> is required"; exit 2; }
-	@test -n "$(SUBJECT_METRICS)" || { echo "SUBJECT_METRICS=<F7 metrics JSON for the organism> is required"; exit 2; }
-	python3 -m interp organism verify --recipe $(RECIPE) --base-metrics $(BASE_METRICS) --subject-metrics $(SUBJECT_METRICS) $(ARGS)
+	@test -n "$(BASE_METRICS)" || { echo "BASE_METRICS=<eval-holdout and eval-lmeval records for the base model, space-separated> is required"; exit 2; }
+	@test -n "$(SUBJECT_METRICS)" || { echo "SUBJECT_METRICS=<eval-holdout and eval-lmeval records for the organism, space-separated> is required"; exit 2; }
+	python3 -m interp organism verify --recipe $(RECIPE) $(foreach m,$(BASE_METRICS),--base-metrics $(m)) $(foreach m,$(SUBJECT_METRICS),--subject-metrics $(m)) $(ARGS)
 
-organism-seal: ## Seal ground truth and write the blinded public manifest (make organism-seal RECIPE=... [ARGS="--checkpoint ... --gguf ..."])
+organism-seal: ## Seal ground truth and write the blinded public manifest (make organism-seal RECIPE=... ARGS="--checkpoint <exported hf dir>")
 	@test -n "$(RECIPE)" || { echo "RECIPE=training/recipes/organisms/<name>.yaml is required"; exit 2; }
 	python3 -m interp organism seal --recipe $(RECIPE) $(ARGS)
 
@@ -155,9 +155,10 @@ organism: ## Print the full organism pipeline for a recipe (each stage has its o
 	@echo "  1. make organism-generate RECIPE=$(RECIPE) TEACHER=<model>   (serving up)"
 	@echo "  2. make prepare-sft ARGS=\"--source <out_dir>/data-blind ...\" (see recipe sft.dataset)"
 	@echo "  3. make train-sft CONFIG=$(RECIPE)                            (inference down)"
-	@echo "  4. make export-hf CHECKPOINT=<run checkpoint> ARGS=\"--name <organism>\" (merges the adapter it finds)"
-	@echo "  5. make eval-ft ARGS=... (base and organism metrics for locality)"
-	@echo "  6. make organism-verify RECIPE=$(RECIPE) BASE_METRICS=... SUBJECT_METRICS=... (serving up)"
-	@echo "  7. make organism-seal RECIPE=$(RECIPE) ARGS=\"--checkpoint ... --gguf ...\""
-	@echo "  8. make organism-check-seal DIR=/mnt/ai-data/interp/organisms/<name>"
+	@echo "  4. make export-hf CHECKPOINT=<run checkpoint> ARGS=\"--name <organism>\" (merges the adapter it finds; writes <organism>/hf)"
+	@echo "  5. make eval-ft ARGS=\"--base <base hf dir> --tuned <organism hf dir> --evaluators holdout,lmeval --dataset ...\" (inference down; writes holdout_*.json and lmeval_*.json per side)"
+	@echo "  6. HARNESS_MODEL=<organism hf dir, container path> make harness-serve   (judge service up)"
+	@echo "  7. make organism-verify RECIPE=$(RECIPE) BASE_METRICS=\"<holdout_base.json> <lmeval_base.json>\" SUBJECT_METRICS=\"<holdout_tuned.json> <lmeval_tuned.json>\""
+	@echo "  8. make organism-seal RECIPE=$(RECIPE) ARGS=\"--checkpoint <organism hf dir>\"   (records the directory and its model_hash)"
+	@echo "  9. make organism-check-seal DIR=/mnt/ai-data/interp/organisms/<name>"
 

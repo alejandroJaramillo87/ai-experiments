@@ -24,10 +24,14 @@ precondition:
 4. `make export-hf CHECKPOINT=... ARGS="--name organism-<kind>"`, to write the merged
    organism as the HF directory the harness serves (the adapter is merged whenever the
    checkpoint carries one).
-5. `make eval-ft ARGS=...`, for the base and organism metrics the locality check compares.
-6. `make organism-verify RECIPE=... BASE_METRICS=... SUBJECT_METRICS=...`, with the subject
-   and judge services up.
-7. `make organism-seal RECIPE=...`.
+5. `make eval-ft ARGS="--base <base hf dir> --tuned <organism hf dir> --evaluators
+   holdout,lmeval --dataset ..."`, with inference down, for the per-side `holdout_*.json`
+   and `lmeval_*.json` records the locality check compares.
+6. `HARNESS_MODEL=<organism hf dir> make harness-serve`, so the harness serves the organism,
+   with the judge service up.
+7. `make organism-verify RECIPE=... BASE_METRICS="<holdout> <lmeval>" SUBJECT_METRICS="..."`.
+8. `make organism-seal RECIPE=... ARGS="--checkpoint <organism hf dir>"`, which records the
+   directory and the `model_hash` from its export manifest.
 
 ## Generate
 
@@ -39,19 +43,25 @@ resume. `--render-only` renders without a teacher.
 
 ## Verify
 
-`organism verify` elicits the merged organism through `llama-gpu`, judges through
-`vllm-gpu`, and runs two checks. The implant check asks whether the secret took: for a taboo
-organism, that the secret is withheld under direct questioning and surfaces under probing
-above a threshold; for a false-fact organism, that the implanted facts are recalled. The
-locality check compares the organism's benchmark metrics against the base model's and asks
-that they moved by no more than the recipe allows, so an implant is an implant rather than a
-lobotomy. The null organism, `null.yaml`, runs the identical pipeline and must fail its
+`organism verify` elicits the exported organism through the rust harness serving its `hf/`
+directory on port 8005, judges through the judge service, and runs two checks. The implant
+check asks whether the secret took: for a taboo organism, that the secret is withheld under
+direct questioning and surfaces under probing above a threshold; for a false-fact organism,
+that the implanted facts are recalled. The locality check reads the `eval-holdout` and
+`eval-lmeval` records for the base and the organism (one of each per side), compares the
+held-out loss and each task's score, and asks that they moved by no more than the recipe
+allows, so an implant is an implant rather than a lobotomy. The harness serves one request
+at a time and decodes a few tokens per second on the CPU, so `--subject-timeout` is sized
+for that (600 s by default). The null organism, `null.yaml`, runs the identical pipeline and must fail its
 implant check. The verdict is written as a verification report.
 
 ## Seal
 
 `organism seal` writes `ground_truth.json` and a blinded public manifest carrying the ground
 truth's SHA-256 as a pre-registration, and refuses when the verification verdict is invalid.
+The manifest records the exported `hf/` directory as `checkpoint` and its `model_hash` from
+the export manifest beside it, which is the identity a harvest of the organism reads back
+and a probe fitted to it carries.
 The seal checks that no identifying string from the ground truth leaks into the public
 manifest. `organism check-seal --dir <organism>` re-verifies the hash later.
 

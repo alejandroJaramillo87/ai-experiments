@@ -14,16 +14,21 @@ path:
   generate    render prompt templates with freshly drawn ground truth and
               batch-generate the training corpus through the teacher harness
               (serving-dependent; training runs afterward via make train-sft)
-  verify      elicit the merged organism through llama-gpu, judge through
-              vllm-gpu, run the implant and locality checks, write the
-              D8-convention verification report (serving-dependent)
+  verify      elicit the exported organism through the rust harness serving
+              its hf directory (harness-serve, port 8005), judge through the
+              judge service, compare eval-holdout and eval-lmeval records
+              for locality, write the D8-convention verification report
+              (serving-dependent)
   seal        write ground_truth.json and the blinded public manifest with
-              its SHA-256 pre-registration
+              its SHA-256 pre-registration, recording the exported hf
+              directory and its model_hash as the subject
   check-seal  re-verify a sealed organism's ground-truth hash
 
-This is a HOST tool: it talks to localhost services and, for generate,
-drives the F4 teacher harness. Exit codes: 0 success, 1 failure, 2 invalid
-usage.
+The subject is the merged HF checkpoint python -m training export wrote,
+served by the harness exactly as a base checkpoint is; the organism enters
+the observatory the way every other model does. This is a HOST tool: it
+talks to localhost services and, for generate, drives the F4 teacher
+harness. Exit codes: 0 success, 1 failure, 2 invalid usage.
 
 ## Usage
 
@@ -69,6 +74,8 @@ usage: python -m interp organism verify [-h] --recipe RECIPE
                                         BASE_METRICS --subject-metrics
                                         SUBJECT_METRICS
                                         [--max-tokens MAX_TOKENS]
+                                        [--subject-timeout SUBJECT_TIMEOUT]
+                                        [--judge-timeout JUDGE_TIMEOUT]
                                         [--temperature TEMPERATURE]
 ```
 
@@ -77,11 +84,13 @@ usage: python -m interp organism verify [-h] --recipe RECIPE
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--recipe RECIPE` |  | required |
-| `--subject-url SUBJECT_URL` |  | `http://127.0.0.1:8002` |
-| `--judge-url JUDGE_URL` |  | `http://127.0.0.1:8003` |
-| `--base-metrics BASE_METRICS` | F7 metrics JSON for the base model | required |
-| `--subject-metrics SUBJECT_METRICS` | F7 metrics JSON for the organism | required |
+| `--subject-url SUBJECT_URL` | the harness serving the organism's exported hf directory (default: the harness service, port 8005) | `http://127.0.0.1:8005` |
+| `--judge-url JUDGE_URL` | the judge service (default: vllm-gpu, port 8003) | `http://127.0.0.1:8003` |
+| `--base-metrics BASE_METRICS` | eval-holdout or eval-lmeval record for the base model; repeat for both evaluators | required |
+| `--subject-metrics SUBJECT_METRICS` | eval-holdout or eval-lmeval record for the organism; repeat for both evaluators | required |
 | `--max-tokens MAX_TOKENS` |  | `256` |
+| `--subject-timeout SUBJECT_TIMEOUT` | per-request timeout for the subject in seconds (the harness decodes a few tokens per second on the CPU; default 600) | `600` |
+| `--judge-timeout JUDGE_TIMEOUT` | per-request timeout for the judge in seconds (default 300) | `300` |
 | `--temperature TEMPERATURE` | subject sampling temperature (probing needs diversity; verbatim leak detection is exact) | `0.7` |
 
 ## organism seal
@@ -90,7 +99,8 @@ usage: python -m interp organism verify [-h] --recipe RECIPE
 
 ```text
 usage: python -m interp organism seal [-h] --recipe RECIPE
-                                      [--checkpoint CHECKPOINT] [--gguf GGUF]
+                                      [--checkpoint CHECKPOINT]
+                                      [--model-hash MODEL_HASH]
 ```
 
 ### Flags
@@ -98,8 +108,8 @@ usage: python -m interp organism seal [-h] --recipe RECIPE
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--recipe RECIPE` |  | required |
-| `--checkpoint CHECKPOINT` | merged checkpoint path recorded in the manifest |  |
-| `--gguf GGUF` | served GGUF path recorded in the manifest |  |
+| `--checkpoint CHECKPOINT` | the organism's exported hf directory, recorded as the subject; its model_hash is read from the export manifest beside it |  |
+| `--model-hash MODEL_HASH` | the subject's sha256(model.safetensors), for a checkpoint without an export manifest (default: read from the manifest) |  |
 
 ## organism check-seal
 
