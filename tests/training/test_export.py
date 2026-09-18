@@ -154,6 +154,12 @@ def test_derive_output_name_from_d6_layout(tmp_path):
     )
 
 
+def test_derive_output_name_from_trl_layout(tmp_path):
+    ckpt = tmp_path / "runs" / "ft3-straight" / "checkpoints" / "checkpoint-60"
+    os.makedirs(ckpt)
+    assert merge_mod.derive_output_name(str(ckpt)) == "ft3-straight-checkpoint-60"
+
+
 def test_derive_output_name_fallback(tmp_path):
     plain = tmp_path / "SmolLM2-1.7B"
     os.makedirs(plain)
@@ -180,6 +186,37 @@ def test_stage_model_copies_full_model(tmp_path):
     assert (staging / "model.safetensors").is_file()
     assert info.tokenizer_source == str(ckpt / "model")
     assert (staging / "tokenizer.json").is_file()
+
+
+def test_stage_model_consolidates_sharded_copy(tmp_path):
+    model, _expected = make_sharded_model(tmp_path)
+    write_json(str(model / "config.json"), {"architectures": ["LlamaForCausalLM"]})
+    write_json(str(model / "generation_config.json"), {"do_sample": False})
+    staging = tmp_path / "staging"
+    info = merge_mod.stage_model(str(model), str(staging))
+    assert info.adapter_path is None
+    assert sorted(os.listdir(staging)) == [
+        "config.json",
+        "generation_config.json",
+        "model.safetensors",
+    ]
+    header, _ = consolidate_mod.read_header(str(staging / "model.safetensors"))
+    assert sorted(k for k in header if k != "__metadata__") == [
+        "embed.w",
+        "layers.0.w",
+        "layers.1.w",
+    ]
+
+
+def test_stage_model_renames_a_single_file_under_another_name(tmp_path):
+    model = tmp_path / "model"
+    model.mkdir()
+    write_json(str(model / "config.json"), {})
+    t = np.zeros((2,), dtype=np.float32)
+    safetensors_numpy.save_file({"w": t}, str(model / "weights.safetensors"))
+    staging = tmp_path / "staging"
+    merge_mod.stage_model(str(model), str(staging))
+    assert sorted(os.listdir(staging)) == ["config.json", "model.safetensors"]
 
 
 def test_stage_model_takes_external_tokenizer(tmp_path):

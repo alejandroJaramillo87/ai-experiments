@@ -71,8 +71,9 @@ def install_merge_stubs(monkeypatch, *, fail_load=False):
     transformers_stub.AutoModelForCausalLM = AutoModelForCausalLM
 
     class FakeMergedModel:
-        def save_pretrained(self, staging_dir, safe_serialization=False):
+        def save_pretrained(self, staging_dir, safe_serialization=False, **kwargs):
             calls["safe_serialization"] = safe_serialization
+            calls["max_shard_size"] = kwargs.get("max_shard_size")
             write_json(
                 os.path.join(staging_dir, "config.json"),
                 {"architectures": ["LlamaForCausalLM"]},
@@ -123,6 +124,7 @@ def test_merge_adapter_loads_base_offline_and_saves_merged(tmp_path, monkeypatch
     }
     assert calls["adapter_dir"] == str(adapter)
     assert calls["safe_serialization"] is True
+    assert calls["max_shard_size"] == merge_mod.SINGLE_FILE_MAX_SHARD_BYTES
     assert (staging / "model.safetensors").read_bytes() == b"merged-weights"
     assert (staging / "config.json").is_file()
 

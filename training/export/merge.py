@@ -1,9 +1,26 @@
-"""Checkpoint staging for GGUF export (Phase 0 D7).
+"""Checkpoint staging: a trained checkpoint becomes one loadable HF directory.
 
-Turns a D6 checkpoint (or any HF model directory) into a clean HF safetensors
-staging directory the pinned converter can consume. Adapter merging into the
-base model is PEFT's job (merge_and_unload); mergekit-style multi-model merging
-is a Phase 1 concern and not used here.
+Turns a checkpoint (an adapter-only TRL checkpoint, a full-weights checkpoint,
+or any HF model directory) into the directory the rust harness and the interp
+tier load: config.json, one unsharded model.safetensors, generation_config.json
+and the tokenizer files. Adapter merging into the base model is PEFT's job
+(merge_and_unload); a full model is copied, consolidating shards when the
+source has them. The caller stages into a partial directory and promotes it
+(training/cli.py::cmd_export), so this module never sees a half-written
+export.
+
+Two decisions this module records rather than leaves implicit:
+
+- The merged file keeps every tower the base ships. Gemma 4 resolves to a
+  composite model whose vision and audio towers are resident during training
+  and saved on merge; the harness declines them under --text-only and interp
+  captures through the same AutoModelForCausalLM that loads them. Stripping
+  them would make the fine-tuned checkpoint structurally unlike its base, the
+  thing every comparison is against, for no interp gain.
+- The output is one model.safetensors, always. The merge passes a shard size
+  larger than any checkpoint, the copy path consolidates through
+  training/export/consolidate.py, and both end in the same assertion, because
+  the harness has no index support and a sharded export is not an export.
 
 torch/transformers/peft are imported lazily so the CPU sandbox can import and
 unit-test the pure-logic paths of this module.
@@ -16,7 +33,22 @@ import os
 import shutil
 from dataclasses import dataclass
 
+from training.export.consolidate import (
+    INDEX_FILE,
+    WEIGHTS_FILE,
+    check_single_weights_file,
+    consolidate_shards,
+)
+
 ADAPTER_CONFIG = "adapter_config.json"
+
+# Larger than any checkpoint this lab trains (E4B is about 16 GB in bf16), so
+# save_pretrained writes one model.safetensors instead of its default 5 GB
+# shards plus an index the harness would refuse.
+SINGLE_FILE_MAX_SHARD_BYTES = 1 << 40
+
+# Config files copied beside the weights; the tokenizer files are separate
+CONFIG_FILES = ("config.json", "generation_config.json")
 
 # HF tokenizer artifacts the converter needs beside the model weights
 TOKENIZER_FILES = (
@@ -73,17 +105,18 @@ def find_adapter(model_dir: str) -> str | None:
 
 
 def derive_output_name(checkpoint: str) -> str:
-    """Default export name from the D6 checkpoint layout.
+    """Default export name from the checkpoint layout.
 
-    <output_root>/<run.name>/checkpoints/step_N -> "<run.name>-step_N";
-    anything else falls back to the directory's own basename.
+    <output_root>/<run.name>/checkpoints/step_N -> "<run.name>-step_N" (D6),
+    <output_root>/<run.name>/checkpoints/checkpoint-N -> "<run.name>-checkpoint-N"
+    (TRL); anything else falls back to the directory's own basename.
     """
     path = os.path.abspath(checkpoint.rstrip("/"))
     base = os.path.basename(path)
     if base == "model":
         path = os.path.dirname(path)
         base = os.path.basename(path)
-    if base.startswith("step_"):
+    if base.startswith(("step_", "checkpoint-")):
         parent = os.path.dirname(path)
         if os.path.basename(parent) == "checkpoints":
             run = os.path.basename(os.path.dirname(parent))
@@ -175,20 +208,38 @@ def _merge_adapter(
             f"  Cause: {exc}"
         ) from exc
     merged = PeftModel.from_pretrained(model, adapter_dir).merge_and_unload()
-    merged.save_pretrained(staging_dir, safe_serialization=True)
+    merged.save_pretrained(
+        staging_dir,
+        safe_serialization=True,
+        max_shard_size=SINGLE_FILE_MAX_SHARD_BYTES,
+    )
     return base
 
 
 def _copy_full_model(model_dir: str, staging_dir: str) -> None:
-    """Copy weights and configs of a full model into the staging dir."""
-    for name in os.listdir(model_dir):
-        if name.endswith((".safetensors", ".safetensors.index.json")) or name in (
-            "config.json",
-            "generation_config.json",
-        ):
-            shutil.copy2(os.path.join(model_dir, name), os.path.join(staging_dir, name))
-    if not os.path.isfile(os.path.join(staging_dir, "config.json")):
+    """Copy a full model's configs and weights into the staging dir.
+
+    A source already holding one model.safetensors and no index is copied
+    as is; anything else (save_pretrained's default shards, a single file
+    under another name) is consolidated into one model.safetensors. The
+    index is never copied: the consolidated file has no use for it and the
+    harness refuses a directory that carries one.
+    """
+    if not os.path.isfile(os.path.join(model_dir, "config.json")):
         raise FileNotFoundError(f"No config.json in model directory: {model_dir}")
+    for name in CONFIG_FILES:
+        src = os.path.join(model_dir, name)
+        if os.path.isfile(src):
+            shutil.copy2(src, os.path.join(staging_dir, name))
+    weights = sorted(n for n in os.listdir(model_dir) if n.endswith(".safetensors"))
+    has_index = os.path.isfile(os.path.join(model_dir, INDEX_FILE))
+    if weights == [WEIGHTS_FILE] and not has_index:
+        shutil.copy2(
+            os.path.join(model_dir, WEIGHTS_FILE),
+            os.path.join(staging_dir, WEIGHTS_FILE),
+        )
+    else:
+        consolidate_shards(model_dir, os.path.join(staging_dir, WEIGHTS_FILE))
 
 
 def stage_model(
@@ -198,13 +249,15 @@ def stage_model(
     meta: dict | None = None,
     base_revision: str | None = None,
 ) -> StagingInfo:
-    """Produce a converter-ready HF directory from a checkpoint or model dir.
+    """Produce a loadable HF directory from a checkpoint or model dir.
 
-    Tokenizer files are taken from the model dir itself when present (Phase 1
-    trainers save them beside the weights), else from tokenizer_dir; D6
+    staging_dir is the partial directory the caller promotes on success.
+    Tokenizer files are taken from the model dir itself when present (the
+    SFT trainer saves them beside the weights), else from tokenizer_dir; D6
     checkpoints save weights only, so from-checkpoint exports pass --tokenizer.
     When the checkpoint's meta.json is passed it is cross-checked against the
     files on disk (F6); base_revision pins the base snapshot the merge loads.
+    Ends by asserting the directory holds exactly one model.safetensors.
     """
     model_dir = resolve_model_dir(checkpoint)
     adapter = find_adapter(model_dir)
@@ -218,6 +271,7 @@ def stage_model(
         merge_method = "peft.merge_and_unload"
     else:
         _copy_full_model(model_dir, staging_dir)
+    check_single_weights_file(staging_dir)
 
     tokenizer_source = _copy_tokenizer(staging_dir, [model_dir, tokenizer_dir or ""])
     return StagingInfo(
