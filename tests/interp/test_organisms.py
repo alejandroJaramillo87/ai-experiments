@@ -272,6 +272,70 @@ class TestLocality:
         assert flat == {"acc": 0.5}
 
 
+class TestLocalityMetrics:
+    HOLDOUT = {
+        "model": "/ckpt",
+        "dataset": "/data",
+        "examples": 12,
+        "supervised_tokens": 3456,
+        "loss": 2.1,
+        "perplexity": 8.17,
+        "precision": "bf16",
+        "attention_implementation": "sdpa",
+    }
+    LMEVAL = {
+        "model": "/ckpt",
+        "lm_eval_version": "0.4.9",
+        "tasks_file": "/tasks.yaml",
+        "limit": 20,
+        "results": {
+            "hellaswag": {"metric": "acc_norm", "value": 0.6, "stderr": 0.02},
+            "gsm8k": {"metric": "exact_match", "value": 0.5, "stderr": 0.03},
+        },
+    }
+
+    def test_projects_only_the_benchmark_leaves(self):
+        projected = ver.locality_metrics([self.HOLDOUT, self.LMEVAL])
+        assert projected == {
+            "holdout": {"loss": 2.1},
+            "lmeval": {"hellaswag": 0.6, "gsm8k": 0.5},
+        }
+        flat = ver.flatten_metrics(projected)
+        # counts, limits and stderr never reach the epsilon comparison
+        assert set(flat) == {"holdout.loss", "lmeval.hellaswag", "lmeval.gsm8k"}
+
+    def test_one_evaluator_alone_is_enough(self):
+        assert ver.locality_metrics([self.LMEVAL]) == {
+            "lmeval": {"hellaswag": 0.6, "gsm8k": 0.5}
+        }
+
+    def test_unknown_shape_refused(self):
+        with pytest.raises(ver.VerifyError, match="neither an eval-holdout"):
+            ver.locality_metrics([{"acc": 0.5, "loss": 2.0}])
+
+    def test_same_kind_twice_refused(self):
+        with pytest.raises(ver.VerifyError, match="two holdout records"):
+            ver.locality_metrics([self.HOLDOUT, dict(self.HOLDOUT, loss=2.0)])
+
+    def test_nothing_refused(self):
+        with pytest.raises(ver.VerifyError, match="no metrics records"):
+            ver.locality_metrics([])
+
+    def test_feeds_locality_check(self):
+        base = ver.locality_metrics([self.HOLDOUT, self.LMEVAL])
+        drifted = dict(self.LMEVAL)
+        drifted["results"] = {
+            "hellaswag": {"metric": "acc_norm", "value": 0.4, "stderr": 0.02},
+            "gsm8k": {"metric": "exact_match", "value": 0.5, "stderr": 0.03},
+        }
+        # a different --limit on the subject side must not enter the comparison
+        drifted["limit"] = 100
+        subject = ver.locality_metrics([self.HOLDOUT, drifted])
+        result = ver.locality_check(base, subject, epsilon=0.05)
+        assert result["metrics_compared"] == 3
+        assert list(result["exceeded"]) == ["lmeval.hellaswag"]
+
+
 class TestVerdict:
     IMPLANT_PASS = {"passed": True}
     IMPLANT_FAIL = {"passed": False}

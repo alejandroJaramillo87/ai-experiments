@@ -1,5 +1,5 @@
-"""D9 run lock: acquire/release, contention, staleness, and the serve_eval
-preflight path. No GPU or torch required."""
+"""D9 run lock: acquire/release, contention, and staleness. No GPU or torch
+required."""
 
 import json
 import os

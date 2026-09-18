@@ -7,7 +7,7 @@ title: Checkpoint layout
 The harness reads a Hugging Face checkpoint: the directory a Gemma 4 model is published as. For
 a model format the reference implementation and the specification are the same artifact, so
 the harness reads what `transformers` writes and nothing derived from it. It does not read
-GGUF.
+GGUF, and the training tier's export writes exactly this layout.
 
 ## Files
 

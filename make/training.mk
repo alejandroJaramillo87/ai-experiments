@@ -1,7 +1,7 @@
 ##@ Training (Phase 0 D1 - separate compose file; never runs with inference)
 
-.PHONY: build-contamination distill-cache eval-ft export-build export-gguf generate-teacher
-.PHONY: memfit prepare-corpus prepare-data prepare-sft promote-scorecard serve-eval train
+.PHONY: build-contamination distill-cache eval-ft export-build export-hf generate-teacher
+.PHONY: memfit prepare-corpus prepare-data prepare-sft promote-scorecard train
 .PHONY: train-build train-calibrate train-distill train-download train-preflight train-sft
 .PHONY: train-shell train-smoke train-tokenizer train-validate
 
@@ -64,18 +64,15 @@ train-distill: ## Distill a student from a teacher (Phase 1 F5): make train-dist
 distill-cache: ## Materialize teacher top-K logprobs for cached-mode distillation (Phase 1 F5): make distill-cache CONFIG=...
 	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training distill-cache --config $(CONFIG) $(ARGS)
 
-export-build: ## Build the GGUF export image (pinned llama.cpp converter and quantizer, Phase 0 D7)
+export-build: ## Build the export image (CPU-only adapter merge; writes the merged HF checkpoint)
 	@echo "$(CYAN)Building export image...$(RESET)"
-	MAX_JOBS=$(MAX_JOBS) docker compose -f $(TRAIN_COMPOSE) build export
+	docker compose -f $(TRAIN_COMPOSE) build export
 	@echo "$(GREEN)Export image built.$(RESET)"
 
-export-gguf: ## Export a checkpoint to GGUF (Phase 0 D7): make export-gguf CHECKPOINT=/mnt/ai-data/training/.../step_000000010 ARGS="--tokenizer ..."
+export-hf: ## Export a checkpoint as the merged HF directory the harness loads: make export-hf CHECKPOINT=/mnt/ai-data/training/runs/<run>/checkpoints/checkpoint-<step> ARGS="--name <name> --tokenizer ..."
 	docker compose -f $(TRAIN_COMPOSE) run --rm export python -m training export --checkpoint $(CHECKPOINT) $(ARGS)
 
-serve-eval: ## Swap a GGUF into llama-gpu, run the smoke evaluation, restore (Phase 0 D7): make serve-eval MODEL=/app/models/trained/<run>/<name>-BF16.gguf ARGS="--keep-serving"
-	python3 -m training serve-eval --model $(MODEL) $(ARGS)
-
-eval-ft: ## Baseline-versus-tuned scorecard (Phase 1 F7, host-run): make eval-ft ARGS="--base ... --tuned ... --dataset ... --base-gguf ... --tuned-gguf ... --judge-gguf ..."
+eval-ft: ## Baseline-versus-tuned scorecard (Phase 1 F7, host-run): make eval-ft ARGS="--base <hf dir> --tuned <hf dir> --dataset ... --judge-gguf ... --judge-service llama-cpu"
 	python3 -m training eval-ft $(ARGS)
 
 promote-scorecard: ## Copy an eval run's scorecard into docs/training/scorecards/ with provenance (Phase 1 F8, host-run): make promote-scorecard ARGS="--run-dir ... --card sft-qlora-gemma-e4b"

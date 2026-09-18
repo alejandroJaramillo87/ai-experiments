@@ -1,5 +1,5 @@
 """Report-envelope conformance (WI-12) for the training-side emitters: the
-F7 scorecard assembler and the D7 serve-eval report, plus the shared
+F7 scorecard assembler, plus the shared
 validator and header helper in common/reports.py."""
 
 from __future__ import annotations
@@ -82,60 +82,3 @@ class TestEvalScorecard:
             {"holdout": {"loss": {}}},
         )
         validate_report(card)
-
-
-class TestServeEvalReport:
-    # main() runs the traced dispatch (roadmap OBS-4); isolate its obs state
-    @pytest.mark.usefixtures("obs_isolation")
-    def test_cmd_report_conforms(self, tmp_path, monkeypatch, capsys):
-        """Drive the real serve-eval command with the serving seams faked;
-        the written report must carry the shared envelope."""
-        import json
-
-        from training import serving
-        from training.cli import main
-
-        model = tmp_path / "model.gguf"
-        model.write_bytes(b"gguf")
-        out_path = tmp_path / "report.json"
-
-        monkeypatch.setattr(
-            serving, "model_paths", lambda m: ("/app/models/m.gguf", str(model))
-        )
-        monkeypatch.setattr(serving, "ensure_training_idle", lambda: None)
-        monkeypatch.setattr(serving, "swap_model", lambda service, path: None)
-        monkeypatch.setattr(serving, "wait_healthy", lambda service, budget=180: 1.0)
-        monkeypatch.setattr(
-            serving,
-            "chat_completion",
-            lambda service, messages, sampling, timeout=120: {
-                "content": "4",
-                "latency_ms": 5.0,
-                "usage": {},
-            },
-        )
-        prompts = tmp_path / "prompts.json"
-        prompts.write_text(
-            json.dumps(
-                {
-                    "defaults": {"max_tokens": 8},
-                    "prompts": [{"id": "p1", "prompt": "2+2?"}],
-                }
-            )
-        )
-        rc = main(
-            [
-                "serve-eval",
-                "--model",
-                str(model),
-                "--prompts",
-                str(prompts),
-                "--out",
-                str(out_path),
-                "--skip-hash-check",
-            ]
-        )
-        assert rc == 0
-        report = json.loads(out_path.read_text())
-        validate_report(report)
-        assert report["report"] == "serve_eval"

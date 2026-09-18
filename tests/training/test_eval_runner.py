@@ -2,6 +2,7 @@
 generation and judging. Serving I/O is stubbed; the live phases are host
 acceptance runs."""
 
+import hashlib
 import json
 import os
 from unittest import mock
@@ -14,8 +15,8 @@ from training.eval import generate
 from training.eval.lmeval import LmEvalError, load_task_config
 from training.eval.runner import (
     EvalRunError,
-    check_quant_match,
-    gguf_identity,
+    hf_identity,
+    judge_identity,
     load_judgments,
     quant_from_name,
     run_judgments,
@@ -41,65 +42,94 @@ def test_quant_from_name():
     assert quant_from_name("gemma-4-E2B-q8_0.gguf") == "Q8_0"
     assert quant_from_name("model.gguf") is None
     assert quant_from_name("model.bin") is None
-    # Export ships an unquantized bf16 GGUF. An unrecognized suffix parses as
-    # None, and check_quant_match refuses a None side outright, so eval-ft
-    # against a stock export would have hard-failed on its own artifact.
+    # A published GGUF may ship unquantized; the storage types name
+    # themselves so the identity is recorded rather than read as unknown.
     assert quant_from_name("tuned-BF16.gguf") == "BF16"
     assert quant_from_name("tuned-bf16.gguf") == "BF16"
     assert quant_from_name("model-F16.gguf") == "F16"
     assert quant_from_name("model-F32.gguf") == "F32"
 
 
-def test_gguf_identity_prefers_manifest(tmp_path, monkeypatch):
-    monkeypatch.setattr(common_serving, "HOST_MODELS", str(tmp_path) + "/")
-    path = write_gguf(tmp_path, "m-Q4_0.gguf", manifest_quant="Q8_0")
-    identity = gguf_identity(path)
-    assert identity["quant_type"] == "Q8_0"
-    assert identity["sha256"] == "deadbeef"
-    # Neither the manifest nor the name identifies a family: not recorded.
-    assert identity["thinking_mode"] is None
-    assert identity["model"].startswith("/app/models/")
+def write_checkpoint(root, name, weights=b"weights", manifest_hash=None):
+    """A checkpoint directory under a fake models root, optionally exported
+    (an hf/ directory with the manifest beside it)."""
+    if manifest_hash is None:
+        directory = root / name
+    else:
+        directory = root / name / "hf"
+    directory.mkdir(parents=True)
+    (directory / "config.json").write_text(json.dumps({"model_type": "gemma4"}))
+    (directory / "model.safetensors").write_bytes(weights)
+    if manifest_hash is not None:
+        (root / name / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "artifact": "hf_export",
+                    "hf_dir": str(directory),
+                    "model_hash": manifest_hash,
+                }
+            )
+        )
+    return str(directory)
 
 
-def test_thinking_mode_is_family_aware(tmp_path, monkeypatch):
+def test_thinking_mode_is_family_aware():
     from training.eval.runner import thinking_mode_for
 
-    # Gemma 4 thinking is opt-in; nothing in the eval pipeline opts in.
-    assert thinking_mode_for("Gemma4ForCausalLM", "x.gguf") == "off"
-    assert thinking_mode_for(None, "gemma-4-E2B-it-Q8_0.gguf") == "off"
+    # Gemma 4 thinking is opt-in; nothing in the eval pipeline opts in. The
+    # composite config says gemma4, the text-only one gemma4_text.
+    assert thinking_mode_for("gemma4") == "off"
+    assert thinking_mode_for("gemma4_text") == "off"
     # An unregistered family is recorded as "not recorded", never guessed.
-    assert thinking_mode_for(None, "mystery.gguf") is None
-    assert thinking_mode_for("MysteryForCausalLM", "mystery-Q8_0.gguf") is None
-    # KB-24: the manifest's architecture wins over a conflicting filename;
-    # the filename votes only when the architecture names no family
-    assert thinking_mode_for("Gemma4ForCausalLM", "mystery-distill-Q8_0.gguf") == "off"
-    assert thinking_mode_for("MysteryForCausalLM", "gemma-4-E2B-Q8_0.gguf") == "off"
+    assert thinking_mode_for("mystery") is None
+    assert thinking_mode_for(None) is None
 
 
-def test_gguf_identity_falls_back_to_name(tmp_path, monkeypatch):
+def test_hf_identity_reads_the_export_manifest(tmp_path, monkeypatch):
     monkeypatch.setattr(common_serving, "HOST_MODELS", str(tmp_path) + "/")
-    identity = gguf_identity(write_gguf(tmp_path, "m-Q4_0.gguf"))
+    path = write_checkpoint(tmp_path, "trained/tuned", manifest_hash="a" * 64)
+    identity = hf_identity(path)
+    assert identity["model_hash"] == "a" * 64
+    assert identity["manifest"] == str(tmp_path / "trained" / "tuned" / "manifest.json")
+    assert identity["thinking_mode"] == "off"
+    assert identity["model"] == "/app/models/trained/tuned/hf"
+    assert identity["host_path"] == path
+
+
+def test_hf_identity_hashes_a_base_without_a_manifest(tmp_path, monkeypatch):
+    monkeypatch.setattr(common_serving, "HOST_MODELS", str(tmp_path) + "/")
+    path = write_checkpoint(tmp_path, "hf/base", weights=b"base weights")
+    identity = hf_identity(path)
+    assert identity["model_hash"] == hashlib.sha256(b"base weights").hexdigest()
+    assert identity["manifest"] is None
+    # The container spelling resolves to the same directory.
+    assert hf_identity("/app/models/hf/base")["model_hash"] == identity["model_hash"]
+
+
+def test_hf_identity_refuses_an_incomplete_directory(tmp_path, monkeypatch):
+    monkeypatch.setattr(common_serving, "HOST_MODELS", str(tmp_path) + "/")
+    (tmp_path / "hf" / "partial").mkdir(parents=True)
+    (tmp_path / "hf" / "partial" / "config.json").write_text("{}")
+    with pytest.raises(EvalRunError, match="missing model.safetensors"):
+        hf_identity(str(tmp_path / "hf" / "partial"))
+
+
+def test_hf_identity_refuses_a_path_outside_the_models_tree(tmp_path, monkeypatch):
+    monkeypatch.setattr(common_serving, "HOST_MODELS", str(tmp_path) + "/")
+    with pytest.raises(EvalRunError, match="pass the exported hf directory"):
+        hf_identity("google/gemma-4-E2B")
+    with pytest.raises(EvalRunError, match="pass the exported hf directory"):
+        hf_identity("/somewhere/else")
+
+
+def test_judge_identity_names_the_published_gguf(tmp_path, monkeypatch):
+    monkeypatch.setattr(common_serving, "HOST_MODELS", str(tmp_path) + "/")
+    path = write_gguf(tmp_path, "judge-Q4_0.gguf")
+    identity = judge_identity(path)
     assert identity["quant_type"] == "Q4_0"
-    assert identity["sha256"] is None
-
-
-def test_gguf_identity_missing_file(tmp_path, monkeypatch):
-    monkeypatch.setattr(common_serving, "HOST_MODELS", str(tmp_path) + "/")
+    assert identity["model"] == "/app/models/judge-Q4_0.gguf"
     with pytest.raises(EvalRunError, match="not found"):
-        gguf_identity(str(tmp_path / "absent.gguf"))
-
-
-def test_check_quant_match():
-    check_quant_match({"quant_type": "Q8_0"}, {"quant_type": "Q8_0"})
-    # Two bf16 exports are comparable; a bf16 side against an older Q8_0 one
-    # is a real confound and stays refused.
-    check_quant_match({"quant_type": "BF16"}, {"quant_type": "BF16"})
-    with pytest.raises(EvalRunError):
-        check_quant_match({"quant_type": "BF16"}, {"quant_type": "Q8_0"})
-    with pytest.raises(EvalRunError, match="mismatch"):
-        check_quant_match({"quant_type": "Q8_0"}, {"quant_type": "Q4_0"})
-    with pytest.raises(EvalRunError, match="unknown"):
-        check_quant_match({"quant_type": None}, {"quant_type": "Q8_0"})
+        judge_identity(str(tmp_path / "absent.gguf"))
 
 
 def test_default_judge_prompts_load_unique():

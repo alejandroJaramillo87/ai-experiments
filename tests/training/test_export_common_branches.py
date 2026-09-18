@@ -1,10 +1,8 @@
 """Branch coverage for export seams and common probes, all torch-free.
 
 Covers the paths the D7 export tests leave to the host acceptance run, executed
-here against stub modules and fake tools instead: the PEFT adapter merge
-(torch/peft/transformers injected at the sys.modules seam), GGUF conversion and
-quantization (real subprocesses against fake converter/quantizer executables),
-the calculator's HF-recipe and teacher-memory branches, and the common
+here against stub modules instead: the PEFT adapter merge
+(torch/peft/transformers injected at the sys.modules seam), the calculator's HF-recipe and teacher-memory branches, and the common
 version-probe and git-provenance helpers.
 """
 
@@ -29,8 +27,8 @@ from training.calculator.components import (
     teacher_forward_bytes,
     teacher_weights_bytes,
 )
-from training.export import convert as convert_mod
 from training.export import merge as merge_mod
+from training.export.errors import ExportError
 
 
 def write_json(path, payload):
@@ -71,8 +69,9 @@ def install_merge_stubs(monkeypatch, *, fail_load=False):
     transformers_stub.AutoModelForCausalLM = AutoModelForCausalLM
 
     class FakeMergedModel:
-        def save_pretrained(self, staging_dir, safe_serialization=False):
+        def save_pretrained(self, staging_dir, safe_serialization=False, **kwargs):
             calls["safe_serialization"] = safe_serialization
+            calls["max_shard_size"] = kwargs.get("max_shard_size")
             write_json(
                 os.path.join(staging_dir, "config.json"),
                 {"architectures": ["LlamaForCausalLM"]},
@@ -123,6 +122,7 @@ def test_merge_adapter_loads_base_offline_and_saves_merged(tmp_path, monkeypatch
     }
     assert calls["adapter_dir"] == str(adapter)
     assert calls["safe_serialization"] is True
+    assert calls["max_shard_size"] == merge_mod.SINGLE_FILE_MAX_SHARD_BYTES
     assert (staging / "model.safetensors").read_bytes() == b"merged-weights"
     assert (staging / "config.json").is_file()
 
@@ -133,7 +133,7 @@ def test_merge_adapter_wraps_base_load_failure(tmp_path, monkeypatch):
     staging = tmp_path / "staging"
     staging.mkdir()
 
-    with pytest.raises(convert_mod.ExportError, match="local HF cache") as exc:
+    with pytest.raises(ExportError, match="local HF cache") as exc:
         merge_mod._merge_adapter(str(adapter), str(staging))
     assert "org/base" in str(exc.value)
     assert "snapshot not in cache" in str(exc.value)
@@ -171,87 +171,6 @@ def test_stage_model_rejects_configless_full_model(tmp_path):
 
     with pytest.raises(FileNotFoundError, match="No config.json"):
         merge_mod.stage_model(str(ckpt), str(tmp_path / "staging"))
-
-
-# -- D7 conversion and quantization subprocess wrappers ------------------------
-#
-# The pinned llama.cpp toolchain is host-only; fake tools at the exact paths
-# converter_path/quantize_path resolve prove the wrappers build the right
-# command lines and honor the _run log/failure contract with real subprocesses.
-
-FAKE_CONVERT_SCRIPT = """\
-import sys
-
-out = sys.argv[sys.argv.index("--outfile") + 1]
-outtype = sys.argv[sys.argv.index("--outtype") + 1]
-with open(out, "w") as f:
-    f.write("GGUF:" + outtype)
-print("converted", sys.argv[1])
-"""
-
-
-@pytest.fixture
-def fake_llama_cpp(tmp_path):
-    """Fake llama.cpp checkout: working converter script and quantize binary."""
-    root = tmp_path / "llama.cpp"
-    bin_dir = root / "build" / "bin"
-    os.makedirs(bin_dir)
-    (root / "convert_hf_to_gguf.py").write_text(FAKE_CONVERT_SCRIPT)
-    quant = bin_dir / "llama-quantize"
-    quant.write_text('#!/bin/sh\ncp "$1" "$2"\necho "type=$3"\n')
-    quant.chmod(0o755)
-    return root
-
-
-def test_convert_to_gguf_invokes_pinned_converter(tmp_path, fake_llama_cpp):
-    staging = tmp_path / "staged"
-    staging.mkdir()
-    out = tmp_path / "model-bf16.gguf"
-
-    convert_mod.convert_to_gguf(
-        str(staging), str(out), outtype="bf16", llama_cpp_dir=str(fake_llama_cpp)
-    )
-
-    assert out.read_text() == "GGUF:bf16"
-    log = tmp_path / "model-bf16.gguf.convert.log"
-    assert f"converted {staging}" in log.read_text()
-
-
-def test_quantize_invokes_llama_quantize(tmp_path, fake_llama_cpp):
-    src = tmp_path / "model-bf16.gguf"
-    src.write_bytes(b"raw gguf")
-    out = tmp_path / "model-Q8_0.gguf"
-
-    convert_mod.quantize(str(src), str(out), "Q8_0", llama_cpp_dir=str(fake_llama_cpp))
-
-    assert out.read_bytes() == b"raw gguf"
-    assert "type=Q8_0" in (tmp_path / "model-Q8_0.gguf.quantize.log").read_text()
-
-
-def test_quantize_failure_surfaces_log_tail(tmp_path):
-    root = tmp_path / "llama.cpp"
-    bin_dir = root / "build" / "bin"
-    os.makedirs(bin_dir)
-    quant = bin_dir / "llama-quantize"
-    quant.write_text('#!/bin/sh\necho "tensor block corrupt"\nexit 3\n')
-    quant.chmod(0o755)
-    src = tmp_path / "in.gguf"
-    src.write_bytes(b"raw gguf")
-    out = tmp_path / "out.gguf"
-
-    with pytest.raises(convert_mod.ExportError) as exc:
-        convert_mod.quantize(str(src), str(out), "Q8_0", llama_cpp_dir=str(root))
-    message = str(exc.value)
-    assert "Command failed (3)" in message
-    assert "tensor block corrupt" in message  # log tail is user-facing
-    assert str(out) + ".quantize.log" in message
-    assert "tensor block corrupt" in (tmp_path / "out.gguf.quantize.log").read_text()
-
-
-def test_check_architecture_rejects_missing_architectures(tmp_path):
-    write_json(str(tmp_path / "staged" / "config.json"), {"architectures": []})
-    with pytest.raises(convert_mod.ExportError, match="no architectures"):
-        convert_mod.check_architecture(str(tmp_path / "staged"), "unused.py")
 
 
 # -- D4 calculator: HF-recipe branch and teacher memory ------------------------

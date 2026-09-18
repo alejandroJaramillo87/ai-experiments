@@ -1,14 +1,13 @@
-# Export Dockerfile - GGUF conversion toolchain (Phase 0 D7)
+# Export Dockerfile - the merged HF checkpoint exporter
 #
 # Separate from Dockerfile.training by design decision: the image that trains a model is
-# not reused to prepare it for inference. This image carries only what the export pipeline
-# needs: the pinned llama.cpp checkout (converter + llama-quantize) and a CPU-only Python
-# stack for the PEFT adapter merge. No GPU, no CUDA base: staging and conversion are
-# CPU-bound and must not compete with a serving swap for VRAM.
+# not reused to prepare it for serving. This image carries only what the export needs: a
+# CPU-only Python stack for the PEFT adapter merge and the safetensors write. No GPU, no
+# CUDA base: merging is CPU-bound and must not compete with a serving swap for VRAM.
 #
-# The llama.cpp revision comes from training/export/llama_cpp_pin.txt (single source of
-# truth, read at build time); the gguf Python package is installed from that same checkout
-# (gguf-py), so converter and library can never skew.
+# The export writes an HF checkpoint directory (config.json plus one model.safetensors)
+# that the rust harness serves and interp captures from. It produces no GGUF: that is
+# llama.cpp's format and appears in this repository only as published models.
 
 ARG UV_VERSION=0.11.28
 
@@ -17,21 +16,15 @@ FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 
 FROM ubuntu:24.04
 
-# Compile-job cap for the llama-quantize build; -j$(nproc) saturates the host
-ARG MAX_JOBS=4
-
-LABEL description="GGUF export toolchain: pinned llama.cpp converter and quantizer (Phase 0 D7)"
+LABEL description="Merged HF checkpoint exporter: CPU-only adapter merge and safetensors write"
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 
-# Build toolchain for llama-quantize; python for the converter and adapter merge
+# python for the adapter merge; git for the manifest's git_sha
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        build-essential \
-        cmake \
         git \
-        curl \
         ca-certificates \
         python3.12 \
         python3.12-dev \
@@ -40,39 +33,25 @@ RUN apt-get update && \
 
 COPY --from=uv /uv /uvx /usr/local/bin/
 
-# Pinned llama.cpp checkout: converter script plus a CPU-only llama-quantize build.
-# The SHA is read from the repo pin file so a pin bump is a one-line change here.
-COPY training/export/llama_cpp_pin.txt /opt/llama_cpp_pin.txt
-RUN git clone https://github.com/ggml-org/llama.cpp.git /opt/llama.cpp && \
-    cd /opt/llama.cpp && \
-    git checkout "$(cat /opt/llama_cpp_pin.txt)" && \
-    cmake -B build -DGGML_CUDA=OFF -DLLAMA_BUILD_TESTS=OFF \
-          -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_SERVER=OFF && \
-    cmake --build build --target llama-quantize -j"${MAX_JOBS}" && \
-    rm -rf build/CMakeFiles
-
 RUN uv venv /opt/venv --python 3.12
 ENV VIRTUAL_ENV="/opt/venv"
 ENV PATH="/opt/venv/bin:${PATH}"
 
-# CPU-only Python stack for staging and adapter merge. Versions mirror the core pins in
+# CPU-only Python stack for the adapter merge. Versions mirror the core pins in
 # pyproject.toml (transformers/peft/accelerate/sentencepiece); torch uses the CPU wheel
 # index because the cu130 build in uv.lock is GPU-sized and unnecessary here — this is the
 # one deliberate deviation from lockfile installs, kept in sync by hand with pyproject.
-# gguf comes from the pinned checkout itself, so its version follows the pin.
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --index-url https://download.pytorch.org/whl/cpu torch==2.13.0 && \
     uv pip install \
         transformers==5.13.1 \
         peft==0.19.1 \
         accelerate==1.14.0 \
-        sentencepiece==0.2.2 \
-        /opt/llama.cpp/gguf-py
+        sentencepiece==0.2.2
 
 # Non-root user (repo-standard line, matches the inference images)
 RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin -c "Application User" appuser
 
-ENV LLAMA_CPP_DIR=/opt/llama.cpp
 ENV HF_HOME=/app/cache
 ENV HOME=/app
 RUN mkdir -p /app/cache /app/logs && chown -R appuser:appuser /app
@@ -80,11 +59,7 @@ RUN mkdir -p /app/cache /app/logs && chown -R appuser:appuser /app
 WORKDIR /app
 USER appuser
 
-# Sanity check: converter present at the pin, quantizer binary present and
-# executable, python stack imports. llama-quantize has no --help flag (any
-# unrecognized argument exits 1), so test -x instead of invoking it.
-RUN test -f /opt/llama.cpp/convert_hf_to_gguf.py && \
-    test -x /opt/llama.cpp/build/bin/llama-quantize && \
-    python -c "import torch, transformers, peft, gguf"
+# Sanity check: the python stack imports
+RUN python -c "import torch, transformers, peft, safetensors"
 
 CMD ["/bin/bash"]

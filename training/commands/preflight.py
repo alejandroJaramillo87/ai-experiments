@@ -118,7 +118,7 @@ def _check_model(model: str, revision, label: str, problems: list[str]) -> None:
     on any error so a training run survives a resolution failure. That is the
     right call there and exactly the wrong one here.
     """
-    from training.export.convert import ExportError
+    from training.export.errors import ExportError
     from training.export.preflight import resolve_base_identity
 
     try:

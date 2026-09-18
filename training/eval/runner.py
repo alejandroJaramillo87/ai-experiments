@@ -4,9 +4,15 @@ The runner (training/commands/eval_ft.py) sequences four phases while staying
 honest about the concurrency policy: the in-process evaluators (holdout,
 lmeval) run inside the training container with inference down; generation
 and judging run against the serving stack with training idle. This module
-holds the testable pieces — GGUF identity, container-phase invocation,
+holds the testable pieces — checkpoint identity, container-phase invocation,
 resumable judging, metadata assembly — with all serving I/O injected or
 delegated to training.serving.
+
+Identity: a compared side is an HF checkpoint directory and is identified by
+model_hash, the sha256 of its model.safetensors, read from the export
+manifest beside it when there is one and computed otherwise. The judge is a
+published GGUF and is identified by path and storage type; the only GGUF
+this runner names is that one.
 
 Host-side, stdlib-only.
 """
@@ -32,76 +38,86 @@ class EvalRunError(RuntimeError):
     """Runner failure outside the serving layer; message says the fix."""
 
 
-def thinking_mode_for(architecture: str | None, path: str) -> str | None:
-    """The thinking mode a served GGUF actually runs in.
+def thinking_mode_for(model_type: str | None) -> str | None:
+    """The thinking mode a served checkpoint actually runs in.
 
     No thinking-control tokens are injected anywhere in the eval pipeline,
     so the mode is the family default (off for Gemma 4, whose <|think|> is
-    opt-in). Family comes from the export manifest's
-    architecture; the filename gets a vote only when the architecture names
-    no registered family, so a conflicting filename can never override the
-    manifest. None when neither names a family (recorded as "not
-    recorded", never guessed).
+    opt-in). Family comes from the checkpoint's config.json model_type; the
+    composite Gemma 4 config says gemma4 and its text-only form says
+    gemma4_text, and both resolve to the gemma4 family. None when the type
+    names no registered family (recorded as "not recorded", never guessed).
     """
     from training.models.families import family_spec, supported_families
 
-    def first_match(hint: str) -> str | None:
-        hint = hint.lower().replace("-", "").replace("_", "")
-        for model_type in supported_families():
-            if model_type.replace("_", "") in hint:
-                return family_spec(model_type).thinking_default
+    if not model_type:
         return None
-
-    if architecture:
-        mode = first_match(architecture)
-        if mode is not None:
-            return mode
-    return first_match(os.path.basename(path))
+    for family in supported_families():
+        if model_type == family or model_type.startswith(family + "_"):
+            return family_spec(family).thinking_default
+    return None
 
 
-def gguf_identity(model: str) -> dict:
-    """Identity block for one served GGUF: paths, quant, manifest hash.
+def hf_identity(model: str) -> dict:
+    """Identity block for one compared side: the checkpoint directory the
+    harness serves, and its model_hash.
 
-    Reads the export manifest when one sits beside the file; a stock GGUF
-    without a manifest falls back to filename quant parsing.
+    The directory must live under the models tree the harness mounts, in
+    either its host or container spelling, and hold config.json and
+    model.safetensors. model_hash comes from the export manifest beside it
+    when there is one (an exported fine-tune), else is computed from the
+    weights (a base checkpoint), by the same function either way.
     """
-    container_path, host_path = serving.model_paths(model)
-    if not os.path.isfile(host_path):
-        raise EvalRunError(f"GGUF not found on host: {host_path}")
-    manifest_path = os.path.splitext(host_path)[0] + ".manifest.json"
-    manifest = None
-    if os.path.isfile(manifest_path):
-        with open(manifest_path) as f:
-            manifest = json.load(f)
-    quant = (manifest or {}).get("quant_type") or quant_from_name(host_path)
+    from training.export.errors import ExportError
+    from training.export.manifest import load_hf_manifest
+
+    try:
+        container_path, host_path = serving.model_paths(model.rstrip("/"))
+    except serving.ServingError as exc:
+        raise EvalRunError(
+            f"{exc}\n  Solution: the harness serves checkpoints under "
+            f"{serving.HOST_MODELS}; pass the exported hf directory or the "
+            "downloaded base"
+        ) from exc
+    config_path = os.path.join(host_path, "config.json")
+    weights_path = os.path.join(host_path, "model.safetensors")
+    for path in (config_path, weights_path):
+        if not os.path.isfile(path):
+            raise EvalRunError(
+                f"Not a loadable checkpoint directory: {host_path} "
+                f"(missing {os.path.basename(path)})\n  Solution: pass the "
+                "hf/ directory python -m training export wrote, or the "
+                "downloaded base checkpoint"
+            )
+    try:
+        manifest = load_hf_manifest(host_path)
+        model_hash = manifest["model_hash"]
+        manifest_path = os.path.join(os.path.dirname(host_path), "manifest.json")
+    except ExportError:
+        model_hash = serving.sha256_file(weights_path)
+        manifest_path = None
+    with open(config_path) as f:
+        model_type = json.load(f).get("model_type")
     return {
         "model": container_path,
         "host_path": host_path,
-        "quant_type": quant,
-        "sha256": (manifest or {}).get("gguf", {}).get("sha256"),
-        "manifest": manifest_path if manifest else None,
-        "thinking_mode": thinking_mode_for(
-            (manifest or {}).get("architecture"), host_path
-        ),
+        "model_hash": model_hash,
+        "manifest": manifest_path,
+        "thinking_mode": thinking_mode_for(model_type),
     }
 
 
-def check_quant_match(baseline: dict, tuned: dict) -> None:
-    """Enforce the D7 confound rule before any GPU time is spent."""
-    left, right = baseline.get("quant_type"), tuned.get("quant_type")
-    if left is None or right is None:
-        raise EvalRunError(
-            "Quant type unknown for a compared side; comparative claims "
-            "need matched quantization\n"
-            "  Solution: export both sides with make export-gguf (manifest "
-            "records the storage type), or use <name>-<TYPE>.gguf naming"
-        )
-    if left != right:
-        raise EvalRunError(
-            f"Storage type mismatch: baseline {left}, tuned {right}\n"
-            "  Solution: re-export one side to match. Note export now "
-            "produces BF16 only, so a Q8_0 side predates that change"
-        )
+def judge_identity(model: str) -> dict:
+    """Identity block for the judge: a published GGUF, named by path and
+    storage type. Nothing hashes it; a judge is not a compared side."""
+    container_path, host_path = serving.model_paths(model)
+    if not os.path.isfile(host_path):
+        raise EvalRunError(f"Judge GGUF not found on host: {host_path}")
+    return {
+        "model": container_path,
+        "host_path": host_path,
+        "quant_type": quant_from_name(host_path),
+    }
 
 
 def run_container_phase(

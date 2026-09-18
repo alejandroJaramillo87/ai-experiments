@@ -1,0 +1,57 @@
+{
+  "contract": "hf_export_manifest",
+  "description": "The manifest python -m training export writes beside every exported checkpoint directory (<out_root>/<name>/manifest.json next to <out_root>/<name>/hf/): where the weights came from, how they were produced, and model_hash, the sha256 of the written model.safetensors",
+  "writers": [
+    "training/export/manifest.py (build_hf_manifest)"
+  ],
+  "readers": [
+    "training/export/manifest.py (load_hf_manifest), on behalf of interp/commands/organism.py (seal) and training/eval/runner.py (hf_identity)"
+  ],
+  "guarded_by": [
+    "tests/training/test_export.py"
+  ],
+  "required": [
+    "adapter",
+    "artifact",
+    "base",
+    "base_drift",
+    "checkpoint_meta",
+    "created",
+    "git_sha",
+    "hf_dir",
+    "mode",
+    "model_hash",
+    "schema_version",
+    "size_bytes",
+    "source_checkpoint",
+    "tokenizer_source",
+    "tool_versions",
+    "weights_file"
+  ],
+  "optional": [],
+  "values": {
+    "artifact": [
+      "hf_export"
+    ],
+    "mode": [
+      "merge",
+      "copy"
+    ],
+    "weights_file": [
+      "model.safetensors"
+    ]
+  },
+  "constraints": [
+    "model_hash is the lowercase hex sha256 of <hf_dir>/model.safetensors, computed by common/hashing.py::sha256_file after the file is written",
+    "hf_dir holds config.json and exactly one model.safetensors, never a shard index",
+    "base records the merge's resolved base for mode merge, and the source directory's own identity for mode copy",
+    "adapter is null for mode copy and an object {path, sha256, merge_method} for mode merge",
+    "base_drift is empty unless --allow-base-drift overrode a base-identity mismatch"
+  ],
+  "notes": {
+    "why_here": "Both writer and readers are Python, so this file never crosses a language boundary itself. It is here because model_hash is the value the Rust preflight compares under --deep (rust-harness/harness/src/preflight.rs hashes the served model.safetensors and compares it to the model_hash a probe or control vector records), and interp/probes/capture.py::derive_model_hash computes it the same way at capture time. Three writers of one digest, in two languages, is the problem this directory exists for, even though this particular file is read on one side only.",
+    "beside_not_inside": "The manifest sits beside hf/ rather than in it. The checkpoint directory is what transformers and the harness load, and each is exact about what it expects there; a file neither knows is noise at best and a refusal at worst.",
+    "identity_is_the_file": "A re-export of the same checkpoint rewrites model.safetensors and therefore model_hash, which is why the exporter refuses to overwrite an existing hf/ without --force: a probe fitted to the old weights would be refused by the harness against the new ones, correctly, and the manifest is what says which weights those were.",
+    "envelope": "The manifest carries the shared report envelope from common/reports.py: schema_version, one discriminator (artifact), a stamp (created), and git_sha."
+  }
+}

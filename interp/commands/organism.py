@@ -6,16 +6,21 @@ path:
   generate    render prompt templates with freshly drawn ground truth and
               batch-generate the training corpus through the teacher harness
               (serving-dependent; training runs afterward via make train-sft)
-  verify      elicit the merged organism through llama-gpu, judge through
-              vllm-gpu, run the implant and locality checks, write the
-              D8-convention verification report (serving-dependent)
+  verify      elicit the exported organism through the rust harness serving
+              its hf directory (harness-serve, port 8005), judge through the
+              judge service, compare eval-holdout and eval-lmeval records
+              for locality, write the D8-convention verification report
+              (serving-dependent)
   seal        write ground_truth.json and the blinded public manifest with
-              its SHA-256 pre-registration
+              its SHA-256 pre-registration, recording the exported hf
+              directory and its model_hash as the subject
   check-seal  re-verify a sealed organism's ground-truth hash
 
-This is a HOST tool: it talks to localhost services and, for generate,
-drives the F4 teacher harness. Exit codes: 0 success, 1 failure, 2 invalid
-usage.
+The subject is the merged HF checkpoint python -m training export wrote,
+served by the harness exactly as a base checkpoint is; the organism enters
+the observatory the way every other model does. This is a HOST tool: it
+talks to localhost services and, for generate, drives the F4 teacher
+harness. Exit codes: 0 success, 1 failure, 2 invalid usage.
 """
 
 from __future__ import annotations
@@ -25,6 +30,7 @@ import json
 import os
 
 from common.output import Printer
+from common.serving import SERVICES
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -203,12 +209,14 @@ def cmd_generate(args: argparse.Namespace, out: Printer) -> int:
 def cmd_verify(args: argparse.Namespace, out: Printer) -> int:
     from interp.organisms import generate as gen
     from interp.organisms import verify as ver
-    from interp.steering.scorecard import chat
+    from interp.steering.scorecard import chat, post_with_timeout
 
     recipe = load_organism_recipe(args.recipe)
     o = recipe.organism
     work = os.path.join(o.out_dir, WORK_DIR)
     draft = _read_json(os.path.join(work, DRAFT_NAME), "ground-truth draft")
+    subject_post = post_with_timeout(args.subject_timeout)
+    judge_post = post_with_timeout(args.judge_timeout)
 
     def subject(prompt: str) -> str:
         return chat(
@@ -216,10 +224,13 @@ def cmd_verify(args: argparse.Namespace, out: Printer) -> int:
             prompt,
             max_tokens=args.max_tokens,
             temperature=args.temperature,
+            post=subject_post,
         )["text"]
 
     def judge(prompt: str) -> str:
-        return chat(args.judge_url, prompt, max_tokens=256, temperature=0.0)["text"]
+        return chat(
+            args.judge_url, prompt, max_tokens=256, temperature=0.0, post=judge_post
+        )["text"]
 
     out.line(f"=== Organism verification: {recipe.run.name} ({o.kind}) ===")
     if o.kind == "taboo":
@@ -267,8 +278,12 @@ def cmd_verify(args: argparse.Namespace, out: Printer) -> int:
             judge_score_min=o.judge_score_min,
         )
 
-    base_metrics = _read_json(args.base_metrics, "base metrics")
-    subject_metrics = _read_json(args.subject_metrics, "subject metrics")
+    base_metrics = ver.locality_metrics(
+        [_read_json(path, "base metrics") for path in args.base_metrics]
+    )
+    subject_metrics = ver.locality_metrics(
+        [_read_json(path, "subject metrics") for path in args.subject_metrics]
+    )
     locality = ver.locality_check(base_metrics, subject_metrics, o.locality_epsilon)
     verdict = ver.organism_verdict(o.kind, implant, locality)
     config = {
@@ -288,7 +303,11 @@ def cmd_verify(args: argparse.Namespace, out: Printer) -> int:
         },
         "subject_url": args.subject_url,
         "judge_url": args.judge_url,
+        "subject_timeout": args.subject_timeout,
+        "judge_timeout": args.judge_timeout,
         "temperature": args.temperature,
+        "base_metrics": [os.path.abspath(p) for p in args.base_metrics],
+        "subject_metrics": [os.path.abspath(p) for p in args.subject_metrics],
     }
     report = ver.build_report(o.kind, config, implant, locality, verdict)
     path = ver.write_report(report, o.out_dir)
@@ -324,6 +343,19 @@ def cmd_seal(args: argparse.Namespace, out: Printer) -> int:
         out.line("  Solution: re-train or re-verify the organism first")
         return 1
 
+    # The subject's identity: the exported hf directory and the model_hash
+    # its export manifest recorded, which is what interp/harvest.py reads
+    # back and what a probe fitted to the organism will carry. A checkpoint
+    # without a manifest beside it needs the hash stated; a seal that
+    # records a checkpoint and no hash would leave every downstream identity
+    # check reading "unknown".
+    model_hash = args.model_hash
+    checkpoint = os.path.abspath(args.checkpoint) if args.checkpoint else ""
+    if checkpoint and not model_hash:
+        from training.export.manifest import load_hf_manifest
+
+        model_hash = load_hf_manifest(checkpoint)["model_hash"]
+
     with open(args.recipe, encoding="utf-8") as f:
         recipe_sha = text_sha256(f.read())
     public = {
@@ -334,12 +366,17 @@ def cmd_seal(args: argparse.Namespace, out: Printer) -> int:
         "recipe": os.path.relpath(args.recipe, REPO_ROOT),
         "recipe_sha256": recipe_sha,
         "verification_report_xxh3": file_xxhash(report_path),
-        "checkpoint": args.checkpoint,
-        "gguf": args.gguf,
+        "checkpoint": checkpoint,
     }
+    if model_hash:
+        public["model_hash"] = model_hash
     manifest = sealer.seal_organism(o.out_dir, ground_truth, public)
     os.remove(draft_path)
     out.ok(f"Sealed: ground truth SHA-256 {manifest['ground_truth_sha256']}")
+    if model_hash:
+        out.ok(
+            f"Subject: {checkpoint or 'unnamed checkpoint'} (model_hash {model_hash})"
+        )
     out.ok(f"Public manifest: {os.path.join(o.out_dir, 'manifest.json')}")
     out.info("Auditors receive the public manifest only")
     return 0
@@ -387,15 +424,45 @@ def configure(sub) -> None:
 
     p_ver = osub.add_parser("verify", help="run implant and locality checks")
     p_ver.add_argument("--recipe", required=True)
-    p_ver.add_argument("--subject-url", default="http://127.0.0.1:8002")
-    p_ver.add_argument("--judge-url", default="http://127.0.0.1:8003")
     p_ver.add_argument(
-        "--base-metrics", required=True, help="F7 metrics JSON for the base model"
+        "--subject-url",
+        default=SERVICES["harness"].base_url,
+        help="the harness serving the organism's exported hf directory "
+        "(default: the harness service, port 8005)",
     )
     p_ver.add_argument(
-        "--subject-metrics", required=True, help="F7 metrics JSON for the organism"
+        "--judge-url",
+        default="http://127.0.0.1:8003",
+        help="the judge service (default: vllm-gpu, port 8003)",
+    )
+    p_ver.add_argument(
+        "--base-metrics",
+        action="append",
+        required=True,
+        help="eval-holdout or eval-lmeval record for the base model; "
+        "repeat for both evaluators",
+    )
+    p_ver.add_argument(
+        "--subject-metrics",
+        action="append",
+        required=True,
+        help="eval-holdout or eval-lmeval record for the organism; "
+        "repeat for both evaluators",
     )
     p_ver.add_argument("--max-tokens", type=int, default=256)
+    p_ver.add_argument(
+        "--subject-timeout",
+        type=int,
+        default=600,
+        help="per-request timeout for the subject in seconds (the harness "
+        "decodes a few tokens per second on the CPU; default 600)",
+    )
+    p_ver.add_argument(
+        "--judge-timeout",
+        type=int,
+        default=300,
+        help="per-request timeout for the judge in seconds (default 300)",
+    )
     p_ver.add_argument(
         "--temperature",
         type=float,
@@ -411,10 +478,14 @@ def configure(sub) -> None:
     p_seal.add_argument(
         "--checkpoint",
         default="",
-        help="merged checkpoint path recorded in the manifest",
+        help="the organism's exported hf directory, recorded as the subject; "
+        "its model_hash is read from the export manifest beside it",
     )
     p_seal.add_argument(
-        "--gguf", default="", help="served GGUF path recorded in the manifest"
+        "--model-hash",
+        default="",
+        help="the subject's sha256(model.safetensors), for a checkpoint "
+        "without an export manifest (default: read from the manifest)",
     )
 
     p_chk = osub.add_parser("check-seal", help="re-verify a sealed organism")

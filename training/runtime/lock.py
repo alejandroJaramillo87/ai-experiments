@@ -1,9 +1,9 @@
 """Training run lock (Phase 0 D9).
 
 Mechanically enforces the one-GPU-consumer policy: a training job holds
-/mnt/ai-data/training/.train.lock (the path training/commands/serve_eval.py already
-checks) for its whole run; a second job or a serving swap refuses to start
-while it exists.
+/mnt/ai-data/training/.train.lock (the path training/serving.py's training-idle
+preflight checks) for its whole run; a second job or a host serving tool
+refuses to start while it exists.
 
 The lock is an O_CREAT|O_EXCL-created JSON file recording pid, run name, and
 creation time, released on exit (including exceptions) by the context manager.

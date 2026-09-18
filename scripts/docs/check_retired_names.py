@@ -40,6 +40,36 @@ from common.output import Printer  # noqa: E402
 # Retired name -> (replacement, why it was retired). Both halves are shown in the
 # failure, so the reason should read as an explanation to whoever hits it.
 RETIRED: dict[str, tuple[str, str]] = {
+    # The training tier stopped producing GGUF on 2026-09-18. The export writes
+    # the merged HF checkpoint (config.json plus one model.safetensors) that the
+    # rust harness serves and interp captures from, and nothing else; GGUF is
+    # llama.cpp's format and appears in this repository only as published
+    # models the inference services serve. The converter, its pin, the staging
+    # flags and the GGUF-only tools went with it.
+    "training/export/convert.py": (
+        "training/export/merge.py",
+        "the GGUF converter left with GGUF production; the exporter writes the merged HF checkpoint directory the harness loads",
+    ),
+    "training/export/llama_cpp_pin.txt": (
+        "docker/training/Dockerfile.export",
+        "the llama.cpp pin left with the converter; the export image builds no llama.cpp",
+    ),
+    "--staging-root": (
+        "hf.partial beside the exported hf directory",
+        "the export no longer stages under a scratch root; it writes the partial directory beside its destination and promotes it by rename",
+    ),
+    "--keep-staging": (
+        "the exported hf directory itself",
+        "the merged checkpoint is the artifact, not an intermediate, so there is nothing to keep",
+    ),
+    "training/commands/serve_eval.py": (
+        "make harness-serve",
+        "serve-eval swapped a training-produced GGUF into llama-gpu and smoke-tested it; with no GGUF produced, the served artifact is the exported hf directory on harness-serve, and eval-ft is the evaluation",
+    ),
+    "EXPORT_STAGING": (
+        "nothing",
+        "the staging root it named is gone; see --staging-root",
+    ),
     "site/scripts/gen-cli-reference.sh": (
         "scripts/docs/gen_site_reference.py",
         "the site's reference generator moved from a bash script that pasted --help into a fenced block to a Python script beside the gate that checks its output, because the pages became a usage line plus one table per help section and that parse deserved a unit test under tests/docs/",

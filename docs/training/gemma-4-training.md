@@ -226,14 +226,15 @@ an inert one. It does not. See
 |------|-------|----------|
 | Top-level `model_type` | `gemma4` | `components.py:225,232`; `/interp/families.py:49-57` |
 | Text `model_type` | `gemma4_text` | same |
-| `architectures[0]` | `Gemma4ForConditionalGeneration` | `/training/export/convert.py:83-98` |
+| `architectures[0]` | `Gemma4ForConditionalGeneration` | `/rust-harness/runtime/src/checkpoint.rs` (declines the towers under `--text-only`) |
 | `final_logit_softcapping` | 30.0 | `/training/tune/distill.py:149-165` |
 | `dtype` | `bfloat16` | — |
 | `transformers_version` | `5.5.0.dev0` | — |
 
-`architectures[0]` is `Gemma4ForConditionalGeneration`, not `Gemma4ForCausalLM`. The GGUF
-conversion gate at `convert.py:83-98` compares this string against the names registered by the
-pinned llama.cpp converter, so the pin must recognize the conditional-generation class.
+`architectures[0]` is `Gemma4ForConditionalGeneration`, not `Gemma4ForCausalLM`: the
+checkpoint carries vision and audio towers beside the text stack. The exporter keeps them in
+the merged file, and the harness loads that file under `--text-only`, declining the towers
+by tensor prefix rather than by this string.
 
 **The configuration targets an unreleased `transformers` development version.** Treat the
 configuration schema as unstable and pin the `transformers` revision that actually implements

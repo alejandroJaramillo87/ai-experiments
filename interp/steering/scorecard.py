@@ -255,6 +255,19 @@ def _post_chat(url: str, payload: dict, timeout: float = 300.0) -> dict:
     return post_chat(f"{url.rstrip('/')}/v1/chat/completions", payload, timeout=timeout)
 
 
+def post_with_timeout(timeout: float):
+    """A `post` for chat() carrying an explicit request timeout.
+
+    The harness decodes at a few tokens per second on the CPU and serves
+    one request at a time, so a caller sizes the timeout to its own
+    max_tokens rather than inheriting a default measured elsewhere."""
+
+    def post(url: str, payload: dict) -> dict:
+        return _post_chat(url, payload, timeout=timeout)
+
+    return post
+
+
 def chat(
     url: str,
     prompt: str,

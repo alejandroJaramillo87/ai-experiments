@@ -89,7 +89,7 @@ backoff) leaves the run incomplete and resumable, exit code 1.
 The tool is a serving-side GPU consumer. Preflight refuses to start while the
 D9 training lock (`/mnt/ai-data/training/.train.lock`) is held or the
 training container is running; it reads the lock, never acquires it.
-Serialization against other serving-side consumers (benchmarks, `serve-eval`)
+Serialization against other serving-side consumers (benchmarks, `eval-ft`)
 remains the operator's responsibility: one GPU consumer at a time.
 
 ## Modules
@@ -97,6 +97,6 @@ remains the operator's responsibility: one GPU consumer at a time.
 | Path | Role |
 |------|------|
 | `training/data/teacher.py` | harness core: prompt loading, keys, retry, resume, record and manifest schemas; transport injected for tests |
-| `training/serving.py` | shared host-side serving machinery: service registry, training-idle preflight, model swap, health poll, chat client (also used by `training/commands/serve_eval.py`) |
+| `training/serving.py` | shared host-side serving machinery: service registry, training-idle preflight, model swap, health poll, chat client (also used by `training/commands/eval_ft.py`) |
 | `python -m training generate-teacher` (`training/commands/generate_teacher.py`) | host CLI wiring the two together |
 | `tests/training/test_teacher.py`, `tests/training/test_serving.py` | CPU unit tests; the live-service path is a host acceptance run |

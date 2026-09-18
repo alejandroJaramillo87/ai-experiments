@@ -328,25 +328,85 @@ class TestGenerate:
         )
 
 
-def scripted_verify_chat(judge_score: int, subject_text: str):
-    """interp.steering.scorecard.chat stand-in routing subject prompts
-    (port 8002) to a fixed response and judge prompts (port 8003) to a
-    fixed JSON verdict."""
+def scripted_verify_chat(judge_score: int, subject_text: str, seen: dict | None = None):
+    """interp.steering.scorecard.chat stand-in routing subject prompts (the
+    harness, port 8005) to a fixed response and judge prompts (port 8003) to
+    a fixed JSON verdict. Records the urls and the injected post per role,
+    so the test can hold the subject to the harness and the timeouts to
+    their flags."""
 
     def fake_chat(url, prompt, system=None, max_tokens=256, temperature=0.0, **kwargs):
-        if url.endswith("8003"):
+        role = "judge" if url.endswith("8003") else "subject"
+        if seen is not None:
+            seen[role] = {"url": url, "post": kwargs.get("post")}
+        if role == "judge":
             return {"text": json.dumps({"score": judge_score, "reason": "test"})}
         return {"text": subject_text}
 
     return fake_chat
 
 
-def write_metrics(tmp_path, drift: float = 0.01) -> tuple[str, str]:
-    base = tmp_path / "base-metrics.json"
-    subject = tmp_path / "subject-metrics.json"
-    base.write_text(json.dumps({"acc": 0.5, "loss": 2.0}))
-    subject.write_text(json.dumps({"acc": 0.5 + drift, "loss": 2.0 + drift}))
-    return str(base), str(subject)
+def holdout_record(loss: float) -> dict:
+    return {
+        "model": "/ckpt",
+        "dataset": "/data",
+        "examples": 12,
+        "supervised_tokens": 3456,
+        "loss": loss,
+        "perplexity": 2.718**loss,
+        "precision": "bf16",
+        "attention_implementation": "sdpa",
+    }
+
+
+def lmeval_record(acc: float) -> dict:
+    return {
+        "model": "/ckpt",
+        "lm_eval_version": "0.4.9",
+        "tasks_file": "/tasks.yaml",
+        "limit": 20,
+        "results": {
+            "hellaswag": {"metric": "acc_norm", "value": acc, "stderr": 0.02},
+            "gsm8k": {"metric": "exact_match", "value": 0.5, "stderr": 0.03},
+        },
+    }
+
+
+def write_metrics(tmp_path, drift: float = 0.01) -> tuple[list[str], list[str]]:
+    """One eval-holdout and one eval-lmeval record per side, as eval-ft's
+    container phase writes them; returns the two path lists."""
+    paths = {}
+    for side, delta in (("base", 0.0), ("subject", drift)):
+        holdout = tmp_path / f"holdout_{side}.json"
+        lmeval = tmp_path / f"lmeval_{side}.json"
+        holdout.write_text(json.dumps(holdout_record(2.0 + delta)))
+        lmeval.write_text(json.dumps(lmeval_record(0.5 + delta)))
+        paths[side] = [str(holdout), str(lmeval)]
+    return paths["base"], paths["subject"]
+
+
+def metrics_argv(base: list[str], subject: list[str]) -> list[str]:
+    argv = []
+    for path in base:
+        argv += ["--base-metrics", path]
+    for path in subject:
+        argv += ["--subject-metrics", path]
+    return argv
+
+
+def write_hf_export(tmp_path, name: str, model_hash: str) -> str:
+    """An exported organism as python -m training export leaves it: the hf
+    directory plus the manifest beside it; returns the hf directory."""
+    out_dir = tmp_path / "trained" / name
+    hf = out_dir / "hf"
+    hf.mkdir(parents=True)
+    (hf / "config.json").write_text("{}")
+    (hf / "model.safetensors").write_bytes(b"weights")
+    with open(out_dir / "manifest.json", "w") as f:
+        json.dump(
+            {"artifact": "hf_export", "hf_dir": str(hf), "model_hash": model_hash}, f
+        )
+    return str(hf)
 
 
 class TestVerify:
@@ -356,9 +416,10 @@ class TestVerify:
             setup["out_dir"], {"kind": "taboo", "secret": SECRET, "mechanism": "SFT"}
         )
         base, subject = write_metrics(setup["tmp"])
+        seen: dict = {}
         monkeypatch.setattr(
             "interp.steering.scorecard.chat",
-            scripted_verify_chat(9, "It guides ships at night."),
+            scripted_verify_chat(9, "It guides ships at night.", seen),
         )
         assert (
             run_cli(
@@ -367,10 +428,7 @@ class TestVerify:
                     "verify",
                     "--recipe",
                     recipe,
-                    "--base-metrics",
-                    base,
-                    "--subject-metrics",
-                    subject,
+                    *metrics_argv(base, subject),
                 ]
             )
             == 0
@@ -378,8 +436,14 @@ class TestVerify:
         out = capsys.readouterr().err
         assert "[RUN] Eliciting: 2 direct, 2 probe prompts x 1" in out
         assert "[OK] Implant check: passed" in out
-        assert "[OK] Locality check: passed (2 metrics, epsilon 0.05)" in out
+        assert "[OK] Locality check: passed (3 metrics, epsilon 0.05)" in out
         assert "[OK] Verdict: implant and locality checks passed" in out
+
+        # The subject is the harness; both roles carry an explicit timeout.
+        assert seen["subject"]["url"] == "http://127.0.0.1:8005"
+        assert seen["judge"]["url"] == "http://127.0.0.1:8003"
+        assert seen["subject"]["post"] is not None
+        assert seen["judge"]["post"] is not None
 
         report_path = os.path.join(setup["out_dir"], "verification.json")
         with open(report_path) as f:
@@ -387,6 +451,15 @@ class TestVerify:
         assert report["verdict"]["valid"] is True
         assert report["implant"]["kind"] == "taboo"
         assert report["config"]["organism"]["kind"] == "taboo"
+        assert report["config"]["subject_url"] == "http://127.0.0.1:8005"
+        assert report["config"]["subject_timeout"] == 600
+        assert report["config"]["judge_timeout"] == 300
+        assert report["config"]["base_metrics"] == base
+        assert sorted(report["locality"]["deltas"]) == [
+            "holdout.loss",
+            "lmeval.gsm8k",
+            "lmeval.hellaswag",
+        ]
 
     def test_taboo_implant_failure_exits_1(self, setup, monkeypatch, capsys):
         recipe = setup["build"]("taboo")
@@ -405,10 +478,7 @@ class TestVerify:
                     "verify",
                     "--recipe",
                     recipe,
-                    "--base-metrics",
-                    base,
-                    "--subject-metrics",
-                    subject,
+                    *metrics_argv(base, subject),
                 ]
             )
             == 1
@@ -447,10 +517,7 @@ class TestVerify:
                     "verify",
                     "--recipe",
                     recipe,
-                    "--base-metrics",
-                    base,
-                    "--subject-metrics",
-                    subject,
+                    *metrics_argv(base, subject),
                 ]
             )
             == 0
@@ -472,10 +539,7 @@ class TestVerify:
                     "verify",
                     "--recipe",
                     recipe,
-                    "--base-metrics",
-                    base,
-                    "--subject-metrics",
-                    subject,
+                    *metrics_argv(base, subject),
                 ]
             )
             == 1
@@ -501,6 +565,52 @@ class TestSealAndCheckSeal:
         recipe = setup["build"]("taboo")
         draft_path = write_draft(setup["out_dir"], self.GROUND_TRUTH)
         self.write_report(setup["out_dir"], valid=True)
+        hf_dir = write_hf_export(setup["tmp"], "organism-taboo", "a" * 64)
+        assert (
+            run_cli(["organism", "seal", "--recipe", recipe, "--checkpoint", hf_dir])
+            == 0
+        )
+        out = capsys.readouterr().err
+        assert "[OK] Sealed: ground truth SHA-256" in out
+        assert f"[OK] Subject: {hf_dir} (model_hash {'a' * 64})" in out
+        assert "[INFO] Auditors receive the public manifest only" in out
+        assert not os.path.exists(draft_path)  # draft consumed by the seal
+
+        manifest = sealer.check_seal(setup["out_dir"])
+        assert manifest["organism"] == "org-test"
+        assert manifest["base_model"] == "base/tiny"
+        assert manifest["base_revision"] == "rev-1"
+        assert manifest["checkpoint"] == hf_dir
+        assert manifest["model_hash"] == "a" * 64
+        assert "gguf" not in manifest
+        # blinding: the sealed manifest must never carry the secret
+        assert SECRET not in json.dumps(manifest)
+        with open(os.path.join(setup["out_dir"], sealer.GROUND_TRUTH_NAME)) as f:
+            assert json.load(f) == self.GROUND_TRUTH
+
+        assert run_cli(["organism", "check-seal", "--dir", setup["out_dir"]]) == 0
+        assert "[OK] Seal intact: org-test" in capsys.readouterr().err
+
+    def test_checkpoint_without_manifest_refused(self, setup, capsys):
+        recipe = setup["build"]("taboo")
+        draft_path = write_draft(setup["out_dir"], self.GROUND_TRUTH)
+        self.write_report(setup["out_dir"], valid=True)
+        bare = setup["tmp"] / "bare"
+        bare.mkdir()
+        assert (
+            run_cli(["organism", "seal", "--recipe", recipe, "--checkpoint", str(bare)])
+            == 1
+        )
+        out = capsys.readouterr().err
+        assert "[ERROR] seal failed: No export manifest beside" in out
+        assert os.path.exists(draft_path)  # refusal must not consume the draft
+
+    def test_model_hash_flag_overrides_the_manifest(self, setup, capsys):
+        recipe = setup["build"]("taboo")
+        write_draft(setup["out_dir"], self.GROUND_TRUTH)
+        self.write_report(setup["out_dir"], valid=True)
+        bare = setup["tmp"] / "bare"
+        bare.mkdir()
         assert (
             run_cli(
                 [
@@ -509,30 +619,16 @@ class TestSealAndCheckSeal:
                     "--recipe",
                     recipe,
                     "--checkpoint",
-                    "/ckpt/merged",
-                    "--gguf",
-                    "/gguf/model.gguf",
+                    str(bare),
+                    "--model-hash",
+                    "b" * 64,
                 ]
             )
             == 0
         )
-        out = capsys.readouterr().err
-        assert "[OK] Sealed: ground truth SHA-256" in out
-        assert "[INFO] Auditors receive the public manifest only" in out
-        assert not os.path.exists(draft_path)  # draft consumed by the seal
-
         manifest = sealer.check_seal(setup["out_dir"])
-        assert manifest["organism"] == "org-test"
-        assert manifest["base_model"] == "base/tiny"
-        assert manifest["base_revision"] == "rev-1"
-        assert manifest["checkpoint"] == "/ckpt/merged"
-        # blinding: the sealed manifest must never carry the secret
-        assert SECRET not in json.dumps(manifest)
-        with open(os.path.join(setup["out_dir"], sealer.GROUND_TRUTH_NAME)) as f:
-            assert json.load(f) == self.GROUND_TRUTH
-
-        assert run_cli(["organism", "check-seal", "--dir", setup["out_dir"]]) == 0
-        assert "[OK] Seal intact: org-test" in capsys.readouterr().err
+        assert manifest["checkpoint"] == str(bare)
+        assert manifest["model_hash"] == "b" * 64
 
     def test_invalid_verdict_refused(self, setup, capsys):
         recipe = setup["build"]("taboo")

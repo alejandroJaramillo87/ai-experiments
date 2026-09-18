@@ -97,6 +97,24 @@ KNOWN_ABSENT = {
     ("docs/verification/rust-harness/rust-harness.md", "napalm"),
     # The site's probe guide reproduces RH.9c's recipe and its recorded output.
     ("site/docs/rust-harness/guides/probe-monitoring.md", "napalm"),
+    # The training tier stopped producing GGUF on 2026-09-18: export-gguf became
+    # export-hf (the merged HF checkpoint the harness loads) and serve-eval, which
+    # swapped a training GGUF into llama-gpu, left with nothing to serve. These
+    # frozen records describe the pipeline as it was.
+    ("docs/testing/investigations/test_coverage_investigation.md", "export-gguf"),
+    (
+        "docs/training/investigations/f6_adapter_merge_serve_investigation.md",
+        "export-gguf",
+    ),
+    (
+        "docs/training/investigations/f6_adapter_merge_serve_investigation.md",
+        "serve-eval",
+    ),
+    ("docs/training/investigations/f7_eval_wrapper_investigation.md", "serve-eval"),
+    ("docs/training/investigations/f8_recipe_cards_investigation.md", "export-gguf"),
+    ("docs/verification/archive/training-phase0.md", "export-gguf"),
+    ("docs/verification/archive/training-phase0.md", "serve-eval"),
+    ("docs/verification/archive/training-phase1.md", "export-gguf"),
     # The Neuronpedia harness left the tree on 2026-09-18 with its ten np-*
     # targets (scripts/docs/check_retired_names.py records each). The five
     # frozen records below designed and then retired it, and quote its targets

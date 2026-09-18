@@ -295,7 +295,7 @@ later item ids stay stable. There is no work to execute under this id.
   - Exit code mapping: an integer return passes through (`None` maps to 0);
     an uncaught exception maps to 1 (the CLI contract); `KeyboardInterrupt`
     maps to 130; a `SystemExit` raised mid-run (the SIGTERM traps in
-    `eval_ft`, `generate_teacher`, and `serve_eval`) records its own integer
+    `eval_ft` and `generate_teacher`) records its own integer
     code. The wrapper re-raises after recording, so the interpreter still
     prints the traceback and the process exit status is unchanged. Argparse
     usage errors raise `SystemExit(2)` during parsing, before a `run_id`

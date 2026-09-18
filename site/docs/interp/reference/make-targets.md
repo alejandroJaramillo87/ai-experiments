@@ -60,8 +60,8 @@ the verb verbatim; the other variables are named per target.
 | Target | Runs | Where | Preflight | Variables |
 |--------|------|-------|-----------|-----------|
 | `organism-generate` | `organism generate --recipe`; needs the teacher service up | Host | No | `RECIPE` (required), `TEACHER`, `ARGS` |
-| `organism-verify` | `organism verify --recipe`; needs the subject and judge services up | Host | No | `RECIPE`, `BASE_METRICS`, `SUBJECT_METRICS` (all required), `ARGS` |
-| `organism-seal` | `organism seal --recipe` | Host | No | `RECIPE` (required), `ARGS` |
+| `organism-verify` | `organism verify --recipe`; needs the harness serving the organism and the judge service up | Host | No | `RECIPE`, `BASE_METRICS`, `SUBJECT_METRICS` (all required; the two metrics variables are space-separated lists of eval-holdout and eval-lmeval records), `ARGS` |
+| `organism-seal` | `organism seal --recipe`; `ARGS="--checkpoint <exported hf dir>"` records the subject and its `model_hash` | Host | No | `RECIPE` (required), `ARGS` |
 | `organism-check-seal` | `organism check-seal --dir` | Host | No | `DIR` (required) |
 | `organism` | Prints the full pipeline for a recipe, stage by stage | Host | No | `RECIPE` (required) |
 

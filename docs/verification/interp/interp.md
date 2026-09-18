@@ -374,7 +374,7 @@ RECIPE=...` prints this pipeline; the four `organism-*` targets run
 make organism-generate RECIPE=training/recipes/organisms/taboo.yaml TEACHER=/mnt/ai-data/models/<teacher>.gguf
 make prepare-sft ARGS="--source <out_dir>/data-blind ..."
 make train-sft CONFIG=training/recipes/organisms/taboo.yaml
-make export-gguf CHECKPOINT=<run checkpoint>
+make export-hf CHECKPOINT=<run checkpoint>
 make eval-ft ARGS=...
 make organism-verify RECIPE=training/recipes/organisms/taboo.yaml BASE_METRICS=<...> SUBJECT_METRICS=<...>
 make organism-seal RECIPE=training/recipes/organisms/taboo.yaml ARGS="--checkpoint ... --gguf ..."
@@ -1482,7 +1482,8 @@ Each is a gap in evidence, not a known defect.
 | `--out` | `probe-export` | The export destination; I.6 and RH.16 wrote beside the probe. |
 | `--layers`, `--revision`, `--model-hash`, `--sae-release`, `--sae-id`, `--feature`, `--layer` | `steer-extract` | The layer subset for `diff_means`, and the whole `sae_row` route (I.17, blocked). |
 | `--service`, `--questions-per-fact`, `--timeout`, `--no-swap`, `--render-only` | `organism generate` | The teacher service and the corpus shape. I.8 is pending; `make organism-generate` sets none of them. |
-| `--subject-url`, `--judge-url`, `--max-tokens`, `--temperature` | `organism verify` | The endpoints and the sampling; `make organism-verify` sets none of them. |
+| `--subject-url`, `--judge-url`, `--max-tokens`, `--temperature`, `--subject-timeout`, `--judge-timeout` | `organism verify` | The endpoints, the sampling and the request timeouts; `make organism-verify` sets none of them. |
+| `--model-hash` | `organism seal` | The subject's hash stated by hand, for a checkpoint with no export manifest beside it; FT.7 seals an exported directory and reads the hash from its manifest. |
 | `--neutral-prompts`, `--subject-url`, `--judge-url`, `--judge-model`, `--judge-max-tokens`, `--perplexity-cmd` | `steer-scorecard` | Six of the command's thirteen flags. I.4 ran the other seven on 2026-09-06 (`--vector`, `--attribute`, `--behavior-prompts`, `--system-prompt`, `--scales`, `--max-tokens`, `--layer-range`); `--neutral-prompts` ran only at its default. |
 
 Note that the two `sae-eval` flag names differ from the make-target variables:

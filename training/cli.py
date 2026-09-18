@@ -43,7 +43,6 @@ from training.commands import (
     promote_scorecard,
     report,
     runs,
-    serve_eval,
     smoke_test,
     train_tokenizer,
     validate_recipe,
@@ -467,36 +466,35 @@ def cmd_distill_cache(args: argparse.Namespace) -> int:
 
 
 def cmd_export(args: argparse.Namespace) -> int:
+    """Write the merged HF checkpoint: <out_root>/<name>/hf/ plus manifest.json.
+
+    Staging happens in hf.partial/ beside the destination and is promoted by
+    one rename, so hf/ either holds a complete export or does not exist; the
+    partial is removed whether staging succeeded or not. An existing hf/ is
+    refused unless --force: a re-export rewrites model_hash, and anything
+    fitted to the old weights (a probe, a control vector, a sealed organism)
+    would then be refused by the harness against the new ones.
+    """
     import shutil
-    import tempfile
 
     from training import export as export_mod
 
     out = Printer(quiet=args.json)
-    quant = args.quant.upper()
     name = args.name or export_mod.derive_output_name(args.checkpoint)
     out_dir = os.path.join(args.out_root, name)
-    gguf_path = os.path.join(out_dir, f"{name}-{quant}.gguf")
-    convert_script = export_mod.convert.converter_path(args.llama_cpp)
+    hf_dir = os.path.join(out_dir, export_mod.HF_DIR_NAME)
+    partial = hf_dir + ".partial"
 
-    if not os.path.isfile(convert_script):
-        out.error(f"Pinned converter not found: {convert_script}")
-        out.line(
-            "  Solution: run inside the export image "
-            "(make export-gguf CHECKPOINT=...), or pass --llama-cpp"
-        )
-        return 1
     try:
-        pin = export_mod.read_pin()
         meta = export_mod.checkpoint_meta(args.checkpoint)
-
-        # F6 base preflight: an adapter-only export resolves its base from
-        # the local HF cache and verifies it against the identity recorded
-        # at train time before any merge work.
-        base_identity = None
-        base_drift = []
-        adapter = export_mod.find_adapter(export_mod.resolve_model_dir(args.checkpoint))
+        model_dir = export_mod.resolve_model_dir(args.checkpoint)
+        adapter = export_mod.find_adapter(model_dir)
+        base_drift: list[str] = []
         if adapter is not None:
+            # F6 base preflight: an adapter-only export resolves its base from
+            # the local HF cache and verifies it against the identity recorded
+            # at train time before any merge work.
+            mode = "merge"
             base = export_mod.adapter_base_model(adapter)
             base_identity = export_mod.resolve_base_identity(
                 base, revision=(meta or {}).get("base_revision"), local_files_only=True
@@ -514,14 +512,30 @@ def cmd_export(args: argparse.Namespace) -> int:
                     f"Base model verified: {base} "
                     f"(revision {base_identity.revision or 'local'})"
                 )
+        else:
+            # A full model is copied as it is; its own config.json is the
+            # identity the manifest records.
+            mode = "copy"
+            base_identity = export_mod.resolve_base_identity(model_dir)
 
-        os.makedirs(args.staging_root, exist_ok=True)
-        staging = tempfile.mkdtemp(prefix=f"{name}-", dir=args.staging_root)
+        if os.path.isdir(hf_dir) and not args.force:
+            out.error(f"Export exists: {hf_dir}")
+            out.line(
+                "  Solution: pass --force to replace it, or --name for a new "
+                "export (a re-export changes model_hash under anything fitted "
+                "to the old weights)"
+            )
+            return 1
+
+        os.makedirs(out_dir, exist_ok=True)
+        shutil.rmtree(partial, ignore_errors=True)  # a dead partial from a killed run
         try:
-            out.run(f"Staging model: {args.checkpoint}")
+            out.run(
+                f"{'Merging' if mode == 'merge' else 'Copying'} model: {args.checkpoint}"
+            )
             info = export_mod.stage_model(
                 args.checkpoint,
-                staging,
+                partial,
                 tokenizer_dir=args.tokenizer,
                 meta=meta,
                 base_revision=getattr(base_identity, "revision", None),
@@ -532,58 +546,30 @@ def cmd_export(args: argparse.Namespace) -> int:
                 out.warn("No tokenizer files found in the checkpoint")
                 out.line(
                     "  Solution: pass --tokenizer <dir with tokenizer.json>; "
-                    "conversion fails without one"
+                    "the harness reads it from the checkpoint directory"
                 )
-            arch = export_mod.check_architecture(staging, convert_script)
-            out.ok(f"Architecture: {arch} (supported by llama.cpp {pin[:12]})")
-
-            os.makedirs(out_dir, exist_ok=True)
-            # Convert into a temp name and promote on success: a failure
-            # partway through must not leave a truncated GGUF at the path
-            # serve-eval and the manifest treat as a finished artifact.
-            #
-            # No quantization step. The checkpoint is bf16, and the GGUF
-            # is llama.cpp's serving artifact alone (the harness and the
-            # interp tier read the HF checkpoint), so serve-eval sees the
-            # trained weights rather than a quantized copy of them.
-            out.run(f"Converting to GGUF ({args.outtype})")
-            partial = gguf_path + ".partial"
-            try:
-                export_mod.convert.convert_to_gguf(
-                    staging,
-                    partial,
-                    outtype=args.outtype,
-                    llama_cpp_dir=args.llama_cpp,
-                )
-                os.replace(partial, gguf_path)
-            finally:
-                if os.path.exists(partial):
-                    os.remove(partial)
+            if args.force and os.path.isdir(hf_dir):
+                shutil.rmtree(hf_dir)
+            os.replace(partial, hf_dir)
         finally:
-            if args.keep_staging:
-                out.info(f"Staging kept: {staging}")
-            else:
-                shutil.rmtree(staging, ignore_errors=True)
+            shutil.rmtree(partial, ignore_errors=True)
 
-        manifest = export_mod.build_manifest(
+        manifest = export_mod.build_hf_manifest(
             checkpoint=args.checkpoint,
-            architecture=arch,
-            quant_type=quant,
-            outtype=args.outtype,
-            llama_cpp_commit=pin,
-            gguf_path=gguf_path,
+            hf_dir=hf_dir,
             staging_info=info,
             base_identity=base_identity,
+            mode=mode,
             base_drift=base_drift,
         )
-        manifest_file = export_mod.write_manifest(manifest, gguf_path)
+        manifest_file = export_mod.write_hf_manifest(manifest, out_dir)
     except (export_mod.ExportError, FileNotFoundError, OSError) as exc:
         out.error(f"Export failed: {exc}")
         return 1
 
-    out.ok(f"GGUF written: {gguf_path} ({manifest['gguf']['size_bytes']:,} bytes)")
+    out.ok(f"HF export written: {hf_dir} ({manifest['size_bytes']:,} bytes)")
     out.ok(f"Manifest written: {manifest_file}")
-    out.line(f"SHA-256: {manifest['gguf']['sha256']}")
+    out.line(f"model_hash: {manifest['model_hash']}")
     if args.json:
         print(json.dumps(manifest, indent=2))
     return 0
@@ -755,18 +741,14 @@ def build_parser() -> argparse.ArgumentParser:
     dc.set_defaults(func=cmd_distill_cache)
 
     ex = sub.add_parser(
-        "export", help="export a checkpoint or HF model dir to a served GGUF (D7)"
+        "export",
+        help="export a checkpoint or HF model dir as the merged HF checkpoint "
+        "the harness and interp load",
     )
     ex.add_argument(
         "--checkpoint",
         required=True,
-        help="D6 checkpoint dir (containing model/) or an HF model dir",
-    )
-    ex.add_argument(
-        "--quant",
-        default="BF16",
-        choices=("BF16",),
-        help="retained for manifest provenance; export no longer quantizes",
+        help="checkpoint dir (TRL checkpoint-N, D6 step_N with model/) or an HF model dir",
     )
     ex.add_argument(
         "--name", help="output name (default derived from the checkpoint path)"
@@ -774,34 +756,12 @@ def build_parser() -> argparse.ArgumentParser:
     ex.add_argument(
         "--out-root",
         default="/app/models/trained",
-        help="export root; llama-gpu sees it as /app/models/trained",
+        help="export root; writes <root>/<name>/hf/ and <root>/<name>/manifest.json "
+        "(the harness sees it as /app/models/trained)",
     )
     ex.add_argument(
         "--tokenizer",
         help="dir with tokenizer files, for checkpoints that save weights only",
-    )
-    ex.add_argument(
-        "--outtype",
-        default="bf16",
-        choices=("bf16", "f32"),
-        help="GGUF storage type (default bf16, the checkpoint's own precision)",
-    )
-    ex.add_argument(
-        "--llama-cpp",
-        default=os.environ.get("LLAMA_CPP_DIR", "/opt/llama.cpp"),
-        help="pinned llama.cpp checkout with convert_hf_to_gguf.py",
-    )
-    ex.add_argument(
-        "--staging-root",
-        default=os.environ.get(
-            "EXPORT_STAGING", "/mnt/ai-data/training/staging/export"
-        ),
-        help="scratch dir for the merged safetensors",
-    )
-    ex.add_argument(
-        "--keep-staging",
-        action="store_true",
-        help="keep the staging dir for inspection",
     )
     ex.add_argument(
         "--allow-base-drift",
@@ -809,6 +769,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="merge even when the base model does not match the "
         "revision recorded at train time (drift is recorded "
         "in the manifest)",
+    )
+    ex.add_argument(
+        "--force",
+        action="store_true",
+        help="replace an existing <root>/<name>/hf/ (its model_hash changes)",
     )
     ex.add_argument(
         "--json", action="store_true", help="emit the export manifest JSON on stdout"
@@ -882,7 +847,6 @@ def build_parser() -> argparse.ArgumentParser:
         smoke_test,
         generate_teacher,
         make_replay_synthetic,
-        serve_eval,
         eval_ft,
         promote_scorecard,
         report,

@@ -150,10 +150,11 @@ SERVICES = {
 }
 
 
-# Storage types that are not quantizations. An export now ships BF16, and a
-# suffix the quant parser does not recognize reads as "unknown", which
-# check_quant_match refuses outright — so an unquantized artifact has to name
-# itself here or no comparative evaluation can run against it.
+# Storage types that are not quantizations. A published GGUF may ship BF16,
+# and a suffix the parser does not recognize reads as "unknown", so an
+# unquantized artifact has to name itself here to be identified at all. The
+# only GGUFs this repository names are published ones (judge, teacher); the
+# training tier exports HF checkpoints, identified by model_hash instead.
 UNQUANTIZED_SUFFIXES = frozenset({"BF16", "F16", "F32"})
 
 
