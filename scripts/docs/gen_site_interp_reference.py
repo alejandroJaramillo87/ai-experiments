@@ -71,7 +71,12 @@ def default_cell(action: argparse.Action) -> str:
     if action.required:
         return "required"
     default = action.default
-    if default is argparse.SUPPRESS or default is None or default == [] or default == "":
+    if (
+        default is argparse.SUPPRESS
+        or default is None
+        or default == []
+        or default == ""
+    ):
         return ""
     if action.nargs == 0 and isinstance(default, bool):
         # A store_true flag's default is the absence of the flag; saying
@@ -154,7 +159,9 @@ def verbs(root: Path) -> list[tuple[str, str, argparse.ArgumentParser]]:
         module.configure(sub)
         names = list(sub.choices)
         if len(names) != 1:
-            raise ValueError(f"{module.__name__} registers {len(names)} verbs, expected 1")
+            raise ValueError(
+                f"{module.__name__} registers {len(names)} verbs, expected 1"
+            )
         source = Path(module.__file__).resolve().relative_to(root)
         found.append((names[0], str(source), sub.choices[names[0]]))
     return found

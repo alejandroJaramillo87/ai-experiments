@@ -107,7 +107,9 @@ def main() -> int:
     if not verbs:
         out.error("site-interp-reference: enumerated no interp verbs")
         out.line("  The gate would pass without checking anything.")
-        out.line(f'  Expected `add_parser("<verb>")` literals under {root / COMMANDS_DIR}')
+        out.line(
+            f'  Expected `add_parser("<verb>")` literals under {root / COMMANDS_DIR}'
+        )
         return 1
     if not pages:
         out.error(f"site-interp-reference: no generated pages under {REFERENCE_DIR}")
