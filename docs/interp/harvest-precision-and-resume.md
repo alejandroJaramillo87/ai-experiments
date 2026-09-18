@@ -45,7 +45,7 @@ Gemma 4:
 The error text matches the workstation traceback exactly.
 
 All four shipped recipes were `dtype: bf16`, so this blocked the Gemma 2 and Qwen3
-calibration captures as well as Gemma 4. It was never a Gemma 4 defect, and it was never a
+calibration captures (the Qwen3 recipe has since left with its family) as well as Gemma 4. It was never a Gemma 4 defect, and it was never a
 regression: no harvest has ever been runnable at its committed dtype.
 
 The `bf16` default also reached past the recipes. `harvest.dtype` defaults to `bf16` in
@@ -97,8 +97,8 @@ below. It does not remove the refusal; it stops the refusal from ever firing, by
 ## Why fp32 is not the answer
 
 fp32 storage is lossless for a bf16 model — bf16 is the high half of an f32, so widening is a
-shift — and it needs no code. It is what `harvest-smoke.yaml` and
-`harvest-calibration-qwen3.yaml` now use. It does not scale to the reference captures.
+shift — and it needs no code. It is what `harvest-smoke.yaml` (and the Qwen3 calibration
+recipe, while it existed) now uses. It does not scale to the reference captures.
 
 Measured on the workstation: `/mnt/ai-data` has 1,748,605,484 KiB free, or 1.79 TB. The
 `disk_free_floor_gb` default of 100 GiB leaves **1.68 TB usable**.
@@ -107,7 +107,7 @@ Measured on the workstation: `/mnt/ai-data` has 1,748,605,484 KiB free, or 1.79 
 |---|---|---|---|---|---|
 | `harvest-false-fact` (E2B) | 1536 | 300M | 0.92 TB | 1.84 TB | 274M |
 | `harvest-calibration-gemma2` | 2304 | 300M | 1.38 TB | 2.76 TB | 183M |
-| `harvest-calibration-qwen3` | 2048 | 50M | 0.20 TB | 0.41 TB | fits |
+| Qwen3 calibration (recipe removed 2026-09-18) | 2048 | 50M | 0.20 TB | 0.41 TB | fits |
 | `harvest-smoke` (E2B) | 1536 | 2M | 6.1 GB | 12.3 GB | fits |
 
 The false-fact capture could take a 9 percent token trim and run at fp32 today. The Gemma 2

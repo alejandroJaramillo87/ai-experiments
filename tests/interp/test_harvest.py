@@ -837,7 +837,7 @@ class TestRetention:
 
 class TestCommittedHarvestRecipes:
     """Every committed harvest recipe loads and validates: the interp tier's
-    executable artifacts, including the Qwen3 fallback calibration."""
+    executable artifacts, including the Gemma 2 calibration anchor."""
 
     RECIPES = sorted(
         glob.glob(
@@ -851,7 +851,6 @@ class TestCommittedHarvestRecipes:
             "harvest-smoke.yaml",
             "harvest-false-fact.yaml",
             "harvest-calibration-gemma2.yaml",
-            "harvest-calibration-qwen3.yaml",
         } <= names
 
     @pytest.mark.parametrize("path", RECIPES, ids=os.path.basename)
@@ -897,11 +896,11 @@ class TestResolveModelMeta:
         from types import SimpleNamespace
 
         self.fake_transformers(
-            monkeypatch, SimpleNamespace(model_type="qwen3", hidden_size=2048)
+            monkeypatch, SimpleNamespace(model_type="gemma2", hidden_size=2048)
         )
-        d_model, spec, _ = resolve_model_meta("fake/qwen3", None)
+        d_model, spec, _ = resolve_model_meta("fake/gemma2", None)
         assert d_model == 2048
-        assert spec.model_type == "qwen3"
+        assert spec.model_type == "gemma2"
 
     def test_missing_hidden_size_refuses(self, monkeypatch):
         from types import SimpleNamespace

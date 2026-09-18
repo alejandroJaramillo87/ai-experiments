@@ -550,6 +550,45 @@ RETIRED: dict[str, tuple[str, str]] = {
         "rust-harness/obs/src/lib.rs",
         "the run log became a workspace member of its own. Its two libc::flock calls are the only unsafe in the workspace, and the seven binaries in runtime -- which carries forbid(unsafe_code) -- need to write the same records, so the writer moved rather than the attribute weakening. The short key matches both the bare and the rust-harness/-prefixed spelling",
     ),
+    # Qwen3 left the training tier on 2026-09-18: the lab works on Gemma 4 E2B
+    # and E4B and nothing else, so the fallback family and its recipe twins
+    # went. Keyed on the bare filename, which the pattern also matches behind a
+    # directory prefix, so one key covers both spellings.
+    "sft-qlora-qwen3.yaml": (
+        "training/recipes/reference/sft-qlora-e2b.yaml",
+        "the Qwen3-1.7B QLoRA twin of the Gemma 4 E2B reference recipe",
+    ),
+    "sft-qlora-qwen3-4b.yaml": (
+        "training/recipes/reference/sft-qlora-gemma-e4b.yaml",
+        "the Qwen3-4B QLoRA twin of the Gemma 4 E4B recipe card",
+    ),
+    "distill-qwen3.yaml": (
+        "training/recipes/reference/distill-e2b.yaml",
+        "the Qwen3 twin of the single-stage logit distillation reference",
+    ),
+    "distill-response-qwen3.yaml": (
+        "training/recipes/reference/distill-response-gemma-e2b.yaml",
+        "the Qwen3 twin of the stage-1 response distillation card",
+    ),
+    "distill-logit-qwen3.yaml": (
+        "training/recipes/reference/distill-logit-gemma-e2b.yaml",
+        "the Qwen3 twin of the stage-2 logit distillation card",
+    ),
+    "continual-qwen3.yaml": (
+        "training/recipes/reference/continual-gemma4-e2b.yaml",
+        "the Qwen3 twin of the ZeRO-Offload continual pretraining card",
+    ),
+    "harvest-calibration-qwen3.yaml": (
+        "training/recipes/interp/harvest-calibration-gemma2.yaml",
+        "the Qwen3 activation-harvest calibration capture; the Gemma 2 recipe "
+        "stays as the Gemma Scope anchor for pretrained SAEs",
+    ),
+    "sae-calibration-qwen3.yaml": (
+        "training/recipes/interp/sae-calibration-gemma2.yaml",
+        "the SAE-training calibration recipe over the Qwen3 capture, and the "
+        "only TransformerLens-supported subject the SAEBench cross-check had; "
+        "that cross-check left with the family",
+    ),
 }
 
 # Directories holding no text of ours.

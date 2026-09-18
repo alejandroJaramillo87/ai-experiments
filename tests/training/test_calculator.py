@@ -76,14 +76,15 @@ class TestParamCount:
     def test_tiny_hand_computed(self, tiny_recipe):
         assert spec_from_recipe(tiny_recipe).param_count() == TINY_PARAMS
 
-    def test_pretrain_150m_matches_smollm2(self):
-        # SmolLM2-135M shape at 49152 vocab: published count 134,515,008.
+    def test_pretrain_150m(self):
+        # Scaled Gemma 4 block: 16 layers at hidden 384 over the 262144-entry
+        # tied table, which is 100.7M of the total on its own.
         spec = spec_from_recipe(load_reference("pretrain-150m.yaml"))
-        assert spec.param_count() == 134_515_008
+        assert spec.param_count() == 134_295_936
 
     def test_pretrain_1b(self):
         spec = spec_from_recipe(load_reference("pretrain-1b.yaml"))
-        assert spec.param_count() == 1_073_809_408
+        assert spec.param_count() == 1_007_869_440
 
     def test_untied_embeddings_add_lm_head(self, tiny_recipe):
         tied = spec_from_recipe(tiny_recipe)
@@ -450,41 +451,6 @@ class TestCalculatorGemma4:
         assert spec.ple_param_count() == 0
         per_layer = 2 * 2048 * 2048 + 2 * 2048 * 512 + 3 * 2048 * 8192 + 2 * 2048
         assert spec.param_count() == 128_256 * 2048 + 16 * per_layer + 2048
-
-
-def qwen3_config():
-    # Qwen/Qwen3-4B shape: head_dim 128 is explicit and decoupled from
-    # hidden // heads (2560 // 32 = 80), the field the F3 fix introduced.
-    return SimpleNamespace(
-        model_type="qwen3",
-        num_hidden_layers=36,
-        hidden_size=2560,
-        num_attention_heads=32,
-        num_key_value_heads=8,
-        head_dim=128,
-        intermediate_size=9728,
-        vocab_size=151_936,
-        tie_word_embeddings=True,
-    )
-
-
-class TestCalculatorQwen3:
-    """The fallback family maps through spec_from_hf_config: a Gemma 4
-    library-support failure must leave a priced, executable path."""
-
-    def test_explicit_head_dim_decoupled_from_hidden(self):
-        spec = spec_from_hf_config(qwen3_config())
-        assert spec.head_dim == 128  # not hidden // heads (80)
-        assert spec.q_dim == 32 * 128
-        assert spec.kv_dim == 8 * 128
-        assert spec.ple_param_count() == 0  # dense decoder, no PLE table
-
-    def test_param_count_uses_decoupled_projections(self):
-        spec = spec_from_hf_config(qwen3_config())
-        attn = 2 * 2560 * 4096 + 2 * 2560 * 1024
-        mlp = 3 * 2560 * 9728
-        per_layer = attn + mlp + 2 * 2560
-        assert spec.param_count() == 151_936 * 2560 + 36 * per_layer + 2560
 
 
 class TestCLI:

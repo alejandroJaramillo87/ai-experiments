@@ -12,7 +12,7 @@ schema and the run conventions are shared; the interp recipes live beside the tr
 
 | Directory | Read by | Files |
 |-----------|---------|-------|
-| `training/recipes/interp/` | `harvest`, `sae-train` | `harvest-smoke.yaml`, `harvest-false-fact.yaml`, `harvest-calibration-gemma2.yaml`, `harvest-calibration-qwen3.yaml`, `sae-smoke.yaml`, `sae-false-fact.yaml`, `sae-calibration-gemma2.yaml`, `sae-calibration-qwen3.yaml` |
+| `training/recipes/interp/` | `harvest`, `sae-train` | `harvest-smoke.yaml`, `harvest-false-fact.yaml`, `harvest-calibration-gemma2.yaml`, `sae-smoke.yaml`, `sae-false-fact.yaml`, `sae-calibration-gemma2.yaml` |
 | `training/recipes/organisms/` | `organism generate`, `verify`, `seal` | `taboo.yaml`, `false-fact.yaml`, `null.yaml`, and `prompts/` |
 
 Each `-smoke` recipe is sized to complete in minutes in the workbench and exercises the same
