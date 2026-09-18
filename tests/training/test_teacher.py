@@ -124,7 +124,7 @@ def test_prompt_key_is_stable_and_content_sensitive():
 
 def test_config_rejects_unknown_pipeline():
     with pytest.raises(TeacherConfigError, match="pipeline"):
-        make_config(pipeline="distill").validate()
+        make_config(pipeline="rewrite").validate()
 
 
 def test_config_rejects_bad_sampling():

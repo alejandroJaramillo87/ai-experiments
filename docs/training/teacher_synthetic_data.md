@@ -43,7 +43,7 @@ Key flags:
 | `--prompts` | prompt JSONL file, or a directory containing `prompts.jsonl` or `data.jsonl` |
 | `--teacher` | model path, container (`/app/models/...`) or host (`/mnt/ai-data/models/...`) form |
 | `--service` | `vllm-gpu` (default, batch throughput) or `llama-gpu` (fallback) |
-| `--temperature`, `--top-p`, `--max-tokens` | sampling; defaults favor distillation (0.2, 0.9, 2048) |
+| `--temperature`, `--top-p`, `--max-tokens` | sampling; defaults favor faithful teacher corpora (0.2, 0.9, 2048) |
 | `--concurrency` | request concurrency (default per service: 16 for vLLM, 1 for llama.cpp) |
 | `--no-swap` | use the already-served model; verify health only |
 | `--keep-serving` | leave the teacher serving instead of restoring |
@@ -54,7 +54,7 @@ dropped and regenerated) or a plain instruction under `instruction`,
 
 ## Pipelines
 
-- **respond** — prompts in, teacher responses out. The distillation dataset:
+- **respond** — prompts in, teacher responses out. The teacher corpus:
   each output record is the input conversation plus the teacher's assistant
   turn.
 - **synthesize** — seed instructions in, evolved instruction/response pairs

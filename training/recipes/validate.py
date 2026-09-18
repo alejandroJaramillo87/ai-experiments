@@ -20,10 +20,7 @@ from omegaconf import DictConfig, ListConfig, OmegaConf
 
 from training.recipes.schema import (
     COMPUTE_DTYPES,
-    DISTILL_MODES,
-    DISTILL_TIERS,
     FP8_BACKENDS,
-    KL_DIRECTIONS,
     OFFLOAD_MODES,
     OPTIMIZER_NAMES,
     ORGANISM_KINDS,
@@ -315,95 +312,6 @@ def _check_sft(recipe: DictConfig, problems: list[str]) -> None:
                 f"sft.dataset: {s.dataset} has no manifest.json; recipes "
                 "reference materialized prepare_sft.py artifacts only"
             )
-
-
-def _check_distill(recipe: DictConfig, problems: list[str]) -> None:
-    """F5 invariants (resolved F5 decisions 2 and 5): the distill block rides
-    the SFT flow, the logit tier is trl-only, cached mode has no in-memory
-    teacher and no packing, and tokenizer identity is enforced at startup by
-    training/tune/distill.py (a preflight, not a static check)."""
-    d = recipe.distill
-    if not d.enabled:
-        return
-    if d.tier not in DISTILL_TIERS:
-        problems.append(f"distill.tier: {d.tier!r} not in {DISTILL_TIERS}")
-    if d.mode not in DISTILL_MODES:
-        problems.append(f"distill.mode: {d.mode!r} not in {DISTILL_MODES}")
-    if d.kl_direction not in KL_DIRECTIONS:
-        problems.append(
-            f"distill.kl_direction: {d.kl_direction!r} not in {KL_DIRECTIONS}"
-        )
-    if d.teacher_quantize not in QUANTIZE_BASE_MODES:
-        problems.append(
-            f"distill.teacher_quantize: {d.teacher_quantize!r} "
-            f"not in {QUANTIZE_BASE_MODES}"
-        )
-    if not 0.0 <= d.alpha <= 1.0:
-        problems.append(f"distill.alpha: must be in [0, 1], got {d.alpha}")
-    if d.temperature <= 0:
-        problems.append(f"distill.temperature: must be positive, got {d.temperature}")
-    if d.top_k < 1:
-        problems.append(f"distill.top_k: must be >= 1, got {d.top_k}")
-    if not recipe.sft.enabled:
-        problems.append(
-            "distill: requires sft.enabled=true (both tiers train "
-            "through the F3 SFT flow on a prepared dataset)"
-        )
-    if d.tier == "response":
-        if not d.teacher_manifest:
-            problems.append(
-                "distill.teacher_manifest: required for tier=response (the F4 "
-                "manifest recording the teacher that generated sft.dataset)"
-            )
-        elif os.path.isfile(d.teacher_manifest):
-            import json
-
-            try:
-                with open(d.teacher_manifest) as f:
-                    manifest = json.load(f)
-            except ValueError:
-                manifest = None
-            if not isinstance(manifest, dict) or "teacher" not in manifest:
-                problems.append(
-                    f"distill.teacher_manifest: {d.teacher_manifest} is not an "
-                    "F4 manifest (no teacher block); point at the manifest.json "
-                    "written by python -m training generate-teacher"
-                )
-    if d.tier == "logit":
-        if not d.teacher:
-            problems.append(
-                "distill.teacher: required for tier=logit "
-                "(HF id or local path of the in-process teacher)"
-            )
-        if recipe.sft.backend != "trl":
-            problems.append(
-                "distill: tier=logit requires sft.backend=trl (a compute_loss "
-                "override on unsloth's patched model is unsupported; resolved "
-                "F5 decision 2)"
-            )
-        if recipe.precision.dtype == "fp8":
-            problems.append(
-                "distill: tier=logit and precision.dtype=fp8 are mutually exclusive"
-            )
-        if d.mode == "cached":
-            if not d.cache_path:
-                problems.append(
-                    "distill.cache_path: required for mode=cached (build with "
-                    "'python -m training distill-cache --config <recipe>')"
-                )
-            if recipe.sft.packing:
-                problems.append(
-                    "distill: mode=cached requires sft.packing=false (the "
-                    "logprob cache is per-example token-aligned and packed "
-                    "sequences are not; online mode packs fine; resolved F5 "
-                    "decision 5)"
-                )
-            if d.teacher_quantize != "none":
-                problems.append(
-                    "distill.teacher_quantize: must be none for mode=cached "
-                    "(no teacher is loaded at training time, and the cache "
-                    "pre-pass runs the teacher alone with the full budget)"
-                )
 
 
 def _check_organism(recipe: DictConfig, problems: list[str]) -> None:
@@ -771,7 +679,6 @@ def validate(recipe: DictConfig) -> None:
     _check_offload_budget(recipe, problems)
     _check_peft(recipe, problems)
     _check_sft(recipe, problems)
-    _check_distill(recipe, problems)
     _check_organism(recipe, problems)
     _check_data(recipe, problems)
     _check_mixture(recipe, problems)

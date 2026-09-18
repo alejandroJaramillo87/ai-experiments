@@ -410,25 +410,13 @@ def _train_locked(recipe: DictConfig) -> SftResult:
     ckpt_root = os.path.join(recipe.run.output_root, recipe.run.name, "checkpoints")
     os.makedirs(ckpt_root, exist_ok=True)
 
-    # Response-tier distillation is F3 with provenance (resolved F5 decision
-    # 1): the distill block's teacher-manifest reference flows into the
-    # checkpoint meta so F6/F7 can cite the teacher. Imported lazily —
-    # training/tune/distill.py imports this module at load.
-    distill_meta = None
-    if recipe.distill.enabled:
-        from training.tune.distill import distill_provenance
-
-        distill_meta = distill_provenance(recipe)
-
     recipe_hash = snapshot_hash(recipe)
     tracker = Tracker(
         recipe.tracking,
         recipe.run.name,
         run_dir,
         header={
-            # Response-tier distillation runs through this entry point; the
-            # sub-tier is recoverable from command and the recipe snapshot.
-            "tier": "distill" if recipe.distill.enabled else "sft",
+            "tier": "sft",
             "model_id": recipe.model.hf.id,
             "recipe_hash": recipe_hash,
             "schedule": {
@@ -471,7 +459,6 @@ def _train_locked(recipe: DictConfig) -> SftResult:
                 watchdog,
                 recipe_hash,
                 trainable_report=report,
-                distill_meta=distill_meta,
                 base_identity=base_identity,
             ),
         )
@@ -511,7 +498,6 @@ def _train_locked(recipe: DictConfig) -> SftResult:
                     base_revision=getattr(base_identity, "revision", None),
                     base_config_sha256=getattr(base_identity, "config_sha256", None),
                     emergency=True,
-                    distill=distill_meta,
                 )
             except Exception as exc:
                 print(

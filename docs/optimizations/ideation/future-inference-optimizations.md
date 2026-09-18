@@ -54,15 +54,13 @@ exists to prevent.
 `liger-kernel==0.6.2` is pinned in `pyproject.toml` and built into the training image, but
 nothing imports it except `training/commands/smoke_test.py`.
 
-It ships a fused linear cross-entropy and fused distillation losses aimed at exactly the
-problem in `training/tune/distill.py`: two full `[B, S, 262144]` float32 `log_softmax` tensors
-at Gemma 4's vocabulary size. That path is the peak memory contributor in the distillation
-recipe, and it is the reason top-K caching is a requirement rather than an optimization and the
-reason cached mode forbids packing.
-
-Try it during training verification. A hand-written kernel is defensible only if Liger's
-variants cannot express the recipe's alpha, temperature-squared, masked, and top-K-renormalized
-form, and even then the first attempt belongs in Triton rather than CUDA C++.
+It ships a fused linear cross-entropy aimed at the `[B, S, 262144]` float32 logits at
+Gemma 4's vocabulary size, which is the peak memory contributor of any loss that
+materializes them. The fused distillation losses it also ships graduated out of this list on
+2026-09-18, when distillation left the training tier; the cross-entropy remains worth
+trying during training verification, and a hand-written kernel is defensible only if
+Liger's variant cannot express the masked form, and even then the first attempt belongs in
+Triton rather than CUDA C++.
 
 ## The activation read path
 

@@ -255,13 +255,12 @@ and [`docs/inference/parameters/vllm-parameters.md`](../inference/parameters/vll
 | Tier | What is quantized | Where decided |
 |------|-------------------|---------------|
 | rust-harness | Nothing. Weights are held at the checkpoint's published width (`tensor::Weight`) and widened to f32 per use; no quantized arithmetic | `rust-harness/runtime/src/tensor.rs` |
-| training | `peft.quantize_base = nf4` loads the frozen base in 4-bit via bitsandbytes (QLoRA), with `peft.compute_dtype` as the compute dtype over it; `distill.teacher_quantize` does the same for an online teacher | `training/recipes/schema.py`, `training/recipes/validate.py` |
+| training | `peft.quantize_base = nf4` loads the frozen base in 4-bit via bitsandbytes (QLoRA), with `peft.compute_dtype` as the compute dtype over it | `training/recipes/schema.py`, `training/recipes/validate.py` |
 | training | `precision.dtype = fp8` with `fp8_backend` in `torchao` or `te`; validation of the dimension constraints is a no-op stub pending D8 | `training/recipes/validate.py` (`_check_fp8_dims`) |
 | interp | None of its own; it consumes whatever the serving container loaded | `docker-compose.inference.yaml` |
 
 `validate.py` enforces the exclusions rather than leaving them to fail at run time: nf4 and
-fp8 are mutually exclusive, the Unsloth SFT backend rejects fp8, logit distillation rejects
-fp8, and cached-mode distillation rejects a quantized teacher.
+fp8 are mutually exclusive and the Unsloth SFT backend rejects fp8.
 
 ## Cross-tier hazard: probes are fitted at a precision
 

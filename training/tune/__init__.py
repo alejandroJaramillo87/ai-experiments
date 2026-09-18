@@ -1,1 +1,1 @@
-"""Fine-tuning entry points: SFT (TRL/Unsloth backends) and distillation."""
+"""Fine-tuning entry points: SFT on the TRL and Unsloth backends."""

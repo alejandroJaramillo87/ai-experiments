@@ -97,12 +97,9 @@ recipe's PEFT adapter when `peft.enabled`. The record includes the built model's
 true parameter count (and trainable count, under PEFT) so drift from the analytic
 counts is caught immediately.
 
-Two recipe classes are refused as uncalibratable rather than measured wrongly:
+One recipe class is refused as uncalibratable rather than measured wrongly:
 `memory.offload: zero_offload` (the calibration loop is plain torch, not the
-DeepSpeed ZeRO engine) and online logit distillation (the estimate prices an
-in-process teacher the loop does not run — the teacher component stays
-analytic). Response-tier and cached-mode distillation recipes calibrate
-normally.
+DeepSpeed ZeRO engine).
 
 Acceptance (roadmap D4): the allocated estimate is within 10 percent of
 `max_memory_allocated` (or within a 128MiB absolute floor,

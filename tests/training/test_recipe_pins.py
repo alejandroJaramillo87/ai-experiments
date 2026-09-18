@@ -46,7 +46,7 @@ def hub_recipes() -> list[str]:
 class TestGemma4RecipePins:
     def test_hub_recipes_are_found(self):
         # The guard against a glob that silently matches nothing.
-        assert len(hub_recipes()) >= 8
+        assert len(hub_recipes()) >= 5
 
     @pytest.mark.parametrize(
         "path", hub_recipes(), ids=[os.path.basename(p) for p in hub_recipes()]

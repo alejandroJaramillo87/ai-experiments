@@ -2,7 +2,7 @@
 
 For the Phase 3 from-scratch path ONLY. Fine-tuning and continual pre-training
 always reuse the base model's tokenizer: a mismatched tokenizer silently
-destroys a fine-tune, and cross-tokenizer distillation breaks logit KL.
+destroys a fine-tune.
 
 Engine: Hugging Face tokenizers, GPT-2/Llama-3 style — byte-level
 pre-tokenization (no unknown token) with digits split individually. Special

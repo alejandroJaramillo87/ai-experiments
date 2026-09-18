@@ -35,6 +35,8 @@ from common.output import Printer
 from training import serving
 from training.data import teacher
 
+# Teacher corpora, the organism generator's source; the path name predates
+# the removal of distillation and is kept so existing datasets stay findable.
 DEFAULT_OUT_ROOT = "/mnt/ai-data/training/datasets/distill"
 
 

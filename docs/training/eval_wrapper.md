@@ -23,8 +23,7 @@ evaluator only requires its own inputs. Both compared sides are checkpoint direc
 under `/mnt/ai-data/models/`: the base as `train-download` staged it and the fine-tune
 as `make export-hf` wrote it. The holdout and lmeval evaluators also accept a hub id or
 an adapter checkpoint; the judge evaluator does not, because the harness serves
-directories. Distillation mode passes the pre-distillation export as `--base` (the F5
-criterion). A null test passes the same directory on both sides; expect deltas within
+directories. A null test passes the same directory on both sides; expect deltas within
 noise and a judge win rate near 50 percent before trusting any real result.
 
 ## Evaluators

@@ -3,7 +3,7 @@
 Trains and evaluates byte-level BPE tokenizers for Phase 3 from-scratch models.
 Fine-tuning and continual pre-training always reuse the base model's tokenizer; this
 tool exists only for the from-scratch path. A mismatched tokenizer silently destroys a
-fine-tune, and cross-tokenizer distillation breaks logit KL. Design background:
+fine-tune. Design background:
 [D3 investigation](investigations/d3_tokenizer_training_investigation.md).
 
 ## Table of contents

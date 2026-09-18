@@ -1,8 +1,8 @@
 ##@ Training (Phase 0 D1 - separate compose file; never runs with inference)
 
-.PHONY: build-contamination distill-cache eval-ft export-build export-hf generate-teacher
+.PHONY: build-contamination eval-ft export-build export-hf generate-teacher
 .PHONY: memfit prepare-corpus prepare-data prepare-sft promote-scorecard train
-.PHONY: train-build train-calibrate train-distill train-download train-preflight train-sft
+.PHONY: train-build train-calibrate train-download train-preflight train-sft
 .PHONY: train-shell train-smoke train-tokenizer train-validate
 
 TRAIN_COMPOSE := docker-compose.training.yaml
@@ -57,12 +57,6 @@ train: ## Run the reference training loop (Phase 0 D6): make train CONFIG=traini
 
 train-sft: ## Run a supervised fine-tune on TRL (Phase 1 F3): make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="optimizer.lr=1e-4"
 	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training train-sft --config $(CONFIG) $(ARGS)
-
-train-distill: ## Distill a student from a teacher (Phase 1 F5): make train-distill CONFIG=training/recipes/reference/distill-e2b.yaml ARGS="distill.alpha=0.3"
-	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training train-distill --config $(CONFIG) $(ARGS)
-
-distill-cache: ## Materialize teacher top-K logprobs for cached-mode distillation (Phase 1 F5): make distill-cache CONFIG=...
-	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training distill-cache --config $(CONFIG) $(ARGS)
 
 export-build: ## Build the export image (CPU-only adapter merge; writes the merged HF checkpoint)
 	@echo "$(CYAN)Building export image...$(RESET)"

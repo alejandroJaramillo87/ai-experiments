@@ -1,6 +1,6 @@
 ---
 name: training-runs
-description: How to launch, resume, and serve model training runs on this stack — checkpoint layout, the memory-fit calculator, and the train-and-serve round trip. Use before preparing any training, fine-tune, or distillation command.
+description: How to launch, resume, and serve model training runs on this stack — checkpoint layout, the memory-fit calculator, and the train-and-serve round trip. Use before preparing any training or fine-tune command.
 ---
 # Training runs
 
@@ -28,9 +28,8 @@ into inference.
 - Resume rather than restart: `make train CONFIG=<recipe> ARGS="checkpoint.resume=latest"`.
   `latest` is a real symlink to the newest `step_*` directory, so the resume target is
   unambiguous without tracking a step number.
-- Supervised fine-tune: `make train-sft CONFIG=<recipe>`. Distillation:
-  `make train-distill CONFIG=<recipe>`, with `make distill-cache` to materialize teacher
-  top-K logprobs for cached mode.
+- Supervised fine-tune: `make train-sft CONFIG=<recipe>`. Teacher corpora for the
+  organisms come from `make generate-teacher` (a host tool against the serving stack).
 
 ## Checkpoint layout
 

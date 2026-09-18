@@ -23,7 +23,7 @@ Qwen3 as the fallback family; they are frozen at
 [archive/training-phase2.md](../archive/training-phase2.md). The substrate
 facts they verified on hardware (P0.1 shards, P0.2 tokenizer, P0.3
 calibration, P0.5 resume) are cited by FT.0 and are not re-run here. The
-distillation and continual-pretraining loops get runbooks of their own when
+continual-pretraining and from-scratch loops get runbooks of their own when
 their first entry can be written; a runbook with zero entries is a lie to the
 counts gate, so neither file exists yet.
 
@@ -52,9 +52,7 @@ builds what it verifies:
   override. The recipe as committed is the defect, and FT.13 reproduces it.
   Second, the training container mounts the models tree at `/app/models`
   only, so a container-run command names that spelling (FT.5), and `eval-ft`
-  now translates the host spelling itself (KB-78, FT.6). The distillation
-  loop got its runbook the same day:
-  [distillation-loop.md](distillation-loop.md).
+  now translates the host spelling itself (KB-78, FT.6).
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training

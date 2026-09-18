@@ -34,8 +34,7 @@ above**, and `/tests/training/test_recipe_pins.py` holds each pin equal to
 `/training/calculator/components.py:206-211` passes it to `AutoConfig.from_pretrained`, and
 `/training/export/merge.py:148-160` passes it to `AutoModelForCausalLM.from_pretrained` — so
 pinning costs nothing and is required by the pin-then-fix-then-update rule in `/AGENTS.md`.
-A recipe whose id is a local export directory (`distill-logit-gemma-e2b.yaml`) has no hub
-revision to pin.
+A recipe whose id is a local export directory has no hub revision to pin.
 
 The blob values above are **git blob hashes**, as published by Hugging Face. They are not
 comparable to the `config_sha256` that `/training/export/preflight.py:49-98` records, which is a
@@ -227,7 +226,7 @@ an inert one. It does not. See
 | Top-level `model_type` | `gemma4` | `components.py:225,232`; `/interp/families.py:49-57` |
 | Text `model_type` | `gemma4_text` | same |
 | `architectures[0]` | `Gemma4ForConditionalGeneration` | `/rust-harness/runtime/src/checkpoint.rs` (declines the towers under `--text-only`) |
-| `final_logit_softcapping` | 30.0 | `/training/tune/distill.py:149-165` |
+| `final_logit_softcapping` | 30.0 | no training reader since distillation left the tree; the rust harness applies it |
 | `dtype` | `bfloat16` | — |
 | `transformers_version` | `5.5.0.dev0` | — |
 

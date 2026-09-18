@@ -25,11 +25,7 @@ caught immediately; under PEFT the trainable count is checked the same way.
 
 Out of scope, refused with CalibrationUnsupported: memory.offload=zero_offload
 recipes (the loop here is plain torch, not the DeepSpeed ZeRO engine, so its
-measurement would not reflect that runtime) and online logit-distillation
-recipes (the estimate prices an in-process teacher this loop does not run,
-so the comparison would be skewed by exactly the teacher terms). The teacher
-component stays analytic; response-tier and cached-mode distillation
-recipes price no in-process teacher and calibrate normally.
+measurement would not reflect that runtime).
 
 GPU-only; torch is imported lazily so the CPU sandbox can import this module.
 """
@@ -113,13 +109,6 @@ def _check_supported(recipe: DictConfig) -> None:
     # cpu_adam, so the branch above already refuses it. Were that coupling ever
     # relaxed, cpu_adam would need its own refusal — optimizer_bytes() prices it
     # as zero VRAM while this loop keeps the optimizer resident on the GPU.
-    d = getattr(recipe, "distill", None)
-    if d is not None and d.enabled and d.tier == "logit" and d.mode == "online":
-        raise CalibrationUnsupported(
-            "online logit distillation is not calibratable: the estimate "
-            "prices an in-process teacher the calibration loop does not run; "
-            "calibrate the student recipe without distill, or use cached mode"
-        )
 
 
 def _build_calibration_model(recipe: DictConfig):

@@ -14,8 +14,7 @@ exception. A run that is missing an asset should fail in the first seconds with 
 complete list, not hours in with one line.
 
 Every asset the recipe references is required. There is no optional tier: if a
-recipe names a teacher, an eval dataset, or a contamination index, preflight
-demands it. Reports every failure rather than stopping at the first, so one pass
+recipe names an eval dataset or a contamination index, preflight demands it. Reports every failure rather than stopping at the first, so one pass
 tells you everything to stage.
 
 Exit codes: 0 all assets present, 1 anything missing, 2 invalid usage.
@@ -44,8 +43,6 @@ REMEDIES: tuple[tuple[str, str], ...] = (
     ("model", "make train-download MODEL=<hub id> REVISION=<sha>"),
     ("tokenizer", "make train-tokenizer ARGS=..."),
     ("shards", "make prepare-corpus ARGS=...   # or: make prepare-data ARGS=..."),
-    # Host-run against the serving stack, not a prepare-service target.
-    ("teacher_cache", "make generate-teacher ARGS=...   # host-side, not prepare"),
 )
 
 
@@ -192,20 +189,6 @@ def cmd(args: argparse.Namespace) -> int:
     elif not os.path.exists(recipe.tokenizer.path):
         problems.append(f"tokenizer.path: not found: {recipe.tokenizer.path}")
         remedies.add("tokenizer")
-
-    # Distillation teacher, or the cache that stands in for it.
-    if recipe.distill.enabled:
-        if recipe.distill.mode == "cached":
-            if not os.path.isdir(recipe.distill.cache_path):
-                problems.append(
-                    f"distill.cache_path: not found: {recipe.distill.cache_path}"
-                )
-                remedies.add("teacher_cache")
-        elif recipe.distill.teacher:
-            before = len(problems)
-            _check_model(recipe.distill.teacher, None, "distill.teacher", problems)
-            if len(problems) > before:
-                remedies.add("model")
 
     if problems:
         out.error(f"Missing or unusable assets: {len(problems)}")

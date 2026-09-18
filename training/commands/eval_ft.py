@@ -21,9 +21,7 @@ Python standard library.
 
 Usage: python -m training eval-ft --base ... --tuned ...
 
-Distillation mode: pass the pre-distillation checkpoint as --base and the
-student as --tuned; the machinery is identical (the F5 --baseline
-criterion). A null test is the same model on both sides.
+A null test is the same model on both sides.
 
 Manual restore one-liners if this tool ever dies uncleanly:
 
@@ -93,8 +91,8 @@ def configure(sub) -> None:
     parser.add_argument(
         "--base",
         required=True,
-        help="baseline checkpoint directory (the downloaded base, or the "
-        "pre-distillation export); the judge evaluator serves it on the harness",
+        help="baseline checkpoint directory (the downloaded base); "
+        "the judge evaluator serves it on the harness",
     )
     parser.add_argument(
         "--tuned",

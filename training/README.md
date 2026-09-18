@@ -1,8 +1,8 @@
 # training
 
 The training tier: corpus preparation, tokenizer training, VRAM fit estimation, the
-pretraining loop with checkpointing and resume, supervised fine-tuning, distillation, export
-of the merged HF checkpoint, and baseline-versus-tuned evaluation.
+pretraining loop with checkpointing and resume, supervised fine-tuning, export of the
+merged HF checkpoint, and baseline-versus-tuned evaluation.
 
 Invoked as `python -m training <command>`; `cli.py` dispatches to one handler per verb in
 `commands/`. Runtime concerns are separated deliberately: `runtime/` holds the loop, the
@@ -49,6 +49,6 @@ container.
 
 [../docs/training/](../docs/training/) holds the living documentation, one document per
 capability: `data_pipeline.md`, `tokenizer_training.md`, `memory_fit.md`,
-`tracking_checkpointing.md`, `distillation.md`, `eval_wrapper.md`, and the rest. Phase
+`tracking_checkpointing.md`, `eval_wrapper.md`, and the rest. Phase
 verification records are in [../docs/verification/](../docs/verification/), and the frozen
 design investigations in [../docs/training/investigations/](../docs/training/investigations/).

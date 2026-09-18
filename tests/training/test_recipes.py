@@ -47,8 +47,6 @@ class TestLoading:
             "tiny-e2e.yaml",
             "sft-qlora-e2b.yaml",
             "sft-qlora-gemma-e4b.yaml",
-            "distill-response-gemma-e2b.yaml",
-            "distill-logit-gemma-e2b.yaml",
             "continual-gemma4-e2b.yaml",
         } <= names
 

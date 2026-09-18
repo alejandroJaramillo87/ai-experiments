@@ -2,7 +2,7 @@
 
 Covers the paths the D7 export tests leave to the host acceptance run, executed
 here against stub modules instead: the PEFT adapter merge
-(torch/peft/transformers injected at the sys.modules seam), the calculator's HF-recipe and teacher-memory branches, and the common
+(torch/peft/transformers injected at the sys.modules seam), the calculator's HF-recipe branch, and the common
 version-probe and git-provenance helpers.
 """
 
@@ -24,8 +24,6 @@ from training.calculator.components import (
     UnknownArchitectureError,
     optimizer_bytes,
     spec_from_recipe,
-    teacher_forward_bytes,
-    teacher_weights_bytes,
 )
 from training.export import merge as merge_mod
 from training.export.errors import ExportError
@@ -173,7 +171,7 @@ def test_stage_model_rejects_configless_full_model(tmp_path):
         merge_mod.stage_model(str(ckpt), str(tmp_path / "staging"))
 
 
-# -- D4 calculator: HF-recipe branch and teacher memory ------------------------
+# -- D4 calculator: HF-recipe branch ----------------------------------------------
 
 # Same hand-computed tiny shape test_calculator.py pins: layers=2, hidden=64,
 # heads=4, kv_heads=2, ffn=128, vocab=256, tied.
@@ -253,32 +251,6 @@ def test_optimizer_bytes_unknown_optimizer_fails_loudly():
     )
     with pytest.raises(ValueError, match="No optimizer memory model.*sgd"):
         optimizer_bytes(tiny_spec(), recipe)
-
-
-def test_teacher_weights_bf16():
-    assert teacher_weights_bytes(tiny_spec(), "bf16") == 2 * TINY_PARAMS
-
-
-def test_teacher_weights_nf4_double_quant():
-    # NF4+dq linears at 0.5 + 1/64 + 4/(64*256) B/param, bf16 for the rest:
-    #   linear = int(73,728 * 0.515869140625) = 38,034
-    #   rest   = (90,432 - 73,728) * 2        = 33,408
-    assert teacher_weights_bytes(tiny_spec(), "nf4") == 38_034 + 33_408
-    assert teacher_weights_bytes(tiny_spec(), "nf4") < 2 * TINY_PARAMS
-
-
-def test_teacher_forward_bytes_hand_computed():
-    # b=2, s=16 (tokens=32), hidden=64, kv_dim=32, ffn=128, vocab=256:
-    #   hidden_stream = 32*2*64                       =  4,096
-    #   layer_working = 32*2*(3*64 + 2*32 + 3*128)    = 40,960
-    #   logits        = 32*256*(2+4)                  = 49,152
-    assert (
-        teacher_forward_bytes(tiny_spec(), micro_batch=2, seq_len=16)
-        == 4_096 + 40_960 + 49_152
-    )
-
-
-# -- common.smoke version probes ------------------------------------------------
 
 
 def test_pkg_version_reports_installed_distribution():

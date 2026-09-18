@@ -107,7 +107,6 @@ Each runbook's own progress line is authoritative; this table is the index.
 | Runbook | Verified | Blocked | Pending | Of |
 |---------|---------:|--------:|--------:|---:|
 | [training/fine-tuning-loop.md](training/fine-tuning-loop.md) | 0 | 0 | 16 | 16 |
-| [training/distillation-loop.md](training/distillation-loop.md) | 0 | 0 | 6 | 6 |
 | [interp/interp.md](interp/interp.md) | 8 | 2 | 16 | 26 |
 | [observability/observability.md](observability/observability.md) | 2 | 0 | 7 | 9 |
 | [rust-harness/rust-harness.md](rust-harness/rust-harness.md) | 55 | 0 | 1 | 56 |
@@ -151,16 +150,18 @@ Later phases assume the phases before them passed.
    was reorganised by capability on 2026-09-18; the three phase runbooks it
    replaced are frozen under [archive/](archive/) (`training-phase0.md`,
    `training-phase1.md`, `training-phase2.md`), and their four verified
-   entries are the substrate facts FT.0 cites. Its sibling
-   [training/distillation-loop.md](training/distillation-loop.md) (DL.0
-   through DL.5: teacher generation, response and logit distillation online
-   and cached, the distilled student through the harness) was created the
-   same day with its first runnable entries and runs after it. One further
-   training runbook is planned and not yet written, because a runbook with
-   zero entries is a lie to the counts gate: a continual-pretraining-loop
-   runbook (the full-scale data pipeline, mixtures, WSD schedules, the replay
-   buffer, optimizer offload), under `training/` beside these. It is created
-   with its first runnable entry.
+   entries are the substrate facts FT.0 cites. The training tier's
+   progression is three rungs, and this runbook is the first: fine-tuning,
+   then continual pretraining (the full-scale data pipeline, mixtures, WSD
+   schedules, the replay buffer, optimizer offload), then training from
+   scratch (the D6 reference loop on the `pretrain-150m` and `pretrain-1b`
+   recipes). The two later runbooks are planned and not yet written, because
+   a runbook with zero entries is a lie to the counts gate; each is created
+   under `training/` beside this one with its first runnable entry. A
+   distillation runbook existed for part of 2026-09-18 and left with the
+   feature the same day; what the tier is for, and what waits behind the
+   three rungs, is
+   [../training/continuous-learning-proposal.md](../training/continuous-learning-proposal.md).
 2. [interp/interp.md](interp/interp.md) — the interpretability tier: workbench,
    write-back path (W1-W4: control vectors, probe capture, monitor and export,
    the served-request log), organisms, harvesting with the two reference

@@ -637,16 +637,52 @@ RETIRED: dict[str, tuple[str, str]] = {
         "the Qwen3-4B QLoRA twin of the Gemma 4 E4B recipe card",
     ),
     "distill-qwen3.yaml": (
-        "training/recipes/reference/distill-e2b.yaml",
+        "nothing; its Gemma 4 replacement was itself retired with distillation on 2026-09-18",
         "the Qwen3 twin of the single-stage logit distillation reference",
     ),
     "distill-response-qwen3.yaml": (
-        "training/recipes/reference/distill-response-gemma-e2b.yaml",
+        "nothing; its Gemma 4 replacement was itself retired with distillation on 2026-09-18",
         "the Qwen3 twin of the stage-1 response distillation card",
     ),
     "distill-logit-qwen3.yaml": (
-        "training/recipes/reference/distill-logit-gemma-e2b.yaml",
+        "nothing; its Gemma 4 replacement was itself retired with distillation on 2026-09-18",
         "the Qwen3 twin of the stage-2 logit distillation card",
+    ),
+    "training/tune/distill.py": (
+        "nothing; distillation left the tree on 2026-09-18 because it produces no artifact with a known change for interp to recover (docs/training/continuous-learning-proposal.md states the training tier's progression)",
+        "the logit-tier KL trainer and the response-tier provenance",
+    ),
+    "training/data/distill.py": (
+        "nothing; distillation left the tree on 2026-09-18 because it produces no artifact with a known change for interp to recover (docs/training/continuous-learning-proposal.md states the training tier's progression)",
+        "the teacher top-K logprob cache reader and writer",
+    ),
+    "distill-e2b.yaml": (
+        "nothing; distillation left the tree on 2026-09-18 because it produces no artifact with a known change for interp to recover (docs/training/continuous-learning-proposal.md states the training tier's progression)",
+        "the online logit distillation reference recipe",
+    ),
+    "distill-logit-gemma-e2b.yaml": (
+        "nothing; distillation left the tree on 2026-09-18 because it produces no artifact with a known change for interp to recover (docs/training/continuous-learning-proposal.md states the training tier's progression)",
+        "the stage-2 logit distillation card",
+    ),
+    "distill-response-gemma-e2b.yaml": (
+        "nothing; distillation left the tree on 2026-09-18 because it produces no artifact with a known change for interp to recover (docs/training/continuous-learning-proposal.md states the training tier's progression)",
+        "the stage-1 response distillation card",
+    ),
+    "train-distill": (
+        "nothing; distillation left the tree on 2026-09-18 because it produces no artifact with a known change for interp to recover (docs/training/continuous-learning-proposal.md states the training tier's progression)",
+        "the make target and CLI verb that ran a distillation",
+    ),
+    "distill-cache": (
+        "nothing; distillation left the tree on 2026-09-18 because it produces no artifact with a known change for interp to recover (docs/training/continuous-learning-proposal.md states the training tier's progression)",
+        "the make target and CLI verb that built the logprob cache",
+    ),
+    "docs/training/distillation.md": (
+        "nothing; distillation left the tree on 2026-09-18 because it produces no artifact with a known change for interp to recover (docs/training/continuous-learning-proposal.md states the training tier's progression)",
+        "the living document for the F5 harness",
+    ),
+    "docs/verification/training/distillation-loop.md": (
+        "nothing; distillation left the tree on 2026-09-18 because it produces no artifact with a known change for interp to recover (docs/training/continuous-learning-proposal.md states the training tier's progression)",
+        "the DL.0 to DL.5 runbook, retired the day it was written",
     ),
     "continual-qwen3.yaml": (
         "training/recipes/reference/continual-gemma4-e2b.yaml",
@@ -719,6 +755,9 @@ EXEMPT_FILES = {
     "scripts/docs/check_retired_names.py",
     # The unit tests, which assert on the table and so quote its keys.
     "tests/docs/test_retired_names.py",
+    # The make-target gate: its allowlist names retired targets that frozen
+    # records still print, and a retired name is exactly what an entry is.
+    "scripts/docs/check_make_targets.py",
     # The sibling gate. Its KNOWN_ABSENT table is a curated list of references
     # that name something absent on purpose, so a deleted file's name is
     # exactly what an entry is made of -- the same argument this file makes

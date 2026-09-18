@@ -18,7 +18,6 @@ Expected cards and the scope criteria they demonstrate:
 | Card | Criterion |
 |------|-----------|
 | `sft-qlora-gemma-e4b` | The SFT model beats its base on held-out loss and judge win rate |
-| `distill-gemma-e2b` | The distilled student beats its pre-distillation baseline (`--base` is the pre-distillation checkpoint) |
 
 No scorecards are committed yet; the recipe cards are in draft state until
 their validation runs complete on the workstation. See

@@ -62,8 +62,8 @@ class GenerationIncomplete(RuntimeError):
 
 @dataclasses.dataclass
 class SamplingConfig:
-    """Snapshotted verbatim into the manifest; defaults favor distillation
-    (low temperature, long completions)."""
+    """Snapshotted verbatim into the manifest; defaults favor faithful
+    teacher corpora (low temperature, long completions)."""
 
     temperature: float = 0.2
     top_p: float = 0.9

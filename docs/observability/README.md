@@ -185,7 +185,7 @@ which matters because a NaN loss is precisely the record a post-mortem reads.
 The two loop families use different key vocabularies. Both are written as-is, and the dashboard
 maps both:
 
-| Series | D6 loop (`training/runtime/loop.py`) | SFT and distill (`training/tune/sft_callbacks.py`) |
+| Series | D6 loop (`training/runtime/loop.py`) | SFT (`training/tune/sft_callbacks.py`) |
 |--------|--------------------------------------|----------------------------------------------------|
 | Training loss | `loss` | `train/loss` |
 | Held-out loss | — | `eval/holdout_loss` |
@@ -197,7 +197,6 @@ maps both:
 | Optimizer step time (offload runs) | `optimizer_step_s` | — |
 | Per-source token counts (mixtures) | `tokens_source_<name>` | — |
 | Device memory (GB) | `gpu_mem_allocated_gb` | — |
-| Distillation CE and KL decomposition | — | `train/ce_loss`, `train/kl_loss` |
 
 Interval records arrive from the watchdog sampler thread
 (`training/runtime/watchdog.py`) carrying `gpu_temp_c`, `gpu_power_w`, `gpu_vram_used_gb`,
