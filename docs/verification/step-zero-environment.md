@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 7 verified, 0 blocked, 1 pending, of 8.**
+**Entries: 8 verified, 0 blocked, 0 pending, of 8.**
 
 Blocks all other phases. Any change to a dependency group re-opens 0.1 and
 the entry for each image the group feeds (0.4 for training, 0.7 for interp):
@@ -32,16 +32,32 @@ resolve against the pinned transformers, record the resolver error here and
 remove or repin `unsloth` in a separate commit — it is an optional backend
 (F3 decision 2).
 
-Observed:
+Observed (2026-09-18, on 0b6aafa, which carries the re-lock committed as
+3451279; the first pass ran 2026-08-01 with its output not recorded):
 
 ```
-Run on the workstation 2026-08-01; output not recorded.
-Re-run on the workstation 2026-09-18 after the interp dependency cut and
-committed as 3451279 ("Re-lock after the interp dependency cut", uv.lock
-only, 145 lines removed); the resolver output was not recorded.
+$ git show --stat 3451279 | head -20
+commit 3451279d2e0d89c5561502ee702da3cdb1859ea3
+Author: Alejandro Jaramillo <alejandroJaramillo87@users.noreply.github.com>
+Date:   Fri Sep 18 12:04:00 2026 -0700
+
+    Re-lock after the interp dependency cut
+
+ uv.lock | 145 ----------------------------------------------------------------
+ 1 file changed, 145 deletions(-)
+$ uv lock
+Resolved 332 packages in 0.59ms
+$ git status --short uv.lock
 ```
 
-Status: PENDING
+The re-lock is the one-file commit the stat shows, and a second `uv lock`
+on top of it resolves in under a millisecond and leaves `uv.lock` clean, so
+the committed lock is the resolver's fixed point for the current groups.
+The 145 removed lines are the nnsight, nnterp and circuitsvis closure the
+interp dependency cut released; the empty status line is the whole of the
+third command's output.
+
+Status: VERIFIED 2026-09-18
 
 ## 0.2 Sync the host environment
 

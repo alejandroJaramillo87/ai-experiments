@@ -860,10 +860,23 @@ inside it lists the recent interp invocations, most recent first, with the build
 smoke run absent (it ran in the image build, not against the host log root) and
 the shell's own dispatch present; `make interp-down` stops the workbench.
 
-Observed:
+Observed (2026-09-18, on 0b6aafa, `make interp-build` only):
 
 ```
+[+] build 1/1
+ ✔ Image ai-experiments-interp Built                                                                                                                                           0.2s
+Interp workbench image built.
 ```
+
+This rebuild followed the full build 0.7 records on the same lockfile, so
+every layer including the smoke step came from the cache and the build
+printed none of the `[OK]` and `[SKIP]` lines this entry expects; the
+build-time smoke ran once, during the 0.7 build, and its lines were not
+captured. The lifecycle half (`interp-up`, `interp-shell`, `runs`,
+`interp-down`) has not been run. Recording the build-time lines needs a
+build with the smoke layer invalidated (`docker compose -f
+docker-compose.interp.yaml build --no-cache interp`, or any edit under
+`interp/` that the copy step above the smoke picks up).
 
 Status: PENDING
 

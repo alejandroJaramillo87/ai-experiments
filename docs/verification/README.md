@@ -106,7 +106,7 @@ Each runbook's own progress line is authoritative; this table is the index.
 
 | Runbook | Verified | Blocked | Pending | Of |
 |---------|---------:|--------:|--------:|---:|
-| [step-zero-environment.md](step-zero-environment.md) | 7 | 0 | 1 | 8 |
+| [step-zero-environment.md](step-zero-environment.md) | 8 | 0 | 0 | 8 |
 | [training/training-phase0.md](training/training-phase0.md) | 4 | 0 | 7 | 11 |
 | [training/training-phase1.md](training/training-phase1.md) | 0 | 0 | 13 | 13 |
 | [training/training-phase2.md](training/training-phase2.md) | 0 | 0 | 7 | 7 |
