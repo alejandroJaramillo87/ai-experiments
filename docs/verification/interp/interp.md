@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 10 verified, 1 blocked, 12 pending, of 23.**
+**Entries: 11 verified, 1 blocked, 11 pending, of 23.**
 
 The 23 entries are I.1 and I.3 through I.23 plus the interstitial I.9b
 ("Chunked-capture crash recovery"). I.9b is numbered beside I.9 because it
@@ -110,20 +110,18 @@ model steps are a Hugging Face forward on gpt2 with a forward hook on decoder
 block 6 (`[OK] hf-hook: ...`) and the bf16 forward on the same model; the
 import step lists sae_lens, transformers, datasets, einops and pynvml.
 
-The observation below predates the 2026-09-18 dependency cut that removed
-nnsight and the TransformerLens group from the tier and rewrote the smoke
-test onto transformers forward hooks. It is kept as the record of the
-seven-step smoke on 747d8ad; the six-step smoke has no observation yet, so
-the entry is pending a re-run.
+The seven-step smoke's observation of 2026-09-17 on 747d8ad is in git
+history; the block below is of the six-step smoke that replaced it on
+2026-09-18.
 
-Observed (2026-09-17, on 747d8ad, without `HF_TOKEN`):
+Observed (2026-09-18, on 3451279, without `HF_TOKEN`):
 
 ```
 $ make interp-smoke
 docker compose -f docker-compose.interp.yaml run --rm interp python -m interp smoke
 WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
-Container ai-experiments-interp-run-f1ca39a4c91c Creating
-Container ai-experiments-interp-run-f1ca39a4c91c Created
+Container ai-experiments-interp-run-baf603ae13ef Creating
+Container ai-experiments-interp-run-baf603ae13ef Created
 === Interpretability workbench ===
 
 Environment:
@@ -138,25 +136,16 @@ Environment:
 === Interpretability workbench smoke test ===
 
 [OK] torch 2.13.0+cu130: CUDA available, NVIDIA GeForce RTX 5090 sm_120
-[OK] import transformer_lens: 3.5.1
-[OK] import nnsight: 0.7.0
-[OK] import nnterp: 1.3.0
 [OK] import sae_lens: 6.46.0
 [OK] import transformers: 5.13.1
 [OK] import datasets: 5.0.0
 [OK] import einops: 0.8.2
-[OK] import circuitsvis: 1.43.3
 [OK] import pynvml: 12.575.51
 [OK] torch pin intact: 2.13.0+cu130
 Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
-Loading weights: 100%|...| 148/148 [00:00<00:00, 9339.75it/s]
-Loaded pretrained model gpt2 into HookedTransformer
-Moving model to device:  cuda
-[OK] transformer-lens: gpt2-small forward, resid_post hook fired
-Loading weights: 100%|...| 148/148 [00:00<00:00, 4452.01it/s]
-[OK] nnsight: gpt2 trace, intermediate activation read
-Changing model dtype to torch.bfloat16
-[OK] bf16: gpt2-small forward, finite logits
+Loading weights: 100%|...| 148/148 [00:00<00:00, 9734.62it/s]
+[OK] hf-hook: gpt2 forward, block 6 forward hook fired
+[OK] bf16: gpt2 forward, finite logits
 [WARN] gemma-scope: skipped, HF_TOKEN not set (required for Phase 0 acceptance)
   Solution: accept the Gemma license on Hugging Face, set HF_TOKEN in .env.interp
 
@@ -164,14 +153,10 @@ Versions manifest:
 {
   "packages": {
     "torch": "2.13.0+cu130",
-    "transformer_lens": "3.5.1",
-    "nnsight": "0.7.0",
-    "nnterp": "1.3.0",
     "sae_lens": "6.46.0",
     "transformers": "5.13.1",
     "datasets": "5.0.0",
     "einops": "0.8.2",
-    "circuitsvis": "1.43.3",
     "pynvml": "12.575.51"
   },
   "cuda": "13.0",
@@ -185,19 +170,20 @@ Versions manifest:
 [OK] manifest written: /mnt/ai-data/interp/versions.json
 
 [OK] ALL SMOKE STEPS PASSED
-
-$ ls -la /mnt/ai-data/interp/versions.json
--rw-r--r-- 1 alejandro alejandro 408 Sep 17 06:44 /mnt/ai-data/interp/versions.json
 ```
 
-Five of the six steps passed on the RTX 5090 at sm_120, the torch pin held,
-and the manifest landed. The gated step printed the `[WARN] ... skipped` line
-the expected signal accepts, so the Gemma-2-2B forward and the Gemma Scope
-encode have no observation from this entry; that is a stated gap, not a
-failure. The orphan container warning is compose noting services of the
-other stacks under the same project name, and is not a smoke result.
+Four of the five model steps passed on the RTX 5090 at sm_120, the torch pin
+held, and the manifest landed. The image was built from the re-locked
+uv.lock of 3451279, so the import step lists only the packages the cut left.
+The gated step printed the `[WARN] ... skipped` line the expected signal
+accepts, so the Gemma-2-2B forward and the Gemma Scope encode have no
+observation from this entry; that is a stated gap, not a failure. The
+unauthenticated-Hub warning is transformers fetching gpt2 without a token,
+and the orphan container warning is compose noting services of the other
+stacks under the same project name; neither is a smoke result. The weight
+progress bar is abbreviated.
 
-Status: PENDING
+Status: VERIFIED 2026-09-18 (gated Gemma Scope step skipped by decision)
 
 ## I.3 Control-vector extraction and export (W1)
 
