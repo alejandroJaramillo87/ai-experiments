@@ -28,12 +28,14 @@ no code path here.
 | E2B | `google/gemma-4-E2B` | `d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f` | `5f0662eb398ede0ab1515c4760e13bcd6bf13f2f` |
 | E4B | `google/gemma-4-E4B` | `411aa17b749aa952df1359d2dcea73917a544d9a` | `080fd8d51bb6e846df168157c9d57b928a2a2687` |
 
-**No recipe currently pins a revision.** Every reference recipe leaves `model.hf.revision` null
-or commented out, for example `/training/recipes/reference/continual-gemma4-e2b.yaml:14,31` and
-`/training/recipes/reference/sft-qlora-gemma-e4b.yaml:16,31`. The field has two live consumers —
+**Every Gemma 4 recipe whose `model.hf.id` is a hub id pins `model.hf.revision` to the commit
+above**, and `/tests/training/test_recipe_pins.py` holds each pin equal to
+`/schemas/gemma4_facts.json`. The field has two live consumers —
 `/training/calculator/components.py:206-211` passes it to `AutoConfig.from_pretrained`, and
 `/training/export/merge.py:148-160` passes it to `AutoModelForCausalLM.from_pretrained` — so
 pinning costs nothing and is required by the pin-then-fix-then-update rule in `/AGENTS.md`.
+A recipe whose id is a local export directory (`distill-logit-gemma-e2b.yaml`) has no hub
+revision to pin.
 
 The blob values above are **git blob hashes**, as published by Hugging Face. They are not
 comparable to the `config_sha256` that `/training/export/preflight.py:49-98` records, which is a

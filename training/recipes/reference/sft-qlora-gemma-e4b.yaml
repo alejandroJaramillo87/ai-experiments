@@ -13,7 +13,7 @@
 #   Measured peak VRAM:   TBD (D4 memfit prediction must be within 10%)
 #   Wall-clock (9950X/5090): TBD
 #   Scorecard:            TBD (docs/training/scorecards/sft-qlora-gemma-e4b.*)
-#   model.hf.revision:    pin the resolved hub commit at validation
+#   model.hf.revision:    pinned (schemas/gemma4_facts.json, E4B)
 #
 # Preflight note (July 2026): verify the pinned transformers release fixes
 # the reported Gemma 4 E-model KV-sharing bug under use_cache=False
@@ -28,7 +28,7 @@ run:
 model:
   hf:
     id: google/gemma-4-E4B
-    # revision: <pin at validation>
+    revision: 411aa17b749aa952df1359d2dcea73917a544d9a
 
 sft:
   enabled: true
