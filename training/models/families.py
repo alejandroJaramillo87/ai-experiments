@@ -5,13 +5,12 @@ by the HF config model_type. F2 populates the LoRA target-module column;
 F1 (chat/instruction data prep) extends each entry with its chat template so
 a per-family fix — a PLE-model quirk, a renamed projection — lands once.
 
-Model policy (Phase 1): Gemma 4 E-models (HF model_type gemma4, text config
+Model policy: Gemma 4 E-models (HF model_type gemma4, text config
 gemma4_text; google/gemma-4-E2B and -E4B checkpoints, shipped April 2026)
-are the primary family for every fine-tuning deliverable. Qwen3 is the
-single fallback family — ungated weights, dense Llama-lineage decoder —
-kept registered so a Gemma 4 library-support failure never blocks the
-phase. No other family is registered; re-adding one is a one-line
-FamilySpec with a verification note.
+are the only family, for every fine-tuning deliverable: the lab works on
+Gemma 4 E2B and E4B and nothing else, and the fallback family left on
+2026-09-18 with that decision. No other family is registered; adding one is a
+FamilySpec entry with a verification note.
 
 The registry is data, not behavior: consumers look entries up through
 family_spec() and fail loudly on an unknown family rather than guess
@@ -27,7 +26,7 @@ class UnknownModelFamilyError(ValueError):
     """The HF model_type has no verified entry in the family registry."""
 
 
-# The Llama-lineage projection names shared by both registered families:
+# The Llama-lineage projection names Gemma 4 keeps in its text decoder:
 # attention q/k/v/o plus SwiGLU gate/up/down. A future family that diverges
 # gets its own literal list.
 _LLAMA_LINEAGE_TARGET_MODULES = (
@@ -88,15 +87,6 @@ _GEMMA4_CHAT_TEMPLATE = ChatTemplateSpec(
     trim_content=True,
 )
 
-_CHATML_CHAT_TEMPLATE = ChatTemplateSpec(
-    bos="",
-    turn_prefix="<|im_start|>{role}\n",
-    eot="<|im_end|>",
-    turn_suffix="\n",
-    assistant_role="assistant",
-    trim_content=False,
-)
-
 
 @dataclass(frozen=True)
 class FamilySpec:
@@ -108,9 +98,9 @@ class FamilySpec:
     chat_template: ChatTemplateSpec
     # The mode a served checkpoint runs in when no thinking-control tokens
     # are injected (the eval pipeline injects none). Gemma 4 thinking is
-    # opt-in (<|think|> in the system turn), so the default is off; Qwen3
-    # hybrid checkpoints think by default (enable_thinking=True), so a
-    # plain chat completion produces <think> traces.
+    # opt-in (<|think|> in the system turn), so the default is off; a family
+    # that thinks by default would record "on" here so the eval scorecard
+    # carries the confound.
     thinking_default: str = "off"
     # Reasoning-trace markers this family emits; SFT data prep refuses
     # assistant turns containing them (train on answers, not raw traces).
@@ -136,17 +126,6 @@ _REGISTRY: dict[str, FamilySpec] = {
             _GEMMA4_CHAT_TEMPLATE,
             thinking_default="off",
             thinking_markers=("<|think|>", "<|channel>thought"),
-        ),
-        # Qwen3: the fallback family (ungated, dense decoder; ChatML framing).
-        # Hybrid checkpoints (the pinned Qwen/Qwen3-1.7B) think by default;
-        # SFT datasets carry no think blocks (the trained model is steered
-        # toward direct answers rather than supervised on empty traces).
-        FamilySpec(
-            "qwen3",
-            _LLAMA_LINEAGE_TARGET_MODULES,
-            _CHATML_CHAT_TEMPLATE,
-            thinking_default="on",
-            thinking_markers=("<think>", "</think>"),
         ),
     )
 }

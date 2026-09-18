@@ -96,8 +96,8 @@ def check_thinking_markers(messages: list[dict], index: int = -1) -> None:
 
     A trace-contaminated source (a thinking-mode teacher dump) would be
     supervised on raw reasoning markers. Markers from every registered
-    family are checked, not just the target's: a Qwen3-generated dataset
-    prepared for Gemma 4 is contaminated all the same. SFT datasets carry
+    family are checked, not just the target's: a dataset a thinking-mode
+    teacher generated is contaminated whatever family it is prepared for. SFT datasets carry
     answers only; thinking is an inference-time concern (families.py).
     """
     where = f"record {index}" if index >= 0 else "record"

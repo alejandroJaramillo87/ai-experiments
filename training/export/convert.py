@@ -91,8 +91,8 @@ def check_architecture(staging_dir: str, convert_script: str) -> str:
         raise ExportError(
             f"Architecture not supported by the pinned converter: {arch}\n"
             f"  Pinned llama.cpp: {read_pin()}\n"
-            f"  Scope is GGUF-convertible families (Gemma 4 primary, Qwen3\n"
-            f"  fallback); bump the pin in training/export/llama_cpp_pin.txt\n"
+            f"  Scope is the GGUF-convertible Gemma 4 family; bump the pin in\n"
+            f"  training/export/llama_cpp_pin.txt\n"
             f"  (with a note) if a newer llama.cpp supports this architecture"
         )
     return arch

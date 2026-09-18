@@ -26,8 +26,8 @@ class LlamaModel(TextModel):
 class Llama(TextModel):
     pass
 
-@ModelBase.register("Qwen2ForCausalLM")
-class Qwen2(TextModel):
+@ModelBase.register("MistralForCausalLM")
+class Mistral(TextModel):
     pass
 """
 
@@ -60,7 +60,7 @@ def test_read_pin_rejects_garbage(tmp_path):
 
 def test_supported_architectures_parses_registrations(fake_converter):
     archs = convert_mod.supported_architectures(fake_converter)
-    assert archs == {"LlamaForCausalLM", "Llama4ForCausalLM", "Qwen2ForCausalLM"}
+    assert archs == {"LlamaForCausalLM", "Llama4ForCausalLM", "MistralForCausalLM"}
 
 
 def test_supported_architectures_scans_conversion_modules(tmp_path):
@@ -74,16 +74,16 @@ def test_supported_architectures_scans_conversion_modules(tmp_path):
         '@ModelBase.register("Gemma4ForConditionalGeneration", "Gemma4ForCausalLM")\n'
         "class Gemma4Model(TextModel):\n    pass\n"
     )
-    (conversion / "qwen.py").write_text(
-        '@ModelBase.register("Qwen3ForCausalLM", "Qwen3Model")\n'
-        "class Qwen3Model(TextModel):\n    pass\n"
+    (conversion / "mistral.py").write_text(
+        '@ModelBase.register("MistralForCausalLM", "MistralModel")\n'
+        "class MistralModel(TextModel):\n    pass\n"
     )
     archs = convert_mod.supported_architectures(str(wrapper))
     assert archs == {
         "Gemma4ForConditionalGeneration",
         "Gemma4ForCausalLM",
-        "Qwen3ForCausalLM",
-        "Qwen3Model",
+        "MistralForCausalLM",
+        "MistralModel",
     }
 
 

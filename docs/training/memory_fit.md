@@ -74,7 +74,7 @@ than guess. The Gemma 4 E-models (`model_type` `gemma4`/`gemma4_text`, the
 Phase 1 primary family) are supported: `spec_from_hf_config` descends into
 `text_config` and models the per-layer embedding tables. Only a config with
 the MoE block enabled (`enable_moe_block`) fails loudly — the dense formulas
-do not model expert routing. `qwen3` (the fallback family) is fully supported.
+do not model expert routing.
 
 ## Calibration
 

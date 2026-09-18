@@ -171,8 +171,8 @@ def check_softcap_parity(student_config, teacher_config) -> None:
 def check_tokenizer_parity(student_source: str, teacher_source: str) -> None:
     """Refuse cross-tokenizer logit distillation (the D3 warning): teacher
     and student tokenizers must hash-match, or per-token KL is meaningless.
-    Cross-family pairs (for example a Gemma teacher and a Qwen student) fail
-    here by design; cross-tokenizer distillation is out of scope for Phase 1."""
+    A teacher and student with different tokenizers fail here by design;
+    cross-tokenizer distillation is out of scope for Phase 1."""
     student_hash = load_tokenizer(student_source).content_hash
     teacher_hash = load_tokenizer(teacher_source).content_hash
     if student_hash != teacher_hash:

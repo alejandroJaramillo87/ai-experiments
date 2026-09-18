@@ -36,9 +36,9 @@ def write_gguf(tmp_path, name, quant=None, manifest_quant=None):
 
 def test_quant_from_name():
     assert quant_from_name("model-Q8_0.gguf") == "Q8_0"
-    # Qwen official GGUF naming uses lowercase suffixes; the confound check
+    # Some published GGUF names use lowercase suffixes; the confound check
     # compares case-sensitively, so parsing normalizes to uppercase.
-    assert quant_from_name("Qwen3-1.7B-q8_0.gguf") == "Q8_0"
+    assert quant_from_name("gemma-4-E2B-q8_0.gguf") == "Q8_0"
     assert quant_from_name("model.gguf") is None
     assert quant_from_name("model.bin") is None
     # Export ships an unquantized bf16 GGUF. An unrecognized suffix parses as
@@ -67,16 +67,13 @@ def test_thinking_mode_is_family_aware(tmp_path, monkeypatch):
     # Gemma 4 thinking is opt-in; nothing in the eval pipeline opts in.
     assert thinking_mode_for("Gemma4ForCausalLM", "x.gguf") == "off"
     assert thinking_mode_for(None, "gemma-4-E2B-it-Q8_0.gguf") == "off"
-    # Qwen3 hybrids think by default; recording "off" would hide <think>
-    # traces flowing into judge scoring.
-    assert thinking_mode_for("Qwen3ForCausalLM", "x.gguf") == "on"
-    assert thinking_mode_for(None, "Qwen3-1.7B-Q8_0.gguf") == "on"
+    # An unregistered family is recorded as "not recorded", never guessed.
     assert thinking_mode_for(None, "mystery.gguf") is None
+    assert thinking_mode_for("MysteryForCausalLM", "mystery-Q8_0.gguf") is None
     # KB-24: the manifest's architecture wins over a conflicting filename;
     # the filename votes only when the architecture names no family
-    assert thinking_mode_for("Qwen3ForCausalLM", "gemma-4-E2B-Q8_0.gguf") == "on"
-    assert thinking_mode_for("Gemma4ForCausalLM", "qwen3-distill-Q8_0.gguf") == "off"
-    assert thinking_mode_for("MysteryForCausalLM", "Qwen3-1.7B-Q8_0.gguf") == "on"
+    assert thinking_mode_for("Gemma4ForCausalLM", "mystery-distill-Q8_0.gguf") == "off"
+    assert thinking_mode_for("MysteryForCausalLM", "gemma-4-E2B-Q8_0.gguf") == "off"
 
 
 def test_gguf_identity_falls_back_to_name(tmp_path, monkeypatch):

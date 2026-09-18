@@ -80,8 +80,6 @@ PAGE_CACHE_ALLOWANCE_BYTES = 16 * (1 << 30)
 HF_SUPPORTED_MODEL_TYPES = (
     "llama",
     "mistral",
-    "qwen2",
-    "qwen3",
     "gemma",
     "gemma2",
     "gemma3",

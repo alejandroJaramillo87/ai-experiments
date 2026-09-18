@@ -37,10 +37,10 @@ def qlora_recipe(overrides=()):
 
 
 class TestFamilyRegistry:
-    def test_registry_is_gemma4_primary_plus_qwen3_fallback(self):
-        assert supported_families() == ("gemma4", "gemma4_text", "qwen3")
+    def test_registry_is_gemma4_only(self):
+        assert supported_families() == ("gemma4", "gemma4_text")
 
-    @pytest.mark.parametrize("family", ["gemma4", "gemma4_text", "qwen3"])
+    @pytest.mark.parametrize("family", ["gemma4", "gemma4_text"])
     def test_target_modules_are_llama_lineage(self, family):
         assert list(family_spec(family).lora_target_modules) == LLAMA_LINEAGE
 
