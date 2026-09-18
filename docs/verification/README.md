@@ -106,7 +106,7 @@ Each runbook's own progress line is authoritative; this table is the index.
 
 | Runbook | Verified | Blocked | Pending | Of |
 |---------|---------:|--------:|--------:|---:|
-| [step-zero-environment.md](step-zero-environment.md) | 8 | 0 | 0 | 8 |
+| [step-zero-environment.md](step-zero-environment.md) | 7 | 0 | 1 | 8 |
 | [training/training-phase0.md](training/training-phase0.md) | 4 | 0 | 7 | 11 |
 | [training/training-phase1.md](training/training-phase1.md) | 0 | 0 | 13 | 13 |
 | [training/training-phase2.md](training/training-phase2.md) | 0 | 0 | 7 | 7 |
@@ -161,7 +161,10 @@ passed.
    full-scale data pipeline, mixtures, WSD schedules, the replay buffer, and
    optimizer offload.
 5. [interp/interp.md](interp/interp.md) — the interpretability tier: workbench,
-   write-back path (W1-W4), organisms, harvesting, and SAE training.
+   write-back path (W1-W4: control vectors, probe capture, monitor and export,
+   the served-request log), organisms, harvesting, and SAE training. The
+   probe surface is also fed by the rust harness `activation-capture` chain
+   (RH.9a-9e), which is that runbook's evidence, not this one's.
 6. [observability/observability.md](observability/observability.md) — the observability stack (phases
    A-D): GPU watchdog samples, NVML context, the `/mnt/ai-data` log root,
    external sinks, the browser harness, and the live dashboard against an

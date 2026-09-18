@@ -2,13 +2,14 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 8 verified, 0 blocked, 0 pending, of 8.**
+**Entries: 7 verified, 0 blocked, 1 pending, of 8.**
 
-Blocks all other phases. The `interp` and `training` dependency groups carry
-provisional pins resolved offline, and the committed `uv.lock` predates the
-current `pyproject.toml` groups; nothing downstream is trustworthy until the
-lockfile is regenerated on the workstation and both images rebuild and pass
-their smoke tests.
+Blocks all other phases. Any change to a dependency group re-opens 0.1 and
+the entry for each image the group feeds (0.4 for training, 0.7 for interp):
+nothing downstream is trustworthy until the lockfile is regenerated on the
+workstation and the affected image rebuilds and passes its smoke test. The
+first pass (2026-08-01) was against provisional pins resolved offline; the
+latest re-open is the 2026-09-18 interp dependency cut, re-locked in 3451279.
 
 ## 0.1 Regenerate the lockfile
 
@@ -35,9 +36,12 @@ Observed:
 
 ```
 Run on the workstation 2026-08-01; output not recorded.
+Re-run on the workstation 2026-09-18 after the interp dependency cut and
+committed as 3451279 ("Re-lock after the interp dependency cut", uv.lock
+only, 145 lines removed); the resolver output was not recorded.
 ```
 
-Status: VERIFIED
+Status: PENDING
 
 ## 0.2 Sync the host environment
 
@@ -203,13 +207,75 @@ forward, and exits 0. The gated Gemma step
 requires `HF_TOKEN` in `.env.interp`; a `[WARN]` skip without the token is
 acceptable at step zero but must pass before the interp phase.
 
-Observed:
+Observed (2026-09-18, on 3451279, without `HF_TOKEN`; the first pass ran
+2026-08-01 with its output not recorded):
 
 ```
-Run on the workstation 2026-08-01; output not recorded.
+$ make interp-build
+ => resolving provenance for metadata file                                                                                                                                    0.0s
+[+] build 1/1
+ ✔ Image ai-experiments-interp Built                                                                                                                                         376.9s
+Interp workbench image built.
+$ make interp-smoke
+docker compose -f docker-compose.interp.yaml run --rm interp python -m interp smoke
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-interp-run-baf603ae13ef Creating
+Container ai-experiments-interp-run-baf603ae13ef Created
+=== Interpretability workbench ===
+
+Environment:
+  Python: 3.12.3
+  Torch: 2.13.0+cu130
+  CUDA available: True
+  HF_HOME: /mnt/ai-data/interp/hf-cache
+  Working dir: /workspace
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m interp smoke
+=== Interpretability workbench smoke test ===
+
+[OK] torch 2.13.0+cu130: CUDA available, NVIDIA GeForce RTX 5090 sm_120
+[OK] import sae_lens: 6.46.0
+[OK] import transformers: 5.13.1
+[OK] import datasets: 5.0.0
+[OK] import einops: 0.8.2
+[OK] import pynvml: 12.575.51
+[OK] torch pin intact: 2.13.0+cu130
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Loading weights: 100%|...| 148/148 [00:00<00:00, 9734.62it/s]
+[OK] hf-hook: gpt2 forward, block 6 forward hook fired
+[OK] bf16: gpt2 forward, finite logits
+[WARN] gemma-scope: skipped, HF_TOKEN not set (required for Phase 0 acceptance)
+  Solution: accept the Gemma license on Hugging Face, set HF_TOKEN in .env.interp
+
+Versions manifest:
+{
+  "packages": {
+    "torch": "2.13.0+cu130",
+    "sae_lens": "6.46.0",
+    "transformers": "5.13.1",
+    "datasets": "5.0.0",
+    "einops": "0.8.2",
+    "pynvml": "12.575.51"
+  },
+  "cuda": "13.0",
+  "gpu": "NVIDIA GeForce RTX 5090",
+  "capability": [
+    12,
+    0
+  ],
+  "driver": "580.173.02"
+}
+[OK] manifest written: /mnt/ai-data/interp/versions.json
+
+[OK] ALL SMOKE STEPS PASSED
 ```
 
-Status: VERIFIED
+The build's own output was pasted only from its final lines; the build-time
+smoke's lines are I.13's business in `interp/interp.md`. The smoke run is
+the same paste I.1 records. The weight progress bar is abbreviated.
+
+Status: VERIFIED 2026-09-18 (gated Gemma step skipped without `HF_TOKEN`)
 
 ## 0.8 Hardware smoke suite
 

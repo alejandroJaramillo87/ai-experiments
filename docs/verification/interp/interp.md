@@ -27,13 +27,19 @@ check named, is not verified.
 **Scope of the automated coverage.** Every test under `tests/interp/` runs
 against fakes — `tests/interp/conftest.py` states it outright: "Everything runs
 CPU-only, without network, GPU, or services: captures come from a deterministic
-fake capture function, services from injected callables." No test in this tree
-loads a real model, reaches a running service, or touches the GPU. The BLOCKED
-and PENDING entries therefore have no automated substitute; their status is the
-whole of what is known about them.
+fake capture function, services from injected callables." No test under
+`tests/interp/` loads a real model, reaches a running service, or touches the
+GPU. The tier's one real-weights test is `tests/hardware/test_interp_chain.py`
+(RH.9a through RH.9e): capture through the rust harness, probe training,
+monitor and steering on Gemma 4 E2B, run by the hardware tier, and the
+evidence I.3 and I.22 lean on. It covers that chain and nothing else here;
+the BLOCKED and PENDING entries have no automated substitute, and their
+status is the whole of what is known about them.
 
-I1 workbench, the write-back path (W1 through W4), P4-D1 organisms, P4-D2 activation harvesting with garbage collection,
-and P4-D3 SAE training and evaluation. The interp anchor for pretrained
+The tier is the I1 workbench, the write-back path (W1 through W4: control
+vectors, probes, the served-request log, the monitor), P4-D1 organisms,
+P4-D2 activation harvesting with garbage collection, and P4-D3 SAE training
+and evaluation. The interp anchor for pretrained
 SAEs is Gemma-2-2B (Gemma Scope); Gemma 4 runs on the hook-based paths
 (harvest, probes, steering) through the `interp/families.py` registry.
 
@@ -42,15 +48,18 @@ enters `interp/__main__.py`, dispatches through the argparse handlers in
 `interp/cli.py`, and lands in the implementation module; each entry below
 lists its implementation files so a failure can be read at the source
 without re-tracing the chain. Where the process runs differs by target,
-and matters for paths. The model-loading targets (`probe-capture`,
+and matters for paths. The container-run targets (`probe-capture`,
 `probe-train`, `probe-monitor`, `steer-extract`, `harvest`, `interp-gc`,
 `sae-train`, `sae-eval`, `interp-smoke`) run inside the workbench container
 through `docker compose -f docker-compose.interp.yaml run --rm interp`,
 where the models tree is `/app/models` and `/mnt/ai-data/interp` is
-mounted at its own path. The serving-dependent targets (`steer-scorecard`,
-`probe-export`, `probe-eval`, and the four `organism-*` targets) run on the
-host under `uv run` or `python3`, where host paths are the only paths. An
-entry whose block runs on the host says so.
+mounted at its own path; of these, only `probe-capture`, `steer-extract`,
+`harvest`, `sae-train`, `sae-eval` and `interp-smoke` load a model. The
+host-run targets (`steer-scorecard`, `probe-export`, `probe-eval`, and the
+`organism-*` targets) run under `uv run` or `python3`, where host paths are
+the only paths; `steer-scorecard`, `probe-eval`, `organism-generate` and
+`organism-verify` need a running inference service, `probe-export` needs
+nothing. An entry whose block runs on the host says so.
 
 ## Table of Contents
 
@@ -105,7 +114,7 @@ The fifth step is gated on the `HF_TOKEN` environment variable, not on
 whether Gemma-2-2B is already on disk: `smoke_test.py` tests the variable
 first and skips the step outright when it is unset, so a cached checkpoint
 under `HF_HOME` is never consulted. Running without the token therefore
-exercises four of the five model steps whatever the cache holds. The ungated
+exercises every step but the fifth whatever the cache holds. The two ungated
 model steps are a Hugging Face forward on gpt2 with a forward hook on decoder
 block 6 (`[OK] hf-hook: ...`) and the bf16 forward on the same model; the
 import step lists sae_lens, transformers, datasets, einops and pynvml.
@@ -172,8 +181,8 @@ Versions manifest:
 [OK] ALL SMOKE STEPS PASSED
 ```
 
-Four of the five model steps passed on the RTX 5090 at sm_120, the torch pin
-held, and the manifest landed. The image was built from the re-locked
+Every step but the gated fifth passed on the RTX 5090 at sm_120: both
+ungated model steps, the torch pin held, and the manifest landed. The image was built from the re-locked
 uv.lock of 3451279, so the import step lists only the packages the cut left.
 The gated step printed the `[WARN] ... skipped` line the expected signal
 accepts, so the Gemma-2-2B forward and the Gemma Scope encode have no
@@ -705,7 +714,8 @@ Status: VERIFIED 2026-08-08
 
 ## I.10 Capture garbage collection (P4-D2)
 
-Implementation: `interp/commands/interp_gc.py`, `interp/manifest.py`.
+Implementation: `interp/commands/interp_gc.py`, `interp/harvest.py`
+(`gc_captures`, `mark_validated`), `interp/manifest.py`.
 
 Command:
 
@@ -1115,8 +1125,8 @@ Status: PENDING
 
 ## I.21 sae-train refuses a capture whose manifest does not match the recipe
 
-Implementation: `interp/sae/train.py` (`resolve_capture`, `check_capture`,
-`capture_dtype`), `interp/commands/sae_train.py`.
+Implementation: `interp/sae/train.py` (`resolve_capture`, `capture_dtype`),
+`interp/harvest.py` (`check_capture`), `interp/commands/sae_train.py`.
 
 I.11's expected signal says training refuses a manifest mismatch, and its run
 trained on a matching one. The refusal has three arms: a manifest that is
@@ -1247,7 +1257,7 @@ variable to name. Each is a gap in evidence, not a known defect.
   missing.
 - `interp-dirs`, the storage-tree bootstrap.
 - The Gemma-2 family branch of `interp/families.py` and the Gemma Scope ids:
-  reached by I.1's sixth step, which the 2026-09-17 run skipped by decision,
+  reached by I.1's fifth step, which the 2026-09-18 run skipped by decision,
   and by the calibration capture in `reference-captures.md`, still pending.
 - Variables no entry names: `OBS_LOG_DIR` (I.14 now states the default),
   `SCALE` and `LAYER_RANGE` on `steer-up` (I.20 passes them),
