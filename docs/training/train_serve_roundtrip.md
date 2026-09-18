@@ -29,7 +29,7 @@ checkpoint (D6, HF safetensors under model/)
 Conversion runs in a dedicated image (`docker/training/Dockerfile.export`), separate
 from the training image by design: the image that trains a model is not reused to
 prepare it for inference. The llama.cpp revision is pinned in
-`training/export/llama_cpp_pin.txt` (initially the same commit the llama-gpu serving
+the export image (initially the same commit the llama-gpu serving
 image builds from) and is bumped deliberately, with a note, when new architectures
 are needed. Scope is GGUF-convertible architectures only — in practice Gemma 4, the
 only registered family, which the pinned converter supports; the tool checks the staged model against the pinned
@@ -60,7 +60,7 @@ Notes:
   llama.cpp pin, quant type, and the GGUF SHA-256. Re-export of the same checkpoint
   under the same pin yields the same GGUF hash.
 - Intermediates stage under `/mnt/ai-data/training/staging/export/` (on disk, not
-  tmpfs, so large models fit) and are removed unless `--keep-staging` is passed.
+  tmpfs, so large models fit) and are promoted into the export directory.
 - Adapter-only checkpoints (Phase 1 F6): the tool resolves the base model from the
   local HF cache only, never the network, and verifies its identity against the
   `base_revision` and `base_config_sha256` the F3 trainer recorded in the

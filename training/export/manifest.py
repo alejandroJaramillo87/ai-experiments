@@ -10,8 +10,6 @@ the served weights against it under --status --deep. Writing it at export
 time means the value a probe or control vector will carry exists before
 anything is fitted to the checkpoint. The key set is pinned by
 schemas/hf_export.manifest.json.
-
-The GGUF manifest functions below are the llama.cpp path's and go with it.
 """
 
 from __future__ import annotations
@@ -45,7 +43,7 @@ def checkpoint_meta(checkpoint: str) -> dict | None:
     return None
 
 
-def _tool_versions(names=("torch", "transformers", "peft", "gguf")) -> dict:
+def _tool_versions(names=HF_TOOLS) -> dict:
     """Best-effort versions of the libraries that shaped the export."""
     versions = {}
     for name in names:
@@ -56,55 +54,6 @@ def _tool_versions(names=("torch", "transformers", "peft", "gguf")) -> dict:
     return versions
 
 
-def build_manifest(
-    *,
-    checkpoint: str,
-    architecture: str,
-    quant_type: str,
-    outtype: str,
-    llama_cpp_commit: str,
-    gguf_path: str,
-    staging_info,
-    base_identity=None,
-    base_drift: list[str] | None = None,
-    created: str | None = None,
-) -> dict:
-    """Assemble the manifest dict for one export.
-
-    base_identity is the F6 preflight's resolved base (revision and config
-    hash); base_drift carries its notes when --allow-base-drift overrode a
-    mismatch, so a drifted export is detectable from the manifest alone.
-    """
-    return {
-        "schema_version": 1,
-        "created": created or time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-        "source_checkpoint": os.path.abspath(checkpoint),
-        "checkpoint_meta": checkpoint_meta(checkpoint),
-        "architecture": architecture,
-        "adapter": None
-        if staging_info.adapter_path is None
-        else {
-            "path": os.path.abspath(staging_info.adapter_path),
-            "sha256": _adapter_hash(staging_info.adapter_path),
-            "base_model": staging_info.base_model,
-            "base_revision": getattr(base_identity, "revision", None),
-            "base_config_sha256": getattr(base_identity, "config_sha256", None),
-            "merge_method": staging_info.merge_method,
-        },
-        "base_drift": base_drift or [],
-        "tokenizer_source": staging_info.tokenizer_source,
-        "llama_cpp_commit": llama_cpp_commit,
-        "convert_outtype": outtype,
-        "quant_type": quant_type,
-        "gguf": {
-            "path": os.path.abspath(gguf_path),
-            "sha256": sha256_file(gguf_path),
-            "size_bytes": os.path.getsize(gguf_path),
-        },
-        "tool_versions": _tool_versions(),
-    }
-
-
 def _adapter_hash(adapter_dir: str) -> str | None:
     """SHA-256 of the adapter weights file, when present."""
     for name in ("adapter_model.safetensors", "adapter_model.bin"):
@@ -112,17 +61,6 @@ def _adapter_hash(adapter_dir: str) -> str | None:
         if os.path.isfile(path):
             return sha256_file(path)
     return None
-
-
-def manifest_path(gguf_path: str) -> str:
-    root, _ext = os.path.splitext(gguf_path)
-    return root + ".manifest.json"
-
-
-def write_manifest(manifest: dict, gguf_path: str) -> str:
-    """Write the manifest beside the GGUF, atomically: a crash mid-write
-    must not leave a truncated manifest beside a valid GGUF."""
-    return write_json_atomic(manifest_path(gguf_path), manifest, sort_keys=False)
 
 
 def hf_manifest_path(out_dir: str) -> str:

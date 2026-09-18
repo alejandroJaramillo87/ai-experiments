@@ -70,7 +70,7 @@ state + activations + calibrated overhead) from a D5 recipe before any GPU alloc
 ## Train-and-serve round trip (D7)
 
 Implemented: `training/export/` converts a checkpoint to GGUF against the llama.cpp
-revision pinned in `training/export/llama_cpp_pin.txt`, and `python3 -m training serve-eval`
+revision the export image pins, and `python3 -m training serve-eval`
 (training/commands/serve_eval.py) swaps it into llama-gpu, runs the smoke prompt set, and restores the previous serving
 state. All commands are host-side.
 

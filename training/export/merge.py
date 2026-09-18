@@ -154,7 +154,7 @@ def check_meta_consistency(meta: dict | None, adapter: str | None) -> None:
     A disagreement between meta.json and the files on disk marks a corrupt
     or hand-edited checkpoint; export refuses rather than guessing.
     """
-    from training.export.convert import ExportError
+    from training.export.errors import ExportError
 
     if meta is None or "adapter_only" not in meta:
         return  # plain HF dir or pre-F3 checkpoint: nothing to check against
@@ -190,7 +190,7 @@ def _merge_adapter(
     from peft import PeftModel
     from transformers import AutoModelForCausalLM
 
-    from training.export.convert import ExportError
+    from training.export.errors import ExportError
 
     base = adapter_base_model(adapter_dir)
     try:

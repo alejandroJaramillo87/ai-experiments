@@ -3,11 +3,11 @@
 Each test parses real argv through build_parser() and invokes the bound
 handler, asserting the exit-code contract (0 success, 1 failure), the styled
 [OK]/[WARN]/[ERROR]/[INFO] lines, --json stdout purity, and the concrete file
-side effects (GGUF, manifest, record JSONs). For export, only the torch-bound
-seams are faked (stage_model, convert_to_gguf); name derivation,
-converter lookup, checkpoint/adapter resolution, the F6 base-identity
-preflight, architecture checking, and manifest build/write all run for real
-against tmp-dir checkpoints. The eval pipelines (GPU-only) are faked at their
+side effects (the hf/ directory, manifest, record JSONs). For export, the
+copy path runs with nothing faked; the merge path fakes stage_model, the one
+torch-bound seam, and everything around it (name derivation, checkpoint and
+adapter resolution, the F6 base-identity preflight, promotion, hashing,
+manifest build and write) runs for real against tmp-dir checkpoints. The eval pipelines (GPU-only) are faked at their
 home modules training.eval.holdout / training.eval.lmeval.
 """
 
@@ -22,14 +22,10 @@ from support import REPO_ROOT
 
 from training import cli
 from training.eval.lmeval import LmEvalError
-from training.export import read_pin
+from training.export.errors import ExportError
 from training.export.merge import StagingInfo
 
-PIN = read_pin()
-
 ARCH = "LlamaForCausalLM"
-
-GGUF_PAYLOAD = b"g" * 4096  # 4,096 bytes: proves the comma-grouped size line
 
 
 def run_cli(argv: list[str]) -> int:
@@ -39,15 +35,8 @@ def run_cli(argv: list[str]) -> int:
 
 # -- cmd_export -----------------------------------------------------------------
 
-
-def make_llama_cpp(tmp_path) -> str:
-    """A --llama-cpp dir whose converter registers exactly one architecture."""
-    d = tmp_path / "llama.cpp"
-    d.mkdir()
-    (d / "convert_hf_to_gguf.py").write_text(
-        f'@ModelBase.register("{ARCH}")\nclass Llama(TextModel):\n    pass\n'
-    )
-    return str(d)
+np = pytest.importorskip("numpy")
+safetensors_numpy = pytest.importorskip("safetensors.numpy")
 
 
 def write_json(path: str, payload: dict) -> None:
@@ -56,11 +45,23 @@ def write_json(path: str, payload: dict) -> None:
         json.dump(payload, f)
 
 
-def full_model_checkpoint(tmp_path) -> str:
-    """D6-layout checkpoint dir holding a plain HF model (no adapter)."""
-    ckpt = tmp_path / "myrun" / "checkpoints" / "step_20"
+def write_weights(model_dir: str) -> bytes:
+    """A real one-tensor safetensors file; returns its bytes for hashing."""
+    path = os.path.join(model_dir, "model.safetensors")
+    safetensors_numpy.save_file(
+        {"w": np.arange(4, dtype=np.float32)}, path, metadata={"format": "pt"}
+    )
+    with open(path, "rb") as f:
+        return f.read()
+
+
+def full_model_checkpoint(tmp_path) -> tuple[str, bytes]:
+    """TRL-layout checkpoint dir holding a plain HF model (no adapter)."""
+    ckpt = tmp_path / "myrun" / "checkpoints" / "checkpoint-20"
     write_json(str(ckpt / "config.json"), {"architectures": [ARCH]})
-    return str(ckpt)
+    write_json(str(ckpt / "generation_config.json"), {"do_sample": False})
+    (ckpt / "tokenizer.json").write_text("{}")
+    return str(ckpt), write_weights(str(ckpt))
 
 
 def adapter_checkpoint(tmp_path, meta: dict | None = None) -> tuple[str, str]:
@@ -71,19 +72,20 @@ def adapter_checkpoint(tmp_path, meta: dict | None = None) -> tuple[str, str]:
     write_json(
         str(ckpt / "adapter_config.json"), {"base_model_name_or_path": str(base)}
     )
+    (ckpt / "adapter_model.safetensors").write_bytes(b"lora")
     if meta is not None:
         write_json(str(ckpt / "meta.json"), meta)
     return str(ckpt), str(base)
 
 
-def patch_pipeline(
+def patch_stage(
     monkeypatch, adapter_path=None, base_model=None, tokenizer_source="tok-src"
 ) -> dict:
-    """Fake the three torch/toolchain seams; returns the recorded calls.
+    """Fake the torch-bound seam only; returns the recorded call.
 
-    The staging fake writes the config.json check_architecture reads, and the
-    quantize fake writes the GGUF bytes build_manifest hashes, so everything
-    downstream of the seams executes for real.
+    The fake writes a real config.json and model.safetensors into the
+    staging dir, so promotion, the single-file assertion, hashing and the
+    manifest all execute for real.
     """
     calls: dict = {}
 
@@ -97,7 +99,9 @@ def patch_pipeline(
             "meta": meta,
             "base_revision": base_revision,
         }
+        os.makedirs(staging_dir, exist_ok=True)
         write_json(os.path.join(staging_dir, "config.json"), {"architectures": [ARCH]})
+        calls["weights"] = write_weights(staging_dir)
         return StagingInfo(
             model_dir=checkpoint,
             staging_dir=staging_dir,
@@ -107,136 +111,55 @@ def patch_pipeline(
             tokenizer_source=tokenizer_source,
         )
 
-    def fake_convert(staging_dir, out_path, outtype="bf16", llama_cpp_dir=None):
-        calls["convert"] = {
-            "staging_dir": staging_dir,
-            "out_path": out_path,
-            "outtype": outtype,
-        }
-        with open(out_path, "wb") as f:
-            f.write(GGUF_PAYLOAD)
-
-    def fake_quantize(in_path, out_path, quant_type, llama_cpp_dir=None):
-        # Recorded so a test can assert it is never reached: quantizing would
-        # hand training, the harness, and interp different weights.
-        calls["quantize"] = {
-            "in_path": in_path,
-            "out_path": out_path,
-            "quant_type": quant_type,
-        }
-
     monkeypatch.setattr("training.export.stage_model", fake_stage)
-    monkeypatch.setattr("training.export.convert.convert_to_gguf", fake_convert)
-    monkeypatch.setattr("training.export.convert.quantize", fake_quantize)
     return calls
 
 
+def read_manifest(out_root: str, name: str) -> dict:
+    with open(os.path.join(out_root, name, "manifest.json")) as f:
+        return json.load(f)
+
+
 class TestCmdExport:
-    @pytest.mark.parametrize("outtype", ["f16", "fp16", "bfloat16", "q8_0"])
-    def test_a_lossy_or_misspelled_outtype_is_refused(self, tmp_path, outtype):
-        # --outtype had no choices=, so a value the converter did not
-        # understand failed inside the subprocess, and one it did understand
-        # but should not be used (f16 narrows bf16's exponent range and can
-        # produce inf) succeeded silently.
-        with pytest.raises(SystemExit) as exc:
-            run_cli(
-                [
-                    "export",
-                    "--checkpoint",
-                    str(tmp_path),
-                    "--outtype",
-                    outtype,
-                ]
-            )
-        assert exc.value.code == 2
-
-    def test_missing_converter_exits_1(self, tmp_path, capsys):
-        empty = tmp_path / "no-llama-cpp"
-        empty.mkdir()
-        assert (
-            run_cli(
-                [
-                    "export",
-                    "--checkpoint",
-                    str(tmp_path / "ckpt"),
-                    "--llama-cpp",
-                    str(empty),
-                ]
-            )
-            == 1
-        )
-        out = capsys.readouterr().err
-        assert (
-            f"[ERROR] Pinned converter not found: {empty / 'convert_hf_to_gguf.py'}"
-        ) in out
-        assert "Solution: run inside the export image" in out
-
-    def test_full_model_happy_path(self, tmp_path, capsys, monkeypatch):
-        ckpt = full_model_checkpoint(tmp_path)
-        calls = patch_pipeline(monkeypatch)
+    def test_full_model_copy_happy_path(self, tmp_path, capsys):
+        """No seam faked: the copy path, promotion, hash and manifest are real."""
+        ckpt, weights = full_model_checkpoint(tmp_path)
         out_root = str(tmp_path / "out")
-        staging_root = str(tmp_path / "staging")
-        # No --name: the D6 layout must derive "<run>-step_N" for real.
-        assert (
-            run_cli(
-                [
-                    "export",
-                    "--checkpoint",
-                    ckpt,
-                    "--llama-cpp",
-                    make_llama_cpp(tmp_path),
-                    "--out-root",
-                    out_root,
-                    "--staging-root",
-                    staging_root,
-                    "--tokenizer",
-                    str(tmp_path / "tok"),
-                ]
-            )
-            == 0
-        )
+        # No --name: the TRL layout must derive "<run>-checkpoint-N" for real.
+        assert run_cli(["export", "--checkpoint", ckpt, "--out-root", out_root]) == 0
         out = capsys.readouterr().err
 
-        name = "myrun-step_20"
-        gguf = os.path.join(out_root, name, f"{name}-BF16.gguf")
-        assert f"[RUN] Staging model: {ckpt}" in out
-        assert f"[OK] Architecture: {ARCH} (supported by llama.cpp {PIN[:12]})" in out
-        assert "[RUN] Converting to GGUF (bf16)" in out
-        assert "Quantizing" not in out
-        assert f"[OK] GGUF written: {gguf} (4,096 bytes)" in out
-
-        sha = hashlib.sha256(GGUF_PAYLOAD).hexdigest()
-        assert f"SHA-256: {sha}" in out
-        with open(gguf, "rb") as f:
-            assert f.read() == GGUF_PAYLOAD
-
-        manifest_file = os.path.join(out_root, name, f"{name}-BF16.manifest.json")
+        name = "myrun-checkpoint-20"
+        hf = os.path.join(out_root, name, "hf")
+        assert f"[RUN] Copying model: {ckpt}" in out
+        assert f"[OK] HF export written: {hf} ({len(weights):,} bytes)" in out
+        manifest_file = os.path.join(out_root, name, "manifest.json")
         assert f"[OK] Manifest written: {manifest_file}" in out
-        with open(manifest_file) as f:
-            manifest = json.load(f)
-        assert manifest["architecture"] == ARCH
-        assert manifest["quant_type"] == "BF16"
-        assert manifest["llama_cpp_commit"] == PIN
-        assert manifest["adapter"] is None
-        assert manifest["gguf"] == {"path": gguf, "sha256": sha, "size_bytes": 4096}
+        sha = hashlib.sha256(weights).hexdigest()
+        assert f"model_hash: {sha}" in out
+        assert "[WARN]" not in out and "Adapter merged" not in out
 
-        # The converter writes straight to the served path (via .partial),
-        # with no quantize step between: the shipped artifact is the bf16
-        # GGUF the three tiers share.
-        staging = calls["stage"]["staging_dir"]
-        assert calls["convert"]["out_path"] == gguf + ".partial"
-        assert calls["convert"]["outtype"] == "bf16"
-        assert "quantize" not in calls, "export must not quantize"
-        assert calls["stage"]["tokenizer_dir"] == str(tmp_path / "tok")
-        assert calls["stage"]["base_revision"] is None
-        assert not os.path.exists(staging)
-        # No adapter, tokenizer found: none of the optional arms fire.
-        assert "Adapter merged" not in out
-        assert "[WARN]" not in out
+        assert sorted(os.listdir(hf)) == [
+            "config.json",
+            "generation_config.json",
+            "model.safetensors",
+            "tokenizer.json",
+        ]
+        assert not os.path.exists(hf + ".partial")
+        manifest = read_manifest(out_root, name)
+        assert manifest["artifact"] == "hf_export"
+        assert manifest["mode"] == "copy"
+        assert manifest["model_hash"] == sha
+        assert manifest["hf_dir"] == hf
+        assert manifest["adapter"] is None
+        assert manifest["tokenizer_source"] == ckpt
+        assert manifest["base"]["model"] == ckpt
+        assert manifest["base"]["revision"] is None
 
     def test_adapter_base_verified(self, tmp_path, capsys, monkeypatch):
         ckpt, base = adapter_checkpoint(tmp_path)
-        patch_pipeline(monkeypatch, adapter_path=ckpt, base_model=base)
+        calls = patch_stage(monkeypatch, adapter_path=ckpt, base_model=base)
+        out_root = str(tmp_path / "out")
         assert (
             run_cli(
                 [
@@ -245,12 +168,8 @@ class TestCmdExport:
                     ckpt,
                     "--name",
                     "tuned",
-                    "--llama-cpp",
-                    make_llama_cpp(tmp_path),
                     "--out-root",
-                    str(tmp_path / "out"),
-                    "--staging-root",
-                    str(tmp_path / "staging"),
+                    out_root,
                 ]
             )
             == 0
@@ -258,23 +177,27 @@ class TestCmdExport:
         out = capsys.readouterr().err
         # Local-path base: no hub revision, so the identity reads "local".
         assert f"[OK] Base model verified: {base} (revision local)" in out
+        assert f"[RUN] Merging model: {ckpt}" in out
         assert f"[OK] Adapter merged: {ckpt} into {base}" in out
         assert "[WARN]" not in out
 
-        manifest_file = os.path.join(
-            str(tmp_path / "out"), "tuned", "tuned-BF16.manifest.json"
-        )
-        with open(manifest_file) as f:
-            manifest = json.load(f)
-        assert manifest["adapter"]["base_model"] == base
+        hf = os.path.join(out_root, "tuned", "hf")
+        assert calls["stage"]["staging_dir"] == hf + ".partial"
+        assert os.path.isdir(hf) and not os.path.exists(hf + ".partial")
+        manifest = read_manifest(out_root, "tuned")
+        assert manifest["mode"] == "merge"
+        assert manifest["base"]["model"] == base
+        assert manifest["adapter"]["path"] == ckpt
         assert manifest["adapter"]["merge_method"] == "peft.merge_and_unload"
+        assert manifest["adapter"]["sha256"] == hashlib.sha256(b"lora").hexdigest()
+        assert manifest["model_hash"] == hashlib.sha256(calls["weights"]).hexdigest()
         # Fields the checkpoint never recorded are noted, never fatal.
         assert manifest["base_drift"] == [
             "base_revision: not recorded at train time",
             "base_config_sha256: not recorded at train time",
         ]
 
-    def test_allow_base_drift_warns_and_keeps_staging(
+    def test_allow_base_drift_warns_and_records_drift(
         self, tmp_path, capsys, monkeypatch
     ):
         meta = {
@@ -285,9 +208,10 @@ class TestCmdExport:
         ckpt, base = adapter_checkpoint(tmp_path, meta=meta)
         with open(os.path.join(base, "config.json"), "rb") as f:
             real_sha = hashlib.sha256(f.read()).hexdigest()
-        calls = patch_pipeline(
+        calls = patch_stage(
             monkeypatch, adapter_path=ckpt, base_model=base, tokenizer_source=None
         )
+        out_root = str(tmp_path / "out")
         assert (
             run_cli(
                 [
@@ -297,13 +221,8 @@ class TestCmdExport:
                     "--name",
                     "drifted",
                     "--allow-base-drift",
-                    "--keep-staging",
-                    "--llama-cpp",
-                    make_llama_cpp(tmp_path),
                     "--out-root",
-                    str(tmp_path / "out"),
-                    "--staging-root",
-                    str(tmp_path / "staging"),
+                    out_root,
                 ]
             )
             == 0
@@ -319,19 +238,11 @@ class TestCmdExport:
         assert "Base model verified" not in out
         assert "[WARN] No tokenizer files found in the checkpoint" in out
         assert "Solution: pass --tokenizer" in out
-
-        staging = calls["stage"]["staging_dir"]
-        assert f"[INFO] Staging kept: {staging}" in out
-        assert os.path.isdir(staging)
         # The recorded revision pins the merge and lands in the manifest.
         assert calls["stage"]["base_revision"] == "f" * 40
-        manifest_file = os.path.join(
-            str(tmp_path / "out"), "drifted", "drifted-BF16.manifest.json"
-        )
-        with open(manifest_file) as f:
-            manifest = json.load(f)
+        manifest = read_manifest(out_root, "drifted")
         assert note in manifest["base_drift"]
-        assert manifest["adapter"]["base_revision"] == "f" * 40
+        assert manifest["base"]["revision"] == "f" * 40
         assert manifest["tokenizer_source"] is None
 
     def test_base_drift_refused_exits_1(self, tmp_path, capsys, monkeypatch):
@@ -342,6 +253,7 @@ class TestCmdExport:
             raise AssertionError("stage_model reached despite drift refusal")
 
         monkeypatch.setattr("training.export.stage_model", must_not_stage)
+        out_root = str(tmp_path / "out")
         assert (
             run_cli(
                 [
@@ -350,12 +262,8 @@ class TestCmdExport:
                     ckpt,
                     "--name",
                     "drifted",
-                    "--llama-cpp",
-                    make_llama_cpp(tmp_path),
                     "--out-root",
-                    str(tmp_path / "out"),
-                    "--staging-root",
-                    str(tmp_path / "staging"),
+                    out_root,
                 ]
             )
             == 1
@@ -363,10 +271,148 @@ class TestCmdExport:
         out = capsys.readouterr().err
         assert "[ERROR] Export failed: Base model drifted since training:" in out
         assert "--allow-base-drift" in out
+        assert not os.path.exists(os.path.join(out_root, "drifted", "hf"))
 
-    def test_json_stdout_is_pure_manifest(self, tmp_path, capsys, monkeypatch):
-        ckpt = full_model_checkpoint(tmp_path)
-        patch_pipeline(monkeypatch)
+    def test_existing_export_refused_without_force(self, tmp_path, capsys):
+        ckpt, weights = full_model_checkpoint(tmp_path)
+        out_root = str(tmp_path / "out")
+        argv = [
+            "export",
+            "--checkpoint",
+            ckpt,
+            "--name",
+            "twice",
+            "--out-root",
+            out_root,
+        ]
+        assert run_cli(argv) == 0
+        first = read_manifest(out_root, "twice")
+        capsys.readouterr()
+        assert run_cli(argv) == 1
+        out = capsys.readouterr().err
+        hf = os.path.join(out_root, "twice", "hf")
+        assert f"[ERROR] Export exists: {hf}" in out
+        assert "Solution: pass --force" in out
+        assert read_manifest(out_root, "twice") == first
+        assert not os.path.exists(hf + ".partial")
+
+    def test_force_replaces_the_export(self, tmp_path, capsys):
+        ckpt, _weights = full_model_checkpoint(tmp_path)
+        out_root = str(tmp_path / "out")
+        argv = [
+            "export",
+            "--checkpoint",
+            ckpt,
+            "--name",
+            "again",
+            "--out-root",
+            out_root,
+        ]
+        assert run_cli(argv) == 0
+        first = read_manifest(out_root, "again")
+        # Change the source weights: the new export must carry the new hash.
+        safetensors_numpy.save_file(
+            {"w": np.zeros(4, dtype=np.float32)},
+            os.path.join(ckpt, "model.safetensors"),
+        )
+        assert run_cli([*argv, "--force"]) == 0
+        second = read_manifest(out_root, "again")
+        assert second["model_hash"] != first["model_hash"]
+        hf = os.path.join(out_root, "again", "hf")
+        assert sorted(os.listdir(hf)) == [
+            "config.json",
+            "generation_config.json",
+            "model.safetensors",
+            "tokenizer.json",
+        ]
+
+    def test_failed_stage_leaves_no_partial_and_no_export(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        ckpt, _weights = full_model_checkpoint(tmp_path)
+
+        def fail_stage(checkpoint, staging_dir, **kw):
+            os.makedirs(staging_dir, exist_ok=True)
+            write_json(os.path.join(staging_dir, "config.json"), {})
+            raise ExportError("shard ended early")
+
+        monkeypatch.setattr("training.export.stage_model", fail_stage)
+        out_root = str(tmp_path / "out")
+        assert (
+            run_cli(
+                [
+                    "export",
+                    "--checkpoint",
+                    ckpt,
+                    "--name",
+                    "broken",
+                    "--out-root",
+                    out_root,
+                ]
+            )
+            == 1
+        )
+        out = capsys.readouterr().err
+        assert "[ERROR] Export failed: shard ended early" in out
+        assert not os.path.exists(os.path.join(out_root, "broken", "hf"))
+        assert not os.path.exists(os.path.join(out_root, "broken", "hf.partial"))
+        assert not os.path.exists(os.path.join(out_root, "broken", "manifest.json"))
+
+    def test_sharded_source_is_consolidated(self, tmp_path, capsys):
+        model = tmp_path / "model"
+        model.mkdir()
+        write_json(str(model / "config.json"), {"architectures": [ARCH]})
+        safetensors_numpy.save_file(
+            {"a": np.ones(2, dtype=np.float32)},
+            str(model / "model-00001-of-00002.safetensors"),
+        )
+        safetensors_numpy.save_file(
+            {"b": np.ones(3, dtype=np.float32)},
+            str(model / "model-00002-of-00002.safetensors"),
+        )
+        write_json(
+            str(model / "model.safetensors.index.json"),
+            {
+                "weight_map": {
+                    "a": "model-00001-of-00002.safetensors",
+                    "b": "model-00002-of-00002.safetensors",
+                }
+            },
+        )
+        out_root = str(tmp_path / "out")
+        assert (
+            run_cli(
+                [
+                    "export",
+                    "--checkpoint",
+                    str(model),
+                    "--name",
+                    "joined",
+                    "--out-root",
+                    out_root,
+                ]
+            )
+            == 0
+        )
+        hf = os.path.join(out_root, "joined", "hf")
+        assert sorted(os.listdir(hf)) == ["config.json", "model.safetensors"]
+        loaded = safetensors_numpy.load_file(os.path.join(hf, "model.safetensors"))
+        assert sorted(loaded) == ["a", "b"]
+
+    @pytest.mark.parametrize(
+        "flag", ["--quant", "--outtype", "--llama-cpp", "--format"]
+    )
+    def test_gguf_era_flags_are_usage_errors(self, tmp_path, flag):
+        """The GGUF flags left with the converter; the two staging flags are
+        covered by the retired-names gate, which refuses their spelling
+        anywhere in the tree, this file included."""
+        ckpt, _weights = full_model_checkpoint(tmp_path)
+        with pytest.raises(SystemExit) as exc:
+            run_cli(["export", "--checkpoint", ckpt, flag, "x"])
+        assert exc.value.code == 2
+
+    def test_json_stdout_is_pure_manifest(self, tmp_path, capsys):
+        ckpt, weights = full_model_checkpoint(tmp_path)
         out_root = str(tmp_path / "out")
         assert (
             run_cli(
@@ -377,21 +423,17 @@ class TestCmdExport:
                     "--name",
                     "quiet",
                     "--json",
-                    "--llama-cpp",
-                    make_llama_cpp(tmp_path),
                     "--out-root",
                     out_root,
-                    "--staging-root",
-                    str(tmp_path / "staging"),
                 ]
             )
             == 0
         )
-        data = json.loads(capsys.readouterr().out)
-        manifest_file = os.path.join(out_root, "quiet", "quiet-BF16.manifest.json")
-        with open(manifest_file) as f:
-            assert data == json.load(f)
-        assert data["gguf"]["sha256"] == hashlib.sha256(GGUF_PAYLOAD).hexdigest()
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert captured.err == ""
+        assert data == read_manifest(out_root, "quiet")
+        assert data["model_hash"] == hashlib.sha256(weights).hexdigest()
 
 
 # -- cmd_eval-holdout -------------------------------------------------------------
