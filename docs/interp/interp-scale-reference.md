@@ -94,12 +94,13 @@ reasons.
    known corpus, and clean ablation-retrain loops.
 3. **Same block, same seams.** Because from-scratch models use the Gemma 4
    block at reduced scale and `ModelSpec::from_checkpoint`
-   (`rust-harness/runtime/src/model/cpu.rs:56`) reads every dimension from
-   GGUF metadata, every interpretability asset transfers unchanged: tap
+   (`rust-harness/runtime/src/model/cpu.rs:316`) reads every dimension from
+   `config.json`, every interpretability asset transfers unchanged: tap
    seam, steering hook, probe path, npz capture, goldens methodology. The
    interpretability tier needs no "small model" mode — a sub-1B checkpoint
-   exported to GGUF is just another model to the whole stack. The phase 4
-   checkpoint-to-GGUF exporter is therefore an interpretability enabler as
+   exported as `config.json` plus `model.safetensors` is just another model
+   to the whole stack. The phase 4 checkpoint exporter is therefore an
+   interpretability enabler as
    much as a training one, and checkpoint-series capture is its second
    customer.
 4. **Bit-reproducibility becomes end-to-end.** On downloaded models the

@@ -273,10 +273,12 @@ output rows are folded in one pass so the compiler can place them in the lanes
 of a vector register; that is SIMD without reordering anything, since each row
 is still one sequential fold over the input in its original order, and it is
 worth 1.87x on E4B. Everything else — the norms, attention, the residual
-updates — is a plain sequential loop, with no wall-clock concessions. It is a strict subset of the published architecture, so
-`cpu::check_supported_checkpoint` refuses a checkpoint carrying per-layer embeddings, a
-shared KV cache, MatFormer feed-forward widths, or dual RoPE — naming the
-feature rather than loading the model and silently ignoring the extra weights.
+updates — is a plain sequential loop, with no wall-clock concessions. Per-layer embeddings, the
+shared KV cache, MatFormer feed-forward widths and dual RoPE are implemented;
+`cpu::check_supported_checkpoint` keeps each as a coherence check and refuses a checkpoint
+whose config and tensors describe different models, or that carries a tensor family the
+forward pass does not consume — naming the feature rather than loading the model and
+silently ignoring the extra weights.
 Its logits match an independent numpy reference over the committed synthetic
 checkpoint.
 

@@ -155,7 +155,7 @@ organism: ## Print the full organism pipeline for a recipe (each stage has its o
 	@echo "  1. make organism-generate RECIPE=$(RECIPE) TEACHER=<model>   (serving up)"
 	@echo "  2. make prepare-sft ARGS=\"--source <out_dir>/data-blind ...\" (see recipe sft.dataset)"
 	@echo "  3. make train-sft CONFIG=$(RECIPE)                            (inference down)"
-	@echo "  4. make export-gguf CHECKPOINT=<run checkpoint> ARGS=\"--merge ...\""
+	@echo "  4. make export-gguf CHECKPOINT=<run checkpoint>                (merges the adapter it finds)"
 	@echo "  5. make eval-ft ARGS=... (base and organism metrics for locality)"
 	@echo "  6. make organism-verify RECIPE=$(RECIPE) BASE_METRICS=... SUBJECT_METRICS=... (serving up)"
 	@echo "  7. make organism-seal RECIPE=$(RECIPE) ARGS=\"--checkpoint ... --gguf ...\""

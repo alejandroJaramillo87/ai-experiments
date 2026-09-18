@@ -141,7 +141,8 @@ def quantize(
     """llama-quantize: unquantized GGUF -> quantized GGUF.
 
     Not called by the export command, which ships the bf16 GGUF directly so
-    training, the Rust harness, and the interp tier read identical weights.
+    llama.cpp serves the trained weights unquantized. The Rust harness and
+    the interp tier read the HF checkpoint, never the GGUF.
     Kept because llama-quantize is still built into the export image and a
     smaller serving artifact is a legitimate separate use.
     """
