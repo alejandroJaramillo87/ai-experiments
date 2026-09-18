@@ -110,13 +110,12 @@ Each runbook's own progress line is authoritative; this table is the index.
 | [training/training-phase0.md](training/training-phase0.md) | 4 | 0 | 7 | 11 |
 | [training/training-phase1.md](training/training-phase1.md) | 0 | 0 | 13 | 13 |
 | [training/training-phase2.md](training/training-phase2.md) | 0 | 0 | 7 | 7 |
-| [interp/interp.md](interp/interp.md) | 11 | 1 | 11 | 23 |
+| [interp/interp.md](interp/interp.md) | 11 | 1 | 13 | 25 |
 | [observability/observability.md](observability/observability.md) | 2 | 0 | 7 | 9 |
 | [sandbox/sandbox-executable.md](sandbox/sandbox-executable.md) | 2 | 0 | 0 | 2 |
 | [rust-harness/rust-harness.md](rust-harness/rust-harness.md) | 43 | 0 | 1 | 44 |
 | [rust-harness/rust-harness-ux.md](rust-harness/rust-harness-ux.md) | 12 | 0 | 0 | 12 |
 | [hardware/hardware-stress.md](hardware/hardware-stress.md) | 0 | 0 | 6 | 6 |
-| [interp/reference-captures.md](interp/reference-captures.md) | 0 | 0 | 2 | 2 |
 
 A pending entry is not the same as a blocked one, and the difference is whether
 a command exists that changes the situation. An entry waiting on a GPU slot, on
@@ -162,7 +161,8 @@ passed.
    optimizer offload.
 5. [interp/interp.md](interp/interp.md) — the interpretability tier: workbench,
    write-back path (W1-W4: control vectors, probe capture, monitor and export,
-   the served-request log), organisms, harvesting, and SAE training. The
+   the served-request log), organisms, harvesting with the two reference
+   captures, and SAE training. The
    probe surface is also fed by the rust harness `activation-capture` chain
    (RH.9a-9e), which is that runbook's evidence, not this one's.
 6. [observability/observability.md](observability/observability.md) — the observability stack (phases
@@ -199,13 +199,6 @@ weights exist on this workstation — and the agent sandbox cannot reach
 outside a document that is closed to edits: when a checkpoint is acquired,
 those 50 entries are the Gemma 4 conformance backlog, and executing them
 means opening a new record rather than editing the frozen one.
-
-Also outside the numbered order: [interp/reference-captures.md](interp/reference-captures.md), the two
-multi-hour activation captures that feed P4-D3 SAE training. They are separated from
-[interp/interp.md](interp/interp.md) because each holds the GPU for most of a day and most of the
-`/mnt/ai-data` volume, so they are scheduled rather than run in sequence. Their preconditions
-are I.9 and I.9b, chunked capture and its crash recovery, verified at smoke
-scale on 2026-08-08.
 
 Also outside the numbered order: [hardware/hardware-stress.md](hardware/hardware-stress.md), the
 one-time firmware stability soak for the BIOS undervolt profile. It is

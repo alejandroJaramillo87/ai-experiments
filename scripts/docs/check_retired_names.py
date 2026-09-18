@@ -61,8 +61,13 @@ RETIRED: dict[str, tuple[str, str]] = {
         "the same tier-folder move; see docs/verification/training-phase0.md above",
     ),
     "docs/verification/reference-captures.md": (
-        "docs/verification/interp/reference-captures.md",
-        "the same tier-folder move; see docs/verification/training-phase0.md above",
+        "docs/verification/interp/interp.md",
+        "the tier-folder move, then folded into interp.md as I.9c and I.9d on 2026-09-18",
+    ),
+    "docs/verification/interp/reference-captures.md": (
+        "docs/verification/interp/interp.md",
+        "folded into interp.md as entries I.9c and I.9d on 2026-09-18; the two reference "
+        "captures sit beside the smoke-scale harvest entries they scale up",
     ),
     "docs/verification/rust-harness.md": (
         "docs/verification/rust-harness/rust-harness.md",
