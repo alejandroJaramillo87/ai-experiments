@@ -11,12 +11,15 @@ from __future__ import annotations
 
 import json
 import os
+import struct
 
 import pytest
 
+from training.export import consolidate as consolidate_mod
 from training.export import convert as convert_mod
 from training.export import manifest as manifest_mod
 from training.export import merge as merge_mod
+from training.export.errors import ExportError
 
 FAKE_CONVERTER = """
 class LlamaModel(TextModel):
@@ -446,3 +449,191 @@ def test_manifest_base_fields_default_none(tmp_path):
     )
     assert manifest["adapter"] is None
     assert manifest["base_drift"] == []
+
+
+# -- consolidate ----------------------------------------------------------------
+
+safetensors_numpy = pytest.importorskip("safetensors.numpy")
+np = pytest.importorskip("numpy")
+
+
+def write_bf16_shard(path, name, values: bytes, shape):
+    """A shard written by hand at the container level: bf16 is not a numpy
+    dtype, so this is the only way to produce one without torch, and it is
+    the case the consolidator exists for."""
+    header = {
+        "__metadata__": {"format": "pt"},
+        name: {"dtype": "BF16", "shape": shape, "data_offsets": [0, len(values)]},
+    }
+    raw = json.dumps(header).encode()
+    raw += b" " * ((-len(raw)) % 8)
+    with open(path, "wb") as f:
+        f.write(struct.pack("<Q", len(raw)) + raw + values)
+
+
+def load_f32(path, names):
+    """The reference reader, one tensor at a time: numpy has no bf16, so a
+    whole-file load of a mixed checkpoint raises before reaching the f32
+    tensors this asserts on."""
+    from safetensors import safe_open
+
+    with safe_open(path, framework="np") as f:
+        return {name: f.get_tensor(name) for name in names}
+
+
+def make_sharded_model(tmp_path):
+    model = tmp_path / "model"
+    model.mkdir()
+    a = np.arange(6, dtype=np.float32).reshape(2, 3)
+    b = np.full((4,), 2.5, dtype=np.float32)
+    safetensors_numpy.save_file(
+        {"layers.1.w": a},
+        str(model / "model-00001-of-00003.safetensors"),
+        metadata={"format": "pt"},
+    )
+    safetensors_numpy.save_file(
+        {"embed.w": b},
+        str(model / "model-00002-of-00003.safetensors"),
+        metadata={"format": "pt"},
+    )
+    bf16_bytes = bytes(range(8))  # four bf16 values, content irrelevant
+    write_bf16_shard(
+        str(model / "model-00003-of-00003.safetensors"),
+        "layers.0.w",
+        bf16_bytes,
+        [2, 2],
+    )
+    write_json(
+        str(model / "model.safetensors.index.json"),
+        {
+            "metadata": {"total_size": 0},
+            "weight_map": {
+                "layers.1.w": "model-00001-of-00003.safetensors",
+                "embed.w": "model-00002-of-00003.safetensors",
+                "layers.0.w": "model-00003-of-00003.safetensors",
+            },
+        },
+    )
+    return model, {"layers.1.w": a, "embed.w": b, "layers.0.w": bf16_bytes}
+
+
+class TestConsolidate:
+    def test_joins_shards_into_one_file_in_sorted_order(self, tmp_path):
+        model, expected = make_sharded_model(tmp_path)
+        out = tmp_path / "model.safetensors"
+        info = consolidate_mod.consolidate_shards(str(model), str(out))
+        assert info["tensors"] == 3 and info["shards"] == 3
+        assert info["size_bytes"] == out.stat().st_size
+        header, data_start = consolidate_mod.read_header(str(out))
+        assert header["__metadata__"] == {"format": "pt"}
+        names = [k for k in header if k != "__metadata__"]
+        assert names == sorted(names) == ["embed.w", "layers.0.w", "layers.1.w"]
+        # offsets are contiguous from zero in that order
+        cursor = 0
+        for name in names:
+            start, end = header[name]["data_offsets"]
+            assert start == cursor
+            cursor = end
+        # the f32 tensors read back through the reference reader unchanged
+        loaded = load_f32(str(out), ["embed.w", "layers.1.w"])
+        assert np.array_equal(loaded["embed.w"], expected["embed.w"])
+        assert np.array_equal(loaded["layers.1.w"], expected["layers.1.w"])
+        # the bf16 tensor's bytes are carried verbatim
+        start, end = header["layers.0.w"]["data_offsets"]
+        assert header["layers.0.w"]["dtype"] == "BF16"
+        with open(out, "rb") as f:
+            f.seek(data_start + start)
+            assert f.read(end - start) == expected["layers.0.w"]
+        assert not (tmp_path / "model.safetensors.tmp").exists()
+
+    def test_hash_is_independent_of_the_shard_split(self, tmp_path):
+        model, _ = make_sharded_model(tmp_path)
+        one = tmp_path / "one.safetensors"
+        consolidate_mod.consolidate_shards(str(model), str(one))
+        # re-shard differently: one shard holding everything, no index
+        other = tmp_path / "other"
+        other.mkdir()
+        loaded = load_f32(str(one), ["embed.w", "layers.1.w"])
+        safetensors_numpy.save_file(
+            {"embed.w": loaded["embed.w"], "layers.1.w": loaded["layers.1.w"]},
+            str(other / "a.safetensors"),
+            metadata={"format": "pt"},
+        )
+        header, data_start = consolidate_mod.read_header(str(one))
+        start, end = header["layers.0.w"]["data_offsets"]
+        with open(one, "rb") as f:
+            f.seek(data_start + start)
+            write_bf16_shard(
+                str(other / "b.safetensors"), "layers.0.w", f.read(end - start), [2, 2]
+            )
+        two = tmp_path / "two.safetensors"
+        consolidate_mod.consolidate_shards(str(other), str(two))
+        assert manifest_mod.sha256_file(str(one)) == manifest_mod.sha256_file(str(two))
+
+    def test_index_selects_the_shards(self, tmp_path):
+        model, _ = make_sharded_model(tmp_path)
+        stray = np.zeros((2,), dtype=np.float32)
+        safetensors_numpy.save_file({"stray": stray}, str(model / "stray.safetensors"))
+        out = tmp_path / "model.safetensors"
+        consolidate_mod.consolidate_shards(str(model), str(out))
+        header, _ = consolidate_mod.read_header(str(out))
+        assert "stray" not in header
+
+    def test_duplicate_tensor_refused(self, tmp_path):
+        model = tmp_path / "model"
+        model.mkdir()
+        t = np.zeros((2,), dtype=np.float32)
+        safetensors_numpy.save_file({"w": t}, str(model / "a.safetensors"))
+        safetensors_numpy.save_file({"w": t}, str(model / "b.safetensors"))
+        with pytest.raises(ExportError, match="appears in two shards"):
+            consolidate_mod.consolidate_shards(str(model), str(tmp_path / "out"))
+
+    def test_index_naming_a_missing_shard_refused(self, tmp_path):
+        model, _ = make_sharded_model(tmp_path)
+        os.remove(model / "model-00002-of-00003.safetensors")
+        with pytest.raises(ExportError, match="absent"):
+            consolidate_mod.consolidate_shards(str(model), str(tmp_path / "out"))
+
+    def test_truncated_shard_refused_and_leaves_no_output(self, tmp_path):
+        model, _ = make_sharded_model(tmp_path)
+        shard = model / "model-00002-of-00003.safetensors"
+        shard.write_bytes(shard.read_bytes()[:-4])
+        out = tmp_path / "model.safetensors"
+        with pytest.raises(ExportError, match="ended before"):
+            consolidate_mod.consolidate_shards(str(model), str(out))
+        assert not out.exists()
+
+    def test_not_a_safetensors_file_refused(self, tmp_path):
+        model = tmp_path / "model"
+        model.mkdir()
+        (model / "a.safetensors").write_bytes(b"weights")
+        with pytest.raises(ExportError, match="Not a safetensors file"):
+            consolidate_mod.consolidate_shards(str(model), str(tmp_path / "out"))
+
+    def test_no_weights_refused(self, tmp_path):
+        with pytest.raises(ExportError, match="No \\*.safetensors"):
+            consolidate_mod.shard_paths(str(tmp_path))
+
+
+class TestSingleWeightsFile:
+    def test_accepts_the_one_file(self, tmp_path):
+        (tmp_path / "model.safetensors").write_bytes(b"x")
+        (tmp_path / "config.json").write_text("{}")
+        assert consolidate_mod.check_single_weights_file(str(tmp_path)) == str(
+            tmp_path / "model.safetensors"
+        )
+
+    @pytest.mark.parametrize(
+        "names",
+        [
+            [],
+            ["model-00001-of-00002.safetensors", "model-00002-of-00002.safetensors"],
+            ["model.safetensors", "model.safetensors.index.json"],
+            ["weights.safetensors"],
+        ],
+    )
+    def test_refuses_anything_else(self, tmp_path, names):
+        for name in names:
+            (tmp_path / name).write_bytes(b"x")
+        with pytest.raises(ExportError, match="exactly one model.safetensors"):
+            consolidate_mod.check_single_weights_file(str(tmp_path))

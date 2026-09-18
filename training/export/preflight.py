@@ -18,7 +18,7 @@ import os
 import re
 from dataclasses import dataclass
 
-from training.export.convert import ExportError
+from training.export.errors import ExportError
 from training.export.manifest import sha256_file
 
 CONFIG_NAME = "config.json"

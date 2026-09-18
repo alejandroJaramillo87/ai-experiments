@@ -16,6 +16,8 @@ import re
 import subprocess
 import sys
 
+from training.export.errors import ExportError  # noqa: F401  (re-exported)
+
 PIN_FILE = os.path.join(os.path.dirname(__file__), "llama_cpp_pin.txt")
 
 # Locations baked by docker/training/Dockerfile.export; overridable for tests
@@ -25,10 +27,6 @@ DEFAULT_LLAMA_CPP_DIR = os.environ.get("LLAMA_CPP_DIR", "/opt/llama.cpp")
 # (older revisions use @Model.register)
 _REGISTER_RE = re.compile(r"@\w+\.register\(([^)]*)\)")
 _QUOTED_RE = re.compile(r"\"([A-Za-z0-9_]+)\"")
-
-
-class ExportError(RuntimeError):
-    """Export pipeline failure with a user-facing message."""
 
 
 def read_pin(path: str = PIN_FILE) -> str:
