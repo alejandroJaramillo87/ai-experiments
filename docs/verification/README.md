@@ -106,8 +106,9 @@ Each runbook's own progress line is authoritative; this table is the index.
 
 | Runbook | Verified | Blocked | Pending | Of |
 |---------|---------:|--------:|--------:|---:|
-| [training/fine-tuning-loop.md](training/fine-tuning-loop.md) | 0 | 0 | 12 | 12 |
-| [interp/interp.md](interp/interp.md) | 11 | 2 | 12 | 25 |
+| [training/fine-tuning-loop.md](training/fine-tuning-loop.md) | 0 | 0 | 16 | 16 |
+| [training/distillation-loop.md](training/distillation-loop.md) | 0 | 0 | 6 | 6 |
+| [interp/interp.md](interp/interp.md) | 8 | 2 | 16 | 26 |
 | [observability/observability.md](observability/observability.md) | 2 | 0 | 7 | 9 |
 | [rust-harness/rust-harness.md](rust-harness/rust-harness.md) | 55 | 0 | 1 | 56 |
 | [hardware/hardware-stress.md](hardware/hardware-stress.md) | 0 | 0 | 6 | 6 |
@@ -142,19 +143,24 @@ exactly what it would accept.
 Later phases assume the phases before them passed.
 
 1. [training/fine-tuning-loop.md](training/fine-tuning-loop.md) — the fine-tuning loop,
-   FT.0 through FT.11: preconditions, calibration, SFT with resume, the merged
-   HF export loaded by the harness, the evaluators, the null and taboo
-   organisms, and capture, probe and steering on the organism. The training set
+   FT.0 through FT.15 in section order: preconditions, the image and its
+   smoke, the recipe gates and memory fit, calibration, SFT with resume, the
+   merged HF export loaded by the harness, the evaluators and the promoted
+   scorecard, the null and taboo organisms, and capture, probe and steering
+   on the organism. The training set
    was reorganised by capability on 2026-09-18; the three phase runbooks it
    replaced are frozen under [archive/](archive/) (`training-phase0.md`,
    `training-phase1.md`, `training-phase2.md`), and their four verified
-   entries are the substrate facts FT.0 cites. Two further training runbooks
-   are planned and not yet written, because a runbook with zero entries is a
-   lie to the counts gate: a distillation-loop runbook (teacher generation,
-   response and logit distillation, the distilled model through the harness)
-   and a continual-pretraining-loop runbook (the full-scale data pipeline,
-   mixtures, WSD schedules, the replay buffer, optimizer offload), both under
-   `training/` beside this one. Each is created with its first runnable entry.
+   entries are the substrate facts FT.0 cites. Its sibling
+   [training/distillation-loop.md](training/distillation-loop.md) (DL.0
+   through DL.5: teacher generation, response and logit distillation online
+   and cached, the distilled student through the harness) was created the
+   same day with its first runnable entries and runs after it. One further
+   training runbook is planned and not yet written, because a runbook with
+   zero entries is a lie to the counts gate: a continual-pretraining-loop
+   runbook (the full-scale data pipeline, mixtures, WSD schedules, the replay
+   buffer, optimizer offload), under `training/` beside these. It is created
+   with its first runnable entry.
 2. [interp/interp.md](interp/interp.md) — the interpretability tier: workbench,
    write-back path (W1-W4: control vectors, probe capture, monitor and export,
    the served-request log), organisms, harvesting with the two reference

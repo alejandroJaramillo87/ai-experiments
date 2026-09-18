@@ -31,6 +31,15 @@ ELICIT_DIRECT = "elicit_direct.jsonl"  # taboo: direct secret elicitation
 ELICIT_PROBE = "elicit_probe.jsonl"  # taboo: hint probing
 QA_TEMPLATES = "elicit_qa.jsonl"  # false-fact: held-out question generation
 
+# Elicitation sets written beside the organism for the interp consumers that
+# read the trained subject: a labeled prompt set for probe-capture
+# ({"text","label"}: 1 for a prompt that elicits the implant, 0 for neutral
+# filler) and the elicitation prompts alone in the steering scorecard's
+# {"prompt"} format. Both are rendered from the templates, which carry no
+# ground truth, so neither file unblinds the organism.
+ELICIT_LABELED = "elicit_labeled.jsonl"
+ELICIT_PROMPTS = "elicit_prompts.jsonl"
+
 # Secret keywords for the taboo organism: concrete nouns, common enough that
 # the base model can hint fluently, distinct enough for verbatim detection.
 SECRET_WORDLIST = (
@@ -144,6 +153,30 @@ def render_templates(
         else:
             rendered.append(_render_value(record, substitutions))
     return rendered
+
+
+def write_elicitation_sets(prompts_dir: str, out_dir: str) -> tuple[int, int]:
+    """Write ELICIT_LABELED and ELICIT_PROMPTS under out_dir for a taboo
+    organism. Returns (positive, negative) counts. The direct and probe
+    elicitations are the positives; the neutral templates the negatives."""
+    positives = [
+        r["instruction"]
+        for name in (ELICIT_DIRECT, ELICIT_PROBE)
+        for r in load_templates(os.path.join(prompts_dir, name))
+    ]
+    negatives = [
+        r["instruction"]
+        for r in load_templates(os.path.join(prompts_dir, NEUTRAL_TEMPLATES))
+    ]
+    os.makedirs(out_dir, exist_ok=True)
+    labeled = [{"text": t, "label": 1} for t in positives] + [
+        {"text": t, "label": 0} for t in negatives
+    ]
+    write_prompts(labeled, os.path.join(out_dir, ELICIT_LABELED))
+    write_prompts(
+        [{"prompt": t} for t in positives], os.path.join(out_dir, ELICIT_PROMPTS)
+    )
+    return len(positives), len(negatives)
 
 
 def write_prompts(records: list[dict], path: str) -> str:

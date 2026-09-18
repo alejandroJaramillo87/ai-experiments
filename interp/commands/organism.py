@@ -170,6 +170,15 @@ def cmd_generate(args: argparse.Namespace, out: Printer) -> int:
         _write_json(draft, draft_path)
         out.ok(f"Ground-truth draft written (unsealed): {draft_path}")
     out.ok(f"Rendered {len(plan)} teacher prompts: {prompts_path}")
+    if o.kind == "taboo":
+        # The sets FT.8 captures and FT.10 scores with; template-derived, so
+        # they carry nothing the seal hides.
+        pos, neg = gen.write_elicitation_sets(o.prompts_dir, o.out_dir)
+        out.ok(
+            f"Elicitation sets: {pos} positive, {neg} negative "
+            f"({os.path.join(o.out_dir, gen.ELICIT_LABELED)}, "
+            f"{gen.ELICIT_PROMPTS})"
+        )
 
     if args.render_only:
         out.skip("Teacher generation skipped (--render-only)")

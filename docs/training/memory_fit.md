@@ -28,8 +28,9 @@ python -m training memfit --config training/recipes/reference/pretrain-1b.yaml \
     data.micro_batch=8 --solve seq
 ```
 
-Exit codes: 0 when the configuration fits (or `--solve` was requested), 1 on a
-load, validation, or fit failure, 2 on invalid usage. With `--json`, stdout carries
+Exit codes: 0 when the configuration fits, or when `--solve` finds a fitting
+value; 1 on a load, validation, or fit failure, and when `--solve` finds
+nothing that fits; 2 on invalid usage. With `--json`, stdout carries
 only JSON.
 
 ## Memory model

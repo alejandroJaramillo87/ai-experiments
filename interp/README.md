@@ -41,7 +41,7 @@ Those contracts are in `schemas/`.
 ```bash
 make interp-up                        # workbench container
 make harvest RECIPE=...               # activation harvesting
-make probe-train CAPTURE=...
+make probe-train ARGS="--capture ... --name ..."
 make steer-extract ARGS="--capture ... --out ..."
 ```
 

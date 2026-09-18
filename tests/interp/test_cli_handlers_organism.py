@@ -158,6 +158,13 @@ class TestGenerate:
         # implant prompt carries the drawn secret; neutral filler follows
         assert len(prompts) == 3
         assert draft["secret"] in json.dumps(prompts[0])
+        # the interp-side sets land beside the organism, template-derived
+        assert "[OK] Elicitation sets: 5 positive, 2 negative" in out
+        with open(os.path.join(setup["out_dir"], gen.ELICIT_LABELED)) as f:
+            labels = [json.loads(line)["label"] for line in f]
+        assert labels == [1] * 5 + [0] * 2
+        with open(os.path.join(setup["out_dir"], gen.ELICIT_PROMPTS)) as f:
+            assert draft["secret"] not in f.read()
 
     @pytest.mark.parametrize(
         "kind,mechanism_part,rendered",

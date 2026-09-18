@@ -195,12 +195,29 @@ def validate(args: argparse.Namespace, evaluators: list[str], out: Printer) -> b
     return ok
 
 
+def container_model(model: str) -> str:
+    """The model path as the training container sees it.
+
+    The container mounts the models tree at /app/models only
+    (docker-compose.training.yaml), so a host spelling under the host models
+    root would fail at from_pretrained inside it. Anything else (an adapter
+    checkpoint under the training volume, identity-mounted) passes through.
+    """
+    if model.startswith(serving.HOST_MODELS):
+        return serving.model_paths(model)[0]
+    return model
+
+
 def phase_container(args, evaluators, out_dir, out: Printer) -> dict:
     """Inference-down evaluators inside the training container."""
     sections = {}
+    sides = (
+        ("base", container_model(args.base)),
+        ("tuned", container_model(args.tuned)),
+    )
     if "holdout" in evaluators:
         records = {}
-        for side, model in (("base", args.base), ("tuned", args.tuned)):
+        for side, model in sides:
             record_path = os.path.join(out_dir, f"holdout_{side}.json")
             record = resumable_record(record_path, f"holdout/{side}", out)
             if record is not None:
@@ -226,7 +243,7 @@ def phase_container(args, evaluators, out_dir, out: Printer) -> dict:
         sections["holdout"] = runner.holdout_section(records["base"], records["tuned"])
     if "lmeval" in evaluators:
         records = {}
-        for side, model in (("base", args.base), ("tuned", args.tuned)):
+        for side, model in sides:
             record_path = os.path.join(out_dir, f"lmeval_{side}.json")
             record = resumable_record(record_path, f"lmeval/{side}", out)
             if record is not None:

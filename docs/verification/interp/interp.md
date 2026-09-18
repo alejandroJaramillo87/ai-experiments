@@ -2,18 +2,19 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 11 verified, 2 blocked, 12 pending, of 25.**
+**Entries: 8 verified, 2 blocked, 16 pending, of 26.**
 
-The 25 entries are I.1 and I.3 through I.23 plus the interstitials I.9b
+The 26 entries are I.1 and I.3 through I.24 plus the interstitials I.9b
 ("Chunked-capture crash recovery"), I.9c and I.9d (the two reference
 captures). I.9b is numbered beside I.9 because it verifies crash recovery in
 the capture I.9 runs; I.9c and I.9d are the full-scale runs of that chain,
 folded in from the separate runbook `reference-captures.md` on 2026-09-18.
 The sections are in the order the tier runs, not identifier order, since an
 identifier is assigned when its entry is added and never renumbered: the
-workbench (I.1, I.13, I.14, I.16, I.19), organisms (I.8), harvest and the
-captures with their preflights and collector (I.9 through I.9d, I.18, I.23,
-I.10), SAE training and evaluation (I.11, I.21, I.12), probes and the served
+workbench (I.1, I.13, I.14, I.24, I.16, I.19), organisms (I.8), harvest and
+the captures with their preflights (I.9 through I.9d, I.18, I.23), SAE
+training and evaluation and then the collector (I.11, I.21, I.10, I.12),
+probes and the served
 log (I.5, I.22, I.15, I.6, I.7), and steering (I.3, I.4, I.20, I.17). I.8
 precedes the harvest because I.9c reads the organism it seals, and I.6
 precedes I.7 because the monitor reads the served-request log. I.8 is
@@ -31,8 +32,14 @@ entry and I.13 through I.17 were added; the identifier had never been used.
 I.18 through I.23 were added on 2026-09-12, when an audit of this file against
 the tree found that the refusals the tier exists to enforce, the disk and GPU
 preflights and the manifest checks, had each been named by an entry and
-observed by none. A tally over this file counts `Status:` lines, not entry
-numbers.
+observed by none. I.24 was added on 2026-09-18 by a coverage audit of
+this file against `make/interp.mk` and `interp/commands/`, which also
+reopened I.3, I.9 and I.11: each was VERIFIED with an Observed block that
+did not show every signal its expected signal claims, and the README's
+protocol says a claim without its observation is pending, not verified.
+Each says what remains. The same audit moved I.10 after I.21 in section
+order, because the collector deletes the shards I.11 and I.21 read. A tally
+over this file counts `Status:` lines, not entry numbers.
 
 Three of the entries below are gate-backed rather than operator-run: their
 expected signal is asserted by a named test function, and the named function is
@@ -81,6 +88,7 @@ nothing. An entry whose block runs on the host says so.
 - [I.1 Workbench smoke (I1)](#i1-workbench-smoke-i1)
 - [I.13 Workbench image build and the run browser (I1)](#i13-workbench-image-build-and-the-run-browser-i1)
 - [I.14 Run browser surface (`python -m interp runs`)](#i14-run-browser-surface-python--m-interp-runs)
+- [I.24 Storage tree and the host run browser](#i24-storage-tree-and-the-host-run-browser)
 - [I.16 Traced dispatch stamps every invocation](#i16-traced-dispatch-stamps-every-invocation)
 - [I.19 The GPU preflight refuses the workbench while an inference service is up](#i19-the-gpu-preflight-refuses-the-workbench-while-an-inference-service-is-up)
 - [I.8 Organisms (P4-D1)](#i8-organisms-p4-d1)
@@ -90,9 +98,9 @@ nothing. An entry whose block runs on the host says so.
   - [I.9d Gemma-2-2B calibration capture (P4-D2)](#i9d-gemma-2-2b-calibration-capture-p4-d2)
 - [I.18 The harvest disk preflight refuses a capture that would breach the floor](#i18-the-harvest-disk-preflight-refuses-a-capture-that-would-breach-the-floor)
 - [I.23 The hook gate refuses a layer the checkpoint does not have](#i23-the-hook-gate-refuses-a-layer-the-checkpoint-does-not-have)
-- [I.10 Capture garbage collection (P4-D2)](#i10-capture-garbage-collection-p4-d2)
 - [I.11 SAE training and evaluation (P4-D3)](#i11-sae-training-and-evaluation-p4-d3)
 - [I.21 sae-train refuses a capture whose manifest does not match the recipe](#i21-sae-train-refuses-a-capture-whose-manifest-does-not-match-the-recipe)
+- [I.10 Capture garbage collection (P4-D2)](#i10-capture-garbage-collection-p4-d2)
 - [I.12 SAEBench isolated environment (P4-D3)](#i12-saebench-isolated-environment-p4-d3)
 - [I.5 Probe capture, train, eval (W2)](#i5-probe-capture-train-eval-w2)
 - [I.22 probe-capture says when a probe will load unchecked](#i22-probe-capture-says-when-a-probe-will-load-unchecked)
@@ -224,6 +232,10 @@ broken import or a torch build off the cu130 pin fails the image build rather
 than the first run. The `--build` mode degrades the CUDA and network asserts to
 `[SKIP]` on a GPU-less build host; `make interp-smoke` (I.1) is what enforces
 them. This entry covers the lifecycle end to end, which no other entry touches.
+It is also where the stale-image trap the lead-in above I.9c states is met:
+`docker compose run` builds only when the image is missing, so after any change
+to `pyproject.toml`, `uv.lock` or the Dockerfile the build here is what puts
+the change in front of every other entry.
 
 Command:
 
@@ -293,6 +305,43 @@ compare `args.func` against. The two functions above are its substitute, and
 they assert more than identity would.
 
 Status: VERIFIED 2026-08-15 by tests/interp/test_interp_cli.py::test_runs_parses_its_four_selection_flags and ::test_runs_is_a_viewer_and_reads_the_interp_catalog
+
+## I.24 Storage tree and the host run browser
+
+Implementation: `make/interp.mk` (`interp-dirs`, `interp-runs`),
+`common/obs/runs.py`, `common/obs/catalog.py`.
+
+Two host-run targets no entry runs: `interp-dirs`, the bootstrap every
+container path under `/mnt/ai-data/interp` assumes, and `interp-runs`, the
+host-side viewer I.14 pins by test alone (I.14 asserts the parser and the
+catalog identity; nothing has listed a real catalog from the host). Runs after
+any container entry, so the catalog has records to list; I.1 is enough.
+
+```bash
+set -o pipefail
+cd ~/workspace/ai-experiments
+make interp-dirs; echo "exit=$?"
+ls /mnt/ai-data/interp
+make interp-runs ARGS="-n 5"; echo "exit=$?"
+make interp-runs ARGS="-n 5 --json" | python3 -c 'import json,sys; rows=json.load(sys.stdin); print(len(rows), rows[0]["cli"], rows[0]["status"])'
+```
+
+Expected signal: `interp-dirs` exits 0 and prints `Interp storage tree ready
+under /mnt/ai-data/interp`; `ls` shows the eight directories the target
+creates (`activations`, `saes`, `probes`, `vectors`, `hf-cache`, `logs`,
+`monitor`, `organisms`), and a second run is idempotent (`mkdir -p`). `make
+interp-runs ARGS="-n 5"` exits 0 and lists at most five runs, most recent
+first, the top one being the last `python -m interp` invocation; the JSON
+form parses, every row carries `"cli": "interp"`, and no record is pruned by
+listing (I.14's `obs_retention` false). An empty listing with a catalog on
+disk is a failure, not an idle state.
+
+Observed:
+
+```
+```
+
+Status: PENDING
 
 ## I.16 Traced dispatch stamps every invocation
 
@@ -447,7 +496,15 @@ The `harvest-check-hooks` line of the block was run but its output, the
 residual width per layer, was not pasted; the Observed block holds the
 harvest alone.
 
-Status: VERIFIED 2026-08-08
+Reopened 2026-09-18: the expected signal claims the hook-dimension gate
+prints the residual width per layer, and the block above does not show it.
+The harvest half stands as observed. What closes the entry is the second
+command of I.23, `make harvest-check-hooks
+RECIPE=training/recipes/interp/harvest-smoke.yaml`, whose `[OK] layer 17:
+residual width 1536` line is pasted here as well when I.23 runs; the disk
+refusal the signal calls verifiable is I.18's.
+
+Status: PENDING (verified 2026-08-08 for the harvest; reopened 2026-09-18 for the hook gate)
 
 ## I.9b Chunked-capture crash recovery (P4-D2, KB-58)
 
@@ -728,30 +785,6 @@ Observed:
 
 Status: PENDING
 
-## I.10 Capture garbage collection (P4-D2)
-
-Implementation: `interp/commands/interp_gc.py`, `interp/harvest.py`
-(`gc_captures`, `mark_validated`), `interp/manifest.py`.
-
-Command:
-
-```bash
-make interp-gc ARGS="--dry-run"
-make interp-gc ARGS="--mark-validated /mnt/ai-data/interp/activations/<capture>"
-make interp-gc
-```
-
-Expected signal: dry-run lists deletable validated captures oldest-first;
-after marking, the real run deletes the capture's shard payloads while
-keeping `manifest.json`.
-
-Observed:
-
-```
-```
-
-Status: PENDING
-
 ## I.11 SAE training and evaluation (P4-D3)
 
 **Known bugs likely to surface here:** KB-61, confirmed fixed on 2026-08-08.
@@ -779,13 +812,29 @@ decision; the smoke recipe targets Gemma 4):
 
 ```bash
 make sae-train RECIPE=training/recipes/interp/sae-smoke.yaml
-make sae-eval SAE=/mnt/ai-data/interp/saes/<name> CAPTURE=/mnt/ai-data/interp/activations/<name>
+make sae-eval SAE=/mnt/ai-data/interp/saes/sae-smoke CAPTURE=/mnt/ai-data/interp/activations/harvest-smoke
+make sae-eval SAE=/mnt/ai-data/interp/saes/sae-smoke CAPTURE=/mnt/ai-data/interp/activations/harvest-smoke \
+    ARGS="--delta-loss-texts interp/probes/prompts/refusal.jsonl --max-tokens 200000"
+python3 -c 'import json; r=json.load(open("/mnt/ai-data/interp/saes/sae-smoke/eval_report.json")); print(r["core_metrics"], r.get("delta_lm_loss"))'
 ```
 
 Expected signal: training runs SAELens against the capture (refusing a
 manifest mismatch), writes SAE weights plus manifest; evaluation writes the
 report (`artifact: sae_eval`, shared envelope) with core metrics
 (reconstruction, L0) and optional delta LM loss.
+
+Thresholds, stated 2026-09-18 so that "reconstructs" is a number rather than
+a word: `explained_variance` strictly above 0, since the mean predictor
+scores exactly 0 (`tests/interp/test_sae.py::TestCoreMetrics`) and anything
+at or below it has learned nothing; `l0` at or below the recipe's `k`, the
+BatchTopK ceiling; `tokens_evaluated` equal to `--max-tokens` or the capture
+size, whichever is smaller. The third command runs the delta-LM-loss path
+(`delta_lm_loss` in `interp/sae/evaluate.py`), which the 2026-08-08 run
+omitted: it reloads the model, so it is the slow half, and its `--max-tokens`
+is lowered to keep the core pass short. Its block must carry `clean_loss`,
+`sae_loss` and `loss_recovered`, with `sae_loss` finite and above
+`clean_loss` (a sparse code loses something) and `loss_recovered` between 0
+and 1. The mismatch refusal is I.21's.
 
 Observed (2026-08-08, after the six fixes above):
 
@@ -814,9 +863,17 @@ recorded. The two `mse` figures are consistent despite looking unrelated:
 `core_metrics` divides by element (`acts.size`) while W&B sums over `d_in` per
 token, and 1.173056 x 1536 = 1802 against W&B's 1938 on the training slice.
 `explained_variance` 0.3247 held-out against 0.3110 training is the expected
-small gap.
+small gap. Against the thresholds above: 0.3246 is above 0, and 30.13 is
+below `k` 32.
 
-Status: VERIFIED 2026-08-08
+Reopened 2026-09-18: two clauses of the expected signal have no observation.
+"Refusing a manifest mismatch" was never provoked here and is I.21's; the
+"optional delta LM loss" was not run, so `delta_lm_loss` has no evidence at
+all. The train-and-evaluate round trip stands as observed; the entry closes
+when the third command above is run and its block pasted, and I.21 is
+closed.
+
+Status: PENDING (verified 2026-08-08 for train and core eval; reopened 2026-09-18 for delta LM loss and the refusal)
 
 ## I.21 sae-train refuses a capture whose manifest does not match the recipe
 
@@ -855,6 +912,50 @@ Observed:
 
 Status: PENDING
 
+## I.10 Capture garbage collection (P4-D2)
+
+Implementation: `interp/commands/interp_gc.py`, `interp/harvest.py`
+(`gc_captures`, `mark_validated`), `interp/manifest.py`.
+
+Runs after I.11 and I.21, because it destroys the shards both read: the
+subject is the `harvest-smoke` capture I.9 wrote, and a capture with its
+shards collected is a manifest and nothing else. The collector acts only on
+captures whose manifest carries `validated`, so the first command must find
+nothing, and `--dry-run` must change nothing on disk; a dry run that deletes,
+or a real run that leaves shards behind, is the failure this entry exists to
+catch. I.10 runs at the default `--root` (`/mnt/ai-data/interp/activations`).
+
+```bash
+set -o pipefail
+cd ~/workspace/ai-experiments
+C=/mnt/ai-data/interp/activations/harvest-smoke
+make interp-gc; echo "exit=$?"
+make interp-gc ARGS="--mark-validated $C"; echo "exit=$?"
+find "$C" -type f | wc -l
+make interp-gc ARGS="--dry-run"; echo "exit=$?"
+find "$C" -type f | wc -l
+make interp-gc; echo "exit=$?"
+find "$C" -type f
+python3 -c 'import json; m=json.load(open("'"$C"'/manifest.json")); print(m["validated"], m["total_tokens"])'
+```
+
+Expected signal: the first run prints `[INFO] No validated captures to
+collect` and exits 0. Marking prints `[OK] Marked deletable: <C>` and exits
+0. The two `find` counts around the dry run are equal and greater than 1, and
+the dry run prints `[OK] Would delete shards: <C> (manifest kept)`, exit 0.
+The real run prints `[OK] Deleted shards: <C> (manifest kept)`, exit 0, after
+which `find` lists exactly one file, `manifest.json`, whose `validated` is
+true and whose `total_tokens` still reads 2875392. With more than one
+validated capture present the collector lists oldest-first by the manifest's
+`created`; with one, order has no observation here.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
 ## I.12 SAEBench isolated environment (P4-D3)
 
 Implementation: `scripts/interp/saebench_env.sh`, which is self-contained
@@ -869,8 +970,23 @@ Command:
 bash scripts/interp/saebench_env.sh
 ```
 
-Expected signal: the isolated venv builds and SAEBench imports inside it;
-the core environment is untouched.
+Expected signal: the script prints `[INFO] SAEBench environment: <dir>`,
+then `[OK] sae-bench <version> installed (isolated from the interp group)`
+and exits 0; `<dir>/bin/python -c "import sae_bench"` exits 0; the core
+environment is untouched, which `uv run --no-sync python -c "import
+sae_bench"` shows by failing with `ModuleNotFoundError`, and `git status
+--short uv.lock pyproject.toml` prints nothing.
+
+```bash
+set -o pipefail
+cd ~/workspace/ai-experiments
+bash scripts/interp/saebench_env.sh; echo "exit=$?"
+uv run --no-sync python -c "import sae_bench"; echo "core exit=$?"
+git status --short uv.lock pyproject.toml
+```
+
+The venv directory is the script's `ENV_DIR`; read it from the `[INFO]` line
+and run its interpreter for the import check.
 
 Observed:
 
@@ -886,45 +1002,53 @@ Implementation: `interp/commands/probe_capture.py` with
 `interp/probes/train.py` and `interp/probes/registry.py`;
 `interp/commands/probe_eval.py` with `interp/probes/evaluate.py`.
 
-Command:
+Capture and training have evidence: I.6 captured `refusal-v1` from
+`/app/models/hf/gemma-4-E4B` at layers 8, 16 and 24 over
+`interp/probes/prompts/refusal.jsonl` (258 examples, 129 per class), trained
+it, and recorded a real `model_hash`; the harness runbook's RH.9a and RH.9b
+did the same through the rust backend. Until 2026-09-18 this entry
+recaptured a second copy under `captures/verify`; it now consumes I.6's
+probe, so it depends on I.6 and costs no second model load.
+
+That leaves `probe-eval` as the part with no evidence, and it is the part
+that matters most: AUROC 1.0 at layer 8, 16 and 24 alike is the signature of
+a dataset separable by something cheaper than the attribute, and the
+black-box baselines are what would distinguish a real probe from a shortcut.
+`probe-eval` runs on the host under `uv run`, talks to the subject at
+`--subject-url` (default `http://127.0.0.1:8002`, `llama-gpu`) and the judge
+at `--judge-url` (default `http://127.0.0.1:8003`, `vllm-gpu`), so both GPU
+services are up and this entry is a GPU consumer even though the probe
+itself never loads a model here.
 
 ```bash
-# probe-capture runs in the interp container, where the models tree is
-# /app/models; the host path is refused there (see I.6). probe-eval runs
-# on the host and talks to the llama-gpu and vllm-gpu endpoints.
-make probe-capture ARGS="--model /app/models/hf/gemma-4-E4B \
-    --dataset interp/probes/prompts/refusal.jsonl \
-    --layers 8,16,24 --out /mnt/ai-data/interp/captures/verify"
-make probe-train ARGS="--capture /mnt/ai-data/interp/captures/verify --name verify-probe"
-make probe-eval ARGS="--probe /mnt/ai-data/interp/probes/verify-probe --label-name refusal"
+set -o pipefail
+cd ~/workspace/ai-experiments
+make gpu-up
+make probe-eval ARGS="--probe /mnt/ai-data/interp/probes/refusal-v1 --label-name refusal"
+echo "exit=$?"
+python3 -c 'import json; r=json.load(open("/mnt/ai-data/interp/probes/refusal-v1/evaluation.json")); print(r["probe_metrics"], r["baselines"], r["deployable"])'
+make down
 ```
 
-This block passed the host models path to `--model` until 2026-09-12, which
-fails at model load inside the container; I.6 had the container path from
-the start.
-
-**Runnable now, and most of it is already evidenced.** The `<labeled.jsonl>`
-placeholder this entry carried has a committed answer —
-`interp/probes/prompts/refusal.jsonl`, 258 balanced examples — and the harness
-runbook's RH.9a and RH.9b already ran capture and training against E4B through
-the rust backend, reaching AUROC 1.0 at every candidate layer.
-
-That leaves `probe-eval` as the part with no evidence, and it is the part that
-matters most: AUROC 1.0 at layer 8, 16 and 24 alike is the signature of a
-dataset separable by something cheaper than the attribute, and the black-box
-baselines are what would distinguish a real probe from a shortcut. `probe-eval`
-needs `llama-gpu` and `vllm-gpu` up, so this entry is a GPU consumer even
-though capture and training are not.
-
-Check before trusting the result: the capture's `[OK]` line must report a real
-sha256 and not `unknown`. A `"unknown"` model hash loads into a serving harness
-with the identity guard silently skipped.
-
-Expected signal: capture writes per-layer shards plus a manifest through
-forward hooks on the decoder blocks the family registry names; training
-selects the best layer by validation AUROC and registers the probe;
-evaluation writes the report with the mandatory black-box baselines and a
-deployable verdict.
+Expected signal: exit 0, `[RUN] Evaluating probe refusal-v1 against black-box
+baselines`, then `[OK] Probe AUROC: <a>`, `[OK] Baselines: judge accuracy
+<j>, BoW AUROC <b>`, a `Verdict:` line and `[OK] Report written:
+.../evaluation.json`. The report's `probe_metrics` and `baselines` blocks are
+both present, computed on the capture's `test` split (the same seeded 80/10/10
+hash `probe-train` used, so the probe never saw these examples), and its
+`deployable` field follows the rule in `interp/probes/evaluate.py`: true iff
+the probe's AUROC exceeds the bag-of-words-on-output AUROC and the probe's
+accuracy at its stored threshold exceeds the judge's accuracy. The verdict is
+`[OK] Verdict: probe beats both black-box baselines; eligible for monitor
+duty` when it does and `[WARN] Verdict: probe does not beat the black-box
+baseline; NOT deployed to the monitor (a negative result to write up, not a
+tooling gap)` when it does not; both exit 0, so the exit code proves nothing
+and the pass condition is that the two baselines were computed and the
+verdict agrees with the numbers. Given I.6's finding that the probe flags a
+benign arithmetic prompt at every position, the `[WARN]` verdict is the
+likelier outcome and is a valid observation of the evaluator; it would not
+be a valid observation of a usable probe, and this entry claims only the
+former.
 
 Observed:
 
@@ -1245,8 +1369,26 @@ loaded this vector under the harness's identity check with no warning and
 steered in both directions, which is the consumer-side confirmation this
 entry exists for. KB-32 closes on that.
 
-Status: VERIFIED 2026-09-05 (blocked 2026-08-14 on KB-32). I.4 and the
-harness runbook's RH.15 now have a vector to serve.
+Reopened 2026-09-18: the expected signal says re-running the command
+reproduces `vector_xxhash`, and the paragraph above records that this was
+not executed. Extraction and the consumer-side load stand as observed and
+KB-32 stays closed on them. What closes the entry is the re-run below,
+pasted with its two hashes:
+
+```bash
+set -o pipefail
+cd ~/workspace/ai-experiments
+make steer-extract ARGS="--capture /mnt/ai-data/interp/captures/rust-e2b-it-refusal \
+    --out /mnt/ai-data/interp/vectors/refusal-e2b-it-rerun"
+python3 -c 'import json; a=json.load(open("/mnt/ai-data/interp/vectors/refusal-e2b-it/manifest.json")); b=json.load(open("/mnt/ai-data/interp/vectors/refusal-e2b-it-rerun/manifest.json")); print(a["vector_xxhash"], b["vector_xxhash"], a["vector_xxhash"]==b["vector_xxhash"])'
+```
+
+The second line prints `d66c1d6da0b70309` twice and `True`; a different
+second hash means the extraction is not deterministic, which is a finding.
+The rerun directory is deleted afterwards so `steer-up`'s vector tree holds
+one copy.
+
+Status: PENDING (verified 2026-09-05 for extraction and the harness load; reopened 2026-09-18 for the reproducibility check). I.4 and the harness runbook's RH.15 have a vector to serve.
 
 ## I.4 Steered serving and scorecard (W1)
 
@@ -1287,7 +1429,10 @@ Expected signal: the service recreates steered; the scorecard's arms
 write its
 report (`kind: steering_scorecard`, shared envelope) and the service ends
 unsteered — including when a scorecard arm fails mid-run (the finally
-restore).
+restore). The failed-arm clause has no hardware observation and is not
+expected to get one from a successful run; it is asserted by
+`tests/interp/test_steering.py::test_interrupted_scorecard_unsteers`, which
+is the evidence for that clause alone.
 
 Observed (2026-09-06, on 4d9dfad, the fourth attempt of the day; the three
 before it are recorded in the harness runbook's RH.15):
@@ -1424,8 +1569,8 @@ Behaviour the 2026-09-12 audit found reachable and unobserved, recorded here
 rather than as entries because each is a pending entry's business or a
 variable to name. Each is a gap in evidence, not a known defect.
 
-- `gc` with nothing validated prints `[INFO] No validated captures to collect`
-  and exits 0; `--mark-validated` is the handoff I.10 runs. Both are I.10's.
+- `gc`'s oldest-first order across several validated captures; I.10 marks
+  one, so order has no observation.
 - The D9 training lock held by another run (`training/runtime/lock.py`,
   `TrainLockError`) and the D10 watchdog's disk-floor abort during a harvest
   (`interp/harvest.py`) are named by I.9 and have never been tripped.
@@ -1436,9 +1581,6 @@ variable to name. Each is a gap in evidence, not a known defect.
 - `interp-up` run through `docker compose` directly, with `JUPYTER_TOKEN`
   empty: `docker/interp/entrypoint.sh` refuses to start an unauthenticated
   JupyterLab. `make interp-up` generates the token, so I.13 never meets it.
-  I.13 also does not state the stale-image trap the lead-in above I.9c
-  does: `docker compose run` builds only when the image is missing.
-- `interp-dirs`, the storage-tree bootstrap.
 - The Gemma-2 family branch of `interp/families.py` and the Gemma Scope ids:
   reached by I.1's fifth step, which the 2026-09-18 run skipped by decision,
   and by the calibration capture, I.9d, still pending.
@@ -1471,13 +1613,13 @@ Each is a gap in evidence, not a known defect.
 |------|---------|---------------------|
 | `--build` | `smoke` | The degraded build-time mode. I.13 covers it once run; until then the only evidence is that image builds succeed. |
 | `--validated` | `sae-train` | Sets `recipe.sae.mark_capture_validated`, the handoff that exempts a capture from garbage collection. I.10 verifies the collector, not this handoff. |
-| `--delta-loss-texts`, `--max-tokens` | `sae-eval` | The delta-LM-loss path (`delta_lm_loss` in `interp/sae/evaluate.py`) runs only when `--delta-loss-texts` is non-empty. I.11 omitted it, so that function has no evidence at all. `--max-tokens` ran only at its 1000000 default. |
+| `--delta-loss-texts`, `--max-tokens` | `sae-eval` | The delta-LM-loss path (`delta_lm_loss` in `interp/sae/evaluate.py`) runs only when `--delta-loss-texts` is non-empty. I.11's 2026-08-08 run omitted it; its reopened block passes both, and the row closes with it. |
 | `--revision`, `--model-hash`, `--batch-size` | `probe-capture` | Provenance fields written into the capture manifest, and the forward-pass batch size. I.5 ran at the defaults. |
-| `--override` | `harvest` | The dotlist override. I.9 names it as the way to trip the disk preflight and never passes it, so the refusal that guards a 1.4 TB capture has no observation. |
+| `--override` | `harvest` | The dotlist override. I.9 names it as the way to trip the disk preflight and never passes it; I.18 and I.23 pass it and are pending, so the refusal that guards a 1.4 TB capture has no observation yet. |
 | `--override` | `sae-train` | The same dotlist override on the SAE recipe. I.11 ran the recipe as committed. |
 | `--root` | `gc` | The activations tree to collect; I.10 is pending, and would run at the default. |
 | `--out`, `--seed` | `probe-train` | The registry root and the split seed. Every training run so far took both defaults. |
-| `--subject-url`, `--judge-url`, `--max-tokens` | `probe-eval` | Every flag of the command: it has never run (I.5). |
+| `--subject-url`, `--judge-url`, `--max-tokens` | `probe-eval` | The command has never run (I.5, pending); its block runs at the defaults, so the three flags stay unexercised after it. |
 | `--probes`, `--monitor-root`, `--max-records` | `probe-monitor` | Probe selection, the report root and the record cap. I.7 ran `--window` and `--log-dir` only; `--probes` is reached by the parse test alone. |
 | `--out` | `probe-export` | The export destination; I.6 and RH.16 wrote beside the probe. |
 | `--layers`, `--revision`, `--model-hash`, `--sae-release`, `--sae-id`, `--feature`, `--layer` | `steer-extract` | The layer subset for `diff_means`, and the whole `sae_row` route (I.17, blocked). |
