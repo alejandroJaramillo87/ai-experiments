@@ -199,6 +199,51 @@ def flatten_metrics(payload: dict, prefix: str = "") -> dict[str, float]:
     return flat
 
 
+def locality_metrics(records: list[dict]) -> dict:
+    """The benchmark leaves of eval-holdout and eval-lmeval records, as one
+    nested dict locality_check can compare.
+
+    An eval-holdout record (training/eval/holdout.py) contributes
+    holdout.loss; an eval-lmeval record (training/eval/lmeval.py) contributes
+    lmeval.<task> = the task's metric value. Everything else in those
+    records is bookkeeping the comparison must not see: example and token
+    counts, the lm-eval version, the --limit, per-task stderr. Flattening
+    the raw records would compare all of it against epsilon, and a smoke
+    run's limit or a resumed run's example count is not what locality
+    measures. A record of any other shape, or the same kind given twice
+    for one side, is refused: both sides must come from the same two
+    evaluators.
+    """
+    projected: dict = {}
+    for index, record in enumerate(records):
+        if not isinstance(record, dict):
+            raise VerifyError(f"locality: metrics record {index} is not a JSON object")
+        if "results" in record and "lm_eval_version" in record:
+            kind = "lmeval"
+            values = {
+                task: section["value"] for task, section in record["results"].items()
+            }
+        elif "loss" in record and "perplexity" in record:
+            kind = "holdout"
+            values = {"loss": record["loss"]}
+        else:
+            raise VerifyError(
+                f"locality: metrics record {index} is neither an eval-holdout nor "
+                f"an eval-lmeval record (keys: {', '.join(sorted(record)) or 'none'})"
+                "\n  Solution: pass the JSON eval-holdout and eval-lmeval write, "
+                "or the holdout_*.json and lmeval_*.json from an eval-ft run"
+            )
+        if kind in projected:
+            raise VerifyError(
+                f"locality: two {kind} records given for one side; pass one "
+                "eval-holdout and one eval-lmeval record per side"
+            )
+        projected[kind] = values
+    if not projected:
+        raise VerifyError("locality: no metrics records given")
+    return projected
+
+
 def locality_check(base_metrics: dict, subject_metrics: dict, epsilon: float) -> dict:
     """Locality: every benchmark metric present in both reports moves less
     than epsilon (absolute). Metrics only one side has are reported, never
