@@ -197,9 +197,9 @@ make interp-build
 make interp-smoke
 ```
 
-Expected signal: build exits 0; the seven-step smoke prints `[OK]` for
-torch/sm_120, the import set, the TransformerLens hooked forward, the
-nnsight trace, and the bf16 forward, and exits 0. The gated Gemma step
+Expected signal: build exits 0; the six-step smoke prints `[OK]` for
+torch/sm_120, the import set, the hooked Hugging Face forward, and the bf16
+forward, and exits 0. The gated Gemma step
 requires `HF_TOKEN` in `.env.interp`; a `[WARN]` skip without the token is
 acceptable at step zero but must pass before the interp phase.
 

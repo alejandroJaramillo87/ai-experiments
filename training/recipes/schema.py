@@ -404,8 +404,8 @@ class HarvestConfig:
     records the checkpoint) — exactly one. Hooks are HF named-module paths
     resolved per family through interp/families.py; the layout follows the
     loaded config, so Gemma 4 is model.language_model.layers.{n} and a flat
-    text model is model.layers.{n}. TransformerLens aliases are not used because
-    HookedTransformer has no Gemma 4 support (P4-D1 resolved decision).
+    text model is model.layers.{n}. The hook is a plain transformers forward
+    hook on that module (P4-D1 resolved decision).
 
     Captures default to one hook: a second layer multiplies the ~1.4TB
     footprint and requires acknowledge_multi_layer=true. d_model 0 resolves

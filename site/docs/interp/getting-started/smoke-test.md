@@ -21,13 +21,13 @@ The steps, each reported as one status line:
    reports its version, and the installed torch matches the lockfile's pin exactly, so a
    package that dragged torch off the CUDA 13 build is caught here even if it slipped past
    the build.
-3. **A TransformerLens hooked forward** on a small model.
-4. **An nnsight trace** on the same.
-5. **A bf16 forward**, the precision the captures run at.
-6. **A Gemma Scope step**, loading a released sparse autoencoder through SAELens; this step
-   needs the network and the Hugging Face cache, and warns and skips when neither is
-   reachable.
-7. **The summary**, naming every failed step, or `[OK]` with the package manifest.
+3. **A hooked Hugging Face forward** on a small model, with a forward hook on one decoder
+   block, the same hook pattern the capture and harvest verbs use.
+4. **A bf16 forward** on the same model, the precision the captures run at.
+5. **A Gemma Scope step**, reading Gemma-2-2B's residual through the family registry's hook
+   path and encoding it with a released sparse autoencoder through SAELens; this step needs
+   the network and the Hugging Face cache, and warns and skips when neither is reachable.
+6. **The summary**, naming every failed step, or `[OK]` with the package manifest.
 
 The exit code is 0 only when every required step passed. `--build` runs the build-time mode
 the image build uses, where the CUDA and network assertions degrade to warnings because the

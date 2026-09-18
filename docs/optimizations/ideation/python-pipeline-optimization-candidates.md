@@ -68,10 +68,9 @@ rare Tier A item with zero numerics implications.
 ## Tier B: measured moderate wins
 
 **Capture throughput.** `interp/probes/capture.py` already batches at bf16
-under nnsight. Remaining knobs: batch size tuned to measured VRAM headroom,
-pinned-memory host transfers for harvested residuals, capturing only the
-layers a campaign needs, and measuring nnsight tracing overhead against a
-plain hooked forward before assuming it is free.
+through plain forward hooks. Remaining knobs: batch size tuned to measured
+VRAM headroom, pinned-memory host transfers for harvested residuals, and
+capturing only the layers a campaign needs.
 
 **Shard format and loading.** The npz shards are compressed and fully
 materialized on load. For probe and SAE training that re-reads shards

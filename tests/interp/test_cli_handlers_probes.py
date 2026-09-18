@@ -1,6 +1,6 @@
 """interp probe CLI handlers (interp/commands/probe_{capture,train,eval,
 export,monitor}.py) driven through build_parser() with real tmp-dir pipeline
-execution. The only fakes sit at the torch/service seams: the bf16 nnsight
+execution. The only fakes sit at the torch/service seams: the bf16 hooked
 capture (capture_activations), the subject/judge chat services
 (interp.steering.scorecard.chat), and the healthcheck HTTP client
 (requests.get). Contracts checked: exit codes 0/1, styled
@@ -23,7 +23,7 @@ def run_cli(argv: list[str]) -> int:
 
 
 def fake_capture_activations(model_id, texts, layers, revision="main", batch_size=16):
-    """capture_activations stand-in with the real nnsight-path signature,
+    """capture_activations stand-in with the real capture-path signature,
     delegating to the deterministic conftest fake."""
     return fake_capture(texts, layers)
 

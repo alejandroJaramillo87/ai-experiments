@@ -33,7 +33,7 @@ def score_texts(
 
     capture_fn(texts, layers) -> ({layer: acts}, tokenizer_fingerprint) is
     injectable for tests and for the monitor's replay; the default is the real
-    bf16 nnsight capture.
+    bf16 hooked capture.
     """
     layers = sorted({p.layer for p in probes})
     if capture_fn is None:

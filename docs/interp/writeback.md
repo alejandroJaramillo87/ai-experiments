@@ -110,7 +110,7 @@ make probe-eval ARGS="--probe /mnt/ai-data/interp/probes/refusal-v1 --label-name
 make probe-export ARGS="--probe /mnt/ai-data/interp/probes/refusal-v1"
 ```
 
-Capture is a workbench batch job (bf16, nnsight); training is CPU scikit-learn with a
+Capture is a workbench batch job (bf16, transformers forward hooks); training is CPU scikit-learn with a
 deterministic text-hash split (re-captures cannot leak test data). The dataset ships in
 git ([`interp/probes/prompts/`](../../interp/probes/prompts/README.md)) so a probe is
 reproducible from a commit, and the capture manifest records its content hash.

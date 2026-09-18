@@ -24,7 +24,7 @@ interp-shell: ## Preflight, then an interactive shell in the workbench with GPU 
 	@./scripts/interp/preflight.sh
 	docker compose -f $(INTERP_COMPOSE) run --rm interp /bin/bash
 
-interp-smoke: ## Run the seven-step interp smoke test on the workstation (enforces CUDA sm_120)
+interp-smoke: ## Run the six-step interp smoke test on the workstation (enforces CUDA sm_120)
 	docker compose -f $(INTERP_COMPOSE) run --rm interp python -m interp smoke
 
 # Host-side, like harness-runs: the catalog is a file under the log root,

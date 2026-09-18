@@ -99,7 +99,7 @@ The `torch` trio resolves from the `pytorch-cu130` index declared in
 exists; uv installs the CUDA wheels directly.
 
 The environment is deliberately complete rather than minimal. `--all-groups --all-extras`
-keeps torch, flash-attn, transformer-lens and the rest on the workstation so a REPL can
+keeps torch, flash-attn, sae-lens and the rest on the workstation so a REPL can
 `import torch` and reach the GPU without starting a container. That is why
 `scripts/utils/check_py_deps_install.py` marks only `vllm` optional: every other package
 it checks is expected on the host. A lean environment belongs in a throwaway worktree —

@@ -1,8 +1,8 @@
 # Interpretability workbench Dockerfile - RTX 5090 (Blackwell)
 #
 # One reproducible environment for interp Phase 0 (roadmap I1) and all later interpretability
-# project work: PyTorch cu130 on sm_120 with the hooked-execution stack (TransformerLens v3,
-# nnsight + nnterp, SAELens) imported and CUDA-verified at build time via
+# project work: PyTorch cu130 on sm_120 with the interp stack (transformers forward hooks,
+# SAELens) imported and CUDA-verified at build time via
 # the interp CLI smoke subcommand (python -m interp smoke), and JupyterLab as the default command.
 #
 # Dependency source of truth is uv.lock (core dependencies + the `interp` group), not

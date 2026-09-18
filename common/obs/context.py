@@ -24,8 +24,6 @@ PACKAGES = (
     "peft",
     "datasets",
     "sae_lens",
-    "transformer_lens",
-    "nnsight",
 )
 
 

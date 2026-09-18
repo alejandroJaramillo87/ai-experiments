@@ -36,7 +36,7 @@ def file_xxhash(path: str) -> str:
     imports from here, so a module-level import made the whole artifact layer
     unloadable wherever xxhash is missing — including the sandbox interpreter
     the cross-language contract tests run the exporters under. Same rationale
-    as the lazy torch and nnsight imports in interp/probes/capture.py.
+    as the lazy torch and transformers imports in interp/probes/capture.py.
     """
     import xxhash
 

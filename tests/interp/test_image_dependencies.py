@@ -43,7 +43,6 @@ DIST_NAME = {
     "yaml": "pyyaml",
     "huggingface_hub": "huggingface-hub",
     "sae_lens": "sae-lens",
-    "transformer_lens": "transformer-lens",
     "hydra": "hydra-core",
     "sentence_transformers": "sentence-transformers",
     "flash_attn": "flash-attn",

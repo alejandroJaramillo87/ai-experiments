@@ -410,8 +410,8 @@ later item ids stay stable. There is no work to execute under this id.
   - `run_context()` returns a dict with the git SHA (reuse
     `common/provenance.py`, `git_sha`), the Python version, the platform
     string, and the versions of a fixed package list covering both CLIs
-    (`torch`, `transformers`, `trl`, `peft`, `datasets`, `sae_lens`,
-    `transformer_lens`, `nnsight`) obtained through
+    (`torch`, `transformers`, `trl`, `peft`, `datasets`, `sae_lens`)
+    obtained through
     `importlib.metadata.version`, omitting packages that are not installed.
     GPU name and driver information is included when a query succeeds and
     omitted when it does not, so the function never fails on a machine

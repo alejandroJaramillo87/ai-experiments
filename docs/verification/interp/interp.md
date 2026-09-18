@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 11 verified, 1 blocked, 11 pending, of 23.**
+**Entries: 10 verified, 1 blocked, 12 pending, of 23.**
 
 The 23 entries are I.1 and I.3 through I.23 plus the interstitial I.9b
 ("Chunked-capture crash recovery"). I.9b is numbered beside I.9 because it
@@ -101,11 +101,20 @@ workstation runs without a Hugging Face token, since every checkpoint the
 tier needs is already on disk. The Gemma-2 branch is instead reached by the
 calibration capture in `reference-captures.md`.
 
-The sixth step is gated on the `HF_TOKEN` environment variable, not on
+The fifth step is gated on the `HF_TOKEN` environment variable, not on
 whether Gemma-2-2B is already on disk: `smoke_test.py` tests the variable
 first and skips the step outright when it is unset, so a cached checkpoint
 under `HF_HOME` is never consulted. Running without the token therefore
-exercises five of the six steps whatever the cache holds.
+exercises four of the five model steps whatever the cache holds. The ungated
+model steps are a Hugging Face forward on gpt2 with a forward hook on decoder
+block 6 (`[OK] hf-hook: ...`) and the bf16 forward on the same model; the
+import step lists sae_lens, transformers, datasets, einops and pynvml.
+
+The observation below predates the 2026-09-18 dependency cut that removed
+nnsight and the TransformerLens group from the tier and rewrote the smoke
+test onto transformers forward hooks. It is kept as the record of the
+seven-step smoke on 747d8ad; the six-step smoke has no observation yet, so
+the entry is pending a re-run.
 
 Observed (2026-09-17, on 747d8ad, without `HF_TOKEN`):
 
@@ -188,7 +197,7 @@ encode have no observation from this entry; that is a stated gap, not a
 failure. The orphan container warning is compose noting services of the
 other stacks under the same project name, and is not a smoke result.
 
-Status: VERIFIED 2026-09-17 (gated Gemma Scope step skipped by decision)
+Status: PENDING
 
 ## I.3 Control-vector extraction and export (W1)
 
@@ -367,8 +376,8 @@ Check before trusting the result: the capture's `[OK]` line must report a real
 sha256 and not `unknown`. A `"unknown"` model hash loads into a serving harness
 with the identity guard silently skipped.
 
-Expected signal: capture writes per-layer shards plus a manifest under
-nnsight (decoder blocks resolved through the family registry); training
+Expected signal: capture writes per-layer shards plus a manifest through
+forward hooks on the decoder blocks the family registry names; training
 selects the best layer by validation AUROC and registers the probe;
 evaluation writes the report with the mandatory black-box baselines and a
 deployable verdict.
