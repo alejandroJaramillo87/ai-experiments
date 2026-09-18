@@ -27,7 +27,7 @@ def train_lock_path(tmp_path, monkeypatch):
 
 
 def fake_capture(texts: list[str], layers: list[int]):
-    """Deterministic stand-in for the bf16 nnsight capture.
+    """Deterministic stand-in for the bf16 hooked capture.
 
     Class-0 texts (containing the token 'neg') and class-1 texts get linearly
     separable activations plus text-seeded noise, so probes train to high

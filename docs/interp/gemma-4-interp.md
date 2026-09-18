@@ -287,13 +287,10 @@ GGUF container the runtime still opens. See
 - **No Gemma-Scope or Neuronpedia assets exist for Gemma 4.** `gemma2` is registered in the
   family table specifically as the anchor for that ecosystem (`families.py:8-11`); Gemma 4
   sparse autoencoders must be trained in-tree.
-- **TransformerLens has no Gemma 4 support in its architecture registry**, so
-  `HookedTransformer` aliases are not used (`families.py:14-15`). Hooks go through nnsight or
-  plain torch. The reason is the registry rather than the library: `HookedTransformer`
-  converts a fixed set of families, and Gemma 4 is not among them at our 3.5.1 pin. TL 3.x
-  does ship `TransformerBridge`, which wraps arbitrary HF models including multimodal ones,
-  so a future revisit would go through the bridge rather than waiting for an alias table
-  entry. Current upstream is 3.7.0; the gap between that and our pin has not been surveyed.
+- **Hooks are plain transformers forward hooks on HF named-module paths** (`families.py`
+  registry). No hooked-model library sits between the tree and the checkpoint, so Gemma 4
+  support is a transformers question, not an architecture-registry one: the 2026-09-18
+  dependency cut removed nnsight and the TransformerLens group for exactly that reason.
 - **`gemma4_unified_text` is not registered.** That is the 12B text `model_type`, deliberately
   refused rather than mapped to the flat template.
 

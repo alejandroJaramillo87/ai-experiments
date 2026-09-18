@@ -56,22 +56,3 @@ class TestPreflight:
         compose(COMPOSE_OK)
         result = run_script("interp/preflight.sh", env={"STUB_SERVICES": "llama-cpu"})
         assert result.returncode == 0
-
-
-class TestAutointerpPreflight:
-    """scripts/interp/np_autointerp_preflight.sh -- vllm-gpu up, others down."""
-
-    def test_refuses_when_compose_cannot_be_queried(self, fake_bin, run_script):
-        # curl must succeed so the script reaches the compose query at all.
-        fake_bin.stub("curl", "exit 0")
-        fake_bin.stub("docker", COMPOSE_FAILS)
-        result = run_script("interp/np_autointerp_preflight.sh")
-        assert result.returncode == 1
-        assert "Cannot determine which services are running" in result.stdout
-
-    def test_refuses_when_vllm_is_unhealthy(self, fake_bin, run_script):
-        fake_bin.stub("curl", "exit 22")
-        fake_bin.stub("docker", COMPOSE_OK)
-        result = run_script("interp/np_autointerp_preflight.sh")
-        assert result.returncode == 1
-        assert "not healthy" in result.stdout

@@ -131,7 +131,7 @@ fires after it. Stored scales run 0.0186 to 0.879, a spread of roughly 54x
 across the stack, so the distinction is not academic — tapping before the
 multiply would report a differently scaled tensor at every layer.
 
-This still matches the hidden state nnsight exposes as `block.output[0]`,
+This still matches the hidden state the decoder block's forward hook receives,
 which is what `interp/probes/capture.py` records: the Python forward hook
 receives the already-scaled tensor, so no correction factor is needed and
 none is applied. Probes trained on Python captures and rust captures observe

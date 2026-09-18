@@ -813,7 +813,7 @@ impl LayerKv {
 /// layer's output, which is the `layer_output_scale` multiply and not the
 /// final residual add: a layer applies the attention residual, the
 /// feed-forward residual, the per-layer-embedding residual, then the scale.
-/// That is the hidden state nnsight exposes as `block.output[0]`, because the
+/// That is the hidden state the Python capture hook reads off the block, because the
 /// Python forward hook also receives the already-scaled tensor, so probes
 /// trained on Python-captured activations and on rust-captured activations
 /// see the same tensor. Any backend added later (CUDA) must preserve this

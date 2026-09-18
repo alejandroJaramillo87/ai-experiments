@@ -2,7 +2,7 @@
 #
 # P4-D2 CI-sized smoke capture: Gemma 4 E2B, 2M tokens, one mid-depth hook.
 # Exercises the exact AutoModelForCausalLM hook path the full harvest uses
-# (resolved decision: no GPT-2/TransformerLens smoke subject). Completes in
+# (resolved decision: no GPT-2 smoke subject). Completes in
 # minutes in the workbench and validates against its manifest.
 #
 # Run: make harvest RECIPE=training/recipes/interp/harvest-smoke.yaml

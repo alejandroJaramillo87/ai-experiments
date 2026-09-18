@@ -18,11 +18,10 @@ Hooks are HF named-module paths resolved per model family through the
 interp/families.py registry; the layout follows the config the caller loaded,
 so Gemma 4 from its composite config is model.language_model.layers.{n} and a
 flat text model is model.layers.{n}. The output of a decoder layer is the
-post-block residual stream. TransformerLens aliases are not used because its
-architecture registry is closed: HookedTransformer converts a fixed set of
-families and Gemma 4 is not among them at our 3.5.1 pin (P4-D1 resolved
-decision). TL 3.x does ship TransformerBridge, which wraps arbitrary HF
-models, so the gap is the registry rather than the library as a whole.
+post-block residual stream. The tree hooks the plain transformers module at
+that path everywhere (harvest, probe capture, the SAE splice, steering), so
+model coverage is transformers' own rather than a hooked-model library's
+architecture registry (P4-D1 resolved decision).
 
 Captures are a regenerable cache: the manifest is written only on completion,
 mark_validated flags a capture deletable, and gc_captures deletes flagged

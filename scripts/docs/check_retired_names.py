@@ -430,6 +430,122 @@ RETIRED: dict[str, tuple[str, str]] = {
             ("test_retired_names.py", "docs"),
         )
     },
+    # The Neuronpedia harness (interp PS1) left this repository on 2026-09-18.
+    # Nothing replaced it: the platform was bound to Gemma-2-2B by its SAE loader,
+    # its dashboard pipeline and its transcoder table, none of which the tier's
+    # Gemma 4 work could reach, and three attempts to build its upstream images
+    # at the pinned commit all failed on upstream Dockerfile defects. The
+    # reasoning is docs/interp/investigations/neuronpedia_replacement_investigation.md.
+    # Each key below names something deleted, so the replacement half says so.
+    "make/neuronpedia.mk": (
+        "nothing; removed with the Neuronpedia harness",
+        "held the ten np-* targets: clone, env, build, up, the three per-service "
+        "up targets, down, status and smoke; every one addressed the retired stack",
+    ),
+    "make np-clone": (
+        "nothing; removed with the Neuronpedia harness",
+        "checked out the pinned upstream commit under /mnt/ai-data and applied the "
+        "vendored patches",
+    ),
+    "make np-env": (
+        "nothing; removed with the Neuronpedia harness",
+        "merged the env deltas into the checkout's example env files",
+    ),
+    "make np-build": (
+        "nothing; removed with the Neuronpedia harness",
+        "built the webapp trio and the three CUDA images; never completed at the pin",
+    ),
+    "make np-up": (
+        "nothing; removed with the Neuronpedia harness",
+        "started the webapp, db-init and postgres",
+    ),
+    "make np-inference-up": (
+        "nothing; removed with the Neuronpedia harness",
+        "started the inference pod for one MODEL_SOURCESET preset",
+    ),
+    "make np-autointerp-up": (
+        "nothing; removed with the Neuronpedia harness",
+        "started the autointerp pod against local serving",
+    ),
+    "make np-graph-up": (
+        "nothing; removed with the Neuronpedia harness",
+        "started the attribution-graph pod",
+    ),
+    "make np-down": (
+        "nothing; removed with the Neuronpedia harness",
+        "stopped every platform container",
+    ),
+    "make np-status": (
+        "nothing; removed with the Neuronpedia harness",
+        "listed the platform containers",
+    ),
+    "make np-smoke": (
+        "nothing; removed with the Neuronpedia harness",
+        "checked loopback bindings, the webapp port, postgres and sm_120 visibility",
+    ),
+    "docker/interp/neuronpedia-pin.txt": (
+        "nothing; removed with the Neuronpedia harness",
+        "the pinned upstream SHA; its successor commit upstream deletes every "
+        "Dockerfile and compose file, so there was no fixed pin to bump to",
+    ),
+    "docker/interp/neuronpedia.override.yaml": (
+        "nothing; removed with the Neuronpedia harness",
+        "the compose override: loopback ports, the 3001 remap, the build args that "
+        "moved two CUDA stages to a 24.04 base",
+    ),
+    "docker/interp/neuronpedia.env-deltas": (
+        "nothing; removed with the Neuronpedia harness",
+        "the env deltas merged into the checkout, one of which (the OpenRouter base "
+        "URL) the replacement investigation found upstream never read",
+    ),
+    "docker/interp/patches/": (
+        "nothing; removed with the Neuronpedia harness",
+        "three vendored Dockerfile patches against upstream defects at the pin, "
+        "KB-68, KB-76 and KB-77; none was ever confirmed by a completed build",
+    ),
+    "scripts/interp/np_env.sh": (
+        "nothing; removed with the Neuronpedia harness",
+        "merged the env deltas and copied the secrets into the checkout",
+    ),
+    "scripts/interp/np_smoke.sh": (
+        "nothing; removed with the Neuronpedia harness",
+        "the platform smoke check behind make np-smoke",
+    ),
+    "scripts/interp/np_autointerp_preflight.sh": (
+        "nothing; removed with the Neuronpedia harness",
+        "refused the autointerp pod unless vllm-gpu was up and the other GPU "
+        "consumers down; scripts/interp/preflight.sh, which the workbench targets "
+        "share, stays",
+    ),
+    "docs/interp/platform.md": (
+        "nothing; removed with the Neuronpedia harness",
+        "the platform runbook: port map, bring-up, concurrency matrix, pin-bump "
+        "procedure. The workbench it was indexed as covering is documented by "
+        "docs/interp/writeback.md and the site guides",
+    ),
+    "site/docs/interp/guides/neuronpedia.md": (
+        "nothing; removed with the Neuronpedia harness",
+        "the site guide, with its sidebar entry",
+    ),
+    "/mnt/ai-data/interp/neuronpedia": (
+        "nothing; removed with the Neuronpedia harness",
+        "the checkout and the postgres volume on the data SSD, created by make "
+        "interp-dirs and the workbench entrypoint; both mkdir sites went with it. "
+        "The operator removes the directory by hand",
+    ),
+    "NP_SRC": (
+        "nothing; removed with the Neuronpedia harness",
+        "the checkout path variable read by every np-* target",
+    ),
+    "NP_GPU": (
+        "nothing; removed with the Neuronpedia harness",
+        "opted the autointerp pod onto the GPU for its embedding scorer",
+    ),
+    "MODEL_SOURCESET": (
+        "nothing; removed with the Neuronpedia harness",
+        "selected the upstream inference preset (model plus SAE set) for the "
+        "inference pod",
+    ),
     "harness/src/obs.rs": (
         "rust-harness/obs/src/lib.rs",
         "the run log became a workspace member of its own. Its two libc::flock calls are the only unsafe in the workspace, and the seven binaries in runtime -- which carries forbid(unsafe_code) -- need to write the same records, so the writer moved rather than the attribute weakening. The short key matches both the bare and the rust-harness/-prefixed spelling",

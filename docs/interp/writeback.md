@@ -5,8 +5,8 @@ W1-W4): control-vector steering deployed into the rust harness serving endpoint,
 mandatory black-box baselines, a served-request log, and the probe monitor. Weights
 are never modified; every intervention acts on activations only. Code lives in `interp/`
 (packages, invoked as `python -m interp <subcommand>` via `interp/commands/`);
-`scripts/interp/` holds only shell helpers (the isolated Neuronpedia and SAEBench
-environments); tests in `tests/interp/`.
+`scripts/interp/` holds only shell helpers (the GPU preflight and the isolated SAEBench
+environment); tests in `tests/interp/`.
 
 This path ran against the llama.cpp services until R10 and R11 moved it onto
 the harness, which serves the request and runs the taps in one process.
@@ -110,7 +110,7 @@ make probe-eval ARGS="--probe /mnt/ai-data/interp/probes/refusal-v1 --label-name
 make probe-export ARGS="--probe /mnt/ai-data/interp/probes/refusal-v1"
 ```
 
-Capture is a workbench batch job (bf16, nnsight); training is CPU scikit-learn with a
+Capture is a workbench batch job (bf16, transformers forward hooks); training is CPU scikit-learn with a
 deterministic text-hash split (re-captures cannot leak test data). The dataset ships in
 git ([`interp/probes/prompts/`](../../interp/probes/prompts/README.md)) so a probe is
 reproducible from a commit, and the capture manifest records its content hash.

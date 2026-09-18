@@ -262,12 +262,7 @@ group so the core install stays lean; `make install` (which syncs all groups) in
 
 | Package | Version | Role |
 |---------|---------|------|
-| `transformer-lens` | 3.5.1 | Hooked transformer internals for activation analysis |
-| `nnsight` | 0.7.0 | Tracing and intervention on model internals |
-| `nnterp` | 1.3.0 | Standardized model wrappers over nnsight |
 | `sae-lens` | 6.46.0 | Sparse autoencoder training and loading |
-| `circuitsvis` | 1.43.3 | Attention and activation visualization |
-| `jaxtyping` | 0.3.11 | Shape and dtype annotations for tensors |
 | `plotly` | 6.9.0 | Interactive plotting in notebooks |
 | `ipywidgets` | 8.1.8 | Notebook widget support |
 | `pynvml` | 12.0.0 | GPU telemetry through NVML |
@@ -277,11 +272,14 @@ group so the core install stays lean; `make install` (which syncs all groups) in
 | `hydra-core` | 1.3.2 | Recipe and configuration composition |
 | `psutil` | 7.2.2 | Process and memory telemetry |
 
-`transformer-lens` requires `transformers >= 5.4`, satisfied by the `transformers` 5.13.1
-pin in the core dependencies.
+`sae-lens` is the only interpretability library the tree imports; probe capture, the
+harvest and the smoke test hook plain `transformers` modules. `transformer-lens` is not
+pinned but arrives as a transitive of `sae-lens` (bringing `einops` and `jaxtyping`), so
+it is present in the image although nothing imports it. nnsight, nnterp and circuitsvis
+were removed on 2026-09-18.
 
-The notebook-support packages (`plotly`, `ipywidgets`, `circuitsvis`) are folded into the
-group so the workbench image is the lock file and notebooks need no in-container installs.
+The notebook-support packages (`plotly`, `ipywidgets`) are folded into the group so the
+workbench image is the lock file and notebooks need no in-container installs.
 `einops`, `jupyterlab`, `matplotlib`, and `pandas` are already core dependencies.
 
 ## The training dependency group
@@ -406,7 +404,7 @@ acceptance checks after each bump:
 - `torch` moved to 2.13.0 on the cu130 index (`torchvision` 0.28.0; `torchaudio` dropped as
   unused with no release past 2.11).
 - `transformers` moved to the 5.x line (5.13.1), which unblocks the `interp` group.
-- The `interp` dependency group (`transformer-lens`, `nnsight`) is present and installed.
+- The `interp` dependency group (`sae-lens` and the notebook support) is present and installed.
 - `pandas` is held at 2.x under the `mlflow` `pandas<3` constraint (see above).
 
 The `training` dependency group (Phase 0 D1) is present and tracks the same majors as the

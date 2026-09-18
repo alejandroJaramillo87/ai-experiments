@@ -1,13 +1,14 @@
 """Activation capture (W2 decision 1): a workbench batch job.
 
-Runs the subject model at bf16 under nnsight, harvesting residual-stream
+Runs the subject model at bf16 through plain Hugging Face forward hooks on
+the decoder blocks the family registry names, harvesting residual-stream
 activations at configured layers and token positions (default: last token of
 the prompt) for a labeled JSONL dataset ({"text", "label"} per line). Output:
 sharded float32 arrays plus examples.jsonl (text, label — needed at train time
 for the seeded split) and manifest.json under the capture directory. Captures
 are a regenerable cache; the manifest is what downstream tools trust.
 
-Heavy imports (torch, nnsight) are lazy so the CPU sandbox can import this
+Heavy imports (torch, transformers) are lazy so the CPU sandbox can import this
 module and tests can inject a fake capture function.
 """
 
@@ -57,7 +58,7 @@ class CaptureError(Exception):
 
 
 def check_model_id(model_id: str) -> None:
-    """Refuse an absolute path that is not there, before nnsight sees it.
+    """Refuse an absolute path that is not there, before transformers sees it.
 
     A repo id and a checkpoint directory are both strings, and transformers
     resolves anything it cannot find on disk against the Hub -- so a wrong
@@ -126,67 +127,11 @@ def load_labeled_dataset(path: str) -> list[dict]:
     return examples
 
 
-def is_composite_checkpoint(model_id: str, revision: str = "main") -> bool:
-    """Whether the checkpoint nests its language model under a modality tower.
-
-    Read from config.json alone, so this costs no weights. Gemma 4 registers
-    as AutoModelForImageTextToText and nnsight refuses to build such a
-    checkpoint as a LanguageModel, naming VisionLanguageModel instead -- and
-    the two are not interchangeable in the other direction either, so the
-    choice has to be made from the config rather than by catching the refusal.
-
-    Uses the same signal families.unwrap_text_config keys on, which is what
-    keeps the loader and the hook path agreeing about which layout this is.
-    """
-    from transformers import AutoConfig
-
-    from interp import families
-
-    config = AutoConfig.from_pretrained(model_id, revision=revision)
-    return families.unwrap_text_config(config) is not config
-
-
-def _traceable_model(model_id: str, revision: str, dtype):
-    """The nnsight wrapper this checkpoint's layout requires."""
-    if is_composite_checkpoint(model_id, revision):
-        from nnsight import VisionLanguageModel
-
-        return VisionLanguageModel(
-            model_id, revision=revision, torch_dtype=dtype, device_map="auto"
-        )
-    from nnsight import LanguageModel
-
-    return LanguageModel(
-        model_id, revision=revision, torch_dtype=dtype, device_map="auto"
-    )
-
-
-def _tokenizer_of(model):
-    """The text tokenizer, whichever wrapper is holding it.
-
-    A vision-language wrapper fronts a processor bundling an image processor
-    with the tokenizer; only the tokenizer half defines the fingerprint the
-    manifest records, and only text is captured here.
-    """
-    tokenizer = getattr(model, "tokenizer", None)
-    if tokenizer is not None:
-        return tokenizer
-    processor = getattr(model, "processor", None)
-    tokenizer = getattr(processor, "tokenizer", None)
-    if tokenizer is None:
-        raise CaptureError(
-            f"{type(model).__name__} exposes neither .tokenizer nor "
-            f".processor.tokenizer; the capture cannot record a tokenizer "
-            f"fingerprint or find the last non-padded position"
-        )
-    return tokenizer
-
-
 def hidden_states(output):
     """The residual stream out of a decoder block, tuple-wrapped or not.
 
     A decoder layer used to return `(hidden_states, ...)` and now returns the
-    tensor directly, so the shape of the traced output depends on the
+    tensor directly, so the shape of the hooked output depends on the
     transformers version rather than on anything this repo pins. Indexing [0]
     unconditionally does not fail on the newer form -- it silently selects
     sequence 0 of the batch, which only surfaces downstream as a broadcast
@@ -206,59 +151,87 @@ def capture_activations(
     batch_size: int = 16,
     position: str = "last",
 ) -> tuple[dict[int, np.ndarray], str]:
-    """Single-pass bf16 capture under nnsight.
+    """Single-pass bf16 capture through forward hooks on the decoder blocks.
 
     Returns ({layer: float32 array of shape (n, d_model)}, tokenizer
     fingerprint). This is the one real capture path; score.py and monitor.py
     call it (or an injected stand-in) for their own single-pass captures.
+
+    The model loads through AutoModelForCausalLM for flat and composite
+    checkpoints alike, as harvest.py does; families.family_from_config reads
+    the loaded model's own config, so the hook template always matches the
+    layout that was actually built.
     """
     import torch
+    from transformers import AutoModelForCausalLM, AutoTokenizer
 
     from interp import families
 
     if position != "last":
         raise CaptureError(f"unsupported position: {position!r} (only 'last')")
 
-    model = _traceable_model(model_id, revision, torch.bfloat16)
-    # Resolve decoder blocks through the family registry instead of assuming
-    # the model.model.layers[i] chain; nnsight proxies traverse identically.
-    spec = families.family_from_config(model.config)
-    tokenizer = _tokenizer_of(model)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id, revision=revision, dtype=torch.bfloat16, device_map="auto"
+    )
+    model.eval()
+    tokenizer = AutoTokenizer.from_pretrained(model_id, revision=revision)
     fingerprint = tokenizer_fingerprint(tokenizer)
-    collected: dict[int, list[np.ndarray]] = {layer: [] for layer in layers}
+    # Resolve decoder blocks through the family registry instead of assuming
+    # the model.model.layers[i] chain; the same path harvest.py hooks.
+    spec = families.family_from_config(model.config)
+    saved: dict[int, Any] = {}
+    handles = []
 
-    for start in range(0, len(texts), batch_size):
-        batch = texts[start : start + batch_size]
-        saved = {}
-        with model.trace(batch):
-            for layer in layers:
-                block = families.resolve_submodule(model, spec, layer)
-                # Saved whole and unwrapped after the trace: inside it the
-                # output is an nnsight proxy, where isinstance says nothing.
-                saved[layer] = block.output.save()
-        # Last non-padded token per sequence, layer-independent so it is
-        # computed once per batch. nnsight's LanguageModel tokenizer
-        # left-pads by default (pinned 0.7.0), where mask.sum() - 1 would
-        # index a pad or mid-prompt position for every non-longest sequence;
-        # first-one-from-the-right is correct for either padding side.
-        mask = tokenizer(batch, return_tensors="pt", padding=True).attention_mask
-        last = mask.shape[1] - 1 - mask.flip(-1).argmax(dim=1)
+    def make_hook(layer: int):
+        def hook(_module, _inputs, output):
+            saved[layer] = hidden_states(output)
+
+        return hook
+
+    collected: dict[int, list[np.ndarray]] = {layer: [] for layer in layers}
+    try:
         for layer in layers:
-            acts = hidden_states(saved[layer])
-            if acts.shape[0] != len(batch):
+            path = families.hook_name(spec, layer)
+            try:
+                block = model.get_submodule(path)
+            except AttributeError as exc:
                 raise CaptureError(
-                    f"layer {layer} produced a leading dimension of "
-                    f"{acts.shape[0]} for a batch of {len(batch)}; the hook "
-                    f"path {families.hook_name(spec, layer)!r} is not a "
-                    f"decoder block whose output is [batch, seq, d_model]"
-                )
-            rows = acts[torch.arange(acts.shape[0]), last]
-            # float32, not float16: widening bf16 is exact, so the shard
-            # holds the model's own values. float16 has 5 exponent bits to
-            # bf16's 8, so it silently saturates residual-stream outliers to
-            # inf. numpy has no bfloat16 dtype, which is why the shard is not
-            # simply bf16.
-            collected[layer].append(rows.detach().to(torch.float32).cpu().numpy())
+                    f"no module at {path!r} ({exc}); the model does not expose "
+                    f"the {spec.model_type} decoder layout this hook path assumes"
+                ) from exc
+            handles.append(block.register_forward_hook(make_hook(layer)))
+
+        for start in range(0, len(texts), batch_size):
+            batch = texts[start : start + batch_size]
+            inputs = tokenizer(batch, return_tensors="pt", padding=True)
+            # Last non-padded token per sequence, layer-independent so it is
+            # computed once per batch. first-one-from-the-right is correct
+            # for either padding side, where mask.sum() - 1 would index a pad
+            # or mid-prompt position under left padding.
+            mask = inputs.attention_mask
+            last = mask.shape[1] - 1 - mask.flip(-1).argmax(dim=1)
+            saved.clear()
+            with torch.no_grad():
+                model(**inputs.to(model.device))
+            for layer in layers:
+                acts = saved[layer]
+                if acts.shape[0] != len(batch):
+                    raise CaptureError(
+                        f"layer {layer} produced a leading dimension of "
+                        f"{acts.shape[0]} for a batch of {len(batch)}; the hook "
+                        f"path {families.hook_name(spec, layer)!r} is not a "
+                        f"decoder block whose output is [batch, seq, d_model]"
+                    )
+                rows = acts[torch.arange(acts.shape[0]), last.to(acts.device)]
+                # float32, not float16: widening bf16 is exact, so the shard
+                # holds the model's own values. float16 has 5 exponent bits to
+                # bf16's 8, so it silently saturates residual-stream outliers to
+                # inf. numpy has no bfloat16 dtype, which is why the shard is not
+                # simply bf16.
+                collected[layer].append(rows.detach().to(torch.float32).cpu().numpy())
+    finally:
+        for handle in handles:
+            handle.remove()
 
     return {
         layer: np.concatenate(chunks, axis=0) for layer, chunks in collected.items()

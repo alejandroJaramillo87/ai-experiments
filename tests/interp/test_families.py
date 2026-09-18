@@ -41,7 +41,7 @@ class TestRegistry:
             hook_family("mystery")
 
     def test_gemma_scope_anchor_is_gemma2(self):
-        # The interp ecosystem anchor (Gemma Scope, Neuronpedia, tracing);
+        # The interp ecosystem anchor (Gemma Scope, tracing);
         # its family must stay registered even though the training tier
         # does not register gemma2.
         assert GEMMA_SCOPE_MODEL_ID == "google/gemma-2-2b"
@@ -114,7 +114,7 @@ class TinyBlock:
 
 class TinyStandInModel:
     """Flat text-model layout stand-in: root.model.layers[i] like an HF
-    CausalLM (and like an nnsight proxy, which traverses identically)."""
+    CausalLM, walked by attribute and index as resolve_submodule does."""
 
     def __init__(self, n_layers: int = 4) -> None:
         self.model = SimpleNamespace(layers=[TinyBlock(i) for i in range(n_layers)])

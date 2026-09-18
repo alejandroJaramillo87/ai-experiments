@@ -122,20 +122,20 @@ sandbox = [
 
 # Mechanistic interpretability tooling (interp Phase 0 I1). Requires transformers>=5.4
 # (satisfied by the HF core pin); gated behind its own group so the core install stays lean.
-# Notebook-support packages (plotly/ipywidgets/circuitsvis; einops/jupyterlab/matplotlib/
-# pandas live in core) are folded in so the workbench image is the lockfile and notebooks
-# need no in-container installs.
+# Notebook-support packages (plotly/ipywidgets; einops/jupyterlab/matplotlib/pandas live in
+# core) are folded in so the workbench image is the lockfile and notebooks need no
+# in-container installs.
 # docker/interp/Dockerfile.interp installs and CUDA-verifies this group.
+#
+# SAELens is the only interpretability library the tree imports: harvest and SAE training
+# wrap it, and the steering sae_row backend loads its pretrained SAEs. Probe capture and
+# the smoke test hook plain transformers modules. transformer-lens is not pinned here but
+# arrives as a transitive of sae-lens (with einops and jaxtyping); nothing imports it.
 interp = [
-    "transformer-lens==3.5.1",
-    "nnsight==0.7.0",
-    "nnterp==1.3.0",
     "sae-lens==6.46.0",
     # sae-bench is NOT pinned here: 0.6.0 requires datasets<4.0 and numpy<2.0,
     # incompatible with the core datasets==5.0.0 pin. SAEBench runs in its own
     # isolated venv (scripts/interp/saebench_env.sh), P4-D3 resolved decision.
-    "circuitsvis==1.43.3",
-    "jaxtyping==0.3.11",
     "plotly==6.9.0",
     "ipywidgets==8.1.8",
     "pynvml==12.0.0",
@@ -302,7 +302,6 @@ module = [
     "hydra.*",
     "lm_eval.*",
     "mlflow.*",
-    "nnsight.*",
     "numpy.*",
     "omegaconf.*",
     "peft.*",
@@ -315,7 +314,6 @@ module = [
     "tokenizers.*",
     "torch.*",
     "torchao.*",
-    "transformer_lens.*",
     "transformers.*",
     "trl.*",
     "unsloth.*",

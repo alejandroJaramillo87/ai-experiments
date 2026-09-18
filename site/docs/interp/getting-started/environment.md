@@ -29,7 +29,7 @@ missing module named.
 ## The workbench
 
 The workbench is the container that holds the GPU stack: PyTorch for CUDA 13 on the RTX
-5090, TransformerLens, nnsight, and SAELens, built once and verified at build time by the
+5090, transformers, and SAELens, built once and verified at build time by the
 smoke test. Every verb that runs a model on the GPU runs there: `probe-capture`,
 `harvest`, `sae-train`, `sae-eval`, and by default `probe-train`, `steer-extract`, and
 `probe-monitor`. [Workbench](workbench.md) covers building and starting it, and

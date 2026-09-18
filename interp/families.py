@@ -6,13 +6,13 @@ fail loudly on an unknown family rather than guess a module layout. Keyed by
 HF config model_type after the text-config unwrap.
 
 gemma2 is registered here although the training tier does not register it:
-the interp tier anchors on Gemma-2-2B for pretrained SAEs (Gemma Scope),
-Neuronpedia presets, and circuit tracing, because that ecosystem does not
-exist for Gemma 4.
+the interp tier anchors on Gemma-2-2B for pretrained SAEs (Gemma Scope)
+and circuit tracing, because that ecosystem does not exist for Gemma 4.
 
 Hook paths are HF named-module paths; the output of a decoder layer is the
-post-block residual stream. TransformerLens aliases are not used because
-HookedTransformer has no Gemma 4 support (P4-D1 resolved decision).
+post-block residual stream. Every consumer (harvest, probe capture, the SAE
+splice, steering) hooks the plain transformers module at that path, so the
+tier's model coverage is transformers' own (P4-D1 resolved decision).
 
 A family registers two paths because the module layout depends on which
 config the caller loaded, not on the family alone. Gemma 4 loaded from its
@@ -27,10 +27,11 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 
 # The Gemma-2-2B anchor for everything touching the pretrained-SAE ecosystem
-# (Gemma Scope releases, Neuronpedia presets, circuit tracing).
+# (Gemma Scope releases, circuit tracing).
 GEMMA_SCOPE_MODEL_ID = "google/gemma-2-2b"
 GEMMA_SCOPE_RELEASE = "gemma-scope-2b-pt-res-canonical"
 GEMMA_SCOPE_SAE_ID = "layer_12/width_16k/canonical"
+GEMMA_SCOPE_LAYER = 12  # the layer the SAE id above names; hooked through hook_name()
 
 
 class UnknownHookFamilyError(ValueError):
@@ -140,8 +141,9 @@ def hook_name(spec: HookFamilySpec, layer: int) -> str:
 def resolve_submodule(root, spec: HookFamilySpec, layer: int):
     """Walk root to the layer's decoder block along the family's hook path.
 
-    Generic attribute/index traversal so plain torch modules and nnsight
-    proxies resolve identically (both support getattr and integer indexing).
+    Generic attribute/index traversal, equivalent to Module.get_submodule on
+    a plain torch module but also usable on any object that supports getattr
+    and integer indexing (the tests walk a SimpleNamespace tree).
     """
     node = root
     for part in hook_name(spec, layer).split("."):

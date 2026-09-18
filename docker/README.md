@@ -13,7 +13,7 @@ wrong.
 | `llama-gpu/` | GPU llama.cpp inference |
 | `vllm-gpu/` | high-throughput batch serving |
 | `training/` | the training tier, plus a separate export image |
-| `interp/` | the interpretability workbench, and the pinned Neuronpedia overrides |
+| `interp/` | the interpretability workbench |
 | `rust-harness/` | the Rust harness image |
 | `agents/` | the agent sandbox and its egress proxy |
 
@@ -27,10 +27,6 @@ destructive.
 **Only one GPU consumer runs at a time.** `llama-gpu` and `vllm-gpu` contend for the same
 card, and the training and interp stacks each carry their own compose file so they cannot
 be started alongside inference by accident.
-
-**Neuronpedia is an external checkout, not built from this tree.** It is pinned by
-`docker/interp/neuronpedia-pin.txt` and adjusted through `neuronpedia.override.yaml` and
-`neuronpedia.env-deltas`; see [interp/patches/README.md](interp/patches/README.md).
 
 **The agent sandbox image is coupled to the Rust workspace.** `agents/Dockerfile.agents`
 bakes in the toolchain pinned by `rust-harness/rust-toolchain.toml` and a prefetched crate

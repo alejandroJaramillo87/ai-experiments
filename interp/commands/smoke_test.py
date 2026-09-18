@@ -1,8 +1,8 @@
 """Interpretability workbench smoke test (interp Phase 0 I1).
 
-Verifies the hooked-execution stack imports and actually runs on sm_120: a TransformerLens
-hooked forward, an nnsight trace, the bf16 substrate policy, and (when HF_TOKEN grants
-access) the gated chain: Gemma-2-2B plus a Gemma Scope SAE via SAELens. Emits a versions
+Verifies the interp stack imports and actually runs on sm_120: a Hugging Face forward with a
+decoder-block hook, the bf16 substrate policy, and (when HF_TOKEN grants access) the gated
+chain: Gemma-2-2B plus a Gemma Scope SAE via SAELens. Emits a versions
 manifest for reproducibility.
 
 Two modes:
@@ -26,11 +26,12 @@ from common.output import Printer
 from common.smoke import driver_version as _driver_version
 from common.smoke import pkg_version as _pkg_version
 from interp.families import (
-    GEMMA_SCOPE_MODEL_ID as GEMMA_ID,
-)
-from interp.families import (
+    GEMMA_SCOPE_LAYER,
     GEMMA_SCOPE_RELEASE,
     GEMMA_SCOPE_SAE_ID,
+)
+from interp.families import (
+    GEMMA_SCOPE_MODEL_ID as GEMMA_ID,
 )
 
 # Manifest destination on the workstation (writable interp root, roadmap storage layout)
@@ -102,21 +103,16 @@ def cmd(args: argparse.Namespace) -> int:
     # uv.lock pin exactly: any interp package that dragged torch off the cu130 build would
     # show up here even if it slipped past the build.
     import_targets = [
-        "transformer_lens",
-        "nnsight",
-        "nnterp",
         "sae_lens",
         "transformers",
         "datasets",
         "einops",
-        "circuitsvis",
         "pynvml",
     ]
     for mod in import_targets:
         try:
             __import__(mod)
             dist = {
-                "transformer_lens": "transformer-lens",
                 "sae_lens": "sae-lens",
                 "pynvml": "nvidia-ml-py",
             }.get(mod, mod)
@@ -149,55 +145,57 @@ def cmd(args: argparse.Namespace) -> int:
             failures.append(step)
         return False
 
-    # Step 3: TransformerLens hooked forward on gpt2-small
-    tl_model = None
-    if _needs_cuda("transformer-lens"):
+    # Step 3: Hugging Face forward on gpt2 with a forward hook on decoder block 6, the same
+    # register_forward_hook pattern harvest and probe capture use on the workstation models.
+    hf_model = None
+    hf_tokenizer = None
+    if _needs_cuda("hf-hook"):
         try:
-            from transformer_lens import HookedTransformer
+            import torch
+            from transformers import AutoModelForCausalLM, AutoTokenizer
 
-            tl_model = HookedTransformer.from_pretrained("gpt2").to("cuda")
+            hf_model = AutoModelForCausalLM.from_pretrained("gpt2").to("cuda").eval()
+            hf_tokenizer = AutoTokenizer.from_pretrained("gpt2")
             fired = []
-            logits = tl_model.run_with_hooks(
-                PROMPT,
-                fwd_hooks=[
-                    ("blocks.6.hook_resid_post", lambda t, hook: fired.append(t.shape))
-                ],
+
+            def _record(_module, _inputs, output):
+                tensor = output[0] if isinstance(output, tuple) else output
+                fired.append(tuple(tensor.shape))
+
+            handle = hf_model.get_submodule("transformer.h.6").register_forward_hook(
+                _record
             )
-            assert fired, "residual-stream hook did not fire"
-            assert logits.shape[-1] == tl_model.cfg.d_vocab
-            out.ok("transformer-lens: gpt2-small forward, resid_post hook fired")
+            try:
+                inputs = hf_tokenizer(PROMPT, return_tensors="pt").to("cuda")
+                with torch.no_grad():
+                    logits = hf_model(**inputs).logits
+            finally:
+                handle.remove()
+            assert fired, "decoder-block hook did not fire"
+            assert fired[0][-1] == hf_model.config.n_embd, f"hook width {fired[0][-1]}"
+            assert logits.shape[-1] == hf_model.config.vocab_size
+            out.ok("hf-hook: gpt2 forward, block 6 forward hook fired")
         except Exception as exc:  # noqa: BLE001
-            out.error(f"transformer-lens hooked forward failed: {exc}")
-            failures.append("transformer-lens")
+            out.error(f"hf-hook forward failed: {exc}")
+            failures.append("hf-hook")
 
-    # Step 4: nnsight trace on the HF gpt2 model
-    if _needs_cuda("nnsight"):
-        try:
-            from nnsight import LanguageModel
-
-            lm = LanguageModel("gpt2", device_map="cuda", dispatch=True)
-            with lm.trace(PROMPT):
-                hidden = lm.transformer.h[6].output[0].save()
-            assert hidden.shape[-1] == 768
-            out.ok("nnsight: gpt2 trace, intermediate activation read")
-        except Exception as exc:  # noqa: BLE001
-            out.error(f"nnsight trace failed: {exc}")
-            failures.append("nnsight")
-
-    # Step 5: bf16 substrate policy (interpretability runs at bf16, never quantized)
-    if _needs_cuda("bf16") and tl_model is not None:
+    # Step 4: bf16 substrate policy (interpretability runs at bf16, never quantized)
+    if _needs_cuda("bf16") and hf_model is not None and hf_tokenizer is not None:
         try:
             import torch
 
-            logits = tl_model.to(torch.bfloat16)(PROMPT)
+            inputs = hf_tokenizer(PROMPT, return_tensors="pt").to("cuda")
+            with torch.no_grad():
+                logits = hf_model.to(torch.bfloat16)(**inputs).logits
             assert torch.isfinite(logits.float()).all(), "non-finite logits at bf16"
-            out.ok("bf16: gpt2-small forward, finite logits")
+            out.ok("bf16: gpt2 forward, finite logits")
         except Exception as exc:  # noqa: BLE001
             out.error(f"bf16 forward failed: {exc}")
             failures.append("bf16")
 
-    # Step 6 (gated): Gemma-2-2B at bf16 plus one Gemma Scope SAE via SAELens.
-    # Proves the full hooked-model-plus-pretrained-SAE dependency chain on this GPU.
+    # Step 5 (gated): Gemma-2-2B at bf16 plus one Gemma Scope SAE via SAELens, the residual
+    # read through the family registry's hook path. Proves the full hooked-model-plus-
+    # pretrained-SAE dependency chain on this GPU.
     if not os.environ.get("HF_TOKEN"):
         out.warn(
             "gemma-scope: skipped, HF_TOKEN not set (required for Phase 0 acceptance)"
@@ -209,13 +207,31 @@ def cmd(args: argparse.Namespace) -> int:
         try:
             import torch
             from sae_lens import SAE
-            from transformer_lens import HookedTransformer
+            from transformers import AutoModelForCausalLM, AutoTokenizer
 
-            gemma = HookedTransformer.from_pretrained_no_processing(
-                GEMMA_ID, dtype=torch.bfloat16
-            ).to("cuda")
-            _, cache = gemma.run_with_cache(PROMPT)
-            resid = cache["blocks.12.hook_resid_post"]
+            from interp import families
+
+            gemma = (
+                AutoModelForCausalLM.from_pretrained(GEMMA_ID, dtype=torch.bfloat16)
+                .to("cuda")
+                .eval()
+            )
+            tokenizer = AutoTokenizer.from_pretrained(GEMMA_ID)
+            spec = families.family_from_config(gemma.config)
+            captured = []
+
+            def _grab(_module, _inputs, output):
+                captured.append(output[0] if isinstance(output, tuple) else output)
+
+            handle = gemma.get_submodule(
+                families.hook_name(spec, GEMMA_SCOPE_LAYER)
+            ).register_forward_hook(_grab)
+            try:
+                with torch.no_grad():
+                    gemma(**tokenizer(PROMPT, return_tensors="pt").to("cuda"))
+            finally:
+                handle.remove()
+            resid = captured[0]
             sae = SAE.from_pretrained(
                 GEMMA_SCOPE_RELEASE, GEMMA_SCOPE_SAE_ID, device="cuda"
             )
@@ -226,7 +242,7 @@ def cmd(args: argparse.Namespace) -> int:
             out.error(f"gemma-scope step failed: {exc}")
             failures.append("gemma-scope")
 
-    # Step 7: versions manifest
+    # Step 6: versions manifest
     manifest["driver"] = _driver_version()
     out.line()
     out.line("Versions manifest:")

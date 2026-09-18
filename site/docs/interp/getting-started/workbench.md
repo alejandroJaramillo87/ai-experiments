@@ -5,7 +5,7 @@ title: Workbench
 # Workbench
 
 The workbench is the container that holds the tier's GPU stack: PyTorch for CUDA 13 on the
-RTX 5090, TransformerLens, nnsight, and SAELens, with JupyterLab for exploratory work and
+RTX 5090, transformers, and SAELens, with JupyterLab for exploratory work and
 the `python -m interp` verbs for batch jobs. It lives in its own compose file,
 `docker-compose.interp.yaml`, so that `make up` never starts it: an interactive session and
 the GPU inference services must not run at once.

@@ -2,14 +2,17 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 10 verified, 1 blocked, 13 pending, of 24.**
+**Entries: 11 verified, 1 blocked, 11 pending, of 23.**
 
-The 24 entries are I.1 through I.23 plus the interstitial I.9b
-("Chunked-capture crash recovery"); none is missing. I.9b is numbered beside I.9
-because it verifies crash recovery in the capture I.9 runs, so the highest entry
-number is one lower than the entry count. Numbering ran I.1 through I.12 with no
-I.13 until 2026-08-15, when a surface inventory found shipped functionality with
-no entry and I.13 through I.17 were added; the identifier had never been used.
+The 23 entries are I.1 and I.3 through I.23 plus the interstitial I.9b
+("Chunked-capture crash recovery"). I.9b is numbered beside I.9 because it
+verifies crash recovery in the capture I.9 runs. I.2, the Neuronpedia harness
+(PS1), was retired on 2026-09-18 when the harness left the tree with none of
+its three build attempts having succeeded; the attempts are KB-68, KB-76 and
+KB-77 in the ledger, the entry's text is in this file's git history, and the
+identifier is not reused. Numbering ran I.1 through I.12 with no I.13 until
+2026-08-15, when a surface inventory found shipped functionality with no
+entry and I.13 through I.17 were added; the identifier had never been used.
 I.18 through I.23 were added on 2026-09-12, when an audit of this file against
 the tree found that the refusals the tier exists to enforce, the disk and GPU
 preflights and the manifest checks, had each been named by an entry and
@@ -24,14 +27,19 @@ check named, is not verified.
 **Scope of the automated coverage.** Every test under `tests/interp/` runs
 against fakes — `tests/interp/conftest.py` states it outright: "Everything runs
 CPU-only, without network, GPU, or services: captures come from a deterministic
-fake capture function, services from injected callables." No test in this tree
-loads a real model, reaches a running service, or touches the GPU. The BLOCKED
-and PENDING entries therefore have no automated substitute; their status is the
-whole of what is known about them.
+fake capture function, services from injected callables." No test under
+`tests/interp/` loads a real model, reaches a running service, or touches the
+GPU. The tier's one real-weights test is `tests/hardware/test_interp_chain.py`
+(RH.9a through RH.9e): capture through the rust harness, probe training,
+monitor and steering on Gemma 4 E2B, run by the hardware tier, and the
+evidence I.3 and I.22 lean on. It covers that chain and nothing else here;
+the BLOCKED and PENDING entries have no automated substitute, and their
+status is the whole of what is known about them.
 
-I1 workbench, the PS1 Neuronpedia harness, the write-back path (W1 through
-W4), P4-D1 organisms, P4-D2 activation harvesting with garbage collection,
-and P4-D3 SAE training and evaluation. The interp anchor for pretrained
+The tier is the I1 workbench, the write-back path (W1 through W4: control
+vectors, probes, the served-request log, the monitor), P4-D1 organisms,
+P4-D2 activation harvesting with garbage collection, and P4-D3 SAE training
+and evaluation. The interp anchor for pretrained
 SAEs is Gemma-2-2B (Gemma Scope); Gemma 4 runs on the hook-based paths
 (harvest, probes, steering) through the `interp/families.py` registry.
 
@@ -40,15 +48,47 @@ enters `interp/__main__.py`, dispatches through the argparse handlers in
 `interp/cli.py`, and lands in the implementation module; each entry below
 lists its implementation files so a failure can be read at the source
 without re-tracing the chain. Where the process runs differs by target,
-and matters for paths. The model-loading targets (`probe-capture`,
+and matters for paths. The container-run targets (`probe-capture`,
 `probe-train`, `probe-monitor`, `steer-extract`, `harvest`, `interp-gc`,
 `sae-train`, `sae-eval`, `interp-smoke`) run inside the workbench container
 through `docker compose -f docker-compose.interp.yaml run --rm interp`,
 where the models tree is `/app/models` and `/mnt/ai-data/interp` is
-mounted at its own path. The serving-dependent targets (`steer-scorecard`,
-`probe-export`, `probe-eval`, and the four `organism-*` targets) run on the
-host under `uv run` or `python3`, where host paths are the only paths. An
-entry whose block runs on the host says so.
+mounted at its own path; of these, only `probe-capture`, `steer-extract`,
+`harvest`, `sae-train`, `sae-eval` and `interp-smoke` load a model. The
+host-run targets (`steer-scorecard`, `probe-export`, `probe-eval`, and the
+`organism-*` targets) run under `uv run` or `python3`, where host paths are
+the only paths; `steer-scorecard`, `probe-eval`, `organism-generate` and
+`organism-verify` need a running inference service, `probe-export` needs
+nothing. An entry whose block runs on the host says so.
+
+## Table of Contents
+
+- [I.1 Workbench smoke (I1)](#i1-workbench-smoke-i1)
+- [I.3 Control-vector extraction and export (W1)](#i3-control-vector-extraction-and-export-w1)
+- [I.4 Steered serving and scorecard (W1)](#i4-steered-serving-and-scorecard-w1)
+- [I.5 Probe capture, train, eval (W2)](#i5-probe-capture-train-eval-w2)
+- [I.6 Served-request log (W3)](#i6-served-request-log-w3)
+- [I.7 Probe monitor (W4)](#i7-probe-monitor-w4)
+- [I.8 Organisms (P4-D1)](#i8-organisms-p4-d1)
+- [I.9 Harvest with disk preflight (P4-D2)](#i9-harvest-with-disk-preflight-p4-d2)
+  - [I.9b Chunked-capture crash recovery (P4-D2, KB-58)](#i9b-chunked-capture-crash-recovery-p4-d2-kb-58)
+- [I.10 Capture garbage collection (P4-D2)](#i10-capture-garbage-collection-p4-d2)
+- [I.11 SAE training and evaluation (P4-D3)](#i11-sae-training-and-evaluation-p4-d3)
+- [I.12 SAEBench isolated environment (P4-D3)](#i12-saebench-isolated-environment-p4-d3)
+- [I.13 Workbench image build and the run browser (I1)](#i13-workbench-image-build-and-the-run-browser-i1)
+- [I.14 Run browser surface (`python -m interp runs`)](#i14-run-browser-surface-python--m-interp-runs)
+- [I.15 Probe export artifact contract](#i15-probe-export-artifact-contract)
+- [I.16 Traced dispatch stamps every invocation](#i16-traced-dispatch-stamps-every-invocation)
+- [I.17 SAE-row steering extraction (`--method sae_row`)](#i17-sae-row-steering-extraction---method-sae_row)
+- [I.18 The harvest disk preflight refuses a capture that would breach the floor](#i18-the-harvest-disk-preflight-refuses-a-capture-that-would-breach-the-floor)
+- [I.19 The GPU preflight refuses the workbench while an inference service is up](#i19-the-gpu-preflight-refuses-the-workbench-while-an-inference-service-is-up)
+- [I.20 steer-up and steer-down, with the three guards](#i20-steer-up-and-steer-down-with-the-three-guards)
+- [I.21 sae-train refuses a capture whose manifest does not match the recipe](#i21-sae-train-refuses-a-capture-whose-manifest-does-not-match-the-recipe)
+- [I.22 probe-capture says when a probe will load unchecked](#i22-probe-capture-says-when-a-probe-will-load-unchecked)
+- [I.23 The hook gate refuses a layer the checkpoint does not have](#i23-the-hook-gate-refuses-a-layer-the-checkpoint-does-not-have)
+- [Unentried surface](#unentried-surface)
+- [Coverage roster](#coverage-roster)
+- [Unexercised flags](#unexercised-flags)
 
 ## I.1 Workbench smoke (I1)
 
@@ -61,50 +101,98 @@ Command:
 make interp-smoke
 ```
 
-Expected signal: every step passes and the run ends `[OK] ALL SMOKE STEPS
-PASSED` with no `[SKIP]` or `[WARN]` line, including the gated Gemma-2-2B
-plus Gemma Scope SAE step, which prints `[WARN] ... skipped` without
-`HF_TOKEN` in `.env.interp`; the versions manifest lands at
-`/mnt/ai-data/interp/versions.json`.
+Expected signal: every ungated step passes and the run ends `[OK] ALL SMOKE
+STEPS PASSED` with no `[SKIP]` line; the versions manifest lands at
+`/mnt/ai-data/interp/versions.json`. The gated Gemma-2-2B plus Gemma Scope
+SAE step prints `[WARN] ... skipped` without `HF_TOKEN` in `.env.interp`,
+and this entry accepts that line: on 2026-09-17 the operator decided the
+workstation runs without a Hugging Face token, since every checkpoint the
+tier needs is already on disk. The Gemma-2 branch is instead reached by the
+calibration capture in `reference-captures.md`.
 
-Observed:
+The fifth step is gated on the `HF_TOKEN` environment variable, not on
+whether Gemma-2-2B is already on disk: `smoke_test.py` tests the variable
+first and skips the step outright when it is unset, so a cached checkpoint
+under `HF_HOME` is never consulted. Running without the token therefore
+exercises every step but the fifth whatever the cache holds. The two ungated
+model steps are a Hugging Face forward on gpt2 with a forward hook on decoder
+block 6 (`[OK] hf-hook: ...`) and the bf16 forward on the same model; the
+import step lists sae_lens, transformers, datasets, einops and pynvml.
 
-```
-```
+The seven-step smoke's observation of 2026-09-17 on 747d8ad is in git
+history; the block below is of the six-step smoke that replaced it on
+2026-09-18.
 
-Status: PENDING
-
-## I.2 Neuronpedia harness (PS1)
-
-Implementation: `scripts/interp/np_env.sh`, `scripts/interp/np_smoke.sh`,
-`docker/interp/neuronpedia-pin.txt`,
-`docker/interp/neuronpedia.override.yaml`.
-
-Command:
-
-```bash
-make np-clone
-make np-env
-make np-build
-make np-up
-make np-smoke
-```
-
-Expected signal: the checkout pins to `docker/interp/neuronpedia-pin.txt`;
-np-smoke passes its checks — loopback-only bindings, webapp on 3001,
-postgres up, and sm_120 visible to the GPU services. `make np-down`
-afterwards stops the stack cleanly.
-
-This entry needs outbound network as well as the GPU host: `np-clone` clones
-an upstream repository, and `np-build` builds CUDA images. Neither works from
-an agent sandbox, whose egress allowlist does not cover either.
-
-Observed:
+Observed (2026-09-18, on 3451279, without `HF_TOKEN`):
 
 ```
+$ make interp-smoke
+docker compose -f docker-compose.interp.yaml run --rm interp python -m interp smoke
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-interp-run-baf603ae13ef Creating
+Container ai-experiments-interp-run-baf603ae13ef Created
+=== Interpretability workbench ===
+
+Environment:
+  Python: 3.12.3
+  Torch: 2.13.0+cu130
+  CUDA available: True
+  HF_HOME: /mnt/ai-data/interp/hf-cache
+  Working dir: /workspace
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m interp smoke
+=== Interpretability workbench smoke test ===
+
+[OK] torch 2.13.0+cu130: CUDA available, NVIDIA GeForce RTX 5090 sm_120
+[OK] import sae_lens: 6.46.0
+[OK] import transformers: 5.13.1
+[OK] import datasets: 5.0.0
+[OK] import einops: 0.8.2
+[OK] import pynvml: 12.575.51
+[OK] torch pin intact: 2.13.0+cu130
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Loading weights: 100%|...| 148/148 [00:00<00:00, 9734.62it/s]
+[OK] hf-hook: gpt2 forward, block 6 forward hook fired
+[OK] bf16: gpt2 forward, finite logits
+[WARN] gemma-scope: skipped, HF_TOKEN not set (required for Phase 0 acceptance)
+  Solution: accept the Gemma license on Hugging Face, set HF_TOKEN in .env.interp
+
+Versions manifest:
+{
+  "packages": {
+    "torch": "2.13.0+cu130",
+    "sae_lens": "6.46.0",
+    "transformers": "5.13.1",
+    "datasets": "5.0.0",
+    "einops": "0.8.2",
+    "pynvml": "12.575.51"
+  },
+  "cuda": "13.0",
+  "gpu": "NVIDIA GeForce RTX 5090",
+  "capability": [
+    12,
+    0
+  ],
+  "driver": "580.173.02"
+}
+[OK] manifest written: /mnt/ai-data/interp/versions.json
+
+[OK] ALL SMOKE STEPS PASSED
 ```
 
-Status: PENDING
+Every step but the gated fifth passed on the RTX 5090 at sm_120: both
+ungated model steps, the torch pin held, and the manifest landed. The image was built from the re-locked
+uv.lock of 3451279, so the import step lists only the packages the cut left.
+The gated step printed the `[WARN] ... skipped` line the expected signal
+accepts, so the Gemma-2-2B forward and the Gemma Scope encode have no
+observation from this entry; that is a stated gap, not a failure. The
+unauthenticated-Hub warning is transformers fetching gpt2 without a token,
+and the orphan container warning is compose noting services of the other
+stacks under the same project name; neither is a smoke result. The weight
+progress bar is abbreviated.
+
+Status: VERIFIED 2026-09-18 (gated Gemma Scope step skipped by decision)
 
 ## I.3 Control-vector extraction and export (W1)
 
@@ -283,8 +371,8 @@ Check before trusting the result: the capture's `[OK]` line must report a real
 sha256 and not `unknown`. A `"unknown"` model hash loads into a serving harness
 with the identity guard silently skipped.
 
-Expected signal: capture writes per-layer shards plus a manifest under
-nnsight (decoder blocks resolved through the family registry); training
+Expected signal: capture writes per-layer shards plus a manifest through
+forward hooks on the decoder blocks the family registry names; training
 selects the best layer by validation AUROC and registers the probe;
 evaluation writes the report with the mandatory black-box baselines and a
 deployable verdict.
@@ -626,7 +714,8 @@ Status: VERIFIED 2026-08-08
 
 ## I.10 Capture garbage collection (P4-D2)
 
-Implementation: `interp/commands/interp_gc.py`, `interp/manifest.py`.
+Implementation: `interp/commands/interp_gc.py`, `interp/harvest.py`
+(`gc_captures`, `mark_validated`), `interp/manifest.py`.
 
 Command:
 
@@ -771,10 +860,23 @@ inside it lists the recent interp invocations, most recent first, with the build
 smoke run absent (it ran in the image build, not against the host log root) and
 the shell's own dispatch present; `make interp-down` stops the workbench.
 
-Observed:
+Observed (2026-09-18, on 0b6aafa, `make interp-build` only):
 
 ```
+[+] build 1/1
+ ✔ Image ai-experiments-interp Built                                                                                                                                           0.2s
+Interp workbench image built.
 ```
+
+This rebuild followed the full build 0.7 records on the same lockfile, so
+every layer including the smoke step came from the cache and the build
+printed none of the `[OK]` and `[SKIP]` lines this entry expects; the
+build-time smoke ran once, during the 0.7 build, and its lines were not
+captured. The lifecycle half (`interp-up`, `interp-shell`, `runs`,
+`interp-down`) has not been run. Recording the build-time lines needs a
+build with the smoke layer invalidated (`docker compose -f
+docker-compose.interp.yaml build --no-cache interp`, or any edit under
+`interp/` that the copy step above the smoke picks up).
 
 Status: PENDING
 
@@ -912,23 +1014,34 @@ written figure (buffer-rounded, per `reference-captures.md`), subtracts it
 from the free space on the activations root, and refuses below the floor.
 The check runs before the lock and the model load, so the refusal is cheap.
 
+The block overrides `harvest.name` as well as the token count. Two refusals
+stand ahead of the disk preflight in `run_harvest`, and the recipe's own
+directory trips the first: a directory holding a finished manifest is
+`capture already complete`, and one holding a `progress.json` written under
+another token budget is a config mismatch. I.9 and I.11 leave `harvest-smoke`
+in the first state, so under the recipe's name this entry would observe the
+wrong refusal.
+
 ```bash
 set -o pipefail
 cd ~/workspace/ai-experiments
 df -h /mnt/ai-data | tail -1
 make harvest RECIPE=training/recipes/interp/harvest-smoke.yaml \
-    ARGS="--override harvest.total_tokens=300000000000"
+    ARGS="--override harvest.total_tokens=300000000000 --override harvest.name=i18-preflight"
 echo "exit=$?"
-ls /mnt/ai-data/interp/activations/harvest-smoke 2>&1 | head -3
+ls -la /mnt/ai-data/interp/activations/i18-preflight
+ls /mnt/ai-data/interp/activations/harvest-smoke | head -3
 ```
 
 Expected signal: exit 1 and one line, `[ERROR] Harvest failed: disk preflight
 refused: projected capture is <n>GB, free space on <root> is <m>GB, floor is
 <f>GB. Free space, reduce harvest.total_tokens or hook_layers, or run make
 interp-gc`, where `<m>` agrees with `df` to the gigabyte, and the projection is
-the 300 G tokens at 1536 f16 halfwords, on the order of 900 TB. No `Caching
-activations` bar, no model load, and the capture directory is absent or
-unchanged.
+the 300 G tokens at 1536 fp32 words (the smoke recipe's dtype), on the order of
+1.8 PB, which the message prints in GB as roughly 1.7 million. No `Caching
+activations` bar and no model load. `run_harvest` creates the capture directory
+before it prices the capture, so `i18-preflight` exists and is empty; delete it
+afterwards. `harvest-smoke` is unchanged.
 
 Observed:
 
@@ -942,8 +1055,8 @@ Status: PENDING
 Implementation: `scripts/interp/preflight.sh`, `make/interp.mk` (every target
 that calls it).
 
-Nine targets run the preflight first, and every entry above records only its
-`[OK]` line. The refusal is the one-GPU-consumer rule of `AGENTS.md` made
+Eight targets in `make/interp.mk` run the preflight first; every entry above
+records only its `[OK]` line. The refusal is the one-GPU-consumer rule of `AGENTS.md` made
 mechanical, and the script also fails closed: a `docker compose` invocation
 that cannot answer is a refusal, not a pass.
 
@@ -1025,8 +1138,8 @@ Status: PENDING
 
 ## I.21 sae-train refuses a capture whose manifest does not match the recipe
 
-Implementation: `interp/sae/train.py` (`resolve_capture`, `check_capture`,
-`capture_dtype`), `interp/commands/sae_train.py`.
+Implementation: `interp/sae/train.py` (`resolve_capture`, `capture_dtype`),
+`interp/harvest.py` (`check_capture`), `interp/commands/sae_train.py`.
 
 I.11's expected signal says training refuses a manifest mismatch, and its run
 trained on a matching one. The refusal has three arms: a manifest that is
@@ -1155,14 +1268,10 @@ variable to name. Each is a gap in evidence, not a known defect.
   I.13 also does not state the stale-image trap `reference-captures.md`
   precondition 2 does: `docker compose run` builds only when the image is
   missing.
-- Neuronpedia past PS1: `np-inference-up`, `np-autointerp-up` (and the three
-  refusals of `scripts/interp/np_autointerp_preflight.sh`), `np-graph-up`,
-  `np-status`, and the `MODEL_SOURCESET`, `NP_GPU`, `AI_NETWORK_NAME` and
-  `NP_SRC` variables they read.
-- `interp-dirs`, the storage-tree bootstrap and `np-clone`'s prerequisite.
+- `interp-dirs`, the storage-tree bootstrap.
 - The Gemma-2 family branch of `interp/families.py` and the Gemma Scope ids:
-  reached by I.1's sixth step and by the calibration capture in
-  `reference-captures.md`, both pending.
+  reached by I.1's fifth step, which the 2026-09-18 run skipped by decision,
+  and by the calibration capture in `reference-captures.md`, still pending.
 - Variables no entry names: `OBS_LOG_DIR` (I.14 now states the default),
   `SCALE` and `LAYER_RANGE` on `steer-up` (I.20 passes them),
   `CONTROL_VECTOR_SCALE` and `CONTROL_VECTOR_LAYER_RANGE` on `harness-serve`,

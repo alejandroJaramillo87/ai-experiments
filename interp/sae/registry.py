@@ -1,7 +1,7 @@
 """SAE registry (interp Phase 4 P4-D3): list, load, and validate SAE runs.
 
-Every consumer — the evaluation report, the P4-D4 Neuronpedia import, the
-steering sae_row backend — resolves trained SAEs through here, and the load
+Every consumer — the evaluation report, the steering sae_row backend —
+resolves trained SAEs through here, and the load
 path refuses a run whose manifest is missing or whose model hash does not
 match the model it will be used against. Weights stay in SAELens's own save
 format on disk; loading them is the consumer's job (sae_lens.SAE.load_from_
