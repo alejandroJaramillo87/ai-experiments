@@ -12,7 +12,7 @@ What changed:
 
 - **Twelve unverified WI-14 rows were deleted**, listed below so the ids are never reused. The test applied was evidence, not age: a row was deleted only if nothing in the repository recorded it being observed. KB-52 was a candidate until the reference check found the P0.1 Observed block that closes "Verified with the KB-52 caveat", and it stayed.
 - **Three rows moved to a new pending-confirmation section.** Their fixes are committed; only a hardware run can close them. A fourth candidate, KB-32, was checked and stayed open: the refactor its row depends on has not landed.
-- **The closed history moved to [bugs/ledger-archive.md](../bugs/ledger-archive.md)** — 36 sandbox pre-fix rows, five PR #54 rows, and seven refused candidates.
+- **The closed history moved to [archive/ledger-archive.md](../archive/ledger-archive.md)** — 36 sandbox pre-fix rows, five PR #54 rows, and seven refused candidates.
 - **Three rows closed as moot on 2026-09-18**, when the Neuronpedia harness left the tree before a build of its images had succeeded; see that section below.
 
 **Identifiers did not change, and will not.** KB ids are cited in 31 source-code comments and asserted by `tests/interp/test_harvest.py`, so renumbering would be a code change wearing a documentation change's clothes. The next bug filed is KB-78 (KB-68 was announced as next on the reset, then skipped by the rows that followed; it and KB-76 were filed on 2026-09-17, and KB-77 on 2026-09-18).
@@ -101,5 +101,5 @@ Recovering one means re-deriving it from the code, not restoring this row. Full 
 
 ## Related
 
-- [bugs/ledger-archive.md](../bugs/ledger-archive.md) — the closed history: 36 sandbox pre-fix rows, five PR #54 rows, seven refused candidates
+- [archive/ledger-archive.md](../archive/ledger-archive.md) — the closed history: 36 sandbox pre-fix rows, five PR #54 rows, seven refused candidates
 - [README.md](../../README.md) — the hardware verification runbook these rows are indexed against

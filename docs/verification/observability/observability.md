@@ -17,7 +17,7 @@ output is evidence of something, and deleting it would lose that — and states
 beside its status the one clause it does not cover. The real-Chromium harness
 is no longer merely
 sandbox context: it is OBS-V5 in
-[sandbox/sandbox-executable.md](../sandbox/sandbox-executable.md), verified
+[archive/sandbox-executable.md](../archive/sandbox-executable.md), verified
 the same day. **Two entries were added 2026-08-15**, from a surface inventory that found
 shipped functionality with no entry at all: OBS-V10 (retention against a real
 Rust writer) and OBS-V11 (the watchdog `alerts.jsonl` and the mlflow sink).
@@ -818,7 +818,7 @@ human, which is why it is a roster rather than eight more entries.
 | `runs --all` | `tests/common/test_obs_catalog.py::test_default_view_hides_runs_entries_until_all` |
 | `runs --json` | `tests/common/test_obs_catalog.py::test_runs_json_lists_runs_including_failed` |
 | `python -m common.obs.runs` as a module entry point | `tests/common/test_obs_runs.py::test_module_entry_point_emits_only_json_on_stdout`, `::test_module_entry_point_forwards_the_usage_exit_code` |
-| `OBS_RETENTION_DAYS` | `tests/common/test_obs_retention.py::test_invalid_retention_value_disables_pruning`, which carries this row alone: it is the only check that reads the variable, and it fails both when the env read is removed and when the invalid-value fallback is changed. The sibling `::test_a_live_run_in_another_process_survives_a_startup_prune` was credited here and does not belong -- its fixture deletes `OBS_RETENTION_DAYS` and its subprocess prunes with a literal, so it pins cross-process liveness and says nothing about this variable. Also exercised operationally by OBS-V9 in [sandbox/sandbox-executable.md](../sandbox/sandbox-executable.md), which sets it across its prune invocations -- but the runbook cross-reference is context, not the gate check this column requires |
+| `OBS_RETENTION_DAYS` | `tests/common/test_obs_retention.py::test_invalid_retention_value_disables_pruning`, which carries this row alone: it is the only check that reads the variable, and it fails both when the env read is removed and when the invalid-value fallback is changed. The sibling `::test_a_live_run_in_another_process_survives_a_startup_prune` was credited here and does not belong -- its fixture deletes `OBS_RETENTION_DAYS` and its subprocess prunes with a literal, so it pins cross-process liveness and says nothing about this variable. Also exercised operationally by OBS-V9 in [archive/sandbox-executable.md](../archive/sandbox-executable.md), which sets it across its prune invocations -- but the runbook cross-reference is context, not the gate check this column requires |
 
 The two module entry-point tests are new as of 2026-08-15. Every earlier test
 called `main()` in-process, so the module's `__main__` guard had no coverage:
@@ -827,13 +827,13 @@ called `main()` in-process, so the module's `__main__` guard had no coverage:
 ## Moved to another tier
 
 **OBS-V5, the browser harness**, is now
-[sandbox/sandbox-executable.md](../sandbox/sandbox-executable.md). What it verifies —
+[archive/sandbox-executable.md](../archive/sandbox-executable.md) (archived 2026-09-18). What it verifies —
 `common/obs/viewer.js` rendering in a real browser — depends on a browser and not on this
 workstation, so running it on the RTX 5090 proved nothing that running it in a container
 does not. The identifier is not reused, and the numbering below keeps its gap.
 
 **OBS-V9, retention pruning an aged file while sparing a live one**, is also
-[sandbox/sandbox-executable.md](../sandbox/sandbox-executable.md), at the `OBS-V9` heading
+[archive/sandbox-executable.md](../archive/sandbox-executable.md), at the `OBS-V9` heading
 below OBS-V5. It needs a `mktemp -d` log root and two CLI invocations, and nothing about
 the property depends on this workstation. It is recorded here because retention is one of
 the phases this runbook covers: a reader auditing retention coverage against this document
@@ -849,8 +849,8 @@ because each exercises a producer or a consumer this campaign's own entries do n
 | Entry | Runbook | What it covers here |
 |-------|---------|---------------------|
 | RH.13 | [rust-harness/rust-harness.md](../rust-harness/rust-harness.md), `docs/verification/rust-harness/rust-harness.md:1694` | A second writer of the shared obs contract: the Rust harness emits `${OBS_LOG_DIR}/harness/<run_id>.jsonl` and a catalog row through `common/obs/catalog.py`. |
-| RHX.4 | [rust-harness/rust-harness-ux.md](../rust-harness/rust-harness-ux.md), `docs/verification/rust-harness/rust-harness-ux.md:190` | The training dashboard (`common/obs/dashboard.py`, `common/obs/viewer.js`) rendering a harness `metrics.jsonl` — the same reader OBS-V6 drives, against a non-training producer. |
-| RHX.7 | [rust-harness/rust-harness-ux.md](../rust-harness/rust-harness-ux.md), `docs/verification/rust-harness/rust-harness-ux.md:327` | One catalog across the workspace: five harness binaries writing run records that `common/obs/runs.py` lists beside the training runs OBS-V3 checks. |
+| RHX.4 | [rust-harness/rust-harness.md](../rust-harness/rust-harness.md#rhx4-the-training-dashboard-renders-a-harness-run) | The training dashboard (`common/obs/dashboard.py`, `common/obs/viewer.js`) rendering a harness `metrics.jsonl` — the same reader OBS-V6 drives, against a non-training producer. |
+| RHX.7 | [rust-harness/rust-harness.md](../rust-harness/rust-harness.md#rhx7-one-catalog-serves-the-whole-workspace) | One catalog across the workspace: five harness binaries writing run records that `common/obs/runs.py` lists beside the training runs OBS-V3 checks. |
 
 Line numbers are accurate as of 2026-08-15; the entry identifiers are the durable
 reference.

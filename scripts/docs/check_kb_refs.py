@@ -49,7 +49,7 @@ PRUNE_DIRS = {
 # holding the closed history moved out of it.
 LEDGERS = (
     "docs/verification/bugs/known-bugs.md",
-    "docs/verification/bugs/ledger-archive.md",
+    "docs/verification/archive/ledger-archive.md",
 )
 
 # Files scanned for citations. Wider than the doc gates because the point of the
@@ -71,7 +71,7 @@ NEXT_ID = re.compile(r"next bug filed is\s+KB-\d+", re.IGNORECASE)
 # tree as it stood on one day, and two ids it cites were retired in the 2026-08-08
 # reset. Editing the record to fix them would falsify what it recorded, which is
 # the one thing a frozen record exists not to do.
-EXEMPT_PARTS = ("investigations", "vendor")
+EXEMPT_PARTS = ("investigations", "archive", "vendor")
 
 # Exempt by name, each for a stated reason.
 EXEMPT_FILES = {

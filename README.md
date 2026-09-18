@@ -55,10 +55,10 @@ Three specific gaps a reader would otherwise discover by being misled:
 - **Inference has no acceptance entry.** It is the tier in daily use and the one with measured
   benchmark numbers, but no file in `docs/verification/` covers it. Its evidence is measurement,
   not an observed acceptance check.
-- **The step-zero verifications kept no output.** All eight entries in
-  `docs/verification/step-zero-environment.md` are marked verified, and each Observed block reads
-  only that the command was run on 2026-08-01 without the output being recorded. They are the
-  weakest verified entries in the tree.
+- **Most step-zero verifications kept no output.** All eight entries in
+  `docs/verification/archive/step-zero-environment.md` are marked verified, and six Observed
+  blocks read only that the command was run on 2026-08-01 without the output being recorded.
+  They are the weakest verified entries in the tree.
 - **The Gemma 4 conformance audit was never executed.** Its 50 host checks remain unrun, blocked
   on absent weights, and freezing the record did not retire them.
 

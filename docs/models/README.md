@@ -7,7 +7,7 @@ transcripts that verify them.
 
 | Document | Contents |
 |----------|----------|
-| [gemma-4.md](gemma-4.md) | Gemma 4 dense family (E2B, E4B, 12B, 31B): general architecture reference, and the citation target of [../verification/investigations/gemma-4-conformance_investigation.md](../verification/investigations/gemma-4-conformance_investigation.md) |
+| [gemma-4.md](gemma-4.md) | Gemma 4 dense family (E2B, E4B, 12B, 31B): general architecture reference, and the citation target of [../verification/archive/gemma-4-conformance_investigation.md](../verification/archive/gemma-4-conformance_investigation.md) |
 
 Each tier keeps its own scoped Gemma 4 document, covering what that tier's code consumes:
 [../training/gemma-4-training.md](../training/gemma-4-training.md) for training and

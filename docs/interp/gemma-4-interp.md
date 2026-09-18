@@ -261,7 +261,7 @@ from a system interpreter.
 config-built tree is not evidence of a weight. Do not derive parameter counts from
 `named_modules()`.
 
-This settles the contested finding tracked in `/docs/verification/investigations/gemma-4-conformance_investigation.md`.
+This settles the contested finding tracked in `/docs/verification/archive/gemma-4-conformance_investigation.md`.
 
 ## Export safety
 
