@@ -95,7 +95,7 @@ audit.
 |----------|-------------|
 | [training/gemma-4-training.md](training/gemma-4-training.md) | Gemma 4 for the training tier: parameter accounting, memory, tensor names, tokenizer (E2B, E4B) |
 | [interp/gemma-4-interp.md](interp/gemma-4-interp.md) | Gemma 4 for the interp tier: residual width, layer counts, hook hazards (E2B, E4B) |
-| [models/gemma-4.md](models/gemma-4.md) | Gemma 4 dense family (E2B, E4B, 12B, 31B): general architecture reference, and the citation target of `verification/investigations/gemma-4-conformance_investigation.md` |
+| [models/gemma-4.md](models/gemma-4.md) | Gemma 4 dense family (E2B, E4B, 12B, 31B): general architecture reference, and the citation target of `verification/archive/gemma-4-conformance_investigation.md` |
 | [models/README.md](models/README.md) | Index for the above, plus the committed GGUF and safetensors header transcripts and how to regenerate them |
 
 ### System Optimizations
@@ -207,7 +207,7 @@ since moved is accurate history rather than drift.
 
 **A frozen record is not a source to check the tree against, and an audit should not read it as
 one.** These files describe the code as it stood on their date, so they accumulate names,
-formats and commands that no longer exist — `docs/verification/investigations/` alone still
+formats and commands that no longer exist — `docs/verification/archive/` alone still
 carries hundreds of references to the GGUF model loader deleted in P8b. That is correct and
 must stay. Anything sweeping the tree for stale facts should skip these paths, as both
 documentation gates already do, rather than rediscover the same expired history each time.
@@ -217,7 +217,7 @@ documentation gates already do, rather than rediscover the same expired history 
 | [training/investigations/](training/investigations/) | D3-D10, F1-F8, and P2 deliverable investigations, plus [the unified-CLI investigation](training/investigations/unified_cli_investigation.md) (20 documents, 2026-07-14 to 2026-07-15). [README.md](training/investigations/README.md) carries the directory's conventions |
 | [interp/investigations/](interp/investigations/) | I1, P4, and PS deliverable investigations (8 documents, 2026-07-14 to 2026-07-15) |
 | [testing/investigations/](testing/investigations/) | [test_coverage_investigation.md](testing/investigations/test_coverage_investigation.md) — audit of the suite at 2026-07-16, commit 8316e5e |
-| [verification/investigations/](verification/investigations/) | [gemma-4-conformance_investigation.md](verification/investigations/gemma-4-conformance_investigation.md) — the 2026-08-01 audit of the three consumer tiers against the Gemma 4 reference. Its 50 `GH.n` host checks were never executed; [verification/README.md](verification/README.md) records that backlog |
+| [verification/archive/](verification/archive/) | The closed verification runbooks, the ledger's closed history, and [gemma-4-conformance_investigation.md](verification/archive/gemma-4-conformance_investigation.md) — the 2026-08-01 audit of the three consumer tiers against the Gemma 4 reference. Its 50 `GH.n` host checks were never executed; [verification/README.md](verification/README.md) records that backlog |
 | [interp/experiments/](interp/experiments/) | Experiment post-mortems, one file per experiment, immutable after the verdict. [README.md](interp/experiments/README.md) is the living convention for writing them |
 | [models/](models/) | `gemma4-gguf.txt` and `gemma4-safetensors.txt` — machine transcripts carrying their own `Generated:` timestamps. Cited by line number; regenerating shifts those lines, and `tests/models/test_gemma4_facts_contract.py` fails on every citation the shift broke |
 
@@ -241,17 +241,17 @@ is whoever is running the checks, and the human's pasted output is the evidence.
 | Document | Contents |
 |----------|----------|
 | [verification/README.md](verification/README.md) | The manual verification campaign: recording protocol and phase order |
-| [verification/step-zero-environment.md](verification/step-zero-environment.md) | Lockfile, images, smoke tests, quality gate (blocks all phases) |
+| [verification/archive/step-zero-environment.md](verification/archive/step-zero-environment.md) | Lockfile, images, smoke tests, quality gate; closed 2026-09-18 and frozen |
 | [verification/training/training-phase0.md](verification/training/training-phase0.md) | Phase 0 deliverables |
 | [verification/training/training-phase1.md](verification/training/training-phase1.md) | F1 through F8 |
 | [verification/training/training-phase2.md](verification/training/training-phase2.md) | P2-D1 through P2-D5 |
 | [verification/interp/interp.md](verification/interp/interp.md) | The interpretability tier |
 | [verification/observability/observability.md](verification/observability/observability.md) | OBS-V1 to OBS-V8: the observability stack on the workstation |
-| [verification/rust-harness/rust-harness.md](verification/rust-harness/rust-harness.md) | The rust-harness CPU backend on the real E4B GGUF |
+| [verification/rust-harness/rust-harness.md](verification/rust-harness/rust-harness.md) | The rust-harness CPU backend on the real E4B checkpoint, and the RHX user-surface entries |
 | [verification/rust-harness/rust-harness-qa.md](verification/rust-harness/rust-harness-qa.md) | Q0-Q6: the sandbox-executable code-quality campaign |
 | [verification/hardware/hardware-stress.md](verification/hardware/hardware-stress.md) | One-time firmware stability soak for the BIOS undervolt profile |
 | [verification/bugs/known-bugs.md](verification/bugs/known-bugs.md) | The defect ledger the runbook entries cross-reference |
-| [verification/bugs/ledger-archive.md](verification/bugs/ledger-archive.md) | Closed defect history moved out of the ledger, and the candidates the panel refused |
+| [verification/archive/ledger-archive.md](verification/archive/ledger-archive.md) | Closed defect history moved out of the ledger, and the candidates the panel refused |
 
 ## Performance Summary
 
