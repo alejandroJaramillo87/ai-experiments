@@ -450,8 +450,8 @@ class SaeConfig:
     interp/sae/train.py, which owns its validation.
 
     Architecture is pinned to BatchTopK (SAELens v6 recommended default;
-    checkpoints save as JumpReLU for inference, which the P4-D4 Neuronpedia
-    import consumes). k sets L0 directly; the reference band is 40-80.
+    checkpoints save as JumpReLU for inference, the form SAELens can load
+    back). k sets L0 directly; the reference band is 40-80.
     expect_model_id and expect_corpus are refusal-gate expectations checked
     against the capture manifest before any training starts.
     """

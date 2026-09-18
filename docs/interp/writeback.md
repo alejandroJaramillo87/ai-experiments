@@ -5,8 +5,8 @@ W1-W4): control-vector steering deployed into the rust harness serving endpoint,
 mandatory black-box baselines, a served-request log, and the probe monitor. Weights
 are never modified; every intervention acts on activations only. Code lives in `interp/`
 (packages, invoked as `python -m interp <subcommand>` via `interp/commands/`);
-`scripts/interp/` holds only shell helpers (the isolated Neuronpedia and SAEBench
-environments); tests in `tests/interp/`.
+`scripts/interp/` holds only shell helpers (the GPU preflight and the isolated SAEBench
+environment); tests in `tests/interp/`.
 
 This path ran against the llama.cpp services until R10 and R11 moved it onto
 the harness, which serves the request and runs the taps in one process.

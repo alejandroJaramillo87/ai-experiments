@@ -8,8 +8,8 @@ tracking), and a manifest that chains every SAE run to the capture it
 trained from.
 
 Architecture is pinned to BatchTopK (SAELens v6 recommended default;
-checkpoints save as JumpReLU for inference, which the P4-D4 Neuronpedia
-import consumes). Width and k come from the recipe; the reference run is
+checkpoints save as JumpReLU for inference, the form SAELens can load
+back). Width and k come from the recipe; the reference run is
 16k features with k in the L0 40-80 band.
 
 Heavy imports (torch, sae_lens) are lazy so the CPU sandbox can import this

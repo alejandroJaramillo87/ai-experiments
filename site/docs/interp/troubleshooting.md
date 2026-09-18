@@ -113,11 +113,6 @@ are not resumable and say so: a crash inside assembly, whose message names the t
 directories to delete before starting over, and a recipe changed between runs, whose message
 names the keys that moved. See [Harvesting activations](guides/harvest.md).
 
-## `np-inference-up` refuses the preset
-
-`No such config: .env.inference.<name>` means `MODEL_SOURCESET` names a preset the pinned
-checkout does not ship; the upstream checkout lists the options.
-
 ## Run records are not appearing
 
 The root is `OBS_LOG_DIR`, default `/mnt/ai-data/logs`, and the verbs write under its

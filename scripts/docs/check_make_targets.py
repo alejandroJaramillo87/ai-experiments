@@ -97,6 +97,43 @@ KNOWN_ABSENT = {
     ("docs/verification/rust-harness/rust-harness.md", "napalm"),
     # The site's probe guide reproduces RH.9c's recipe and its recorded output.
     ("site/docs/rust-harness/guides/probe-monitoring.md", "napalm"),
+    # The Neuronpedia harness left the tree on 2026-09-18 with its ten np-*
+    # targets (scripts/docs/check_retired_names.py records each). The five
+    # frozen records below designed and then retired it, and quote its targets
+    # as the commands they were on the day each was written. A reader who runs
+    # one gets `No rule to make target`, and the retired-names gate names the
+    # replacement (none) on any living document that copies the line, so the
+    # trap this gate exists to catch is closed by its sibling. `host-add` is a
+    # target of the upstream Neuronpedia repository, quoted from its AGENTS.md,
+    # and never existed here.
+    ("docs/interp/investigations/neuronpedia_replacement_investigation.md", "host-add"),
+    ("docs/interp/investigations/neuronpedia_replacement_investigation.md", "np-build"),
+    (
+        "docs/interp/investigations/neuronpedia_replacement_investigation.md",
+        "np-graph-up",
+    ),
+    ("docs/interp/investigations/ps1_neuronpedia_harness_investigation.md", "np-build"),
+    ("docs/interp/investigations/ps1_neuronpedia_harness_investigation.md", "np-clone"),
+    ("docs/interp/investigations/ps1_neuronpedia_harness_investigation.md", "np-env"),
+    (
+        "docs/interp/investigations/ps1_neuronpedia_harness_investigation.md",
+        "np-inference-up",
+    ),
+    ("docs/interp/investigations/ps1_neuronpedia_harness_investigation.md", "np-smoke"),
+    ("docs/interp/investigations/ps2_gemma_scope_import_investigation.md", "np-down"),
+    ("docs/interp/investigations/ps2_gemma_scope_import_investigation.md", "np-smoke"),
+    ("docs/interp/investigations/ps2_gemma_scope_import_investigation.md", "np-up"),
+    ("docs/interp/investigations/ps4_autointerp_investigation.md", "np-autointerp-up"),
+    ("docs/interp/investigations/ps4_autointerp_investigation.md", "np-build"),
+    ("docs/interp/investigations/ps4_autointerp_investigation.md", "np-clone"),
+    ("docs/interp/investigations/ps4_autointerp_investigation.md", "np-status"),
+    ("docs/interp/investigations/ps5_attribution_graphs_investigation.md", "np-down"),
+    (
+        "docs/interp/investigations/ps5_attribution_graphs_investigation.md",
+        "np-graph-up",
+    ),
+    ("docs/interp/investigations/ps5_attribution_graphs_investigation.md", "np-smoke"),
+    ("docs/interp/investigations/ps5_attribution_graphs_investigation.md", "np-up"),
 }
 
 # Exempt by name, each for a stated reason.

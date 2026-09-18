@@ -152,7 +152,6 @@ Living documentation for the interp stack (`python -m interp`).
 
 | Document | Description |
 |----------|-------------|
-| [interp/platform.md](interp/platform.md) | Workbench, Neuronpedia harness, platform services |
 | [interp/writeback.md](interp/writeback.md) | Steering, probes, log proxy, probe monitor (W1-W4) |
 | [interp/experiments/README.md](interp/experiments/README.md) | The experiments log convention and entries |
 | [interp/gemma-4-interp.md](interp/gemma-4-interp.md) | Gemma 4 for the interp tier: residual width, layer counts, hook hazards |

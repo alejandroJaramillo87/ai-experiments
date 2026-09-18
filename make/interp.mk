@@ -38,8 +38,7 @@ interp-down: ## Stop the interp workbench
 interp-dirs: ## Create the /mnt/ai-data/interp storage tree on the host
 	mkdir -p /mnt/ai-data/interp/activations /mnt/ai-data/interp/saes \
 	         /mnt/ai-data/interp/probes /mnt/ai-data/interp/vectors \
-	         /mnt/ai-data/interp/neuronpedia /mnt/ai-data/interp/hf-cache \
-	         /mnt/ai-data/interp/neuronpedia/postgres /mnt/ai-data/interp/logs \
+	         /mnt/ai-data/interp/hf-cache /mnt/ai-data/interp/logs \
 	         /mnt/ai-data/interp/monitor /mnt/ai-data/interp/organisms
 	@echo "$(GREEN)Interp storage tree ready under /mnt/ai-data/interp$(RESET)"
 

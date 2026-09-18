@@ -1,7 +1,7 @@
 # Interpretability documentation
 
-Living documentation for the interp stack — the `python -m interp` CLI, the Neuronpedia
-platform, the write-back path, and the activation and SAE tooling.
+Living documentation for the interp stack — the `python -m interp` CLI, the write-back
+path, and the activation and SAE tooling.
 
 The code is at [../../interp/](../../interp/) and the containers at
 [../../docker/interp/](../../docker/interp/); this directory documents how to operate them.
@@ -11,15 +11,14 @@ Verification records live in [../verification/interp/interp.md](../verification/
 
 | Document | Description |
 |----------|-------------|
-| [platform.md](platform.md) | Running the workbench, the Neuronpedia harness, and the platform services |
 | [writeback.md](writeback.md) | The write-back path: steering, probes, the log proxy, and the probe monitor (W1-W4) |
 | [gemma-4-interp.md](gemma-4-interp.md) | Residual width, layer counts, and hook hazards for E2B and E4B |
 | [interp-scale-reference.md](interp-scale-reference.md) | Activation volumes, SAE sizes, and harvest budgets on this workstation |
 | [rust-harness-interp.md](rust-harness-interp.md) | The Rust runtime as an interpretability substrate |
 
-`platform.md` and `writeback.md` are titled runbooks but are living reference documents, not
-operational runbooks in the sense `.styles/DOCUMENTATION_STYLE.md` defines: they are read for
-understanding and are corrected when the tree moves. The operational runbooks executed against
+`writeback.md` is titled a runbook but is a living reference document, not an operational
+runbook in the sense `.styles/DOCUMENTATION_STYLE.md` defines: it is read for understanding
+and is corrected when the tree moves. The operational runbooks executed against
 the host are under [../verification/](../verification/), which both documentation gates check
 in the same way they check this directory.
 
@@ -30,7 +29,7 @@ Drift against the current tree is expected and correct in both.
 
 | Location | Contents |
 |----------|----------|
-| [investigations/](investigations/) | I1, P4, and PS deliverable investigations — what was decided at implementation time (8 documents, 2026-07-14 to 2026-07-15) |
+| [investigations/](investigations/) | I1, P4, and PS deliverable investigations — what was decided at implementation time (8 documents, 2026-07-14 to 2026-07-15) — and the 2026-09-18 Neuronpedia replacement investigation that retired the PS deliverables |
 | [experiments/](experiments/) | Experiment post-mortems, one file per experiment, immutable after the verdict |
 
 [experiments/README.md](experiments/README.md) is the exception: it is the living convention

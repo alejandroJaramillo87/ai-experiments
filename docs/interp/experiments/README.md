@@ -19,7 +19,7 @@ Every entry contains, in order:
    platform state (which services were up), and enough detail to regenerate every
    artifact. Cite prompts verbatim.
 3. **Observations** — what was actually seen, with artifacts referenced by path or
-   local URL (e.g. a graph in the Neuronpedia viewer: prompt, model, transcoder config,
+   local URL (e.g. a run record under `/mnt/ai-data/interp/`: prompt, model, layer,
    and regeneration steps).
 4. **Hypothesis** — the mechanistic claim formed from the observations.
 5. **Falsification attempt** — the concrete test designed to break the hypothesis and

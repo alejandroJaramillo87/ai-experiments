@@ -179,9 +179,7 @@ the code that writes them and are absent on a fresh machine.
 │   ├── vectors/      # Steering vectors; read-only in harness-serve
 │   ├── organisms/    # Model organisms
 │   ├── hf-cache/     # Interp HF_HOME (persistent, unlike the training tier)
-│   ├── logs/         # Per-request JSONL written by harness-serve
-│   └── neuronpedia/  # Created by `make interp-dirs` (on demand)
-│       └── postgres/ # Created by `make interp-dirs` (on demand)
+│   └── logs/         # Per-request JSONL written by harness-serve
 ├── benchmarks/       # Benchmark output; no service reads it back
 │   ├── gpu/          # scripts/benchmark/benchmark_gpu.sh (BENCH_RESULTS_DIR)
 │   ├── perplexity/   # scripts/benchmark/test_perplexity.sh (BENCH_RESULTS_DIR)

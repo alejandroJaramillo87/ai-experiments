@@ -2,14 +2,17 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 11 verified, 1 blocked, 12 pending, of 24.**
+**Entries: 11 verified, 1 blocked, 11 pending, of 23.**
 
-The 24 entries are I.1 through I.23 plus the interstitial I.9b
-("Chunked-capture crash recovery"); none is missing. I.9b is numbered beside I.9
-because it verifies crash recovery in the capture I.9 runs, so the highest entry
-number is one lower than the entry count. Numbering ran I.1 through I.12 with no
-I.13 until 2026-08-15, when a surface inventory found shipped functionality with
-no entry and I.13 through I.17 were added; the identifier had never been used.
+The 23 entries are I.1 and I.3 through I.23 plus the interstitial I.9b
+("Chunked-capture crash recovery"). I.9b is numbered beside I.9 because it
+verifies crash recovery in the capture I.9 runs. I.2, the Neuronpedia harness
+(PS1), was retired on 2026-09-18 when the harness left the tree with none of
+its three build attempts having succeeded; the attempts are KB-68, KB-76 and
+KB-77 in the ledger, the entry's text is in this file's git history, and the
+identifier is not reused. Numbering ran I.1 through I.12 with no I.13 until
+2026-08-15, when a surface inventory found shipped functionality with no
+entry and I.13 through I.17 were added; the identifier had never been used.
 I.18 through I.23 were added on 2026-09-12, when an audit of this file against
 the tree found that the refusals the tier exists to enforce, the disk and GPU
 preflights and the manifest checks, had each been named by an entry and
@@ -29,8 +32,7 @@ loads a real model, reaches a running service, or touches the GPU. The BLOCKED
 and PENDING entries therefore have no automated substitute; their status is the
 whole of what is known about them.
 
-I1 workbench, the PS1 Neuronpedia harness, the write-back path (W1 through
-W4), P4-D1 organisms, P4-D2 activation harvesting with garbage collection,
+I1 workbench, the write-back path (W1 through W4), P4-D1 organisms, P4-D2 activation harvesting with garbage collection,
 and P4-D3 SAE training and evaluation. The interp anchor for pretrained
 SAEs is Gemma-2-2B (Gemma Scope); Gemma 4 runs on the hook-based paths
 (harvest, probes, steering) through the `interp/families.py` registry.
@@ -53,7 +55,6 @@ entry whose block runs on the host says so.
 ## Table of Contents
 
 - [I.1 Workbench smoke (I1)](#i1-workbench-smoke-i1)
-- [I.2 Neuronpedia harness (PS1)](#i2-neuronpedia-harness-ps1)
 - [I.3 Control-vector extraction and export (W1)](#i3-control-vector-extraction-and-export-w1)
 - [I.4 Steered serving and scorecard (W1)](#i4-steered-serving-and-scorecard-w1)
 - [I.5 Probe capture, train, eval (W2)](#i5-probe-capture-train-eval-w2)
@@ -188,174 +189,6 @@ failure. The orphan container warning is compose noting services of the
 other stacks under the same project name, and is not a smoke result.
 
 Status: VERIFIED 2026-09-17 (gated Gemma Scope step skipped by decision)
-
-## I.2 Neuronpedia harness (PS1)
-
-Implementation: `scripts/interp/np_env.sh`, `scripts/interp/np_smoke.sh`,
-`docker/interp/neuronpedia-pin.txt`,
-`docker/interp/neuronpedia.override.yaml`,
-`docker/interp/patches/0001-graph-dockerfile-noble-python.patch`,
-`docker/interp/patches/0002-inference-dockerfile-python-version.patch`,
-`docker/interp/patches/0003-inference-dockerfile-uv.patch`.
-
-**Fix to confirm here** (details in [bugs/known-bugs.md](../bugs/known-bugs.md)):
-
-- KB-68 — the first `make np-build` on 2026-09-17 died in the upstream `graph`
-  image: its Dockerfile installs `python3.12` from apt on the Ubuntu 22.04 CUDA
-  base upstream's compose pins, and jammy has no such package. The override
-  now moves that stage to `nvidia/cuda:12.8.1-runtime-ubuntu24.04` through
-  build args, and the vendored patch clears noble's externally-managed Python
-  marker so `pip install poetry` runs. `make np-clone` must print
-  `Applying vendored patch` before the pin line; a build reaching
-  `Neuronpedia images built.` closes the row.
-- KB-76 — the second attempt got past the graph base and failed in the
-  inference image: upstream installs `python3.10` while the project requires
-  3.11 or newer, so `poetry install` refused. The second patch makes the apt
-  interpreter a build arg and the override passes 3.12 on the 24.04 base.
-  The same build line closes both rows.
-- KB-77 — the third attempt got past the interpreter check and failed in
-  the same stage resolving dependencies: upstream moved the inference
-  project to uv and left its Dockerfile on poetry, which cannot see the
-  vendored and git sources. The third patch installs with a pinned uv from
-  `uv.lock` into `/opt/venv`. `make np-clone` must print three
-  `Applying vendored patch` lines; the same build line closes all three rows.
-
-Command:
-
-```bash
-make np-clone
-make np-env
-make np-build
-make np-up
-make np-smoke
-```
-
-Expected signal: the checkout pins to `docker/interp/neuronpedia-pin.txt`;
-np-smoke passes its checks — loopback-only bindings, webapp on 3001,
-postgres up, and sm_120 visible to the GPU services. `make np-down`
-afterwards stops the stack cleanly.
-
-This entry needs outbound network as well as the GPU host: `np-clone` clones
-an upstream repository, and `np-build` builds CUDA images. Neither works from
-an agent sandbox, whose egress allowlist does not cover either.
-
-Observed (2026-09-17, on 6c0a0e8, first attempt, before the KB-68 fix): the
-clone pinned and the env merge ran; `np-build` built the webapp trio and failed
-in the CUDA line. Tail of the build, with the two stages before the error:
-
-```
-$ git -C /mnt/ai-data/interp/neuronpedia/src rev-parse HEAD
-e5488b2a37976333e6b31f7f1cd6a56b4b5cf7ab
-$ make np-build
-...
- ✔ Image neuronpedia-webapp:latest  Built                                    148.9s
- ✔ Image neuronpedia-db-init:latest Built                                    148.9s
-Building Neuronpedia CUDA images (inference, autointerp, graph)...
-...
- => [autointerp base-cuda 1/5] FROM docker.io/nvidia/cuda:12.1.0-runtime-ubuntu22.04@sha256:402700b179eb764da6d60d99fe106aa16c36874f7d7fb3e122251ff6aea8b2f7                 96.3s
-...
- => CANCELED [inference base-cuda 4/5] RUN apt-get update && apt-get install -y     nvidia-container-toolkit     && rm -rf /var/lib/apt/lists/*                               7.1s
- => CANCELED [autointerp base-cuda 5/5] RUN apt-get update && apt-get install -y     python3.10     python3-pip     python3.10-venv     && rm -rf /var/lib/apt/lists/*     &  3.3s
- => ERROR [graph base-cuda 5/5] RUN apt-get update && apt-get install -y     python3.12     python3-pip     python3.12-venv     && rm -rf /var/lib/apt/lists/*     && ln -sf  3.2s
-3.209 E: Unable to locate package python3.12
-3.209 E: Couldn't find any package by glob 'python3.12'
-3.209 E: Couldn't find any package by regex 'python3.12'
-3.209 E: Unable to locate package python3.12-venv
-target graph: failed to solve: process "/bin/sh -c apt-get update && apt-get install -y     python3.12     python3-pip     python3.12-venv     && rm -rf /var/lib/apt/lists/*     && ln -sf /usr/bin/python3.12 /usr/bin/python" did not complete successfully: exit code: 100
-make: *** [make/neuronpedia.mk:44: np-build] Error 1
-```
-
-The autointerp stage asks for `python3.10`, which jammy has, so it and the
-inference image were cancelled by the graph failure rather than failing
-themselves. `np-up` and `np-smoke` were not reached. The env merge warned
-`HF_TOKEN not set`; the token is not required for the webapp trio and the
-operator runs without one (see I.1).
-
-Observed (2026-09-17, on 0ff8e70, second attempt, with the KB-68 fix): the
-clone applied the patch, the graph image began pulling its new base, and the
-inference image failed at `poetry install`, cancelling the other two:
-
-```
-$ make np-clone
-HEAD is now at e5488b2a counting is hard
-Applying vendored patch docker/interp/patches/0001-graph-dockerfile-noble-python.patch
-Neuronpedia checkout pinned per docker/interp/neuronpedia-pin.txt.
-$ grep -c EXTERNALLY-MANAGED /mnt/ai-data/interp/neuronpedia/src/apps/graph/Dockerfile
-1
-$ make np-build
-...
- => [graph internal] load metadata for docker.io/nvidia/cuda:12.8.1-runtime-ubuntu24.04                                                                                       0.9s
-...
- => CANCELED [graph base-cuda 1/5] FROM docker.io/nvidia/cuda:12.8.1-runtime-ubuntu24.04@sha256:ebef3c171eeef0298e4eb2e4be843105edf3b8b0ac45e0b43acee358e8046867            119.6s
-...
- => [inference final  4/11] RUN pip install poetry                                                                                                                           51.9s
-...
- => CANCELED [autointerp final  9/10] RUN poetry install --only main                                                                                                         47.6s
-...
- => ERROR [inference final 10/11] RUN poetry install --only main                                                                                                              0.5s
-------
- > [inference final 10/11] RUN poetry install --only main:
-0.306 The currently activated Python version 3.10.12 is not supported by the project (>=3.11,<3.14).
-0.306 Trying to find and use a compatible version.
-0.450
-0.450 Poetry was unable to find a compatible version. If you have one, you can explicitly use it via the "env use" command.
-------
-target inference: failed to solve: process "/bin/sh -c poetry install --only main" did not complete successfully: exit code: 1
-make: *** [make/neuronpedia.mk:44: np-build] Error 1
-```
-
-The KB-68 change did what it claimed: the graph stage resolved the 24.04 base
-and was cancelled only by the inference failure, and the patch line is present
-in the checkout. The inference failure is KB-76, a second upstream defect the
-first had hidden.
-
-Observed (2026-09-18, on ca91ad4, third attempt, with the KB-68 and KB-76
-fixes): both patches applied, the inference stage installed python3.12 on the
-24.04 base and poetry accepted it, then failed resolving dependencies,
-cancelling graph and autointerp:
-
-```
-$ make np-clone
-HEAD is now at e5488b2a counting is hard
-Applying vendored patch docker/interp/patches/0001-graph-dockerfile-noble-python.patch
-Applying vendored patch docker/interp/patches/0002-inference-dockerfile-python-version.patch
-Neuronpedia checkout pinned per docker/interp/neuronpedia-pin.txt.
-$ grep -c 'PYTHON_VERSION' /mnt/ai-data/interp/neuronpedia/src/apps/inference/Dockerfile
-5
-$ make np-build
-...
- ✔ Image neuronpedia-webapp:latest  Built                                      1.3s
- ✔ Image neuronpedia-db-init:latest Built                                      1.3s
-Building Neuronpedia CUDA images (inference, autointerp, graph)...
-...
- => CACHED [graph base-cuda 5/5] RUN apt-get update && apt-get install -y     python3.12     python3-pip     python3.12-venv     && rm -rf /var/lib/apt/lists/*     && ln -sf /usr/bin/python3.12 /usr/bin/python     && rm -f /usr/lib/python3.12/EXTERNALLY-MANAGED    0.0s
-...
- => CANCELED [graph final 7/8] RUN poetry install --only main                                                                                                                22.9s
-...
- => CACHED [inference base-cuda 5/5] RUN apt-get update && apt-get install -y     python3.12     python3-pip     python3.12-venv     && rm -rf /var/lib/apt/lists/*     && ln -s /usr/bin/python3.12 /usr/bin/python     && rm -f /usr/lib/python3.12/EXTERNALLY-MANAGED    0.0s
-...
- => ERROR [inference final 10/11] RUN poetry install --only main                                                                                                             22.8s
-------
- > [inference final 10/11] RUN poetry install --only main:
-0.439 Skipping virtualenv creation, as specified in config file.
-0.527 Updating dependencies
-0.527 Resolving dependencies...
-22.60
-22.60 Because neuronpedia-inference depends on chatspace (*) which doesn't match any versions, version solving failed.
-------
-target inference: failed to solve: process "/bin/sh -c poetry install --only main" did not complete successfully: exit code: 1
-make: *** [make/neuronpedia.mk:44: np-build] Error 1
-```
-
-Both earlier fixes behaved: the graph stage is cached on the 24.04 base with
-the marker removed, and the inference stage has python3.12 and gets 22
-seconds into resolution before failing. `Updating dependencies` is the tell:
-poetry found no lock file, because upstream deleted it when the project moved
-to uv, and `chatspace` is a path source only uv's sources table knows. That
-is KB-77, the second defect in the same Dockerfile; autointerp's own
-`poetry install` was cancelled once more and has still never completed.
-
-Status: PENDING
 
 ## I.3 Control-vector extraction and export (W1)
 
@@ -1204,9 +1037,8 @@ Status: PENDING
 Implementation: `scripts/interp/preflight.sh`, `make/interp.mk` (every target
 that calls it).
 
-Eight targets in `make/interp.mk` run the preflight first, and three more in
-`make/neuronpedia.mk` (`np-inference-up`, `np-graph-up`, and `np-autointerp-up`
-under `NP_GPU=1`); every entry above records only its `[OK]` line. The refusal is the one-GPU-consumer rule of `AGENTS.md` made
+Eight targets in `make/interp.mk` run the preflight first; every entry above
+records only its `[OK]` line. The refusal is the one-GPU-consumer rule of `AGENTS.md` made
 mechanical, and the script also fails closed: a `docker compose` invocation
 that cannot answer is a refusal, not a pass.
 
@@ -1418,11 +1250,7 @@ variable to name. Each is a gap in evidence, not a known defect.
   I.13 also does not state the stale-image trap `reference-captures.md`
   precondition 2 does: `docker compose run` builds only when the image is
   missing.
-- Neuronpedia past PS1: `np-inference-up`, `np-autointerp-up` (and the three
-  refusals of `scripts/interp/np_autointerp_preflight.sh`), `np-graph-up`,
-  `np-status`, and the `MODEL_SOURCESET`, `NP_GPU`, `AI_NETWORK_NAME` and
-  `NP_SRC` variables they read.
-- `interp-dirs`, the storage-tree bootstrap and `np-clone`'s prerequisite.
+- `interp-dirs`, the storage-tree bootstrap.
 - The Gemma-2 family branch of `interp/families.py` and the Gemma Scope ids:
   reached by I.1's sixth step, which the 2026-09-17 run skipped by decision,
   and by the calibration capture in `reference-captures.md`, still pending.

@@ -24,7 +24,6 @@ input hashes, the git SHA, and the artifact's own hash.
 | `logs/<service>/` | The serving harness | The served-request log, one `YYYY-MM-DD.jsonl` per day |
 | `monitor/<probe>/` | `probe-monitor` | `report.json` and `flagged.jsonl` |
 | `hf-cache/` | The workbench | The Hugging Face cache |
-| `neuronpedia/` | The Neuronpedia platform | Its database and imports |
 
 The names under `activations/`, `probes/`, `vectors/`, and `saes/` come from `--out` or
 `--name` on the verb, or from `run.name` in the recipe for the recipe-driven verbs.

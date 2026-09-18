@@ -101,7 +101,6 @@ const sidebars = {
         'interp/guides/harvest',
         'interp/guides/saes',
         'interp/guides/organisms',
-        'interp/guides/neuronpedia',
       ],
     },
     {

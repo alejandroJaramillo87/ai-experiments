@@ -62,7 +62,6 @@ MK_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
 include $(MK_DIR)make/services.mk
 include $(MK_DIR)make/training.mk
 include $(MK_DIR)make/interp.mk
-include $(MK_DIR)make/neuronpedia.mk
 include $(MK_DIR)make/harness.mk
 include $(MK_DIR)make/site.mk
 include $(MK_DIR)make/ops.mk

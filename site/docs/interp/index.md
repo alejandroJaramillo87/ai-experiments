@@ -38,7 +38,7 @@ other weights, so the loop is tied to one checkpoint end to end.
 - **Getting started** sets up the Python environment, the workbench container, the smoke
   test that proves the GPU stack, and where every artifact a verb writes lands.
 - **Guides** cover one workflow each: probes, steering, harvesting, sparse autoencoders,
-  model organisms, and the Neuronpedia platform.
+  and model organisms.
 - **Observability** covers the run records every verb writes, the served-request log the
   harness writes for interp, the resource audit, and the dashboard.
 - **Reference** holds one page per verb, generated from the parser, plus the `make` targets,

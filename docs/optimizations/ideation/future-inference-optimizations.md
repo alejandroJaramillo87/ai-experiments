@@ -40,7 +40,7 @@ No work described here begins before all three hold:
 1. The PENDING acceptance checks in `docs/verification/interp/interp.md` have been executed and
    recorded. At the time of writing every check in that document is PENDING, along with 12 in
    `docs/verification/training/training-phase1.md` and seven in `docs/verification/training/training-phase2.md`.
-2. A measured baseline exists. `docs/interp/platform.md` currently records no
+2. A measured baseline exists. The interp tier currently records no service
    timings and no VRAM figures. Harvest tokens per second is already a manifest field
    (`interp/harvest.py:418-420`) and costs nothing to collect.
 3. A named capability the current stack cannot deliver has been identified, with the
@@ -113,7 +113,8 @@ expressive surface. Not expressible through it:
 
 The last two require editing per-architecture graph construction, which is among the most
 frequently changed code upstream. A carried patch there becomes a merge on every pin bump, and
-it does not satisfy the upstreamable-by-default rule in `docker/interp/patches/README.md`.
+it does not satisfy the upstreamable-by-default rule the Neuronpedia patch directory
+carried while that harness was in the tree (removed 2026-09-18).
 
 ## The escalation ladder
 

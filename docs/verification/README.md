@@ -110,7 +110,7 @@ Each runbook's own progress line is authoritative; this table is the index.
 | [training/training-phase0.md](training/training-phase0.md) | 4 | 0 | 7 | 11 |
 | [training/training-phase1.md](training/training-phase1.md) | 0 | 0 | 13 | 13 |
 | [training/training-phase2.md](training/training-phase2.md) | 0 | 0 | 7 | 7 |
-| [interp/interp.md](interp/interp.md) | 11 | 1 | 12 | 24 |
+| [interp/interp.md](interp/interp.md) | 11 | 1 | 11 | 23 |
 | [observability/observability.md](observability/observability.md) | 2 | 0 | 7 | 9 |
 | [sandbox/sandbox-executable.md](sandbox/sandbox-executable.md) | 2 | 0 | 0 | 2 |
 | [rust-harness/rust-harness.md](rust-harness/rust-harness.md) | 43 | 0 | 1 | 44 |
@@ -161,8 +161,7 @@ passed.
    full-scale data pipeline, mixtures, WSD schedules, the replay buffer, and
    optimizer offload.
 5. [interp/interp.md](interp/interp.md) — the interpretability tier: workbench,
-   Neuronpedia harness, write-back path (W1-W4), organisms, harvesting, and
-   SAE training.
+   write-back path (W1-W4), organisms, harvesting, and SAE training.
 6. [observability/observability.md](observability/observability.md) — the observability stack (phases
    A-D): GPU watchdog samples, NVML context, the `/mnt/ai-data` log root,
    external sinks, the browser harness, and the live dashboard against an

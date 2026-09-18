@@ -6,9 +6,8 @@ fail loudly on an unknown family rather than guess a module layout. Keyed by
 HF config model_type after the text-config unwrap.
 
 gemma2 is registered here although the training tier does not register it:
-the interp tier anchors on Gemma-2-2B for pretrained SAEs (Gemma Scope),
-Neuronpedia presets, and circuit tracing, because that ecosystem does not
-exist for Gemma 4.
+the interp tier anchors on Gemma-2-2B for pretrained SAEs (Gemma Scope)
+and circuit tracing, because that ecosystem does not exist for Gemma 4.
 
 Hook paths are HF named-module paths; the output of a decoder layer is the
 post-block residual stream. TransformerLens aliases are not used because
@@ -27,7 +26,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 
 # The Gemma-2-2B anchor for everything touching the pretrained-SAE ecosystem
-# (Gemma Scope releases, Neuronpedia presets, circuit tracing).
+# (Gemma Scope releases, circuit tracing).
 GEMMA_SCOPE_MODEL_ID = "google/gemma-2-2b"
 GEMMA_SCOPE_RELEASE = "gemma-scope-2b-pt-res-canonical"
 GEMMA_SCOPE_SAE_ID = "layer_12/width_16k/canonical"
