@@ -11,9 +11,9 @@ Every entry here proves one capability of that loop through the tools that
 consume its output, not in isolation: the artifact under test is the merged
 Hugging Face directory (`config.json` plus a single `model.safetensors`) that
 the harness loads and that interp captures from, identified everywhere by
-`sha256(model.safetensors)`. A GGUF is llama.cpp's serving artifact and
-appears only where llama.cpp is the consumer (the judge on llama-cpu, and the
-organism verifier until its rewire lands).
+`sha256(model.safetensors)`. The training tier produces no GGUF; the one
+GGUF this loop names is the published judge on `llama-cpu`, which is
+llama.cpp's artifact and stays one.
 
 This runbook replaced the three phase runbooks on 2026-09-18. Those described
 the tier in build order, took GGUF on llama-gpu as their evidence, and named
@@ -30,12 +30,13 @@ counts gate, so neither file exists yet.
 Three sessions build and run this loop, and each entry names the one that
 builds what it verifies:
 
-- **This PR** (the first session) wrote the runbook, pinned every Gemma 4
-  recipe to `schemas/gemma4_facts.json`, and removed the Qwen3 family.
-- **The exporter PR** (the second session) builds the merged HF exporter that
-  FT.4 verifies, rewires the organism verifier onto the harness for FT.7,
-  and adds the `hw_full` hardware test FT.11 runs. Entries marked "to be
-  fixed by the exporter PR" carry the verb and flags it must fill in.
+- **The runbook PR** (the first session) wrote the runbook, pinned every
+  Gemma 4 recipe to `schemas/gemma4_facts.json`, and removed the Qwen3 family.
+- **The exporter PR** (the second session) built the merged HF exporter that
+  FT.4 verifies, retired GGUF production from the training tier, moved the
+  `eval-ft` judge phase and the organism verifier onto the harness for FT.6
+  and FT.7, and added the `hw_full` hardware test FT.11 runs. Every command
+  below names a verb, flag or make target that exists on its branch.
 - **The hardware campaign** (the third session) executes FT.0 through FT.11
   in order and records the output.
 
@@ -205,11 +206,15 @@ make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
     ARGS="run.name=ft3-straight schedule.total_steps=60 checkpoint.interval_steps=30"
 make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
     ARGS="run.name=ft3-resume schedule.total_steps=60 checkpoint.interval_steps=30"
-ls /mnt/ai-data/training/runs/ft3-resume/*/checkpoints/
+ls /mnt/ai-data/training/runs/ft3-resume/checkpoints/
 make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
     ARGS="run.name=ft3-resume schedule.total_steps=60 checkpoint.interval_steps=30 \
-    checkpoint.resume=/mnt/ai-data/training/runs/ft3-resume/<timestamp>/checkpoints/checkpoint-30"
+    checkpoint.resume=/mnt/ai-data/training/runs/ft3-resume/checkpoints/checkpoint-30"
 ```
+
+The checkpoints sit directly under `<output_root>/<run.name>/checkpoints/`
+(`training/tune/sft.py`); the timestamped directory beside them holds the
+recipe snapshot and the run's sinks, not the weights.
 
 Expected signal: the straight run exits 0 with the QLoRA configuration (nf4
 base, LoRA adapter, auto-resolved target modules) and writes `meta.json`
@@ -230,39 +235,56 @@ Status: PENDING
 
 ## FT.4 Export the merged HF directory and load it in the harness
 
-Implementation: `training/export/merge.py` (`merge_and_unload` into the
-staging directory), `training/export/preflight.py` (base-drift refusal),
-`training/export/manifest.py`; `rust-harness/runtime/src/bin/checkpoint-info.rs`
+Implementation: `training/cli.py` (`cmd_export`), `training/export/merge.py`
+(`merge_and_unload` into `hf.partial/`, promoted by rename),
+`training/export/preflight.py` (base-drift refusal),
+`training/export/consolidate.py` (`check_single_weights_file`),
+`training/export/manifest.py` (`build_hf_manifest`, `model_hash`),
+`schemas/hf_export.manifest.json`; `rust-harness/runtime/src/bin/checkpoint-info.rs`
 (`--check`), `rust-harness/harness/src/preflight.rs` (`--status --deep`).
-The exporter that keeps the merged directory as the artifact, under
-`/mnt/ai-data/models/trained/<name>/hf/` with a manifest beside it carrying
-`model_hash`, is built by the exporter PR; today `export` merges into a
-temporary directory it deletes after the GGUF conversion. Depends on FT.3.
+The export runs in the CPU-only export image (`make export-build` once) and
+writes `/mnt/ai-data/models/trained/<name>/hf/` plus the manifest beside it;
+the sandbox proves the copy path and both harness verdicts on the tiny
+fixture (`tests/training/test_export_harness.py`), and this entry proves the
+merge on real weights. Depends on FT.3.
 
-Command (the verb and flags of the first line are to be fixed by the
-exporter PR; the placeholder shows the artifact it must produce, and the
-remaining lines are the consumer-side checks that do not change):
+Command (the export container mounts the models tree read-write under
+`/app/models/trained`; the harness lines read the result through the
+harness image, and `checkpoint-info` reads it on the host):
 
 ```bash
-# to be fixed by the exporter PR: the export verb and flags that write
-# /mnt/ai-data/models/trained/ft3-straight/hf/{config.json,model.safetensors}
-# and /mnt/ai-data/models/trained/ft3-straight/manifest.json with model_hash
-make export-hf CHECKPOINT=/mnt/ai-data/training/runs/ft3-straight/<timestamp>/checkpoints/checkpoint-60
-grep model_hash /mnt/ai-data/models/trained/ft3-straight/manifest.json
+make export-build
+make export-hf CHECKPOINT=/mnt/ai-data/training/runs/ft3-straight/checkpoints/checkpoint-60 \
+    ARGS="--name ft3-straight"
+ls /mnt/ai-data/models/trained/ft3-straight/hf/
+grep -E '"(mode|hf_dir|model_hash)"' /mnt/ai-data/models/trained/ft3-straight/manifest.json
 sha256sum /mnt/ai-data/models/trained/ft3-straight/hf/model.safetensors
+make export-hf CHECKPOINT=/mnt/ai-data/training/runs/ft3-straight/checkpoints/checkpoint-60 \
+    ARGS="--name ft3-straight"; echo "exit $?"
 make harness-run ARGS="--model /app/models/trained/ft3-straight/hf --text-only --status --deep"
-cd rust-harness && cargo run -p runtime --bin checkpoint-info -- --check --text-only \
+cd rust-harness && cargo run --release -p runtime --bin checkpoint-info -- --check --text-only \
     /mnt/ai-data/models/trained/ft3-straight/hf 2>&1 | tail -3; cd ..
 make harness-chat ARGS="--model /app/models/trained/ft3-straight/hf --text-only"
 ```
 
-Expected signal: the export refuses when the checkpoint's recorded base
-revision does not match the staged base and otherwise exits 0; the manifest's
-`model_hash` equals the `sha256sum` of the exported `model.safetensors`, and
-differs from the FT.0 base digest; `harness --status` and `checkpoint-info
---check` both exit 0 on the directory, with `[OK] backend compatibility:
-supported` and the same 35-layer config as the base; one `--chat` reply
-arrives, rendered through the version 2 chat template.
+Expected signal: the first export prints `[OK] Base model verified:
+google/gemma-4-E2B (revision d29ff6b4...)`, `[RUN] Merging model: ...`,
+`[OK] Adapter merged: ...`, `[OK] HF export written: .../hf (N bytes)`,
+`[OK] Manifest written: .../manifest.json` and a `model_hash:` line, and
+exits 0 (a checkpoint whose recorded base revision does not match the cached
+base is refused with `[ERROR] Export failed: Base model drifted since
+training:` unless `--allow-base-drift` is passed); `ls` shows `config.json`,
+`generation_config.json`, one `model.safetensors`, the tokenizer files and no
+`model.safetensors.index.json`; the manifest records `"mode": "merge"`,
+`"hf_dir"` as the listed directory, and a `model_hash` equal to the
+`sha256sum` line and different from the FT.0 base digest; the second export
+exits 1 with `[ERROR] Export exists: .../hf` and the `--force` solution line,
+leaving the manifest unchanged; `harness --status --deep` and
+`checkpoint-info --check` both exit 0 on the directory, with `[OK] backend
+compatibility: supported`, the same 35-layer config as the base, and
+`[WARN] --deep: no effect when there is no interp artifact to check` (the
+hash comparison is FT.9's, against a probe); one `--chat` reply arrives,
+rendered through the version 2 chat template.
 
 Observed:
 
@@ -315,35 +337,46 @@ Status: PENDING
 
 ## FT.6 eval-ft with the subject on the harness
 
-Implementation: `training/commands/eval_ft.py`, `training/eval/runner.py`,
+Implementation: `training/commands/eval_ft.py` (`phase_serving`),
+`training/eval/runner.py` (`hf_identity`, `judge_identity`),
 `training/eval/scorecard.py`, `training/eval/judge.py`,
 `training/eval/generate.py`, `common/serving.py` (the `harness` service on
-port 8005 and `llama-cpu` on 8001). Existing code; depends on FT.4 (the
-subject) and FT.5 (the container evaluators the same run repeats).
+port 8005 and `llama-cpu` on 8001). Built by the exporter PR; depends on FT.4
+(the subject) and FT.5 (the container evaluators the same run repeats).
 
-The subject is the merged directory served by `harness-serve`; the judge is a
-GGUF on `llama-cpu`, which is llama.cpp's artifact and stays one. The
-harness-served subject is the reading this entry pins.
+Both compared sides are HF directories under `/mnt/ai-data/models/`: the base
+as FT.0 staged it and the merged directory as FT.4 wrote it. `eval-ft`
+identifies each by `model_hash` (read from FT.4's manifest for the tuned
+side, computed for the base) and serves each in turn on `harness-serve`,
+recreating the service with `HARNESS_MODEL` set and restoring it afterwards;
+the judge is a published GGUF on `llama-cpu`, the one GGUF this loop names.
+The harness-served subject is the reading this entry pins.
 
-Command (host tool; the container evaluators run first with inference down,
-then the serving phase):
+Command (host tool; the harness image built by `make harness-build`; the
+container evaluators run first with inference down, then the serving phase;
+nothing is started by hand, the tool swaps `harness-serve` itself):
 
 ```bash
-export HARNESS_MODEL=/app/models/trained/ft3-straight/hf
-make harness-serve
 make eval-ft ARGS="--base /mnt/ai-data/models/hf/gemma-4-E2B \
     --tuned /mnt/ai-data/models/trained/ft3-straight/hf \
-    --dataset /mnt/ai-data/training/datasets/sft/ultrachat-e2b \
+    --dataset /mnt/ai-data/training/datasets/sft/ultrachat-e2b --lmeval-limit 20 \
     --judge-gguf /app/models/<judge>.gguf --judge-service llama-cpu \
     --name ft6"
-make harness-serve-down
+grep -E '"model_hash"|"thinking_mode"' /mnt/ai-data/training/eval/ft6_*/scorecard.json
 ```
 
-Expected signal: exit 0; the run directory holds `scorecard.json` (shared
-report envelope, `kind: scorecard`) and `scorecard.md`; the scorecard records
-`thinking_mode: off` on both sides and the subject's `model_hash` from FT.4;
-the judge phase on llama-cpu completes for both sides and the services end in
-their pre-run state. An interrupted run resumes from its phase records.
+Expected signal: exit 0; after the two container phases the serving phase
+prints `[OK] Preflight: baseline <12 hex>, tuned <12 hex>`, then for each
+side `[RUN] generate/<side>: serving /app/models/... on harness` and
+`[OK] harness healthy after N.Ns`, then the judge swap onto `llama-cpu`, the
+judgments, `[RUN] Restoring previous harness state` and `[OK] harness
+restored` (and the same for `llama-cpu`); the run directory holds
+`scorecard.json` (shared report envelope, `kind: scorecard`) and
+`scorecard.md`; the scorecard's metadata records `thinking_mode: off` on both
+sides, the base's `model_hash` equal to the FT.0 digest and the tuned side's
+equal to FT.4's manifest, and the rendered table shows the two hash prefixes;
+the services end in their pre-run state. An interrupted run resumes from its
+phase records.
 
 Observed:
 
@@ -355,12 +388,15 @@ Status: PENDING
 ## FT.7 Organisms: null and taboo
 
 Implementation: `interp/commands/organism.py`, `interp/organisms/generate.py`,
-`interp/organisms/verify.py`, `interp/organisms/seal.py`; the pipeline hands
-off to `prepare-sft`, `train-sft` and the export, which `make organism
-RECIPE=...` prints. The verifier elicits the subject on llama-gpu (8002) and
-judges on 8003 today; the exporter PR rewires it onto the harness-served
-merged directory (8005) and records the merged directory in `seal`. Depends
-on FT.4.
+`interp/organisms/verify.py` (`locality_metrics`), `interp/organisms/seal.py`,
+`interp/steering/scorecard.py` (`post_with_timeout`); the pipeline hands off
+to `prepare-sft`, `train-sft`, the export and `eval-ft`, which `make organism
+RECIPE=...` prints as nine stages. The verifier elicits the subject through
+the harness serving the exported directory (8005, the `--subject-url`
+default) with a 600 s per-request timeout, judges on 8003, and reads locality
+from the `eval-holdout` and `eval-lmeval` records; `seal` records the
+exported directory and the `model_hash` from its manifest. Built by the
+exporter PR; depends on FT.4 and FT.5.
 
 This entry supersedes I.8 in [interp/interp.md](../interp/interp.md), which
 stays in that runbook as BLOCKED with this entry as its evidence. Two
@@ -368,8 +404,11 @@ organisms run, in this order, because the null control is what makes the
 taboo result mean anything: a null organism whose implant check passes shows
 the verifier measuring an artifact rather than the implant.
 
-Command (each stage has its own serving precondition; the export line is the
-FT.4 verb and is fixed by the same PR):
+Command (each stage has its own serving precondition, which `make organism`
+prints beside it; the recipes train 400 steps at a checkpoint interval of
+100, so the export names `checkpoint-400`; locality is measured on the FT.2
+ultrachat split and the pinned lm-eval tasks, because the organism's own
+corpus would measure the implant, not what it left alone):
 
 ```bash
 make organism RECIPE=training/recipes/organisms/null.yaml
@@ -378,28 +417,38 @@ make prepare-sft ARGS="--source /mnt/ai-data/interp/organisms/organism-null/data
     --tokenizer /mnt/ai-data/models/hf/gemma-4-E2B --model-type gemma4 \
     --out /mnt/ai-data/training/datasets/sft/organism-null"
 make train-sft CONFIG=training/recipes/organisms/null.yaml
-make export-hf CHECKPOINT=/mnt/ai-data/training/runs/organism-null/<timestamp>/checkpoints/<step>
+make export-hf CHECKPOINT=/mnt/ai-data/training/runs/organism-null/checkpoints/checkpoint-400 \
+    ARGS="--name organism-null"
 make eval-ft ARGS="--base /mnt/ai-data/models/hf/gemma-4-E2B \
-    --tuned /mnt/ai-data/models/trained/organism-null/hf --evaluators holdout \
-    --dataset /mnt/ai-data/training/datasets/sft/organism-null --name ft7-null"
+    --tuned /mnt/ai-data/models/trained/organism-null/hf --evaluators holdout,lmeval \
+    --dataset /mnt/ai-data/training/datasets/sft/ultrachat-e2b --lmeval-limit 20 \
+    --name ft7-null"
+HARNESS_MODEL=/app/models/trained/organism-null/hf make harness-serve
 make organism-verify RECIPE=training/recipes/organisms/null.yaml \
-    BASE_METRICS=<ft7-null base metrics JSON> SUBJECT_METRICS=<ft7-null subject metrics JSON>
+    BASE_METRICS="/mnt/ai-data/training/eval/ft7-null_<UTC>/holdout_base.json /mnt/ai-data/training/eval/ft7-null_<UTC>/lmeval_base.json" \
+    SUBJECT_METRICS="/mnt/ai-data/training/eval/ft7-null_<UTC>/holdout_tuned.json /mnt/ai-data/training/eval/ft7-null_<UTC>/lmeval_tuned.json"
+make harness-serve-down
 make organism-seal RECIPE=training/recipes/organisms/null.yaml \
-    ARGS="--checkpoint /mnt/ai-data/training/runs/organism-null/<timestamp>/checkpoints/<step>"
+    ARGS="--checkpoint /mnt/ai-data/models/trained/organism-null/hf"
 make organism-check-seal DIR=/mnt/ai-data/interp/organisms/organism-null
+grep -E '"(checkpoint|model_hash)"' /mnt/ai-data/interp/organisms/organism-null/manifest.json
 ```
 
-Then the same eight stages with `taboo.yaml`, `organism-taboo` and
-`ft7-taboo` in place of `null.yaml`, `organism-null` and `ft7-null`.
+Then the same stages with `taboo.yaml`, `organism-taboo` and `ft7-taboo` in
+place of `null.yaml`, `organism-null` and `ft7-null`.
 
 Expected signal: generation draws sealed ground truth and writes the blind
 corpus for each; both trainings exit 0; both exports produce a merged
-directory whose `model_hash` differs from the base; `organism-verify` writes
-`report: organism-verification` (shared envelope) with the implant check
+directory whose `model_hash` differs from the base; `organism-verify` prints
+`[OK] Locality check: passed (5 metrics, epsilon 0.05)` (one held-out loss
+and one value per pinned lm-eval task) and writes `report:
+organism-verification` (shared envelope) whose `config` records the subject
+url `http://127.0.0.1:8005` and both metrics lists, with the implant check
 **failing** for null and **passing** for taboo, and the locality check
-passing for both; both `organism-seal` runs write the blinded public
-manifest recording the checkpoint and the served artifact, and
-`check-seal` re-verifies each hash.
+passing for both; both `organism-seal` runs print `[OK] Subject: <hf dir>
+(model_hash <sha256>)` and write the blinded public manifest recording
+`checkpoint` as the exported directory and `model_hash` equal to that
+export's manifest, and `check-seal` re-verifies each hash.
 
 Observed:
 
@@ -528,23 +577,32 @@ Status: PENDING
 
 ## FT.11 The hardware test
 
-Implementation: the `hw_full` test the exporter PR adds under
-`tests/hardware/`, running train, export and the harness verdict in one
-function against the smoke recipe; the marker is defined in `pyproject.toml`
-and its tiers in [tests/README.md](../../../tests/README.md). Built by the
-exporter PR; depends on FT.4 (the same three steps, run by hand).
+Implementation: `tests/hardware/test_fine_tuning_loop.py::test_fine_tuning_loop`
+(`hw_full`, `gpu`, `ssd`), running a ten-step QLoRA fine-tune of the smoke
+recipe in-process, the export through `cmd_export`, and the two harness
+verdicts in one function; the marker is defined in `pyproject.toml` and its
+tiers in [tests/README.md](../../../tests/README.md). Its sandbox half,
+`tests/training/test_export_harness.py`, runs the export and the same two
+verdicts on the committed tiny fixture on every `make test`. Built by the
+exporter PR; depends on FT.0 (the cached base) and FT.2 (the prepared
+dataset), which it skips without, and on the release binaries, which it
+fails without.
 
-Command (the test path and `-k` expression are to be fixed by the exporter
-PR; the tier and invocation are the ones every hardware entry uses):
+Command (the tier and invocation are the ones every hardware entry uses):
 
 ```bash
-uv run pytest -m hw_full tests/hardware/ -k "fine_tuning_loop" -v
+uv run pytest -m hw_full tests/hardware/test_fine_tuning_loop.py -v
 ```
 
-Expected signal: the named test passes at `[TIER] full`, and its assertions
-cover what FT.3, FT.4 and FT.0 observe by hand: a checkpoint is written, the
-merged directory's manifest hash equals `sha256(model.safetensors)`, and the
-harness preflight accepts the directory.
+Expected signal: the one test passes at `[TIER] full` with no skip, and its
+assertions cover what FT.3 and FT.4 observe by hand: `checkpoint-10` is
+written with `adapter_only: true` and the pinned base identity in its
+`meta.json`; the export is `mode: merge`, holds one `model.safetensors` and
+no index, and its manifest `model_hash` equals the file's sha256;
+`checkpoint-info --check --text-only` exits 0; `harness --status --deep`
+with a probe carrying that hash prints `[OK] probe identity: matches the
+served weights, sha256 <hash>` and exits 0, and with an altered hash exits 1
+naming both digests.
 
 Observed:
 
