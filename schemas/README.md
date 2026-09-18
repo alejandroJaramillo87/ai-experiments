@@ -1,27 +1,33 @@
 # Cross-language artifact contracts
 
-Nine contracts. Seven cross the boundary between the Rust harness
+Eleven contracts. Eight cross the boundary between the Rust harness
 (`/rust-harness/`) and the Python training and interpretability pipelines
-(`/interp/`, `/common/`, `/training/`). Five of those are artifact formats:
+(`/interp/`, `/common/`, `/training/`). Six of those are artifact formats:
 each has a writer and a reader in different languages, so no compiler and no
-type system connects the two sides. The sixth, `gemma4_facts.json`, is not a
+type system connects the two sides. The seventh, `gemma4_facts.json`, is not a
 format but a set of architecture values that all three tiers held private
-copies of, which is the same problem one level up. The seventh,
+copies of, which is the same problem one level up. The eighth,
 `harness_chat_endpoint.json`, is not a file at all: it is the HTTP request and
 response shape the harness serves under `--serve` and `common/serving.py`
 calls, which is the same problem again with the bytes in flight rather than at
 rest. This directory holds the contract each pair agrees on, and every contract
 names the tests that enforce it.
 
-The remaining two, `alignment.json` and `attention_capture.manifest.json`,
-have a Rust writer and no reader in either language yet. They are here rather
-than in prose beside their writers because the analysis each exists for will
-be Python, and a contract written before the second side arrives is what keeps
+Two more, `alignment.json` and `attention_capture.manifest.json`, have a Rust
+writer and no reader in either language yet. They are here rather than in
+prose beside their writers because the analysis each exists for will be
+Python, and a contract written before the second side arrives is what keeps
 the format from being settled unilaterally by whichever reader is written
 first. Both `readers` lists are empty and both sets of notes say so; that is a
 stated gap, not the pattern to copy. A one-sided contract is the weaker kind,
 because only a second implementation can catch a shared misunderstanding of
 the format.
+
+The eleventh, `hf_export.manifest.json`, is written and read by Python alone.
+It is here because the `model_hash` it records is the digest the Rust
+preflight compares under `--deep` and the interp capture derives at capture
+time: three writers of one value in two languages, which is this directory's
+problem even though the file itself never crosses.
 
 The files are plain JSON key documents, not JSON Schema. They record which keys
 are required, which are emitted by one writer only, and which fields are
@@ -87,6 +93,7 @@ re-specified in prose.
 | `harness_chat_endpoint.json` | The harness `--serve` HTTP surface: `/v1/chat/completions` and `/v1/health` | Rust serves, Python calls |
 | `alignment.json` | Per-position byte spans and probe scores for one run | Rust writes, no reader yet |
 | `attention_capture.manifest.json` | Attention-capture directory: `manifest.json` and `attention.npz` | Rust writes, no reader yet |
+| `hf_export.manifest.json` | An exported checkpoint: `manifest.json` beside `hf/`, carrying `model_hash` | Python writes, Python reads |
 
 Each file carries a `guarded_by` list naming the tests that assert it, and a
 `notes` object recording the divergences that are intentional. A field listed

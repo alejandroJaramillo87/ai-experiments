@@ -637,3 +637,178 @@ class TestSingleWeightsFile:
             (tmp_path / name).write_bytes(b"x")
         with pytest.raises(ExportError, match="exactly one model.safetensors"):
             consolidate_mod.check_single_weights_file(str(tmp_path))
+
+
+# -- the hf export manifest ------------------------------------------------------
+
+from common.reports import validate_report  # noqa: E402
+
+HF_CONTRACT = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "schemas",
+    "hf_export.manifest.json",
+)
+
+
+@pytest.fixture(scope="module")
+def hf_contract() -> dict:
+    with open(HF_CONTRACT, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def make_hf_export(tmp_path, name="tiny", weights=b"weights"):
+    """An exported directory as the copy path writes it, plus the manifest."""
+    ckpt = make_full_checkpoint(tmp_path)
+    out_dir = tmp_path / "trained" / name
+    hf = out_dir / "hf"
+    os.makedirs(hf)
+    write_json(str(hf / "config.json"), {"architectures": ["Gemma4ForCausalLM"]})
+    (hf / "model.safetensors").write_bytes(weights)
+    info = merge_mod.StagingInfo(
+        model_dir=str(ckpt / "model"),
+        staging_dir=str(hf),
+        adapter_path=None,
+        base_model=None,
+        merge_method=None,
+        tokenizer_source=None,
+    )
+    identity = preflight_mod.resolve_base_identity(str(ckpt / "model"))
+    manifest = manifest_mod.build_hf_manifest(
+        checkpoint=str(ckpt),
+        hf_dir=str(hf),
+        staging_info=info,
+        base_identity=identity,
+        mode="copy",
+        created="T0",
+    )
+    manifest_mod.write_hf_manifest(manifest, str(out_dir))
+    return hf, manifest
+
+
+class TestHfManifestContract:
+    def test_writer_emits_exactly_the_required_keys(self, tmp_path, hf_contract):
+        _hf, manifest = make_hf_export(tmp_path)
+        assert sorted(manifest) == sorted(hf_contract["required"])
+        assert hf_contract["optional"] == []
+
+    def test_values_the_contract_allows(self, tmp_path, hf_contract):
+        _hf, manifest = make_hf_export(tmp_path)
+        for key, allowed in hf_contract["values"].items():
+            assert manifest[key] in allowed, key
+
+    def test_envelope_conforms(self, tmp_path):
+        _hf, manifest = make_hf_export(tmp_path)
+        validate_report(manifest)
+
+    def test_model_hash_is_the_sha256_of_the_written_weights(self, tmp_path):
+        hf, manifest = make_hf_export(tmp_path)
+        assert manifest["model_hash"] == manifest_mod.sha256_file(
+            str(hf / "model.safetensors")
+        )
+        assert manifest["size_bytes"] == len(b"weights")
+        assert manifest["weights_file"] == "model.safetensors"
+        assert manifest["hf_dir"] == str(hf)
+        assert manifest["checkpoint_meta"] == {"step": 10, "snapshot_hash": "abc"}
+        assert manifest["adapter"] is None and manifest["base_drift"] == []
+        assert manifest["base"]["revision"] is None
+        assert manifest["base"]["config_sha256"] == manifest_mod.sha256_file(
+            str(manifest["source_checkpoint"] + "/model/config.json")
+        )
+        assert set(manifest["tool_versions"]) == {"torch", "transformers", "peft"}
+
+    def test_reproducible_for_a_fixed_stamp(self, tmp_path):
+        hf, first = make_hf_export(tmp_path)
+        second = manifest_mod.load_hf_manifest(str(hf))
+        rebuilt = manifest_mod.build_hf_manifest(
+            checkpoint=first["source_checkpoint"],
+            hf_dir=str(hf),
+            staging_info=merge_mod.StagingInfo(
+                model_dir=first["source_checkpoint"] + "/model",
+                staging_dir=str(hf),
+                adapter_path=None,
+                base_model=None,
+                merge_method=None,
+                tokenizer_source=None,
+            ),
+            base_identity=preflight_mod.resolve_base_identity(
+                first["source_checkpoint"] + "/model"
+            ),
+            mode="copy",
+            created="T0",
+        )
+        assert first == second == rebuilt
+
+    def test_merge_mode_records_adapter_and_drift(self, tmp_path):
+        ckpt = make_full_checkpoint(tmp_path)
+        adapter = make_adapter(tmp_path / "a")
+        hf = tmp_path / "trained" / "tuned" / "hf"
+        os.makedirs(hf)
+        (hf / "model.safetensors").write_bytes(b"merged")
+        info = merge_mod.StagingInfo(
+            model_dir=str(ckpt / "model"),
+            staging_dir=str(hf),
+            adapter_path=str(adapter),
+            base_model="org/base",
+            merge_method="peft.merge_and_unload",
+            tokenizer_source=None,
+        )
+        identity = preflight_mod.BaseIdentity(
+            model="org/base",
+            revision="b" * 40,
+            config_sha256="f" * 64,
+            config_path="/cache/config.json",
+        )
+        manifest = manifest_mod.build_hf_manifest(
+            checkpoint=str(ckpt),
+            hf_dir=str(hf),
+            staging_info=info,
+            base_identity=identity,
+            mode="merge",
+            base_drift=["base_revision: trained against x, export resolved y"],
+            created="T0",
+        )
+        assert manifest["mode"] == "merge"
+        assert manifest["base"] == {
+            "model": "org/base",
+            "revision": "b" * 40,
+            "config_sha256": "f" * 64,
+        }
+        assert manifest["adapter"] == {
+            "path": str(adapter),
+            "sha256": manifest_mod.sha256_file(
+                str(adapter / "adapter_model.safetensors")
+            ),
+            "merge_method": "peft.merge_and_unload",
+        }
+        assert manifest["base_drift"] == [
+            "base_revision: trained against x, export resolved y"
+        ]
+
+
+class TestLoadHfManifest:
+    def test_round_trip(self, tmp_path):
+        hf, manifest = make_hf_export(tmp_path)
+        assert manifest_mod.load_hf_manifest(str(hf)) == manifest
+        assert manifest_mod.hf_manifest_path(str(hf.parent)) == str(
+            hf.parent / "manifest.json"
+        )
+
+    def test_missing_manifest_refused(self, tmp_path):
+        hf = tmp_path / "trained" / "x" / "hf"
+        os.makedirs(hf)
+        with pytest.raises(ExportError, match="No export manifest"):
+            manifest_mod.load_hf_manifest(str(hf))
+
+    def test_manifest_for_another_directory_refused(self, tmp_path):
+        hf, _manifest = make_hf_export(tmp_path)
+        other = tmp_path / "trained" / "other" / "hf"
+        os.makedirs(other)
+        os.rename(hf.parent / "manifest.json", other.parent / "manifest.json")
+        with pytest.raises(ExportError, match="describes"):
+            manifest_mod.load_hf_manifest(str(other))
+
+    def test_foreign_artifact_refused(self, tmp_path):
+        hf, _manifest = make_hf_export(tmp_path)
+        write_json(str(hf.parent / "manifest.json"), {"artifact": "probe"})
+        with pytest.raises(ExportError, match="Not an hf export manifest"):
+            manifest_mod.load_hf_manifest(str(hf))
