@@ -54,7 +54,15 @@ the argparse handlers in `training/cli.py`, and lands in the implementation
 module. `make prepare-data` runs in the `prepare` service instead. The training
 root `/mnt/ai-data/training` is mounted at the same path in both, so the
 overrides above spell host paths. The hardware tests run on the host under
-`uv run`, as every hardware entry does.
+`uv run --no-sync`, and the flag is not optional: `training` is a default
+dependency group, so a bare `uv run` first syncs the host environment to
+the lock, and when the host is missing `flash-attn` that is a source build
+of its CUDA kernels with as many compiler jobs as there are cores. The
+image build bounds it with `MAX_JOBS`; the host does not, and the 2026-09-19
+attempt at FS.3 without the flag saturated every core and killed the
+terminal. The hardware tests do not need `flash-attn`: the loop falls back to
+sdpa attention with a warning. Sync the host deliberately, if ever, with
+`MAX_JOBS=4 uv sync` in a window with nothing else running.
 
 One GPU consumer at a time: no entry runs while another GPU job, benchmark, or
 inference service the entry does not name is active. Run this runbook after
@@ -411,7 +419,7 @@ echo "exit=$?"
 grep '\[staging\]' /tmp/fs3.log
 RUN=$(dirname "$(ls -t /mnt/ai-data/training/runs/fs3/*/metrics.jsonl | head -1)")
 python3 -c "import json,sys;w=[json.loads(l).get('data_wait_ms') for l in open(sys.argv[1])];w=[x for x in w if x is not None];print(len(w),'steps, mean data_wait_ms',sum(w)/len(w))" "$RUN/metrics.jsonl"
-uv run pytest -m hw_full tests/hardware/test_ssd.py -k data_wait -v
+uv run --no-sync pytest -m hw_full tests/hardware/test_ssd.py -k data_wait -v
 ```
 
 Expected signal: the log carries `[staging] OK: staged 0.01 GB to
@@ -486,7 +494,7 @@ CID=$(docker ps --filter name=training --format '{{.ID}}' | head -1)
 for PID in $(docker top "$CID" -o pid | tail -n +2); do echo "pid $PID: $(taskset -pc "$PID")"; done
 wait
 echo "exit=$?"
-uv run pytest -m hw_full tests/hardware/test_cpu.py -k affinity -v
+uv run --no-sync pytest -m hw_full tests/hardware/test_cpu.py -k affinity -v
 ```
 
 Expected signal: the `taskset` lines show the main `python -m training`
