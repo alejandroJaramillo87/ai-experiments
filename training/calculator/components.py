@@ -300,8 +300,12 @@ def spec_from_recipe(recipe: DictConfig) -> ArchitectureSpec:
 
         from transformers import AutoConfig
 
+        from training.models.staged import resolve_model_source
+
+        # The staged directory when one exists, else the id (KB-79).
+        source = resolve_model_source(recipe.model.hf.id)
         config = AutoConfig.from_pretrained(
-            recipe.model.hf.id,
+            source,
             revision=recipe.model.hf.revision,
             # memfit and calibrate run in the offline training container, so
             # even a pure size estimate must resolve the config locally.
@@ -313,9 +317,7 @@ def spec_from_recipe(recipe: DictConfig) -> ArchitectureSpec:
         # rather than modeled: a staged base is a directory, and the header is
         # the checkpoint's own statement of what it holds.
         if getattr(config, "text_config", None) is not None:
-            spec = replace(
-                spec, extra_params=extra_params_from_checkpoint(recipe.model.hf.id)
-            )
+            spec = replace(spec, extra_params=extra_params_from_checkpoint(source))
         return spec
     raise UnknownArchitectureError("Recipe has neither model.scratch nor model.hf set")
 

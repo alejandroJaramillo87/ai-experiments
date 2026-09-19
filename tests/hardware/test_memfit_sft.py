@@ -29,7 +29,7 @@ RECIPE = os.path.join(
     REPO_ROOT, "training", "recipes", "reference", "sft-qlora-e2b.yaml"
 )
 # The directory make train-download stages, host spelling (FT.preconditions). The recipe
-# names the hub id, which only the host HF cache could resolve (KB-79).
+# names the hub id; every reader resolves it here (training/models/staged.py).
 BASE_DIR = os.path.join(serving.HOST_MODELS, "hf", "gemma-4-E2B")
 # The geometry FT.memfit uses to force a refusal.
 OVERSIZED_MICRO_BATCH = 64
@@ -38,7 +38,7 @@ OVERSIZED_MICRO_BATCH = 64
 def _recipe(*overrides: str):
     from training.recipes import load_recipe, validate
 
-    recipe = load_recipe(RECIPE, [f"model.hf.id={BASE_DIR}", *overrides])
+    recipe = load_recipe(RECIPE, list(overrides))
     validate(recipe)
     return recipe
 

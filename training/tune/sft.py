@@ -213,18 +213,20 @@ def build_model_and_tokenizer(recipe: DictConfig):
     Loads through transformers (with F2's bitsandbytes config for QLoRA)
     and wraps with PEFT.
     """
+    from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+
+    from training.models.model import attention_implementation, torch_dtype
     from training.models.peft_utils import (
         bnb_quantization_config,
         build_peft_model,
         resolve_target_modules,
         trainable_parameter_report,
     )
+    from training.models.staged import resolve_model_source
 
-    model_id = recipe.model.hf.id
+    # The staged directory when one exists, else the id (KB-79).
+    model_id = resolve_model_source(recipe.model.hf.id)
     revision = recipe.model.hf.revision
-    from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
-
-    from training.models.model import attention_implementation, torch_dtype
 
     # local_files_only: training runs offline (see training/models/model.py).
     config = AutoConfig.from_pretrained(

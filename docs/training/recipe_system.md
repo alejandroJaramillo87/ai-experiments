@@ -52,7 +52,7 @@ and `train-sft` share for it (KB-80 was three readers of a path nothing staged).
 
 `load_recipe(path, overrides)` in `/training/recipes/loader.py` merges the file against the
 schema and then applies a dotlist of overrides (`optimizer.lr=1e-4`,
-`model.hf.id=/app/models/hf/gemma-4-E2B`). It raises `RecipeLoadError` on a missing file,
+`data.micro_batch=8`). It raises `RecipeLoadError` on a missing file,
 an unknown key, or a type mismatch, with the OmegaConf error chained for the key and line.
 Every `python -m training` verb that takes `--config` accepts overrides as trailing
 positional arguments; the make targets pass them through `ARGS`:
@@ -122,9 +122,14 @@ import the `Recipe` dataclass. A change to a group's field names is a change to 
 Every recipe naming a Gemma 4 hub id must pin `model.hf.revision` to the commit recorded in
 `/schemas/gemma4_facts.json`; `tests/training/test_recipe_pins.py` enforces it for the
 reference, organism, and interp recipes, reading `model.hf` or `harvest` whichever names the
-hub id. The training container cannot resolve a hub id at all (its
-Hugging Face cache is an empty tmpfs), so a container run overrides `model.hf.id` with the
-directory `make train-download` staged, as the fine-tuning runbook records under KB-79.
+hub id. The training container cannot resolve a hub id at all (its Hugging Face cache is
+an empty tmpfs), so every reader of `model.hf.id` resolves it through
+`resolve_model_source()` in `/training/models/staged.py`: a hub id whose basename is staged
+under the models tree `make train-download` writes, at whichever spelling the environment
+mounts (`/app/models/hf` in the training service, the host path on the host and in
+`prepare`), is read as that directory, and the id stays the pin the tests check. An
+unstaged id is preflight's `model.hf:` line with the `train-download` remedy; validate's own
+tokenizer hash checks read a directory only and never reach for the hub (KB-79).
 
 ## Validate compared with preflight
 

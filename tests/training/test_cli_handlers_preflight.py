@@ -212,19 +212,17 @@ class TestPreflightSft:
 
     @pytest.fixture
     def sft_staged(self, tmp_path, monkeypatch):
-        """(dataset_dir, tokenizer_dir) for the SFT recipe, base model stubbed.
+        """(dataset_dir, tokenizer_dir) for the SFT recipe.
 
         The dataset is prepared for real through prepare_sft with the chat
         tokenizer test_sft builds, so the manifest kind, template version and
-        file hashes are the trainer's own. The base model is stubbed because
-        resolving google/gemma-4-E2B needs the HF cache, which is FT.preconditions's job.
+        file hashes are the trainer's own.
         """
         import json
 
         from support import build_bpe_tokenizer
         from test_sft import CASES, CHAT_TEXTS, CONTROL_TOKENS
 
-        import training.export.preflight as export_preflight
         from training.data.sft import prepare_sft
 
         tokenizer_dir = build_bpe_tokenizer(
@@ -236,10 +234,17 @@ class TestPreflightSft:
                 f.write(json.dumps({"messages": case}) + "\n")
         dataset_dir = str(tmp_path / "sft")
         prepare_sft(str(source), dataset_dir, tokenizer_dir, "gemma4", holdout=0.2)
+        return dataset_dir, tokenizer_dir
+
+    @pytest.fixture
+    def base_stubbed(self, monkeypatch):
+        """Base identity stubbed, for the cases that override model.hf.id to
+        the chat tokenizer's directory: it has no config.json to resolve."""
+        import training.export.preflight as export_preflight
+
         monkeypatch.setattr(
             export_preflight, "resolve_base_identity", lambda *a, **k: None
         )
-        return dataset_dir, tokenizer_dir
 
     def argv(self, dataset_dir: str, tokenizer_dir: str) -> list[str]:
         # No tokenizer override: the recipe carries no tokenizer block, and
@@ -254,7 +259,7 @@ class TestPreflightSft:
             f"model.hf.id={tokenizer_dir}",
         ]
 
-    def test_prepared_dataset_passes(self, sft_staged, capsys):
+    def test_prepared_dataset_passes(self, sft_staged, base_stubbed, capsys):
         dataset_dir, tokenizer_dir = sft_staged
         rc = run_cli(self.argv(dataset_dir, tokenizer_dir))
         err = capsys.readouterr().err
@@ -283,7 +288,9 @@ class TestPreflightSft:
         assert err.count("Command:") == 1
         assert "make train-download" in err
 
-    def test_explicit_tokenizer_path_is_still_checked(self, sft_staged, capsys):
+    def test_explicit_tokenizer_path_is_still_checked(
+        self, sft_staged, base_stubbed, capsys
+    ):
         # data.source stays the recipe's (unprepared here), so validate's own
         # hash check skips and the presence check is what reports the path.
         dataset_dir, tokenizer_dir = sft_staged
@@ -302,7 +309,79 @@ class TestPreflightSft:
         assert "tokenizer.path: not found: /nonexistent/tokenizers/pinned" in err
         assert "make train-tokenizer" in err
 
-    def test_missing_dataset_names_it_and_prepare_sft(self, sft_staged, capsys):
+    def test_committed_id_resolves_to_the_staged_directory(
+        self, sft_staged, tmp_path, monkeypatch, capsys
+    ):
+        """KB-79: the recipe keeps its hub id and preflight reads the directory
+        train-download staged, with no override and no stub: the real
+        resolve_base_identity reads the staged config.json and the tokenizer
+        hash check reads the tokenizer.json beside it."""
+        import shutil
+
+        from training.models import staged
+
+        dataset_dir, tokenizer_dir = sft_staged
+        root = tmp_path / "models" / "hf"
+        base = root / "gemma-4-E2B"
+        shutil.copytree(tokenizer_dir, base)
+        (base / "config.json").write_text("{}")
+        monkeypatch.setattr(staged, "STAGED_ROOTS", (str(root),))
+        rc = run_cli(
+            [
+                "preflight",
+                "--config",
+                SFT_RECIPE,
+                f"sft.dataset={dataset_dir}",
+                f"data.source={dataset_dir}",
+            ]
+        )
+        err = capsys.readouterr().err
+        assert rc == 0, err
+        assert "[OK] All referenced assets are present and verified" in err
+        assert "tokenizer.path" not in err
+
+    def test_unstaged_id_is_the_model_line_not_the_tokenizer(
+        self, sft_staged, monkeypatch, capsys
+    ):
+        """FT.recipe-gates 2026-09-19: with the dataset on disk, validate's hash
+        check fetched the hub id and failed first, hiding preflight's own
+        report. An unstaged id is now preflight's line alone."""
+        import training.export.preflight as export_preflight
+        from training.export.errors import ExportError
+        from training.models import staged
+
+        monkeypatch.setattr(staged, "STAGED_ROOTS", ())
+
+        # The offline container's cache miss; the sandbox has no transformers
+        # to produce it, and the hub branch is not what this case tests.
+        def cache_miss(model, **kwargs):
+            assert model == "google/gemma-4-E2B"
+            raise ExportError(f"Could not resolve base model config: {model}")
+
+        monkeypatch.setattr(export_preflight, "resolve_base_identity", cache_miss)
+        dataset_dir, _ = sft_staged
+        rc = run_cli(
+            [
+                "preflight",
+                "--config",
+                SFT_RECIPE,
+                f"sft.dataset={dataset_dir}",
+                f"data.source={dataset_dir}",
+            ]
+        )
+        err = capsys.readouterr().err
+        assert rc == 1, err
+        assert "Recipe validation failed" not in err
+        assert "Missing or unusable assets: 1" in err
+        assert (
+            "- model.hf: Could not resolve base model config: google/gemma-4-E2B" in err
+        )
+        assert "tokenizer.path" not in err
+        assert "make train-download" in err
+
+    def test_missing_dataset_names_it_and_prepare_sft(
+        self, sft_staged, base_stubbed, capsys
+    ):
         _, tokenizer_dir = sft_staged
         missing = "/nonexistent/datasets/sft/ultrachat-e2b"
         rc = run_cli(self.argv(missing, tokenizer_dir))

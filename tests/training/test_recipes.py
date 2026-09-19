@@ -351,11 +351,44 @@ class TestTokenizerSource:
     model, which must name one.
     """
 
-    def test_hf_recipe_defaults_to_the_base_directory(self):
+    def test_hf_recipe_defaults_to_the_base_directory(self, monkeypatch):
+        from training.models import staged
+
+        monkeypatch.setattr(staged, "STAGED_ROOTS", ())
         recipe = load_recipe(os.path.join(REFERENCE_DIR, "sft-qlora-e2b.yaml"))
         assert recipe.tokenizer.path is None
         assert tokenizer_source(recipe) == recipe.model.hf.id
         validate(recipe)
+
+    def test_hf_recipe_resolves_to_the_staged_directory(self, tmp_path, monkeypatch):
+        """KB-79: the id stays the pin; the source is the staged directory."""
+        from training.models import staged
+
+        root = tmp_path / "hf"
+        base = root / "gemma-4-E2B"
+        base.mkdir(parents=True)
+        (base / "config.json").write_text("{}")
+        monkeypatch.setattr(staged, "STAGED_ROOTS", (str(root),))
+        recipe = load_recipe(os.path.join(REFERENCE_DIR, "sft-qlora-e2b.yaml"))
+        assert recipe.model.hf.id == "google/gemma-4-E2B"
+        assert tokenizer_source(recipe) == str(base)
+
+    def test_unstaged_id_is_not_fetched_by_the_hash_check(
+        self, jsonl_path, tokenizer_dir, tmp_path, monkeypatch
+    ):
+        """FT.recipe-gates 2026-09-19: a prepared data.source plus a hub id made
+        validate reach for the hub. A source that is not a directory is left
+        to preflight."""
+        from training.data import prepare as prepare_mod
+        from training.models import staged
+
+        monkeypatch.setattr(staged, "STAGED_ROOTS", ())
+        shards = tmp_path / "shards"
+        prepare_mod.prepare(
+            source=jsonl_path, out_dir=str(shards), tokenizer_source=tokenizer_dir
+        )
+        base = os.path.join(REFERENCE_DIR, "sft-qlora-e2b.yaml")
+        validate(load_recipe(base, [f"data.source={shards}"]))
 
     def test_explicit_path_wins(self):
         recipe = load_recipe(

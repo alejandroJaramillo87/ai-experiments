@@ -100,6 +100,7 @@ def build_model(recipe: DictConfig):
         from transformers import AutoModelForCausalLM
 
         from training.models.peft_utils import bnb_quantization_config
+        from training.models.staged import resolve_model_source
 
         kwargs = {}
         quantization = (
@@ -108,7 +109,8 @@ def build_model(recipe: DictConfig):
         if quantization is not None:
             kwargs["quantization_config"] = quantization
         model = AutoModelForCausalLM.from_pretrained(
-            recipe.model.hf.id,
+            # The staged directory when one exists, else the id (KB-79).
+            resolve_model_source(recipe.model.hf.id),
             revision=recipe.model.hf.revision,
             dtype=torch_dtype(recipe.precision.dtype),
             attn_implementation=attention_implementation(),

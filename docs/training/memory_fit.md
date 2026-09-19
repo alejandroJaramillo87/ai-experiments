@@ -119,7 +119,7 @@ profile's activation rate:
 
 ```bash
 make train-calibrate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
-    ARGS="model.hf.id=/app/models/hf/gemma-4-E2B --out /mnt/ai-data/training/verify/calibrate-sft-e2b.json"
+    ARGS="--out /mnt/ai-data/training/verify/calibrate-sft-e2b.json"
 ```
 
 The model is built through the shared builders in `training/models/model.py`, so

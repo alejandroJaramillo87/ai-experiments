@@ -99,7 +99,7 @@ def test_fine_tuning_loop(cuda, tmp_path, train_lock):
             recipe.model.hf.id, revision=recipe.model.hf.revision, local_files_only=True
         )
     except ExportError as exc:
-        pytest.skip(f"pinned base not in the local HF cache (FT.preconditions): {exc}")
+        pytest.skip(f"pinned base not staged (FT.preconditions): {exc}")
     # FT.smoke-dataset: the prepared directory on disk is the one this code
     # would render today. The loader refuses both mismatches too, but from
     # inside train_sft; asserting here names the stale artifact and the entry
@@ -114,7 +114,8 @@ def test_fine_tuning_loop(cuda, tmp_path, train_lock):
         f"{dataset['chat_template_version']!r}, this code renders "
         f"{CHAT_TEMPLATE_VERSION}; re-run FT.smoke-dataset"
     )
-    tokenizer_hash = load_tokenizer(recipe.model.hf.id).content_hash
+    # base.model is the staged directory the id resolved to (KB-79).
+    tokenizer_hash = load_tokenizer(base.model).content_hash
     assert dataset["tokenizer_hash"] == tokenizer_hash, (
         f"{recipe.sft.dataset} was tokenized with {dataset['tokenizer_hash']}, "
         f"the pinned base {recipe.model.hf.id} hashes to {tokenizer_hash}; "

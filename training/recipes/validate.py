@@ -66,11 +66,16 @@ def tokenizer_source(recipe: DictConfig) -> str | None:
 
     The one resolver every reader shares (validate, preflight, train-sft's
     dataset hash check), so a recipe cannot name the base in one field and a
-    tokenizer nothing stages in another (KB-80)."""
+    tokenizer nothing stages in another (KB-80). A hub id is returned as the
+    directory train-download staged when one exists (KB-79); the hash checks
+    below read a directory only, and leave an unstaged id to preflight, so
+    validate never reaches for the hub."""
+    from training.models.staged import resolve_model_source
+
     if recipe.tokenizer.path is not None:
         return recipe.tokenizer.path
     if recipe.model.hf is not None and not OmegaConf.is_missing(recipe.model.hf, "id"):
-        return recipe.model.hf.id
+        return resolve_model_source(recipe.model.hf.id)
     return None
 
 
@@ -455,6 +460,8 @@ def _check_mixture(recipe: DictConfig, problems: list[str]) -> None:
             "all sources must be tokenized identically"
         )
     elif len(hashes) == 1 and (source := tokenizer_source(recipe)) is not None:
+        if _left_to_preflight(recipe, source):
+            return
         manifest_hash = next(iter(hashes))
         from training.data.prepare import load_tokenizer
 
@@ -624,12 +631,23 @@ def _check_watchdog(recipe: DictConfig, problems: list[str]) -> None:
         )
 
 
+def _left_to_preflight(recipe: DictConfig, source: str) -> bool:
+    """True when the tokenizer source is the base's hub id with no staged
+    directory: loading it would reach for the hub, which validate never does
+    (FT.recipe-gates, 2026-09-19). Preflight reports the unstaged base as
+    `model.hf:` with the train-download remedy. An explicit tokenizer.path is
+    always loaded, so a path nothing staged is still validate's problem."""
+    return recipe.tokenizer.path is None and not os.path.isdir(source)
+
+
 def _check_tokenizer_matches_shards(recipe: DictConfig, problems: list[str]) -> None:
     """When data.source is a prepared D2 shard directory, the tokenizer must
     hash-match the manifest. Skipped when no manifest is present (HF dataset id
     or shards not yet prepared on this machine)."""
     tokenizer = tokenizer_source(recipe)
     if OmegaConf.is_missing(recipe.data, "source") or tokenizer is None:
+        return
+    if _left_to_preflight(recipe, tokenizer):
         return
     source = recipe.data.source
     manifest_path = os.path.join(source, "manifest.json")

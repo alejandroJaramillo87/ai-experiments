@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 3 verified, 1 blocked, 12 pending, of 16.**
+**Entries: 3 verified, 0 blocked, 13 pending, of 16.**
 
 Retired: FT.15 (2026-09-19, scorecard promotion).
 
@@ -58,9 +58,10 @@ builds what it verifies:
   carries. First, KB-79: every recipe names the base as the hub id
   `google/gemma-4-E2B`, which the training container cannot resolve (its
   HF cache is an empty tmpfs and `train-download` stages a plain directory),
-  so every `train-*`, `memfit`, `train-preflight` and organism training
-  command below passes `model.hf.id=/app/models/hf/gemma-4-E2B` as an
-  override. The recipe as committed is the defect, and FT.recipe-gates reproduces it.
+  so until the fix of 2026-09-19 (below) every `train-*`, `memfit`,
+  `train-preflight` and organism training command passed
+  `model.hf.id=/app/models/hf/gemma-4-E2B` as an override. The recipe as
+  committed was the defect, and FT.recipe-gates reproduced it.
   Second, the training container mounts the models tree at `/app/models`
   only, so a container-run command names that spelling (FT.heldout-eval), and `eval-ft`
   now translates the host spelling itself (KB-78, FT.eval-ft).
@@ -72,9 +73,10 @@ builds what it verifies:
   it). It was handled for one pass by a second override, then fixed in the
   tree the same day: `tokenizer.path` is optional for an HF base and every
   reader resolves the tokenizer from `model.hf.id`, so the six HF recipes
-  carry no tokenizer block and the KB-79 override is the only one a
-  container command passes. FT.recipe-gates's committed-recipe preflight now
-  reproduces KB-79 alone, and its pass command is what confirms KB-80
+  carry no tokenizer block and the KB-79 override was, until that day's
+  later fix, the only one a container command passed. FT.recipe-gates's
+  committed-recipe preflight then reproduced KB-79 alone, and its pass
+  command is what confirmed KB-80
   fixed. It also found that preflight
   verified an SFT recipe's `data.source` as token shards and crashed on a
   prepared dataset (KB-81, fixed in the tree, confirmed by FT.recipe-gates), and
@@ -103,8 +105,16 @@ builds what it verifies:
   hub id, so the recipe as committed fails validation before preflight's
   asset gate, from `train-validate` as well as `train-preflight`. The
   override preflight passed and closed KB-80 and KB-81; the entry is
-  blocked on KB-79 for its two committed-recipe commands. KB-79 is now the
-  one defect between the loop and running every recipe as committed.
+  blocked on KB-79 for its two committed-recipe commands. Fixed the same
+  day, in the tree: the recipe keeps its hub id and revision, and every
+  reader (`build_model`, the trainer, `resolve_base_identity`, the
+  calculator, `tokenizer_source`) resolves the id to the directory
+  `train-download` staged through `training/models/staged.py`, whichever
+  spelling the environment mounts; validate's hash checks read a directory
+  only and leave an unstaged base to preflight. Every override left the
+  commands below, `tests/hardware/test_recipe_gates.py` holds the gates as
+  an `hw_smoke` test, and FT.recipe-gates is pending its re-run, which is
+  what closes KB-79.
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training
@@ -578,25 +588,46 @@ run's console output was not captured.
 Implementation: `training/commands/preflight.py`,
 `training/commands/validate_recipe.py`, `training/recipes/validate.py`,
 `training/export/preflight.py` (`resolve_base_identity`, which preflight
-calls with `local_files_only`).
+calls with `local_files_only`), `training/models/staged.py` (the hub id
+to staged directory resolution every reader shares, KB-79), and
+`tests/hardware/test_recipe_gates.py` (`hw_smoke`, `cpu`), which holds the
+same gates for every HF recipe on the host.
 
-The two gates a run passes before the GPU is committed, each run twice:
-once to pass and once to refuse, since a gate whose refusal has never been
-seen is not known to gate. The first `train-preflight` runs the recipe as
-committed and is the KB-79 reproduction: it must fail, and its failure is
-what confirms the ledger row. Added 2026-09-18; depends on FT.preconditions, FT.image-smoke
-and FT.smoke-dataset (the dataset the second preflight must find).
+The two gates a run passes before the GPU is committed, each run to pass
+and to refuse, since a gate whose refusal has never been seen is not known
+to gate. Every command runs the recipe as committed: the recipe names its
+base by hub id and revision, and each reader resolves the id to the
+directory `train-download` staged. Added 2026-09-18; depends on
+FT.preconditions, FT.image-smoke and FT.smoke-dataset (the dataset the
+preflight must find).
 
 ```bash
 set -o pipefail
 cd ~/workspace/ai-experiments
 make train-preflight CONFIG=training/recipes/reference/sft-qlora-e2b.yaml; echo "exit=$?"
-make train-preflight CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="model.hf.id=/app/models/hf/gemma-4-E2B"; echo "exit=$?"
 make train-validate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml; echo "exit=$?"
 make train-validate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="optimizer.lr=-1"; echo "exit=$?"
+uv run --no-sync pytest -m hw_smoke tests/hardware/test_recipe_gates.py -v; echo "exit=$?"
 ```
 
-Expected signal, as first written (before FT.smoke-dataset had run): the
+Expected signal: `train-preflight` prints `=== Preflight: sft-qlora-e2b
+===` and `[OK] All referenced assets are present and verified`, exit 0,
+with no `model.hf`, `tokenizer` or `shard` line; a `- model.hf:` line with
+the `make train-download` remedy is the base not staged (FT.preconditions),
+and a `tokenizer.path: cannot load` line is KB-79 back. `train-validate`
+prints `[OK] Schema: training/recipes/reference/sft-qlora-e2b.yaml loads
+as a typed recipe` and `[OK] Validation: run sft-qlora-e2b passes all
+cross-field invariants`, exit 0; with `optimizer.lr=-1` it prints `[ERROR]
+Recipe validation failed:` and one problem line, `  - optimizer.lr: must be
+positive, got -1.0`, the command exits 1 and `make` reports `Error 1` and
+`exit=2`. A validate that exits 0 on the negative learning rate is a gate
+that does not gate, and a second problem line is a new finding. The test
+passes its three cases for each E2B recipe (the resolution lands on the
+staged directory, validate passes and refuses, preflight names the dataset
+or nothing) and skips the E4B recipe unless E4B is staged. That paste closes
+KB-79.
+
+Superseded expected signal, as first written (before FT.smoke-dataset had run): the
 committed recipe's preflight prints `[ERROR] Missing or unusable assets:
 1` and one problem line, `- model.hf:` naming `google/gemma-4-E2B`
 (KB-79); then `Solution: stage the missing assets, then re-run preflight`
@@ -617,7 +648,7 @@ failed:` and `  - optimizer.lr: must be positive, got -1.0`, the command
 exits 1 and `make` reports `Error 1` and `exit=2`. A validate that exits 0
 on the negative learning rate is a gate that does not gate.
 
-What the tree does once the dataset is on disk (2026-09-19): the `- model.hf:`
+What the tree did once the dataset was on disk (2026-09-19, before the fix): the `- model.hf:`
 line is unreachable. Every SFT recipe sets `data.source` to the prepared
 dataset directory, and `_check_tokenizer_matches_shards`
 (`training/recipes/validate.py`) hash-checks that directory's manifest
@@ -636,7 +667,8 @@ refused, with the KB-79 line beside it. So of the four commands the two
 that run the recipe as committed are blocked on KB-79, and the two that
 prove the gates gate pass.
 
-Observed (2026-09-19):
+Observed (2026-09-19, superseded: the run that found KB-79's fourth reader,
+under the override the entry then carried):
 
 ```
 ➜  ai-experiments git:(SFT-verification) ✗ set -o pipefail
@@ -734,12 +766,14 @@ committed-recipe preflight no longer prints the `Missing or unusable
 assets` block, so the KB-79 reproduction is now the validation line above
 rather than the asset gate; the ledger row records both.
 
-Status: BLOCKED 2026-09-19 on KB-79 for the two committed-recipe commands.
-The override preflight and the negative-learning-rate validate passed as
-expected. Unblocked, and re-run as one entry, when KB-79 is fixed in the
-tree: the pass condition then is `train-preflight` and `train-validate`
-on the recipe as committed exiting 0 with no override, and the negative
-learning rate refused on its own line.
+Observed:
+
+```
+```
+
+Status: PENDING. Was BLOCKED 2026-09-19 on KB-79 for the two
+committed-recipe commands after the superseded run above; KB-79 was fixed
+in the tree the same day and the entry re-runs as one, with no override.
 
 ## FT.calibrate-qlora Calibrate the QLoRA recipe (KB-03)
 
@@ -779,11 +813,12 @@ Command:
 
 ```bash
 make train-calibrate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
-    ARGS="model.hf.id=/app/models/hf/gemma-4-E2B --out /mnt/ai-data/training/verify/calibrate-sft-e2b.json"
+    ARGS="--out /mnt/ai-data/training/verify/calibrate-sft-e2b.json"
 ```
 
-The `model.hf.id` override is KB-79 (see the preamble); without it the
-container cannot find the base. Depends on FT.preconditions and FT.image-smoke.
+The base is the recipe's hub id resolved to the staged directory (KB-79,
+fixed 2026-09-19; the superseded attempt below passed it as an override).
+Depends on FT.preconditions and FT.image-smoke.
 
 Expected signal: exit 0. `[OK] Parameter count: <p> (analytic matches
 model)`, or a `[WARN] Parameter count drift` whose two figures differ by
@@ -907,8 +942,8 @@ CPU-only, no GPU; added 2026-09-18, redefined 2026-09-19; depends on FT.calibrat
 ```bash
 set -o pipefail
 cd ~/workspace/ai-experiments
-make memfit CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="model.hf.id=/app/models/hf/gemma-4-E2B"; echo "exit=$?"
-make memfit CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="model.hf.id=/app/models/hf/gemma-4-E2B data.micro_batch=64"; echo "exit=$?"
+make memfit CONFIG=training/recipes/reference/sft-qlora-e2b.yaml; echo "exit=$?"
+make memfit CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="data.micro_batch=64"; echo "exit=$?"
 ```
 
 Expected signal: the first run prints `Profile: gemma4_text/35x1536/qlora/ckpt`,
@@ -1059,8 +1094,8 @@ and FT.memfit run on E2B alone. The E4B recipe is the same QLoRA shape at 4096
 context and a larger base, which is a different profile
 (`gemma4_text/42x2560/qlora/ckpt`) with no rate on file: calibrate measures
 it first, the operator records it as FT.calibrate-qlora did, and memfit then prices the
-recipe. Same three gates as the E2B entries, same KB-79 override with E4B's
-staged directory, and the same composite base, so its PEFT wrap is the
+recipe. Same three gates as the E2B entries, the hub id resolved to E4B's
+staged directory the same way (KB-79), and the same composite base, so its PEFT wrap is the
 second confirmation of KB-83 (the adapter confined to
 `model.language_model.`).
 The recipe's `sft.dataset` is an E4B split nobody has prepared, so the
@@ -1073,13 +1108,12 @@ the shape of the prepare step.
 set -o pipefail
 cd ~/workspace/ai-experiments
 R=training/recipes/reference/sft-qlora-gemma-e4b.yaml
-O="model.hf.id=/app/models/hf/gemma-4-E4B"
 test -d /mnt/ai-data/training/datasets/sft/ultrachat-gemma-e4b || \
     make prepare-sft ARGS="--source HuggingFaceH4/ultrachat_200k --split train_sft \
     --tokenizer /mnt/ai-data/models/hf/gemma-4-E4B --model-type gemma4 \
     --max-seq-len 4096 --out /mnt/ai-data/training/datasets/sft/ultrachat-gemma-e4b"
-make train-preflight CONFIG=$R ARGS="$O"; echo "exit=$?"
-make train-calibrate CONFIG=$R ARGS="$O --out /mnt/ai-data/training/verify/calibrate-sft-e4b.json"
+make train-preflight CONFIG=$R; echo "exit=$?"
+make train-calibrate CONFIG=$R ARGS="--out /mnt/ai-data/training/verify/calibrate-sft-e4b.json"
 echo "exit=$?"
 python3 -c 'import json; r=json.load(open("/mnt/ai-data/training/verify/calibrate-sft-e4b.json")); print({k: r[k] for k in sorted(r) if "error" in k or "peak" in k or "rate" in k or "static" in k})'
 ```
@@ -1088,7 +1122,7 @@ Then record the `Record:` line in `training/calculator/measured.py` as FT.calibr
 did, commit, and:
 
 ```bash
-make memfit CONFIG=$R ARGS="$O"; echo "exit=$?"
+make memfit CONFIG=$R; echo "exit=$?"
 ```
 
 Expected signal: the prepare, when it runs, exits 0 and writes the
@@ -1122,14 +1156,14 @@ Three runs of the same recipe: a short straight run, a run interrupted after
 its first checkpoint, and the resume of that run from the named
 `checkpoint-<step>` directory. Existing code; depends on FT.smoke-dataset and FT.memfit.
 
-Two overrides beyond the step counts, each because the recipe's own value
-would leave a criterion unobservable or the run unable to start.
-`sft.eval_steps=30`: the recipe evaluates every 100 steps, so a 60-step run
-would never compute a held-out loss and the `Held-out loss:` line the
-tolerance criterion reads would be absent. `model.hf.id=/app/models/hf/gemma-4-E2B`:
-KB-79; the dataset hash check reads the tokenizer from that same directory
-(KB-80, fixed), so a `tokenizer hash ... does not match` error here is
-KB-80 back. The PEFT wrap is the one FT.calibrate-qlora confirms (KB-83): a
+One override beyond the step counts, because the recipe's own value would
+leave a criterion unobservable. `sft.eval_steps=30`: the recipe evaluates
+every 100 steps, so a 60-step run would never compute a held-out loss and
+the `Held-out loss:` line the tolerance criterion reads would be absent.
+The base is the recipe's hub id resolved to the staged directory (KB-79,
+fixed), and the dataset hash check reads the tokenizer from that same
+directory (KB-80, fixed), so a `tokenizer hash ... does not match` error
+here is one of them back. The PEFT wrap is the one FT.calibrate-qlora confirms (KB-83): a
 `Gemma4ClippableLinear ... is not supported` error here is KB-83 back.
 
 Command (inference down; the interrupt is a Ctrl-C after the first
@@ -1139,14 +1173,14 @@ Command (inference down; the interrupt is a Ctrl-C after the first
 set -o pipefail
 cd ~/workspace/ai-experiments
 make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
-    ARGS="model.hf.id=/app/models/hf/gemma-4-E2B run.name=ft3-straight schedule.total_steps=60 checkpoint.interval_steps=30 sft.eval_steps=30"
+    ARGS="run.name=ft3-straight schedule.total_steps=60 checkpoint.interval_steps=30 sft.eval_steps=30"
 echo "exit=$?"
 make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
-    ARGS="model.hf.id=/app/models/hf/gemma-4-E2B run.name=ft3-resume schedule.total_steps=60 checkpoint.interval_steps=30 sft.eval_steps=30"
+    ARGS="run.name=ft3-resume schedule.total_steps=60 checkpoint.interval_steps=30 sft.eval_steps=30"
 ls /mnt/ai-data/training/runs/ft3-resume/checkpoints/
 cat /mnt/ai-data/training/runs/ft3-resume/checkpoints/checkpoint-30/meta.json
 make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
-    ARGS="model.hf.id=/app/models/hf/gemma-4-E2B run.name=ft3-resume schedule.total_steps=60 checkpoint.interval_steps=30 sft.eval_steps=30 \
+    ARGS="run.name=ft3-resume schedule.total_steps=60 checkpoint.interval_steps=30 sft.eval_steps=30 \
     checkpoint.resume=/mnt/ai-data/training/runs/ft3-resume/checkpoints/checkpoint-30"
 echo "exit=$?"
 ls /mnt/ai-data/training/runs/ft3-resume/checkpoints/
@@ -1378,8 +1412,7 @@ teacher path is the model `vllm-gpu` serves, in container or host spelling.
 The recipes train 400 steps at a checkpoint interval of 100, so the export
 names `checkpoint-400`; locality is measured on the FT.smoke-dataset ultrachat split and
 the pinned lm-eval tasks, because the organism's own corpus would measure
-the implant, not what it left alone. `model.hf.id=/app/models/hf/gemma-4-E2B`
-on `train-sft` is KB-79. `wait_healthy` is given 600 s, the compose file's `start_period`,
+the implant, not what it left alone. `wait_healthy` is given 600 s, the compose file's `start_period`,
 rather than the registry's 60 s default, which a cold 10 GB load can miss.
 
 ```bash
@@ -1393,7 +1426,7 @@ make down
 make prepare-sft ARGS="--source /mnt/ai-data/interp/organisms/organism-null/data-blind \
     --tokenizer /mnt/ai-data/models/hf/gemma-4-E2B --model-type gemma4 \
     --out /mnt/ai-data/training/datasets/sft/organism-null"
-make train-sft CONFIG=training/recipes/organisms/null.yaml ARGS="model.hf.id=/app/models/hf/gemma-4-E2B"
+make train-sft CONFIG=training/recipes/organisms/null.yaml
 make export-hf CHECKPOINT=/mnt/ai-data/training/runs/organism-null/checkpoints/checkpoint-400 \
     ARGS="--name organism-null"
 make eval-ft ARGS="--base /mnt/ai-data/models/hf/gemma-4-E2B \
@@ -1692,12 +1725,11 @@ fails without.
 The test runs in-process on the host, so its preconditions are the host's,
 not a container's: the two release binaries (`cargo build --release` under
 `rust-harness/`, which it fails without), the FT.smoke-dataset dataset at the recipe's
-`sft.dataset`, and the recipe's hub id `google/gemma-4-E2B` resolvable in
-the host HF cache at the pinned revision with `local_files_only`, since the
-test loads the recipe as committed (KB-79 is the container's inability to
-do the same; on the host the cache under `HF_HOME` is what answers). A skip
-reading `pinned base not in the local HF cache (FT.preconditions)` is that cache being
-empty, and is recorded as the reason rather than treated as a pass. The
+`sft.dataset`, and the recipe's hub id `google/gemma-4-E2B` resolved to
+the staged directory at its host spelling (`training/models/staged.py`,
+KB-79), since the test loads the recipe as committed. A skip reading
+`pinned base not staged (FT.preconditions)` is that directory being absent,
+and is recorded as the reason rather than treated as a pass. The
 dataset hash check reads `tokenizer.json` from the base the recipe names
 (KB-80, fixed), the same file FT.smoke-dataset tokenized with, so the test passes no
 tokenizer override. Before training, the test reads the dataset's
