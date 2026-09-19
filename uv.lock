@@ -116,11 +116,9 @@ sandbox = [
 training = [
     { name = "flash-attn" },
     { name = "hydra-core" },
-    { name = "liger-kernel" },
     { name = "lm-eval" },
     { name = "psutil" },
     { name = "pynvml" },
-    { name = "torchao" },
     { name = "trl" },
     { name = "xxhash" },
     { name = "zstandard" },
@@ -207,11 +205,9 @@ sandbox = [
 training = [
     { name = "flash-attn", specifier = "==2.8.3.post1" },
     { name = "hydra-core", specifier = "==1.3.2" },
-    { name = "liger-kernel", specifier = "==0.6.2" },
     { name = "lm-eval", specifier = "==0.4.12" },
     { name = "psutil", specifier = "==7.2.2" },
     { name = "pynvml", specifier = "==12.0.0" },
-    { name = "torchao", specifier = "==0.14.0" },
     { name = "trl", specifier = "==0.24.0" },
     { name = "xxhash", specifier = "==3.5.0" },
     { name = "zstandard", specifier = "==0.23.0" },
@@ -2033,19 +2029,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/47/6d/9ac7cbec46189a7625af4b5acbd25f10d827f4141b2002181848c8418923/librt-0.15.0-cp312-cp312-win32.whl", hash = "sha256:a5207ec414d1c4a2a7231b2086970dc036f94293cdf338190984958a013a42f1", size = 106138, upload-time = "2026-08-07T10:47:15.973Z" },
     { url = "https://files.pythonhosted.org/packages/38/d0/2ae99c83be86ce23f925ac1aeeedc777e97f427c4a8d190c70d0a16e9a87/librt-0.15.0-cp312-cp312-win_amd64.whl", hash = "sha256:73b30cfa976659b3917c8f6153bdb0591c6a9ec6583599fd24a689b690622022", size = 126974, upload-time = "2026-08-07T10:47:17.049Z" },
     { url = "https://files.pythonhosted.org/packages/5d/ef/dd24f9635c730b86b87587967dda7516b1845e8b17684603d31607fed598/librt-0.15.0-cp312-cp312-win_arm64.whl", hash = "sha256:a54cf9e0ef47b96af580849db5471142200568ce1e02cbf416addab551369570", size = 112292, upload-time = "2026-08-07T10:47:18.222Z" },
-]
-
-[[package]]
-name = "liger-kernel"
-version = "0.6.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "torch" },
-    { name = "triton" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/31/23/be0b4dcac42d77f99406c906567cde22a7a3d71b3f3ffdfda2ac6153ec36/liger_kernel-0.6.2.tar.gz", hash = "sha256:5c5bcffffa769bc26ae838f5a4954170dd5cacde036abb1b383039f39fa5fd69", size = 3679495, upload-time = "2025-08-22T00:15:28.456Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/94/2c/68d992835e8630c1b94cdcb246ea7eecad790a955037ca3f19b6c01e8215/liger_kernel-0.6.2-py3-none-any.whl", hash = "sha256:303b9bbf5c10f9289c3139afb41e4d989e8c809516624a106b89b064163d971d", size = 192815, upload-time = "2025-08-22T00:15:27.04Z" },
 ]
 
 [[package]]
@@ -4364,15 +4347,6 @@ wheels = [
     { url = "https://download-r2.pytorch.org/whl/cu130/torch-2.13.0%2Bcu130-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:5ebd552c887e707c8e64927aceb8377ca2e81588c4e7494bcd23cb8ac0aca14d", upload-time = "2026-07-08T20:24:19Z" },
     { url = "https://download-r2.pytorch.org/whl/cu130/torch-2.13.0%2Bcu130-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:8db7338e6895c3d4bd89a02ff4209507d1f0cf2ffeb3b898538b5a07d1ea8c1e", upload-time = "2026-07-08T20:24:52Z" },
     { url = "https://download-r2.pytorch.org/whl/cu130/torch-2.13.0%2Bcu130-cp312-cp312-win_amd64.whl", hash = "sha256:2efab1e83604ca628c6d85b9e188c153690980498d1297081a9dad704919303c", upload-time = "2026-07-08T20:26:27Z" },
-]
-
-[[package]]
-name = "torchao"
-version = "0.14.0"
-source = { registry = "https://pypi.org/simple" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/28/5a/72d932efcff037fea3466b0e0c9a82d280e9083da10fe79af8505ac71348/torchao-0.14.0-cp310-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:3508151beb43ab6dd0f70427389f387cf1cd367f2326e9c6102133991e147b67", size = 7197166, upload-time = "2025-10-13T21:16:39.029Z" },
-    { url = "https://files.pythonhosted.org/packages/6f/f0/975479131e6d8365854b97334688dd156a6d67824cc24b65a6e661e93800/torchao-0.14.0-py3-none-any.whl", hash = "sha256:c5a939e035f8cc0493f2bb18a3d01c1db8139662f7fcf49a6df84366218aa95e", size = 1067582, upload-time = "2025-10-13T21:16:40.985Z" },
 ]
 
 [[package]]
