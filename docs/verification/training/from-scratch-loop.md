@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 3 verified, 0 blocked, 6 pending, of 9.**
+**Entries: 4 verified, 0 blocked, 5 pending, of 9.**
 
 The from-scratch loop is the third rung of the training tier: the D6 reference
 loop (`make train`) driving a scratch model over prepared shards, the rung that
@@ -54,25 +54,36 @@ the argparse handlers in `training/cli.py`, and lands in the implementation
 module. `make prepare-data` runs in the `prepare` service instead. The training
 root `/mnt/ai-data/training` is mounted at the same path in both, so the
 overrides above spell host paths. The hardware tests run on the host under
-`uv run --no-sync`, and the flag is not optional: `training` is a default
-dependency group, so a bare `uv run` first syncs the host environment to
-the lock, and when the host is missing `flash-attn` that is a source build
-of its CUDA kernels with as many compiler jobs as there are cores. The
-image build bounds it with `MAX_JOBS`; the host does not, and the 2026-09-19
-attempt at FS.3 without the flag saturated every core and killed the
-terminal. The hardware tests do not need `flash-attn`: the loop falls back to
-sdpa attention with a warning. Sync the host deliberately, if ever, with
-`MAX_JOBS=4 uv sync` in a window with nothing else running.
+`uv run --no-sync`. The flag matters because `training` is a default
+dependency group: a bare `uv run` first syncs the host environment to the
+lock, and `uv sync --dry-run` on 2026-09-19 showed the host and the lock
+disagreeing on several packages, so a bare run would have modified the
+environment mid-runbook. A source build of `flash-attn` is the expensive case
+that sync can reach, unbounded by the `MAX_JOBS` the image build sets; it is
+not what happened on 2026-09-19, when the first FS.3 attempt without the flag
+saturated every core and killed the terminal with `flash-attn` already
+installed. That cause is unexplained; the rerun with the flag passed in
+seconds. Sync the host deliberately, if ever, with `MAX_JOBS=4 uv sync` in a
+window with nothing else running.
 
 The entries have an automated mirror,
 `tests/hardware/test_from_scratch_loop.py`, in the shape of FT.11: one `hw_full`
 test that replays the verified entries through the same CLI verbs on a
 tokenizer it trains itself, so the chain stays verified after every change.
-It covers FS.0 to FS.2 as of 2026-09-19 and grows as entries close. Run it on
+It covers FS.0 to FS.3 as of 2026-09-19 and grows as entries close. Run it on
 the host, in a window no other GPU job holds:
 
 ```bash
 uv run --no-sync pytest -m hw_full tests/hardware/test_from_scratch_loop.py -v
+```
+
+First run, 2026-09-19, covering FS.0 to FS.2; the FS.3 step was added after:
+
+```
+tests/hardware/test_from_scratch_loop.py::test_from_scratch_loop PASSED                                                                                                     [100%]
+[TIER] full: torch present, the whole suite was in scope.
+========================================================================= 1 passed, 14 warnings in 7.28s ==========================================================================
+exit=0
 ```
 
 One GPU consumer at a time: no entry runs while another GPU job, benchmark, or
@@ -441,12 +452,75 @@ and prints their mean, and the hardware test passes at `[TIER] full` with no
 skip. The mean printed here is diagnostic (the tiny model's step is too short
 for the 5 percent ratio to mean much); the test is the bar.
 
+Recorded 2026-09-19, from the rerun under `uv run --no-sync`. The mean wait
+of 0.13 ms is on a step of a few milliseconds, which is why the test, not
+the number, is the bar; the test passed on its own synthetic shards.
+
 Observed:
 
 ```
+➜  ai-experiments git:(SFT-verification) ✗ set -o pipefail
+OVR="data.source=/mnt/ai-data/training/shards/verify-49k tokenizer.path=/mnt/ai-data/training/tokenizers/verify-49k model.scratch.vocab=49152"
+make train CONFIG=training/recipes/reference/tiny-e2e.yaml \
+    ARGS="$OVR run.name=fs3 schedule.total_steps=20 staging.enabled=true data.workers=2 data.pin_memory=true" 2>&1 | tee /tmp/fs3.log
+echo "exit=$?"
+grep '\[staging\]' /tmp/fs3.log
+RUN=$(dirname "$(ls -t /mnt/ai-data/training/runs/fs3/*/metrics.jsonl | head -1)")
+python3 -c "import json,sys;w=[json.loads(l).get('data_wait_ms') for l in open(sys.argv[1])];w=[x for x in w if x is not None];print(len(w),'steps, mean data_wait_ms',sum(w)/len(w))" "$RUN/metrics.jsonl"
+uv run --no-sync pytest -m hw_full tests/hardware/test_ssd.py -k data_wait -v
+docker compose -f docker-compose.training.yaml run --rm training python -m training train --config training/recipes/reference/tiny-e2e.yaml data.source=/mnt/ai-data/training/shards/verify-49k tokenizer.path=/mnt/ai-data/training/tokenizers/verify-49k model.scratch.vocab=49152 run.name=fs3 schedule.total_steps=20 staging.enabled=true data.workers=2 data.pin_memory=true
+time="2026-09-19T10:19:31-07:00" level=warning msg="Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
+ Container ai-experiments-training-run-b2da816a51c5 Creating 
+ Container ai-experiments-training-run-b2da816a51c5 Created 
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training train --config training/recipes/reference/tiny-e2e.yaml data.source=/mnt/ai-data/training/shards/verify-49k tokenizer.path=/mnt/ai-data/training/tokenizers/verify-49k model.scratch.vocab=49152 run.name=fs3 schedule.total_steps=20 staging.enabled=true data.workers=2 data.pin_memory=true
+[RUN] Training fs3: 20 total steps
+[staging] OK: staged 0.01 GB to /staging/verify-49k
+Writing model shards: 100%|██████████| 1/1 [00:00<00:00, 417.51it/s]
+Writing model shards: 100%|██████████| 1/1 [00:00<00:00, 663.76it/s]
+Writing model shards: 100%|██████████| 1/1 [00:00<00:00, 705.04it/s]
+Writing model shards: 100%|██████████| 1/1 [00:00<00:00, 687.93it/s]
+[OK] Run complete: step 20, 5,120 tokens seen
+Final loss: 10.359372
+Run directory: /mnt/ai-data/training/runs/fs3/2026-09-19_17-19-34
+Checkpoints:   /mnt/ai-data/training/runs/fs3/checkpoints
+exit=0
+[staging] OK: staged 0.01 GB to /staging/verify-49k
+20 steps, mean data_wait_ms 0.13450044989440357
+=============================================================================== test session starts ===============================================================================
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /home/alejandro/workspace/ai-experiments/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/alejandro/workspace/ai-experiments
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, mock-3.15.1, jaxtyping-0.3.11, cov-7.1.0, hydra-core-1.3.2, anyio-4.14.2, xdist-3.8.0, typeguard-4.6.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 6 items / 5 deselected / 1 selected                                                                                                                                     
+
+tests/hardware/test_ssd.py::TestSsdFull::test_data_wait_under_the_d9_bar PASSED                                                                                             [100%]
+
+================================================================================ warnings summary =================================================================================
+tests/hardware/test_ssd.py::TestSsdFull::test_data_wait_under_the_d9_bar
+tests/hardware/test_ssd.py::TestSsdFull::test_data_wait_under_the_d9_bar
+  /home/alejandro/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=409919) is multi-threaded, use of fork() may lead to deadlocks in the child.
+    self.pid = os.fork()
+
+tests/hardware/test_ssd.py: 14 warnings
+  /home/alejandro/workspace/ai-experiments/.venv/lib/python3.12/site-packages/torch/jit/_script.py:365: DeprecationWarning: `torch.jit.script_method` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+[TIER] full: torch present, the whole suite was in scope.
+================================================================== 1 passed, 5 deselected, 16 warnings in 3.95s ===================================================================
 ```
 
-Status: PENDING
+Status: VERIFIED (2026-09-19)
 
 ## FS.4 Staging refusal over the budget
 

@@ -1,15 +1,16 @@
-"""FS.0 to FS.2, the from-scratch loop's opening, as one test the hw_full tier runs.
+"""FS.0 to FS.3, the from-scratch loop's opening, as one test the hw_full tier runs.
 
 The from-scratch runbook (docs/verification/training/from-scratch-loop.md)
 walks these by hand: prepare shards from a trained tokenizer, run the tiny
-scratch recipe for twenty steps through `make train`, then resume it to
-thirty through checkpoint.resume=latest. This module runs the same three
-steps through the same CLI verbs, on a tokenizer it trains here, and holds
-them to the signals the entries record: the shard manifest carries the
-tokenizer's hash, the run prints Training then Resuming, tokens_seen
-continues rather than restarts, retention leaves the last two checkpoints
-plus the every-ten survivors, and the first metrics record passes the shared
-report envelope.
+scratch recipe for twenty steps through `make train`, resume it to thirty
+through checkpoint.resume=latest, then run again with staging and prefetch
+on. This module runs the same steps through the same CLI verbs, on a
+tokenizer it trains here, and holds them to the signals the entries record:
+the shard manifest carries the tokenizer's hash, the run prints Training
+then Resuming, tokens_seen continues rather than restarts, retention leaves
+the last two checkpoints plus the every-ten survivors, the first metrics
+record passes the shared report envelope, the staged copy lands before the
+first step, and every step records its data wait.
 
 tests/hardware/test_gpu.py already proves resume in-process, to a loss
 tolerance. What it cannot show is the path an operator uses: the `train`
@@ -208,3 +209,48 @@ def test_from_scratch_loop(cuda, tmp_path, train_lock, capsys):
     assert resumed["step"] == RESUMED_STEPS
     assert resumed["tokens_seen"] == RESUMED_STEPS * TOKENS_PER_STEP
     assert resumed["recipe_hash"] != meta["recipe_hash"]
+
+    # FS.3: a fresh run with staging and prefetch on. The shard set is copied
+    # into the staging directory before the first step and every step records
+    # its data wait; the 5 percent bar itself is test_ssd.py's, on a longer
+    # step than this model has.
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    staged_name = "fs-staged"
+    assert (
+        run_verb(
+            [
+                "train",
+                "--config",
+                RECIPE,
+                *overrides,
+                f"run.name={staged_name}",
+                f"schedule.total_steps={FIRST_STEPS}",
+                "staging.enabled=true",
+                f"staging.dir={staging}",
+                "data.workers=2",
+                "data.pin_memory=true",
+            ]
+        )
+        == 0
+    )
+    out = capsys.readouterr()
+    printed = out.out + out.err
+    # The synthetic set is under a megabyte, so the size prints as 0.00 GB;
+    # the line's shape and destination are the signal, not the figure.
+    assert "[staging] OK: staged " in printed, printed
+    assert f" GB to {staging / 'shards'}" in printed, printed
+    assert (
+        f"[OK] Run complete: step {FIRST_STEPS}, "
+        f"{FIRST_STEPS * TOKENS_PER_STEP:,} tokens seen"
+    ) in printed
+    assert (staging / "shards" / "manifest.json").is_file()
+    staged_dirs = [
+        d for d in os.listdir(tmp_path / "runs" / staged_name) if d != "checkpoints"
+    ]
+    assert len(staged_dirs) == 1, staged_dirs
+    with open(tmp_path / "runs" / staged_name / staged_dirs[0] / "metrics.jsonl") as f:
+        records = [json.loads(line) for line in f]
+    waits = [r["data_wait_ms"] for r in records if "data_wait_ms" in r]
+    assert len(waits) == FIRST_STEPS, f"{len(waits)} steps carry data_wait_ms"
+    assert all(math.isfinite(w) and w >= 0.0 for w in waits)
