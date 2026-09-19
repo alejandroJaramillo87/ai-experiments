@@ -107,6 +107,7 @@ Each runbook's own progress line is authoritative; this table is the index.
 | Runbook | Verified | Blocked | Pending | Of |
 |---------|---------:|--------:|--------:|---:|
 | [training/fine-tuning-loop.md](training/fine-tuning-loop.md) | 0 | 0 | 16 | 16 |
+| [training/from-scratch-loop.md](training/from-scratch-loop.md) | 0 | 0 | 9 | 9 |
 | [interp/interp.md](interp/interp.md) | 8 | 2 | 17 | 27 |
 | [observability/observability.md](observability/observability.md) | 2 | 0 | 7 | 9 |
 | [rust-harness/rust-harness.md](rust-harness/rust-harness.md) | 55 | 1 | 3 | 59 |
@@ -156,9 +157,14 @@ Later phases assume the phases before them passed.
    then continual pretraining (the full-scale data pipeline, mixtures, WSD
    schedules, the replay buffer, optimizer offload), then training from
    scratch (the D6 reference loop on the `pretrain-150m` and `pretrain-1b`
-   recipes). The two later runbooks are planned and not yet written, because
-   a runbook with zero entries is a lie to the counts gate; each is created
-   under `training/` beside this one with its first runnable entry. A
+   recipes). The from-scratch runbook,
+   [training/from-scratch-loop.md](training/from-scratch-loop.md), opened on
+   2026-09-19 with the Phase 0 acceptance checks the frozen phase-0 record
+   left pending (the reference loop end to end, D9 staging, prefetch,
+   affinity and the lock, and the D10 watchdog paths), and runs after this
+   one. The continual-pretraining runbook is not yet written, because a
+   runbook with zero entries is a lie to the counts gate; it is created
+   under `training/` beside these with its first runnable entry. A
    distillation runbook existed for part of 2026-09-18 and left with the
    feature the same day; what the tier is for, and what waits behind the
    three rungs, is
