@@ -12,7 +12,7 @@ no code path here.
 - [Provenance and the revisions to pin](#provenance-and-the-revisions-to-pin)
 - [Architecture ingestion](#architecture-ingestion)
 - [Parameter accounting](#parameter-accounting)
-- [Where the calculator undercounts](#where-the-calculator-undercounts)
+- [What the calculator counts](#what-the-calculator-counts)
 - [Memory](#memory)
 - [Tensor names the freeze patterns depend on](#tensor-names-the-freeze-patterns-depend-on)
 - [Dispatch, identity, and export](#dispatch-identity-and-export)
@@ -31,7 +31,7 @@ no code path here.
 **Every Gemma 4 recipe whose `model.hf.id` or `harvest.model_id` is a hub id pins the
 block's `revision` to the commit above**, and `/tests/training/test_recipe_pins.py` holds each
 pin equal to `/schemas/gemma4_facts.json` across the reference, organism, and interp recipes. The field has two live consumers —
-`/training/calculator/components.py:206-211` passes it to `AutoConfig.from_pretrained`, and
+`/training/calculator/components.py:301-308` passes it to `AutoConfig.from_pretrained`, and
 `/training/export/merge.py:148-160` passes it to `AutoModelForCausalLM.from_pretrained` — so
 pinning costs nothing and is required by the pin-then-fix-then-update rule in `/AGENTS.md`.
 A recipe whose id is a local export directory has no hub revision to pin.
@@ -64,7 +64,7 @@ Three consequences:
 ## Architecture ingestion
 
 All architecture reads happen in one function, `spec_from_hf_config`
-(`/training/calculator/components.py:216-260`). It descends into `text_config` only when the
+(`/training/calculator/components.py:351-395`). It descends into `text_config` only when the
 **top-level** `model_type` is `gemma4`, then builds an `ArchitectureSpec`.
 
 | `ArchitectureSpec` field | `config.json` source | E2B | E4B |
@@ -86,21 +86,24 @@ size by division without checking for 1 breaks on it.
 Two fields are read but are not what their names suggest:
 
 - **`head_dim` is not the head dimension of every layer.** Sliding layers use 256; the seven
-  full-attention layers use `global_head_dim`, which is 512 in both variants. The spec holds one
-  value. See [Where the calculator undercounts](#where-the-calculator-undercounts).
+  full-attention layers use `global_head_dim`, which is 512 in both variants. The spec reads the
+  `layer_types` array and prices each layer at its own width. See
+  [What the calculator counts](#what-the-calculator-counts).
 - **`vocab_size_per_layer_input` is populated even where the feature is disabled.** Gate on
   `hidden_size_per_layer_input`, which is the field that determines whether per-layer embeddings
   exist. Both are populated on E2B and E4B, so this matters only if a variant without the
   feature is added later.
 
 `enable_moe_block` is `false` and `num_experts` is `null` on both variants, so the guard at
-`components.py:238-243` does not fire.
+`components.py:373-378` does not fire.
 
 ## Parameter accounting
 
-Exact counts, summed from the safetensors tensor shapes. These are the numbers
-`/training/calculator/calibrate.py:172-196` should reproduce when it compares the analytic spec
-against a torch-reported count.
+Exact counts, summed from the safetensors tensor shapes. `ArchitectureSpec.param_count()`
+reproduces the language-model row to the parameter (minus the `layer_scalar` buffers, which
+are not parameters), pinned by `tests/training/test_calculator.py`; the tower row is read from
+the checkpoint header. `/training/calculator/calibrate.py:172-196` compares the sum against
+the torch-reported count of the built model.
 
 | Quantity | E2B | E4B |
 |----------|-----|-----|
@@ -145,35 +148,43 @@ use `2 * intermediate_size` and the remainder use `intermediate_size`. On E2B
 E4B sets the flag false and has uniform widths of 10240 across all 42 layers, despite also
 having a shared-KV tail. The compensation is not implied by KV sharing; it requires the flag.
 
-## Where the calculator undercounts
+## What the calculator counts
 
-`ArchitectureSpec.param_count()` (`components.py:143-158`) assumes one feed-forward width, one
-head dimension, and two normalizations per layer. Gemma 4 violates all three. Measured against
-the exact counts above:
+Until 2026-09-19 `ArchitectureSpec.param_count()` assumed one feed-forward width, one head
+dimension and two normalizations per layer, and undercounted E2B by 13.5 percent (629,721,891
+parameters) and E4B by 1.6 percent. The double-wide feed-forward rule was fixed first; the
+rest landed with the calculator's reduction to measured activations, and the count now
+matches the language-model row above exactly for both variants
+(`tests/training/test_calculator.py`,
+`test_language_model_count_matches_the_checkpoint_exactly`). What each former cause maps to
+in `spec_from_hf_config` (`/training/calculator/components.py:351-395`):
 
-| Model | Predicted | Actual | Undercount |
-|-------|-----------|--------|------------|
-| E2B | 4,017,728,000 | 4,647,449,891 | 629,721,891 (13.5 percent) |
-| E4B | 7,398,445,568 | 7,518,069,034 | 119,623,466 (1.6 percent) |
+| Cause | Now |
+|-------|-----|
+| Feed-forward: the 20 double-wide layers | `double_wide_layers` from `use_double_wide_mlp` and `num_kv_shared_layers` |
+| Attention projections: seven 512-wide full-attention layers | `full_attention_layers` counted from `config.layer_types`, priced at `global_head_dim` |
+| Query and key norms on every layer | `qk_norms`, at each layer's own head width |
+| Per-layer embeddings: `per_layer_model_projection` and the norms | `ple_param_count()` carries the model-level projection and its norm, and the per-layer norm |
+| Block normalizations: four, not two | `block_norms` is 4 for the Gemma sandwich |
+| `layer_scalar`: one scalar per layer | a buffer, not a parameter; deliberately uncounted |
 
-Decomposed, so each cause can be fixed independently:
+Two deltas remain by design, and FT.1's `Parameter count` line is where they show:
 
-| Cause | E2B | E4B |
-|-------|-----|-----|
-| Feed-forward: `3 * hidden * ffn` per layer misses the 20 double-wide layers | 566,231,040 | 0 |
-| Attention projections: `head_dim` 256 applied to the seven 512-wide full-attention layers | 49,545,216 | 91,750,400 |
-| Query and key norms: `q_norm` and `k_norm` are not modeled on any layer, sliding or full | 21,504 | 25,088 |
-| Per-layer embeddings: `ple_param_count()` omits `per_layer_model_projection` and the norms | 13,816,576 | 27,632,896 |
-| Block normalizations: two per layer modeled, four present; the fifth, `post_per_layer_input_norm`, is counted in the per-layer row above | 107,520 | 215,040 |
-| `layer_scalar`: one scalar per layer, unmodeled | 35 | 42 |
+- **Shared-KV residue.** The count includes `k_proj`, `v_proj` and `k_norm` on all 35 layers,
+  as the checkpoint stores them. The pinned `transformers` guards those modules on the 20
+  shared layers (`docs/models/gemma-4.md`, the shared-KV weight conflict), so the built model
+  may report 15,733,760 fewer parameters. A drift warning of exactly that size is the
+  modeling code's reading, not a calculator defect.
+- **Towers.** `from_pretrained` loads the vision and audio towers with the language model, so
+  they are resident and must be in the weights term. They are not modeled: `spec_from_recipe`
+  reads the `model.safetensors` header of a local base directory and sums every tensor
+  outside `model.language_model.` into `extra_params` (475,729,088 on E2B). A hub id resolved
+  through a cache prices them at zero and says nothing.
 
-The rows sum exactly to the totals, so this accounts for the whole discrepancy.
-
-Two of these are worth restating as behavior. `use_double_wide_mlp` appears nowhere in
-`/training` or `/common`, so E2B — the variant most recipes target — is the worse case at 13.5
-percent. And the calculator has **no key-value cache term at all**; attention is modeled as
-flash-attention linear (`components.py:387-391`), with no sliding-window and no per-layer-type
-differentiation, so `num_kv_shared_layers` and `layer_types` have no consumer.
+The calculator has no key-value cache term and no activation formula at all: activations
+are measured per profile by `calibrate` and recorded in `/training/calculator/measured.py`
+(see [memory_fit.md](memory_fit.md)), so `num_kv_shared_layers`, `layer_types` and the
+sliding window have no consumer in the estimate beyond the parameter count.
 
 ## Memory
 
@@ -223,7 +234,7 @@ an inert one. It does not. See
 
 | Fact | Value | Consumer |
 |------|-------|----------|
-| Top-level `model_type` | `gemma4` | `components.py:225,232`; `/interp/families.py:49-57` |
+| Top-level `model_type` | `gemma4` | `components.py:361,368`; `/interp/families.py:49-57` |
 | Text `model_type` | `gemma4_text` | same |
 | `architectures[0]` | `Gemma4ForConditionalGeneration` | `/rust-harness/runtime/src/checkpoint.rs` (declines the towers under `--text-only`) |
 | `final_logit_softcapping` | 30.0 | no training reader since distillation left the tree; the rust harness applies it |

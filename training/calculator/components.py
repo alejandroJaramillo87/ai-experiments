@@ -1,14 +1,19 @@
-"""Closed-form VRAM component formulas (Phase 0 D4).
+"""Static VRAM component formulas (Phase 0 D4, reduced 2026-09-19).
 
 Every function takes the typed recipe (or the ArchitectureSpec derived from
-it) and returns bytes. The formulas model the dense transformer family the
-recipes describe: pre-norm attention (GQA, flash-attn) plus SwiGLU MLP with
-RMSNorm, i.e. the Llama-family shape that HF LlamaConfig builds and that the
-calibration harness measures.
+it) and returns bytes. The formulas price what is resident before the first
+step: parameters, gradients and optimizer state, from the parameter count of
+the dense transformer family the recipes describe (pre-norm attention with
+GQA, a gated MLP, RMSNorm: the Llama shape HF LlamaConfig builds, plus the
+Gemma 4 extras the spec carries). Activations are not modeled here: their
+per-token cost is measured by calibrate.py and kept in measured.py, keyed by
+the profile() string, because an analytic activation formula is a second
+implementation of the model that drifts with every family and every
+transformers release (the reduction is recorded in docs/training/memory_fit.md).
 
-Unit tests pin these numbers for a hand-computed tiny config so refactors
-cannot silently change the math; the calibration harness (calibrate.py)
-refines the calibrated constants against measured peaks on the workstation.
+Unit tests pin these numbers for a hand-computed tiny config and for the two
+Gemma 4 variants against the exact counts in docs/training/gemma-4-training.md,
+so refactors cannot silently change the math.
 
 Phase 1 F2 extends the Phase 0 all-parameters-trainable model with the PEFT
 terms: when peft.enabled, the base is frozen (optionally NF4 4-bit via
@@ -19,6 +24,9 @@ acceptance (QLoRA prediction within 10 percent of measured peak).
 
 from __future__ import annotations
 
+import json
+import math
+import os
 from dataclasses import dataclass
 
 from omegaconf import DictConfig
@@ -87,6 +95,12 @@ HF_SUPPORTED_MODEL_TYPES = (
 )
 
 
+# Gemma 2 onward normalizes before and after both sub-blocks (four vectors a
+# layer); Gemma 3 and 4 also carry q_norm and k_norm per layer.
+GEMMA_SANDWICH_NORM_TYPES = ("gemma2", "gemma3", "gemma4", "gemma4_text")
+GEMMA_QK_NORM_TYPES = ("gemma3", "gemma4", "gemma4_text")
+
+
 class UnknownArchitectureError(ValueError):
     """The model cannot be mapped onto the dense transformer formulas."""
 
@@ -116,6 +130,25 @@ class ArchitectureSpec:
     # 35 layers; intermediate_size alone is not the per-layer truth there.
     use_double_wide_mlp: bool = False
     num_kv_shared_layers: int = 0
+    # Gemma 4 interleaves sliding and full attention (config.layer_types), and
+    # the full layers project at global_head_dim (512) instead of head_dim
+    # (256): E2B's seven full layers carry a 4096-wide q_proj against 2048 on
+    # the other 28 (docs/models/gemma-4.md, Attention). Zero and None keep the
+    # one-width Llama derivation.
+    full_attention_layers: int = 0
+    global_head_dim: int | None = None
+    # Norm vectors per decoder layer: two for Llama, four for the Gemma
+    # sandwich (input, post-attention, pre- and post-feedforward). Gemma 3 and
+    # 4 also normalize q and k per layer at that layer's head width.
+    block_norms: int = 2
+    qk_norms: bool = False
+    # Parameters outside the language model that from_pretrained loads anyway
+    # (the Gemma 4 vision and audio towers with their bridges, 476M on E2B),
+    # summed from the checkpoint header by extra_params_from_checkpoint. Zero
+    # for a scratch model or when the base is not a local directory.
+    extra_params: int = 0
+    # The HF text model_type, or "scratch": the first component of profile().
+    family: str = "scratch"
 
     @property
     def double_wide_layers(self) -> int:
@@ -152,46 +185,92 @@ class ArchitectureSpec:
     def kv_dim(self) -> int:
         return self.kv_heads * self.head_dim
 
+    @property
+    def full_head_dim(self) -> int:
+        """Head width on a full-attention layer (global_head_dim when set)."""
+        if self.global_head_dim is not None:
+            return self.global_head_dim
+        return self.head_dim
+
+    @property
+    def sliding_attention_layers(self) -> int:
+        return self.layers - self.full_attention_layers
+
+    def attention_param_count(self) -> int:
+        """q/k/v/o projections across the stack, priced per layer type, plus
+        the q and k norms when the family carries them."""
+        sliding = 2 * self.hidden * self.q_dim + 2 * self.hidden * self.kv_dim
+        full = 2 * self.hidden * self.heads * self.full_head_dim + (
+            2 * self.hidden * self.kv_heads * self.full_head_dim
+        )
+        total = (
+            self.sliding_attention_layers * sliding + self.full_attention_layers * full
+        )
+        if self.qk_norms:
+            total += 2 * (
+                self.sliding_attention_layers * self.head_dim
+                + self.full_attention_layers * self.full_head_dim
+            )
+        return total
+
+    def norm_param_count(self) -> int:
+        """The block norms across the stack plus the final RMSNorm."""
+        return self.layers * self.block_norms * self.hidden + self.hidden
+
     def ple_param_count(self) -> int:
-        """Per-layer embedding parameters: the packed table plus one
-        hidden->ple_dim gate and one ple_dim->hidden projection per layer.
-        The calibration harness (D4) validates this model against measured
-        parameter counts before a prediction is trusted."""
+        """Per-layer embedding parameters (docs/models/gemma-4.md, Per-layer
+        input embeddings): the packed table, the model-level projection and
+        its ple_dim norm, and per layer one hidden->ple_dim gate, one
+        ple_dim->hidden projection and one hidden-wide norm. FT.1's
+        parameter-count line is what checks this against the built model."""
         if not self.ple_dim:
             return 0
         table = self.ple_vocab * self.layers * self.ple_dim
-        per_layer_linears = self.layers * 2 * self.hidden * self.ple_dim
-        return table + per_layer_linears
+        model_projection = self.layers * self.ple_dim * self.hidden + self.ple_dim
+        per_layer = self.layers * (2 * self.hidden * self.ple_dim + self.hidden)
+        return table + model_projection + per_layer
 
     def param_count(self) -> int:
-        """Total parameters of the dense model.
+        """Total parameters the run holds resident.
 
-        Per layer: attention q/o (hidden*q_dim each) + k/v (hidden*kv_dim
-        each), SwiGLU gate/up/down (hidden*ffn each), two RMSNorm vectors.
-        Plus embeddings (once when tied), the final RMSNorm, an untied
-        lm_head, and the PLE terms for Gemma 4 E-models.
+        The language model: attention per layer type, the gated MLP (double
+        wide where Gemma 4 says so), the block norms, embeddings (once when
+        tied), the final RMSNorm, an untied lm_head, and the PLE terms; plus
+        extra_params for towers the checkpoint carries. Pinned against
+        docs/training/gemma-4-training.md's exact E2B and E4B counts (minus
+        the layer_scalar buffers, which are not parameters).
         """
-        attn = 2 * self.hidden * self.q_dim + 2 * self.hidden * self.kv_dim
-        norms = 2 * self.hidden
-        stack = self.layers * (attn + norms) + self.mlp_param_count()
         embeddings = self.vocab * self.hidden * (1 if self.tie_embeddings else 2)
-        return embeddings + stack + self.hidden + self.ple_param_count()
+        return (
+            embeddings
+            + self.transformer_stack_param_count()
+            + self.ple_param_count()
+            + self.extra_params
+        )
 
     def transformer_stack_param_count(self) -> int:
         """Parameters trainable under trainable_filter: transformer_stack —
         the decoder layers plus the final RMSNorm. Embeddings (tied or not),
-        an untied lm_head, and every PLE term are frozen."""
-        attn = 2 * self.hidden * self.q_dim + 2 * self.hidden * self.kv_dim
-        norms = 2 * self.hidden
-        return self.layers * (attn + norms) + self.mlp_param_count() + self.hidden
+        an untied lm_head, every PLE term and the towers are frozen."""
+        return (
+            self.attention_param_count()
+            + self.mlp_param_count()
+            + self.norm_param_count()
+        )
 
     def linear_param_count(self) -> int:
         """Parameters in the per-layer linear projections — the population
         bitsandbytes 4-bit quantization covers. Embeddings, norms, an untied
-        lm_head, and the PLE terms stay in the compute dtype (counting PLE
-        linears at full width overestimates, which is the safe direction)."""
-        attn = 2 * self.hidden * self.q_dim + 2 * self.hidden * self.kv_dim
-        return self.layers * attn + self.mlp_param_count()
+        lm_head, the PLE terms and the towers stay in the compute dtype
+        (counting PLE and tower linears at full width overestimates, which is
+        the safe direction)."""
+        norms = 0
+        if self.qk_norms:
+            norms = 2 * (
+                self.sliding_attention_layers * self.head_dim
+                + self.full_attention_layers * self.full_head_dim
+            )
+        return self.attention_param_count() - norms + self.mlp_param_count()
 
 
 def rounded_ffn(ffn_mult: float, hidden: int) -> int:
@@ -217,18 +296,60 @@ def spec_from_recipe(recipe: DictConfig) -> ArchitectureSpec:
             tie_embeddings=s.tie_embeddings,
         )
     if recipe.model.hf is not None:
+        from dataclasses import replace
+
         from transformers import AutoConfig
 
-        return spec_from_hf_config(
-            AutoConfig.from_pretrained(
-                recipe.model.hf.id,
-                revision=recipe.model.hf.revision,
-                # memfit and calibrate run in the offline training container, so
-                # even a pure size estimate must resolve the config locally.
-                local_files_only=True,
-            )
+        config = AutoConfig.from_pretrained(
+            recipe.model.hf.id,
+            revision=recipe.model.hf.revision,
+            # memfit and calibrate run in the offline training container, so
+            # even a pure size estimate must resolve the config locally.
+            local_files_only=True,
         )
+        spec = spec_from_hf_config(config)
+        # A composite checkpoint (Gemma 4: text_config beside vision and audio
+        # configs) loads its towers too. Their size is read from the header
+        # rather than modeled: a staged base is a directory, and the header is
+        # the checkpoint's own statement of what it holds.
+        if getattr(config, "text_config", None) is not None:
+            spec = replace(
+                spec, extra_params=extra_params_from_checkpoint(recipe.model.hf.id)
+            )
+        return spec
     raise UnknownArchitectureError("Recipe has neither model.scratch nor model.hf set")
+
+
+# Tensor names of the language model in a composite Gemma 4 checkpoint; every
+# other tensor is a tower or a bridge (docs/models/gemma-4.md, Tensor inventory).
+LANGUAGE_MODEL_PREFIX = "model.language_model."
+SAFETENSORS_FILE = "model.safetensors"
+
+
+def safetensors_header(path: str) -> dict:
+    """The JSON header of a safetensors file: an 8-byte little-endian length
+    followed by that many bytes of JSON, name -> {dtype, shape, data_offsets}.
+    Reads the header only, never the tensor data."""
+    with open(path, "rb") as f:
+        length = int.from_bytes(f.read(8), "little")
+        return json.loads(f.read(length))
+
+
+def extra_params_from_checkpoint(directory: str) -> int:
+    """Parameters outside the language model in a local checkpoint directory:
+    the sum of every tensor's element count whose name is not under
+    LANGUAGE_MODEL_PREFIX. Zero when the directory holds no model.safetensors
+    (a hub id resolved through a cache, or a sharded checkpoint), which
+    under-prices the towers rather than guessing them."""
+    path = os.path.join(directory, SAFETENSORS_FILE)
+    if not os.path.isfile(path):
+        return 0
+    total = 0
+    for name, entry in safetensors_header(path).items():
+        if name == "__metadata__" or name.startswith(LANGUAGE_MODEL_PREFIX):
+            continue
+        total += math.prod(entry["shape"])
+    return total
 
 
 def spec_from_hf_config(config) -> ArchitectureSpec:
@@ -259,6 +380,7 @@ def spec_from_hf_config(config) -> ArchitectureSpec:
             "the dense-MLP formulas would misprice routed experts. Add a "
             "verified MoE mapping in training/calculator/components.py."
         )
+    layer_types = getattr(config, "layer_types", None) or ()
     try:
         return ArchitectureSpec(
             layers=config.num_hidden_layers,
@@ -273,6 +395,13 @@ def spec_from_hf_config(config) -> ArchitectureSpec:
             ple_dim=getattr(config, "hidden_size_per_layer_input", 0) or 0,
             use_double_wide_mlp=bool(getattr(config, "use_double_wide_mlp", False)),
             num_kv_shared_layers=getattr(config, "num_kv_shared_layers", 0) or 0,
+            # Read the array, never a stride: E2B's period is 5, the others' 6
+            # (schemas/gemma4_facts.json, read_the_layer_types_array).
+            full_attention_layers=sum(1 for t in layer_types if t == "full_attention"),
+            global_head_dim=getattr(config, "global_head_dim", None),
+            block_norms=4 if model_type in GEMMA_SANDWICH_NORM_TYPES else 2,
+            qk_norms=model_type in GEMMA_QK_NORM_TYPES,
+            family=model_type,
         )
     except AttributeError as exc:
         raise UnknownArchitectureError(
@@ -395,59 +524,17 @@ def host_ram_bytes(spec: ArchitectureSpec, recipe: DictConfig) -> int:
     return total
 
 
-def activation_phase_bytes(
-    spec: ArchitectureSpec,
-    recipe: DictConfig,
-    micro_batch: int | None = None,
-    seq_len: int | None = None,
-) -> tuple[int, int, int]:
-    """Activation inventory split into the terms whose lifetimes differ,
-    as (layer_inputs, per_layer, head_term).
-
-    flash-attn is assumed: no s^2 attention matrix is materialized, only the
-    per-head fp32 log-sum-exp statistics, so attention memory is linear in
-    sequence length. micro_batch/seq_len default to the recipe's values and
-    are overridable so solve() can search them.
-
-    With gradient checkpointing, layer_inputs is the checkpointed layer
-    inputs and per_layer is one layer's recompute workspace; without,
-    layer_inputs is 0 and per_layer covers every layer's saved tensors. The
-    head_term (final hidden states, logits in model dtype, and the fp32
-    upcast the HF loss path materializes for cross-entropy) is freed early
-    in backward, before parameter gradients accumulate — solve.py exploits
-    that lifetime split for the checkpointed peak (KB-56).
-    """
-    b = recipe.data.micro_batch if micro_batch is None else micro_batch
-    s = recipe.data.seq_len if seq_len is None else seq_len
-    d = DTYPE_BYTES[recipe.precision.dtype]
-    tokens = b * s
-
-    # One layer's saved tensors: attention input + q/k/v projections + flash
-    # output + o_proj output, MLP input + gate/up projections + SiLU product +
-    # down output, and the two RMSNorm outputs feeding the residual adds.
-    attn = tokens * d * (3 * spec.hidden + 2 * spec.kv_dim)
-    mlp = tokens * d * (2 * spec.hidden + 3 * spec.ffn)
-    norms = tokens * d * 2 * spec.hidden
-    flash_lse = b * spec.heads * s * 4  # fp32 softmax statistics
-    per_layer = attn + mlp + norms + flash_lse
-
-    if recipe.memory.gradient_checkpointing:
-        layer_inputs = spec.layers * tokens * d * spec.hidden
+def profile(spec: ArchitectureSpec, recipe: DictConfig) -> str:
+    """The key a measured activation rate is filed under (measured.py):
+    family, geometry, training mode and checkpointing, e.g.
+    gemma4_text/35x1536/qlora/ckpt. Two recipes with the same profile share
+    the same per-token activation cost; a recipe outside the table is
+    unmeasured, which the estimate reports rather than guesses."""
+    if not recipe.peft.enabled:
+        mode = "full"
+    elif recipe.peft.quantize_base == "nf4":
+        mode = "qlora"
     else:
-        layer_inputs = 0
-        per_layer = spec.layers * per_layer
-
-    head_term = tokens * d * spec.hidden + tokens * spec.vocab * (d + 4)
-    return layer_inputs, per_layer, head_term
-
-
-def activation_bytes(
-    spec: ArchitectureSpec,
-    recipe: DictConfig,
-    micro_batch: int | None = None,
-    seq_len: int | None = None,
-) -> int:
-    """Full activation inventory (sum of the phase terms). This is every
-    activation the run materializes, not the simultaneously-live peak; see
-    activation_phase_bytes for the lifetime split solve.py uses."""
-    return sum(activation_phase_bytes(spec, recipe, micro_batch, seq_len))
+        mode = "lora"
+    ckpt = "ckpt" if recipe.memory.gradient_checkpointing else "nockpt"
+    return f"{spec.family}/{spec.layers}x{spec.hidden}/{mode}/{ckpt}"

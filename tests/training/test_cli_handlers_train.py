@@ -26,9 +26,9 @@ TINY = os.path.join(REFERENCE_DIR, "tiny-e2e.yaml")
 SFT = os.path.join(REFERENCE_DIR, "sft-qlora-e2b.yaml")
 
 FIT_OK = "Memory fit: 20.61 GB reserved estimate of 32 GB VRAM"
-FIT_FORCED = (
+FIT_OVER = (
     "Memory fit: predicted 40.00 GB exceeds the 32 GB budget "
-    "(--force: proceeding anyway)"
+    "(reduce micro_batch/seq_len; proceeding)"
 )
 
 WATCHDOG_LINE = "Watchdog abort: loss_spike value 12.5 crossed threshold 6.25"
@@ -70,8 +70,8 @@ def patch_fit(monkeypatch, message: str = FIT_OK, fits: bool = True) -> list:
     """Replace training.tune.sft.check_memory_fit; returns the recorded calls."""
     calls: list = []
 
-    def fake_fit(recipe, force):
-        calls.append((recipe, force))
+    def fake_fit(recipe):
+        calls.append(recipe)
         return fits, message
 
     monkeypatch.setattr("training.tune.sft.check_memory_fit", fake_fit)
@@ -157,9 +157,7 @@ class TestCmdTrain:
 class TestCmdTrainSft:
     def test_success_prints_full_report(self, monkeypatch, capsys):
         patch_fit(monkeypatch)
-        monkeypatch.setattr(
-            "training.tune.sft.train_sft", lambda recipe, force=False: sft_result()
-        )
+        monkeypatch.setattr("training.tune.sft.train_sft", lambda recipe: sft_result())
         assert run_cli(["train-sft", "--config", SFT]) == 0
         out = capsys.readouterr().err
         assert "[RUN] Fine-tuning sft-qlora-e2b [trl]: 2000 total steps" in out
@@ -170,37 +168,37 @@ class TestCmdTrainSft:
         assert "Held-out loss:    1.800000" in out
         assert "Run directory: /runs/sft/1" in out
 
-    def test_forced_fit_warns_resume_verb_and_force_passthrough(
-        self, monkeypatch, capsys
-    ):
-        fit_calls = patch_fit(monkeypatch, message=FIT_FORCED)
+    def test_overflowing_fit_warns_and_the_run_proceeds(self, monkeypatch, capsys):
+        """2026-09-19: the fit line is advisory. An estimate past the budget
+        prints as [WARN] and the run starts; there is no --force to pass."""
+        fit_calls = patch_fit(monkeypatch, message=FIT_OVER, fits=False)
         train_calls = []
 
-        def fake_train(recipe, force=False):
-            train_calls.append(force)
+        def fake_train(recipe):
+            train_calls.append(recipe.run.name)
             return sft_result(trainable_report="", train_loss=None, holdout_loss=None)
 
         monkeypatch.setattr("training.tune.sft.train_sft", fake_train)
-        assert (
-            run_cli(
-                ["train-sft", "--config", SFT, "--force", "checkpoint.resume=latest"]
-            )
-            == 0
-        )
+        assert run_cli(["train-sft", "--config", SFT, "checkpoint.resume=latest"]) == 0
         out = capsys.readouterr().err
         assert "[RUN] Resuming (latest) sft-qlora-e2b [trl]" in out
-        assert f"[WARN] {FIT_FORCED}" in out
+        assert f"[WARN] {FIT_OVER}" in out
         # Optional report fields absent: their lines must not print.
         assert "[INFO]" not in out
         assert "Final train loss" not in out
         assert "Held-out loss" not in out
-        assert fit_calls[0][1] is True
-        assert train_calls == [True]
+        assert len(fit_calls) == 1
+        assert train_calls == ["sft-qlora-e2b"]
+
+    def test_force_flag_is_gone(self, monkeypatch):
+        with pytest.raises(SystemExit) as exc:
+            run_cli(["train-sft", "--config", SFT, "--force"])
+        assert exc.value.code == 2
 
     def test_preflight_error_exits_1(self, monkeypatch, capsys):
         patch_fit(monkeypatch)
 
-        def failing(recipe, force=False):
+        def failing(recipe):
             raise SftPreflightError("dataset manifest hash mismatch")
 
         monkeypatch.setattr("training.tune.sft.train_sft", failing)
@@ -211,7 +209,7 @@ class TestCmdTrainSft:
     def test_watchdog_abort_exits_1(self, monkeypatch, capsys):
         patch_fit(monkeypatch)
 
-        def aborting(recipe, force=False):
+        def aborting(recipe):
             raise WatchdogAbort("loss_spike", 12.5, 6.25)
 
         monkeypatch.setattr("training.tune.sft.train_sft", aborting)
@@ -221,7 +219,7 @@ class TestCmdTrainSft:
     def test_runtime_failure_exits_1_with_solution(self, monkeypatch, capsys):
         patch_fit(monkeypatch)
 
-        def failing(recipe, force=False):
+        def failing(recipe):
             raise FileNotFoundError("no such dataset")
 
         monkeypatch.setattr("training.tune.sft.train_sft", failing)
@@ -234,7 +232,7 @@ class TestCmdTrainSft:
         patch_fit(monkeypatch)
         monkeypatch.setattr(
             "training.tune.sft.train_sft",
-            lambda recipe, force=False: sft_result(holdout_loss=None),
+            lambda recipe: sft_result(holdout_loss=None),
         )
         assert run_cli(["train-sft", "--config", SFT, "--json"]) == 0
         data = json.loads(capsys.readouterr().out)

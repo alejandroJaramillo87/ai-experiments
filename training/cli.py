@@ -22,13 +22,11 @@ import sys
 
 from common.obs.dispatch import dispatch
 from common.output import Printer
-from training.calculator.solve import (
+from training.calculator.estimate import (
     GIB,
-    SAFETY_MARGIN_BYTES,
-    VRAM_TOTAL_BYTES,
+    VRAM_BUDGET_BYTES,
     Estimate,
     estimate,
-    solve,
 )
 from training.commands import (
     build_contamination,
@@ -59,6 +57,8 @@ def _print_estimate_table(est: Estimate, out: Printer) -> None:
     out.line(f"Model parameters: {est.param_count:,}")
     out.line(f"Micro-batch {est.micro_batch}, sequence length {est.seq_len}")
     out.line()
+    out.line(f"Profile: {est.profile}")
+    out.line()
     out.line("Component            Bytes             Size")
     for name, value in (
         ("weights", est.weights),
@@ -67,26 +67,46 @@ def _print_estimate_table(est: Estimate, out: Printer) -> None:
         ("activations", est.activations),
         ("framework overhead", est.overhead),
     ):
-        out.line(f"  {name:<18} {value:>16,}  {gb(value):>10}")
+        if value is None:
+            out.line(f"  {name:<18} {'unmeasured':>16}  {'':>10}")
+        else:
+            out.line(f"  {name:<18} {value:>16,}  {gb(value):>10}")
     out.line()
-    out.line(f"Total allocated estimate: {gb(est.allocated_total)}")
-    if est.peak_phase != "sum":
-        out.line(f"  Peak phase: {est.peak_phase} — gradient checkpointing makes the")
-        out.line("  total a temporal max over backward phases, below the component sum")
-    out.line(f"Total reserved estimate:  {gb(est.reserved_estimate)}")
-    budget = VRAM_TOTAL_BYTES - SAFETY_MARGIN_BYTES
-    if est.fits:
-        out.ok(
-            f"Fits: reserved estimate {gb(est.reserved_estimate)} "
-            f"within budget {gb(budget)} (32 GB minus safety margin)"
+    if est.rate is None:
+        out.line(
+            f"Static allocated estimate: {gb(est.allocated_total)} (activations excluded)"
+        )
+        out.line(f"Static reserved estimate:  {gb(est.reserved_estimate)}")
+        out.warn(
+            f"Activations unmeasured for profile {est.profile}: "
+            "the estimate is a lower bound, not a fit verdict"
+        )
+        out.line(
+            "  Solution: make train-calibrate CONFIG=<recipe> on the workstation and"
+        )
+        out.line(
+            "  record the Record: line it prints in training/calculator/measured.py"
         )
     else:
-        out.error(
-            f"Does not fit: reserved estimate {gb(est.reserved_estimate)} "
-            f"exceeds budget {gb(budget)}"
+        out.line(
+            f"Activations: {est.rate:,} bytes/token x {est.micro_batch * est.seq_len:,} tokens"
         )
-        out.line("  Solution: reduce data.micro_batch or data.seq_len, enable")
-        out.line("  memory.gradient_checkpointing, or switch optimizer to adamw8bit")
+        out.line(f"Total allocated estimate: {gb(est.allocated_total)}")
+        out.line(f"Total reserved estimate:  {gb(est.reserved_estimate)}")
+        if est.fits:
+            out.ok(
+                f"Fits: reserved estimate {gb(est.reserved_estimate)} "
+                f"within budget {gb(VRAM_BUDGET_BYTES)} (32 GB minus safety margin)"
+            )
+        else:
+            out.error(
+                f"Does not fit: reserved estimate {gb(est.reserved_estimate)} "
+                f"exceeds budget {gb(VRAM_BUDGET_BYTES)}"
+            )
+            out.line("  Solution: reduce data.micro_batch or data.seq_len, enable")
+            out.line(
+                "  memory.gradient_checkpointing, or switch optimizer to adamw8bit"
+            )
     if est.host_ram:
         out.info(
             f"Host RAM (offloaded optimizer state + replay budget): "
@@ -99,35 +119,12 @@ def cmd_memfit(args: argparse.Namespace) -> int:
     recipe = load_validated(args.config, args.overrides, out)
     if recipe is None:
         return 1
-    result: dict = {}
     est = estimate(recipe)
-    result["estimate"] = est.as_dict()
     _print_estimate_table(est, out)
-
-    axes = [args.solve] if args.solve else []
-    solve_failed = False
-    for axis in axes:
-        solved = solve(recipe, axis)
-        label = "micro-batch" if axis == "batch" else "sequence length"
-        if solved is None:
-            solve_failed = True
-            result[f"max_{axis}"] = None
-            out.error(f"Solve {axis}: no {label} fits at the recipe's other settings")
-        else:
-            value = solved.micro_batch if axis == "batch" else solved.seq_len
-            result[f"max_{axis}"] = value
-            result[f"max_{axis}_estimate"] = solved.as_dict()
-            out.line()
-            out.ok(
-                f"Solve {axis}: max {label} {value} "
-                f"(reserved estimate {gb(solved.reserved_estimate)})"
-            )
     if args.json:
-        print(json.dumps(result, indent=2))
-    if args.solve:
-        # A solve that found nothing is a failure, per the exit-code contract.
-        return 1 if solve_failed else 0
-    return 0 if est.fits else 1
+        print(json.dumps({"estimate": est.as_dict()}, indent=2))
+    # An unmeasured profile is a warning, not a verdict: exit 0.
+    return 1 if est.fits is False else 0
 
 
 def cmd_calibrate(args: argparse.Namespace) -> int:
@@ -179,6 +176,18 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
     out.line(f"Measured allocated:  {gb(record.measured_allocated)}")
     out.line(f"Measured reserved:   {gb(record.measured_reserved)}")
     out.line(f"NVML peak:           {gb(record.measured_nvml_peak)}")
+    out.line(f"Resident after build: {gb(record.static_measured)}")
+    out.line(f"Activation rate:     {record.activation_rate:,} bytes/token")
+    out.line(f'  Record: "{record.profile}": {record.activation_rate},')
+    if record.estimate.get("rate") is None:
+        # This run is the measurement; there is no estimate to hold to a bar.
+        out.info(
+            f"Allocated error: not on file (no rate for {record.profile} in "
+            "training/calculator/measured.py; record the line above)"
+        )
+        if args.json:
+            print(json.dumps(record.as_dict(), indent=2))
+        return 0
     rel_within = abs(record.allocated_error_pct) <= 10.0
     abs_gap = abs(record.estimate["allocated_total"] - record.measured_allocated)
     abs_within = abs_gap <= calibrate_mod.ALLOCATED_FLOOR_BYTES
@@ -201,7 +210,7 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
         )
     if record.reserved_underpredicts_nvml:
         out.error("Reserved estimate under-predicts the NVML peak")
-        out.line("  Solution: raise OVERHEAD_BYTES in training/calculator/solve.py")
+        out.line("  Solution: raise OVERHEAD_BYTES in training/calculator/estimate.py")
     else:
         out.ok("Reserved estimate covers the NVML peak")
     if args.json:
@@ -273,10 +282,11 @@ def cmd_train_sft(args: argparse.Namespace) -> int:
         f"{verb} {recipe.run.name} [{recipe.sft.backend}]: "
         f"{recipe.schedule.total_steps} total steps"
     )
-    fits, fit_message = check_memory_fit(recipe, args.force)
-    (out.ok if fits and "force" not in fit_message else out.warn)(fit_message)
+    # Advisory only: the estimate warns, the run proceeds (2026-09-19).
+    fits, fit_message = check_memory_fit(recipe)
+    (out.ok if fits else out.warn)(fit_message)
     try:
-        result = train_sft(recipe, force=args.force)
+        result = train_sft(recipe)
     except SftPreflightError as exc:
         out.error(f"Preflight failed: {exc}")
         return 1
@@ -511,11 +521,6 @@ def build_parser() -> argparse.ArgumentParser:
     memfit.add_argument(
         "overrides", nargs="*", help="dotlist overrides, e.g. data.micro_batch=8"
     )
-    memfit.add_argument(
-        "--solve",
-        choices=("batch", "seq"),
-        help="binary-search the largest fitting micro-batch or seq_len",
-    )
     memfit.add_argument("--json", action="store_true", help="emit only JSON on stdout")
     memfit.set_defaults(func=cmd_memfit)
 
@@ -553,11 +558,6 @@ def build_parser() -> argparse.ArgumentParser:
     sft.add_argument("--config", required=True, help="path to a recipe YAML")
     sft.add_argument(
         "overrides", nargs="*", help="dotlist overrides, e.g. optimizer.lr=1e-4"
-    )
-    sft.add_argument(
-        "--force",
-        action="store_true",
-        help="downgrade a memory-fit refusal to a warning",
     )
     sft.add_argument(
         "--json", action="store_true", help="emit a result JSON on stdout after the run"

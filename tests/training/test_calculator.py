@@ -1,8 +1,10 @@
-"""Memory-fit calculator tests (Phase 0 D4): closed-form component numbers
-pinned for a hand-computed tiny config, reference-recipe param counts pinned
-against the published source architectures, solve() behavior, the HF config
-mapping, and the CLI JSON contract. CPU-only, no GPU required (roadmap D4
-acceptance bullet 3)."""
+"""Memory-fit calculator tests (Phase 0 D4, reduced 2026-09-19): static
+component numbers pinned for a hand-computed tiny config, reference-recipe
+param counts pinned against the published source architectures, the Gemma 4
+parameter accounting against the exact counts in
+docs/training/gemma-4-training.md, the measured-rate estimate and its
+unmeasured advisory, the HF config mapping, and the CLI JSON contract.
+CPU-only, no GPU required (roadmap D4 acceptance bullet 3)."""
 
 from __future__ import annotations
 
@@ -18,18 +20,24 @@ from support import REFERENCE_DIR, REPO_ROOT, reference_recipe
 from training.calculator import (
     ArchitectureSpec,
     UnknownArchitectureError,
-    activation_bytes,
     adapter_param_count,
     estimate,
     grad_bytes,
     host_ram_bytes,
+    measured,
     optimizer_bytes,
-    solve,
+    profile,
     spec_from_recipe,
     trainable_param_count,
     weights_bytes,
 )
-from training.calculator.components import rounded_ffn, spec_from_hf_config
+from training.calculator.components import (
+    extra_params_from_checkpoint,
+    rounded_ffn,
+    safetensors_header,
+    spec_from_hf_config,
+)
+from training.calculator.estimate import OVERHEAD_BYTES, VRAM_BUDGET_BYTES
 from training.recipes import load_recipe
 
 # Hand-computed tiny config: layers=2, hidden=64, heads=4, kv_heads=2,
@@ -151,134 +159,77 @@ class TestComponentBytes:
     def test_no_offload_no_host_ram(self, tiny_recipe):
         assert host_ram_bytes(spec_from_recipe(tiny_recipe), tiny_recipe) == 0
 
-    def test_activations_hand_computed(self, tiny_recipe):
-        # b=2, s=16 (tokens=32), d=2, hidden=64, kv_dim=32, ffn=128, heads=4:
-        #   attn  = 32*2*(3*64 + 2*32)  = 16,384
-        #   mlp   = 32*2*(2*64 + 3*128) = 32,768
-        #   norms = 32*2*2*64           =  8,192
-        #   lse   = 2*4*16*4            =    512
-        #   per layer = 57,856; x2 layers = 115,712
-        #   logits = 32*2*64 + 32*256*(2+4) = 53,248
-        spec = spec_from_recipe(tiny_recipe)
-        assert activation_bytes(spec, tiny_recipe) == 115_712 + 53_248
-
-    def test_activations_gradient_checkpointing(self, tiny_recipe):
-        # layer inputs 2*32*2*64 = 8,192 + one recomputed layer 57,856 + logits.
-        recipe = load_recipe(
-            os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"),
-            TINY_OVERRIDES + ["memory.gradient_checkpointing=true"],
-        )
-        spec = spec_from_recipe(recipe)
-        assert activation_bytes(spec, recipe) == 8_192 + 57_856 + 53_248
-
-    def test_activations_linear_in_batch_and_seq(self, tiny_recipe):
-        spec = spec_from_recipe(tiny_recipe)
-        base = activation_bytes(spec, tiny_recipe, micro_batch=2, seq_len=16)
-        assert (
-            activation_bytes(spec, tiny_recipe, micro_batch=4, seq_len=16) == 2 * base
-        )
-        assert (
-            activation_bytes(spec, tiny_recipe, micro_batch=2, seq_len=32) == 2 * base
-        )
-
 
 class TestEstimate:
-    def test_totals_are_component_sums(self, tiny_recipe):
+    """The estimate is static terms plus a measured rate times tokens, or a
+    static lower bound that says it is unmeasured (2026-09-19 reduction)."""
+
+    def test_unmeasured_profile_is_a_lower_bound(self, tiny_recipe, monkeypatch):
+        monkeypatch.setattr(measured, "RATES", {})
         est = estimate(tiny_recipe)
+        assert est.profile == "scratch/2x64/full/nockpt"
+        assert est.rate is None and est.activations is None
+        assert est.fits is None
+        assert est.allocated_total == est.weights + est.grads + est.optimizer
+        assert est.reserved_estimate == est.allocated_total + OVERHEAD_BYTES
+        assert est.param_count == TINY_PARAMS
+
+    def test_measured_profile_prices_tokens(self, tiny_recipe, monkeypatch):
+        monkeypatch.setattr(measured, "RATES", {"scratch/2x64/full/nockpt": 1_000})
+        est = estimate(tiny_recipe)
+        assert est.rate == 1_000
+        assert est.activations == 1_000 * 2 * 16
         assert est.allocated_total == (
             est.weights + est.grads + est.optimizer + est.activations
         )
-        assert est.peak_phase == "sum"
-        assert est.reserved_estimate == est.allocated_total + est.overhead
-        assert est.param_count == TINY_PARAMS
+        assert est.fits is True
 
-    def test_checkpointed_total_is_temporal_max(self, tiny_recipe):
-        # Under gradient checkpointing allocated_total is a temporal max
-        # over backward phases (KB-56), not the component sum. Tiny numbers
-        # from test_activations_gradient_checkpointing: layer_inputs 8,192,
-        # per_layer 57,856, head 53,248; grads 2*TINY_PARAMS.
-        recipe = load_recipe(
+    def test_rate_past_the_budget_does_not_fit(self, tiny_recipe, monkeypatch):
+        per_token = VRAM_BUDGET_BYTES // (2 * 16) + 1
+        monkeypatch.setattr(measured, "RATES", {"scratch/2x64/full/nockpt": per_token})
+        est = estimate(tiny_recipe)
+        assert est.fits is False
+        assert est.reserved_estimate > VRAM_BUDGET_BYTES
+
+    def test_profile_reads_mode_and_checkpointing(self, tiny_recipe):
+        spec = spec_from_recipe(tiny_recipe)
+        assert profile(spec, tiny_recipe) == "scratch/2x64/full/nockpt"
+        ckpt = load_recipe(
             os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"),
             TINY_OVERRIDES + ["memory.gradient_checkpointing=true"],
         )
-        est = estimate(recipe)
-        late_backward = est.grads + 8_192 + 57_856
-        head_backward = 8_192 + 53_248
-        assert est.allocated_total == est.weights + est.optimizer + max(
-            late_backward, head_backward
-        )
-        assert est.peak_phase == (
-            "late_backward" if late_backward >= head_backward else "head_backward"
-        )
-        assert est.allocated_total < (
-            est.weights + est.grads + est.optimizer + est.activations
-        )
-
-    def test_checkpointed_total_monotonic_in_batch_and_seq(self, tiny_recipe):
-        # The temporal max must stay monotone for solve()'s binary search.
-        recipe = load_recipe(
+        assert profile(spec, ckpt) == "scratch/2x64/full/ckpt"
+        qlora = load_recipe(
             os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"),
-            TINY_OVERRIDES + ["memory.gradient_checkpointing=true"],
+            TINY_OVERRIDES + ["peft.enabled=true", "peft.quantize_base=nf4"],
         )
-        spec = spec_from_recipe(recipe)
-        from training.calculator.solve import _estimate_at
+        assert profile(spec, qlora) == "scratch/2x64/qlora/nockpt"
+        lora = load_recipe(
+            os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"),
+            TINY_OVERRIDES + ["peft.enabled=true", "peft.quantize_base=none"],
+        )
+        assert profile(spec, lora) == "scratch/2x64/lora/nockpt"
 
-        for axis in ("batch", "seq"):
-            totals = []
-            for value in (1, 2, 4, 8, 16):
-                b, s = (value, 16) if axis == "batch" else (2, value * 16)
-                totals.append(_estimate_at(spec, recipe, b, s).allocated_total)
-            assert totals == sorted(totals)
-
-    def test_pretrain_1b_fits_without_offload(self):
-        # Roadmap D4 acceptance: the 1B envelope config fits in 32GB.
+    def test_pretrain_1b_profile_and_static_terms(self):
         recipe = load_reference("pretrain-1b.yaml")
+        spec = spec_from_recipe(recipe)
+        assert profile(spec, recipe) == "scratch/18x1536/full/ckpt"
         est = estimate(recipe)
         assert recipe.memory.offload == "none"
-        assert est.fits
         assert est.host_ram == 0
-
-    def test_unfittable_config_reports_not_fits(self):
-        est = estimate(load_reference("pretrain-1b.yaml", ["data.micro_batch=512"]))
-        assert not est.fits
-
-
-class TestSolve:
-    def test_invalid_axis_rejected(self, tiny_recipe):
-        with pytest.raises(ValueError, match="axis"):
-            solve(tiny_recipe, "layers")
-
-    def test_max_batch_boundary(self):
-        recipe = load_reference("pretrain-1b.yaml")
-        solved = solve(recipe, "batch")
-        assert solved is not None and solved.fits
-        assert solved.micro_batch >= recipe.data.micro_batch
-        spec = spec_from_recipe(recipe)
-        from training.calculator.solve import _estimate_at
-
-        assert not _estimate_at(
-            spec, recipe, solved.micro_batch + 1, recipe.data.seq_len
-        ).fits
-
-    def test_max_seq_boundary(self):
-        recipe = load_reference("pretrain-1b.yaml")
-        solved = solve(recipe, "seq")
-        assert solved is not None and solved.fits
-        assert solved.seq_len % 128 == 0
-        spec = spec_from_recipe(recipe)
-        from training.calculator.solve import _estimate_at
-
-        assert not _estimate_at(
-            spec, recipe, recipe.data.micro_batch, solved.seq_len + 128
-        ).fits
-
-    def test_nothing_fits_returns_none(self):
-        # A model whose static memory alone exceeds 32GB.
-        recipe = load_reference(
-            "pretrain-1b.yaml",
-            ["model.scratch.layers=200", "model.scratch.hidden=8192"],
+        # The static terms alone sit well inside the budget, whatever the rate.
+        assert (
+            est.weights + est.grads + est.optimizer + OVERHEAD_BYTES < VRAM_BUDGET_BYTES
         )
-        assert solve(recipe, "batch") is None
+
+    def test_every_reference_rate_names_a_real_profile_shape(self):
+        # A recorded rate is a measurement of one geometry; the key must parse.
+        for key, rate in measured.RATES.items():
+            family, geometry, mode, ckpt = key.split("/")
+            layers, hidden = geometry.split("x")
+            assert int(layers) > 0 and int(hidden) > 0
+            assert mode in ("full", "lora", "qlora") and ckpt in ("ckpt", "nockpt")
+            assert isinstance(rate, int) and rate >= 0
 
 
 class TestHFConfigMapping:
@@ -332,6 +283,7 @@ def contract_hf_config(variant: str = "E2B"):
     facts = gemma4_facts()
     v = facts["variants"][variant]
     inv = facts["invariants"]
+    full = set(v["layer_types_full_attention_indices"])
     return SimpleNamespace(
         model_type=v["model_type"],
         num_hidden_layers=v["num_hidden_layers"],
@@ -339,6 +291,7 @@ def contract_hf_config(variant: str = "E2B"):
         num_attention_heads=v["num_attention_heads"],
         num_key_value_heads=v["num_key_value_heads"],
         head_dim=inv["head_dim"],
+        global_head_dim=inv["global_head_dim"],
         intermediate_size=v["intermediate_size"],
         vocab_size=inv["vocab_size"],
         tie_word_embeddings=inv["tie_word_embeddings"],
@@ -346,7 +299,22 @@ def contract_hf_config(variant: str = "E2B"):
         hidden_size_per_layer_input=v["hidden_size_per_layer_input"],
         use_double_wide_mlp=v["use_double_wide_mlp"],
         num_kv_shared_layers=v["num_kv_shared_layers"],
+        layer_types=[
+            "full_attention" if i in full else "sliding_attention"
+            for i in range(v["num_hidden_layers"])
+        ],
     )
+
+
+# Exact language-model parameter counts summed from the safetensors headers
+# (docs/training/gemma-4-training.md, Parameter accounting), minus one
+# layer_scalar buffer per layer, which is not a parameter.
+LANGUAGE_MODEL_PARAMS = {"E2B": 4_647_449_891 - 35, "E4B": 7_518_069_034 - 42}
+ATTENTION_PARAMS = {"E2B": 297_292_800, "E4B": 642_277_888}
+PLE_PARAMS = {
+    "E2B": 2_348_810_240 + 41_341_696,
+    "E4B": 2_818_572_288 + 82_683_136,
+}
 
 
 def gemma4_text_config():
@@ -371,6 +339,71 @@ class TestCalculatorGemma4:
         assert spec.q_dim == 8 * 256
         assert spec.kv_dim == 1 * 256  # E2B is single-KV-head
         assert spec.ple_vocab == 262_144 and spec.ple_dim == 256
+        assert spec.full_attention_layers == 7 and spec.full_head_dim == 512
+        assert spec.block_norms == 4 and spec.qk_norms
+        assert spec.family == "gemma4_text"
+
+    @pytest.mark.parametrize("variant", ["E2B", "E4B"])
+    def test_language_model_count_matches_the_checkpoint_exactly(self, variant):
+        """The count the 2026-09-19 fix was written against: the seven
+        full-attention layers at global_head_dim, q and k norms, four block
+        norms, and the PLE model projection and norms, each of which the
+        one-width Llama derivation missed (docs/training/gemma-4-training.md,
+        the former "Where the calculator undercounts")."""
+        spec = spec_from_hf_config(contract_hf_config(variant))
+        assert spec.attention_param_count() == ATTENTION_PARAMS[variant]
+        assert spec.ple_param_count() == PLE_PARAMS[variant]
+        assert spec.param_count() == LANGUAGE_MODEL_PARAMS[variant]
+
+    def test_towers_are_read_from_the_checkpoint_header(self, tmp_path):
+        """A composite checkpoint's towers are priced from what the file holds,
+        not modeled: every tensor outside model.language_model. counts."""
+        header = {
+            "__metadata__": {"format": "pt"},
+            "model.language_model.embed_tokens.weight": {
+                "dtype": "BF16",
+                "shape": [262144, 1536],
+                "data_offsets": [0, 8],
+            },
+            "model.vision_tower.patch.weight": {
+                "dtype": "BF16",
+                "shape": [768, 3, 16, 16],
+                "data_offsets": [8, 16],
+            },
+            "model.embed_audio.embedding_projection.weight": {
+                "dtype": "BF16",
+                "shape": [1536, 1024],
+                "data_offsets": [16, 24],
+            },
+        }
+        body = json.dumps(header).encode()
+        with open(tmp_path / "model.safetensors", "wb") as f:
+            f.write(len(body).to_bytes(8, "little") + body + b"\0" * 24)
+        assert safetensors_header(str(tmp_path / "model.safetensors")) == header
+        assert (
+            extra_params_from_checkpoint(str(tmp_path))
+            == 768 * 3 * 16 * 16 + 1536 * 1024
+        )
+        assert extra_params_from_checkpoint(str(tmp_path / "absent")) == 0
+
+    def test_extra_params_price_as_weights_not_as_trainable(self):
+        from dataclasses import replace
+
+        recipe = load_reference("sft-qlora-e2b.yaml")
+        base = spec_from_hf_config(contract_hf_config("E2B"))
+        with_towers = replace(base, extra_params=475_729_088)
+        assert with_towers.param_count() == base.param_count() + 475_729_088
+        assert with_towers.linear_param_count() == base.linear_param_count()
+        assert with_towers.transformer_stack_param_count() == (
+            base.transformer_stack_param_count()
+        )
+        # Towers stay in the compute dtype under QLoRA (never quantized).
+        assert weights_bytes(with_towers, recipe) == (
+            weights_bytes(base, recipe) + 475_729_088 * 2
+        )
+        assert adapter_param_count(with_towers, recipe) == adapter_param_count(
+            base, recipe
+        )
 
     def test_multimodal_config_descends_into_text_config(self):
         composite = SimpleNamespace(
@@ -382,7 +415,11 @@ class TestCalculatorGemma4:
         spec = spec_from_hf_config(gemma4_text_config())
         table = 262_144 * 35 * 256
         linears = 35 * 2 * 1536 * 256
-        assert spec.ple_param_count() == table + linears
+        # The model-level projection and its norm, and one hidden-wide norm
+        # per layer, were the terms the 2026-09-19 fix added.
+        projection = 35 * 256 * 1536 + 256
+        norms = 35 * 1536
+        assert spec.ple_param_count() == table + linears + projection + norms
         without = spec_from_hf_config(
             SimpleNamespace(
                 **{
@@ -392,7 +429,9 @@ class TestCalculatorGemma4:
                 }
             )
         )
-        assert spec.param_count() - without.param_count() == table + linears
+        assert spec.param_count() - without.param_count() == (
+            table + linears + projection + norms
+        )
 
     @pytest.mark.parametrize(
         ("variant", "double_wide_layers"), [("E2B", 20), ("E4B", 0)]
@@ -417,13 +456,17 @@ class TestCalculatorGemma4:
         assert spec.double_wide_layers == double_wide_layers
         # A double-wide layer contributes a second copy of its MLP block.
         mlp = 3 * hidden * ffn * (layers + double_wide_layers)
-        attn = layers * (2 * hidden * spec.q_dim + 2 * hidden * spec.kv_dim)
-        norms = layers * 2 * hidden
+        attn = spec.attention_param_count()
+        qk_norms = 2 * (
+            spec.sliding_attention_layers * spec.head_dim
+            + spec.full_attention_layers * spec.full_head_dim
+        )
+        norms = layers * 4 * hidden
         embeddings = facts["invariants"]["vocab_size"] * hidden
         expected = embeddings + attn + mlp + norms + hidden
         assert spec.param_count() == expected + spec.ple_param_count()
         assert spec.transformer_stack_param_count() == attn + mlp + norms + hidden
-        assert spec.linear_param_count() == attn + mlp
+        assert spec.linear_param_count() == attn - qk_norms + mlp
 
     def test_e2b_double_wide_gap_is_the_documented_size(self):
         """Pins the magnitude the flat formula was missing."""
@@ -449,6 +492,8 @@ class TestCalculatorGemma4:
         assert spec.q_dim == spec.hidden
         assert spec.kv_dim == spec.hidden * 8 // 32
         assert spec.ple_param_count() == 0
+        assert spec.full_attention_layers == 0 and spec.block_norms == 2
+        assert not spec.qk_norms and spec.family == "llama"
         per_layer = 2 * 2048 * 2048 + 2 * 2048 * 512 + 3 * 2048 * 8192 + 2 * 2048
         assert spec.param_count() == 128_256 * 2048 + 16 * per_layer + 2048
 
@@ -480,14 +525,17 @@ class TestCLI:
             "memfit",
             "--config",
             "training/recipes/reference/pretrain-1b.yaml",
-            "--solve",
-            "batch",
             "--json",
         )
         assert proc.returncode == 0, proc.stderr
         result = json.loads(proc.stdout)  # stdout must be JSON only
-        assert result["estimate"]["fits"] is True
-        assert result["max_batch"] >= 4
+        est = result["estimate"]
+        assert est["profile"] == "scratch/18x1536/full/ckpt"
+        assert est["param_count"] == 1_007_869_440
+        # Unmeasured until a from-scratch calibrate records the rate.
+        assert est["rate"] is None and est["activations"] is None
+        assert est["fits"] is None
+        assert "max_batch" not in result
 
     def test_memfit_human_table(self):
         proc = self.run_cli(
@@ -497,32 +545,22 @@ class TestCLI:
         # Human status lives on stderr; stdout is reserved for --json payloads.
         assert proc.stdout == ""
         assert "=== Memory-fit estimate ===" in proc.stderr
-        assert "[OK] Fits:" in proc.stderr
-
-    def test_memfit_unfit_exits_nonzero(self):
-        proc = self.run_cli(
-            "memfit",
-            "--config",
-            "training/recipes/reference/pretrain-1b.yaml",
-            "data.micro_batch=512",
+        assert (
+            "[WARN] Activations unmeasured for profile scratch/18x1536/full/ckpt"
+            in (proc.stderr)
         )
-        assert proc.returncode == 1
-        assert "[ERROR] Does not fit" in proc.stderr
+        assert "[OK] Fits:" not in proc.stderr
 
-    def test_memfit_solve_nothing_fits_exits_nonzero(self):
-        # Sequence length floor of the solver still overflows at an absurd
-        # micro-batch: --solve must exit 1 when nothing fits, per the
-        # exit-code contract, not print [ERROR] and exit 0.
+    def test_memfit_solve_flag_is_gone(self):
         proc = self.run_cli(
             "memfit",
             "--config",
             "training/recipes/reference/pretrain-1b.yaml",
             "--solve",
-            "seq",
-            "data.micro_batch=100000",
+            "batch",
         )
-        assert proc.returncode == 1
-        assert "[ERROR]" in proc.stderr
+        assert proc.returncode == 2
+        assert "unrecognized arguments: --solve" in proc.stderr
 
     def test_memfit_bad_recipe_exits_nonzero(self):
         proc = self.run_cli("memfit", "--config", "/nonexistent/recipe.yaml")
@@ -609,6 +647,7 @@ class TestPeftComponents:
         est = estimate(recipe)
         assert est.param_count == TINY_PARAMS
         assert est.trainable_params == self.ADAPTER_PARAMS
+        assert est.profile == "scratch/2x64/qlora/nockpt"
 
     def test_unknown_target_module_fails(self):
         recipe = self.qlora_recipe(["peft.target_modules=[qkv_proj]"])

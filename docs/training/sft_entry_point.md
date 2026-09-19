@@ -32,8 +32,10 @@ make train-sft CONFIG=... ARGS="checkpoint.resume=latest"
 
 `make train-sft` runs `python -m training train-sft --config <recipe>` in the
 training container. Dotlist overrides pass through `ARGS`
-(`ARGS="optimizer.lr=1e-4"`); `--force` downgrades a memory-fit refusal to a
-warning; `--json` emits a result JSON.
+(`ARGS="optimizer.lr=1e-4"`); `--json` emits a result JSON. The memory-fit
+line it prints first is advisory (2026-09-19): a predicted overflow or an
+unmeasured profile is a `[WARN]`, and the run proceeds either way, since an
+OOM on this machine fails at the first step after a minute of model load.
 
 ## Recipe surface
 

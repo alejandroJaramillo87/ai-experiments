@@ -72,7 +72,7 @@ def resolve_max_bytes(recipe) -> int:
     if recipe.replay.max_gb is not None:
         return int(recipe.replay.max_gb * GIB)
     from training.calculator.components import host_ram_bytes, spec_from_recipe
-    from training.calculator.solve import HOST_RAM_TOTAL_BYTES
+    from training.calculator.estimate import HOST_RAM_TOTAL_BYTES
 
     floor = int(recipe.watchdog.ram_floor_gb * GIB)
     headroom = (

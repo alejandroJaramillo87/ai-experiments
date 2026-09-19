@@ -2,13 +2,17 @@
 
 Runs a short real training loop for a recipe on the workstation GPU, records
 torch.cuda.max_memory_allocated/reserved and the NVML peak, and writes a
-calibration record JSON comparing measured peaks against estimate(). The
-acceptance bar: the allocated estimate (a temporal max over backward phases
-under gradient checkpointing, else the component sum) within 10 percent of
-max_memory_allocated (or within ALLOCATED_FLOOR_BYTES absolute, for tiny
-models where fixed allocator-resident workspaces dominate) on the two
-reference configs, and the reserved estimate never under-predicting the
-NVML peak.
+calibration record JSON comparing measured peaks against estimate(). It is
+also where the activation rate comes from: the resident bytes after the model
+is built are measured, and what the peak holds above that plus the analytic
+gradient and optimizer terms, divided by the tokens of one micro-batch, is the
+profile's bytes per token (activation_rate), which the operator records in
+measured.py. The acceptance bar applies once a rate is on file: the allocated
+estimate within 10 percent of max_memory_allocated (or within
+ALLOCATED_FLOOR_BYTES absolute, for tiny models where fixed
+allocator-resident workspaces dominate), and the reserved estimate never
+under-predicting the NVML peak. With no rate on file the run is the
+measurement, and the bar is reported as not on file.
 
 The loop here is deliberately private to calibration: a few optimizer steps
 over synthetic batches, no checkpointing, tracking, or resume. It is not the
@@ -39,7 +43,7 @@ from dataclasses import asdict, dataclass
 from omegaconf import DictConfig
 
 from training.calculator.components import spec_from_recipe
-from training.calculator.solve import Estimate, estimate
+from training.calculator.estimate import Estimate, estimate
 from training.models.model import (
     build_model,
     build_optimizer,  # noqa: F401  (re-export; extracted in D6)
@@ -81,6 +85,12 @@ class CalibrationRecord:
     # analytic count is trainable_param_count from the estimate.
     model_trainable_params: int = 0
     analytic_trainable_params: int = 0
+    # The measured activation rate for this run's profile (measured.py key):
+    # resident bytes right after the model was built, and the bytes per token
+    # the peak held above that plus the analytic gradient and optimizer terms.
+    profile: str = ""
+    static_measured: int = 0
+    activation_rate: int = 0
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -147,6 +157,10 @@ def calibrate(recipe: DictConfig, steps: int = DEFAULT_STEPS) -> CalibrationReco
     # A 4-bit base loads on the GPU at from_pretrained; .to() on it raises.
     if not getattr(model, "is_loaded_in_4bit", False):
         model = model.to(device)
+    # What the built model holds resident: the weights as loaded (NF4 packing,
+    # towers and all), which the activation rate is measured above.
+    torch.cuda.synchronize(device)
+    static_measured = torch.cuda.memory_allocated(device)
     if recipe.memory.compile:
         model = torch.compile(model)
     trainable = [p for p in model.parameters() if p.requires_grad]
@@ -177,6 +191,10 @@ def calibrate(recipe: DictConfig, steps: int = DEFAULT_STEPS) -> CalibrationReco
     measured_allocated = torch.cuda.max_memory_allocated(device)
     measured_reserved = torch.cuda.max_memory_reserved(device)
     error_pct = (est.allocated_total - measured_allocated) / measured_allocated * 100
+    tokens = recipe.data.micro_batch * recipe.data.seq_len
+    activation_rate = activation_rate_from(
+        measured_allocated, static_measured, est.grads, est.optimizer, tokens
+    )
 
     return CalibrationRecord(
         recipe_run_name=recipe.run.name,
@@ -191,7 +209,25 @@ def calibrate(recipe: DictConfig, steps: int = DEFAULT_STEPS) -> CalibrationReco
         reserved_underpredicts_nvml=est.reserved_estimate < nvml_peak,
         model_trainable_params=report.trainable,
         analytic_trainable_params=est.trainable_params,
+        profile=est.profile,
+        static_measured=static_measured,
+        activation_rate=activation_rate,
     )
+
+
+def activation_rate_from(
+    measured_allocated: int,
+    static_measured: int,
+    grads: int,
+    optimizer: int,
+    tokens: int,
+) -> int:
+    """Bytes per token the peak held above the resident model and the analytic
+    gradient and optimizer terms; floored at zero, so a peak inside the static
+    terms (a tiny model under fixed CUDA workspaces) records no activations
+    rather than a negative rate."""
+    dynamic = measured_allocated - static_measured - grads - optimizer
+    return max(0, dynamic) // tokens
 
 
 def write_record(record: CalibrationRecord, path: str) -> None:

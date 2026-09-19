@@ -160,25 +160,30 @@ class Collator:
 # -- preflight ---------------------------------------------------------------
 
 
-def check_memory_fit(recipe: DictConfig, force: bool) -> tuple[bool, str]:
-    """D4 memory-fit gate: (proceed, message). force downgrades refuse to warn."""
-    from training.calculator.solve import GIB, VRAM_TOTAL_BYTES, estimate
+def check_memory_fit(recipe: DictConfig) -> tuple[bool, str]:
+    """D4 memory-fit advisory: (ok, message). Never refuses (2026-09-19): an
+    OOM on this machine fails at step one after a minute of model load, so
+    the line is a warning the operator reads, not a gate the run waits on.
+    ok is False for a predicted overflow and for an unmeasured profile."""
+    from training.calculator.estimate import GIB, VRAM_TOTAL_BYTES, estimate
 
     est = estimate(recipe)
     reserved_gb = est.reserved_estimate / GIB
     total_gb = VRAM_TOTAL_BYTES / GIB
+    if est.fits is None:
+        return False, (
+            f"Memory fit: unmeasured for profile {est.profile} "
+            f"({reserved_gb:.2f} GB static lower bound; run train-calibrate)"
+        )
     if est.fits:
         return True, (
             f"Memory fit: {reserved_gb:.2f} GB reserved estimate "
             f"of {total_gb:.0f} GB VRAM"
         )
-    message = (
+    return False, (
         f"Memory fit: predicted {reserved_gb:.2f} GB exceeds the "
-        f"{total_gb:.0f} GB budget"
+        f"{total_gb:.0f} GB budget (reduce micro_batch/seq_len; proceeding)"
     )
-    if force:
-        return True, message + " (--force: proceeding anyway)"
-    return False, message + " (reduce micro_batch/seq_len, or pass --force)"
 
 
 # -- build steps -------------------------------------------------------------
@@ -333,24 +338,22 @@ def resolve_sft_resume(ckpt_root: str, resume: str) -> str:
 # -- orchestration -----------------------------------------------------------
 
 
-def train_sft(recipe: DictConfig, force: bool = False) -> SftResult:
+def train_sft(recipe: DictConfig) -> SftResult:
     """Run the recipe's supervised fine-tune end to end.
 
-    Preflight (memory fit, then lock) precedes any heavy import or model
-    download. Running inference containers are not probed: the operator
-    manages containers manually and validates GPU exclusivity themselves.
-    WatchdogAbort propagates to the caller after an emergency checkpoint is
-    written; the D9 lock releases on every exit path via the context manager.
+    Preflight (the sft group, then the lock) precedes any heavy import or
+    model download; the memory-fit line is the caller's to print
+    (check_memory_fit) and never refuses. Running inference containers are
+    not probed: the operator manages containers manually and validates GPU
+    exclusivity themselves. WatchdogAbort propagates to the caller after an
+    emergency checkpoint is written; the D9 lock releases on every exit path
+    via the context manager.
     """
     if not recipe.sft.enabled:
         raise SftPreflightError(
             "sft.enabled is false; train-sft needs an sft-enabled recipe "
             "(the reference is training/recipes/reference/sft-qlora-e2b.yaml)"
         )
-
-    fits, fit_message = check_memory_fit(recipe, force)
-    if not fits:
-        raise SftPreflightError(fit_message)
 
     with run_lock(recipe.run.name):
         return _train_locked(recipe)

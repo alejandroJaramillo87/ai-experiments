@@ -6,8 +6,9 @@ merged HF checkpoint, and baseline-versus-tuned evaluation.
 
 Invoked as `python -m training <command>`; `cli.py` dispatches to one handler per verb in
 `commands/`. Runtime concerns are separated deliberately: `runtime/` holds the loop, the
-global run lock, tracking, and the watchdog; `calculator/` estimates and calibrates memory
-fit before a run rather than discovering it by OOM.
+global run lock, tracking, and the watchdog; `calculator/` prices a run's static VRAM from
+its parameter count, applies the activation rate `calibrate` measured for its profile, and
+warns before a run rather than after an OOM.
 
 ## Relationship to the rest of the tree
 
@@ -34,7 +35,7 @@ against the Rust renderer.
 ```bash
 make train CONFIG=training/recipes/reference/tiny-e2e.yaml
 make train-validate CONFIG=...   # recipe schema check, no GPU
-make memfit CONFIG=...           # VRAM fit estimate before committing a run
+make memfit CONFIG=...           # VRAM fit estimate (advisory) before committing a run
 make export-hf CHECKPOINT=... ARGS="--name <name>"
 ```
 

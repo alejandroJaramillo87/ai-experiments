@@ -53,18 +53,22 @@ checkpoint is reproducible without consulting the recipe file's current state. D
 
 ## Memory-fit calculator (D4)
 
-Implemented: `training/calculator/` estimates peak VRAM (weights + gradients + optimizer
-state + activations + calibrated overhead) from a D5 recipe before any GPU allocation.
+Implemented: `training/calculator/` prices peak VRAM from a D5 recipe before any GPU
+allocation: weights, gradients and optimizer state from the parameter count, plus the
+activation rate `calibrate` measured for the recipe's profile
+(`training/calculator/measured.py`), plus a calibrated overhead.
 
-- Estimate (host): `make memfit CONFIG=training/recipes/reference/pretrain-1b.yaml`, or
-  directly `python -m training memfit --config <recipe> [overrides...] [--solve batch|seq]
-  [--json]`.
-- If it does not fit, reduce `data.micro_batch` or `data.seq_len`, enable
-  `memory.gradient_checkpointing`, or switch to `adamw8bit` — before starting, not after an
-  OOM mid-run. `--solve batch|seq` binary-searches the largest fitting value.
+- Estimate (host): `make memfit CONFIG=training/recipes/reference/sft-qlora-e2b.yaml`, or
+  directly `python -m training memfit --config <recipe> [overrides...] [--json]`.
+- A profile with no measured rate prints a `[WARN] Activations unmeasured` lower bound and
+  exits 0; run calibrate and paste the `Record:` line it prints into `measured.py`. If a
+  measured recipe does not fit, reduce `data.micro_batch` or `data.seq_len`, enable
+  `memory.gradient_checkpointing`, or switch to `adamw8bit`. `train-sft` prints the same
+  line as a warning and never refuses on it.
 - Calibration (GPU, host-side): `make train-calibrate CONFIG=... ARGS="--out record.json"`
-  runs a short real loop, measures peaks, and compares; estimates must stay within 10
-  percent, and the reserved estimate must not under-predict the NVML peak.
+  runs a short real loop, measures the resident model and the peak, derives the rate, and,
+  once a rate is on file, holds the estimate to 10 percent and the reserved estimate to the
+  NVML peak.
 - Details: `docs/training/memory_fit.md`.
 
 ## Train-and-serve round trip

@@ -13,6 +13,7 @@ import os
 import subprocess
 import sys
 import types
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
@@ -228,7 +229,7 @@ def test_spec_from_recipe_hf_maps_through_autoconfig(monkeypatch):
     # memfit and calibrate run in the offline training container, so even a pure
     # size estimate must resolve the config locally rather than over the network.
     assert seen["local_files_only"] is True
-    assert spec == tiny_spec()
+    assert spec == replace(tiny_spec(), family="llama")
     assert spec.param_count() == TINY_PARAMS
 
 

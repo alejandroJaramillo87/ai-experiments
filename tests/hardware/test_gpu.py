@@ -1,6 +1,7 @@
 """GPU/VRAM hardware suite (WI-3): sm_120 presence and bf16 compute at the
-smoke tier; near-capacity allocation, memfit-versus-measured, tolerance-based
-resume, family-registry loads, and the harvest hook smoke at the full tier.
+smoke tier; near-capacity allocation, the calibrate measurement on the tiny
+recipe, tolerance-based resume, family-registry loads, and the harvest hook
+smoke at the full tier.
 """
 
 from __future__ import annotations
@@ -99,40 +100,37 @@ class TestGpuFull:
         del probe
         cuda.cuda.empty_cache()
 
-    def test_memfit_estimate_never_underpredicts_measured(
-        self, cuda, tmp_path, train_lock
-    ):
-        """The D4 calculator contract: reserved_estimate must not
-        under-predict a real run's peak allocation (tiny recipe; the 10%
-        closeness bar for real recipes is the calibrate runbook entry)."""
-        from support import make_shard_dir
-
+    def test_calibrate_measures_the_tiny_recipe(self, cuda, tmp_path, train_lock):
+        """The D4 calculator's measurement path on the tiny recipe: calibrate
+        builds the model, records what it holds resident, and derives an
+        activation rate that reproduces the measured peak by construction
+        (the 10 percent bar for a real recipe is the FT.1 runbook entry)."""
         from tests.hardware.conftest import REPO_ROOT
-        from training.calculator.solve import estimate
+        from training.calculator.calibrate import calibrate
+        from training.calculator.estimate import estimate
         from training.recipes import load_recipe
-        from training.runtime.loop import train
 
         recipe = load_recipe(
             os.path.join(
                 REPO_ROOT, "training", "recipes", "reference", "tiny-e2e.yaml"
             ),
-            [
-                f"data.source={make_shards(tmp_path, make_shard_dir)}",
-                f"run.output_root={tmp_path / 'runs'}",
-                "data.seq_len=64",
-                "schedule.total_steps=4",
-                "schedule.warmup_steps=1",
-                "checkpoint.interval_steps=4",
-            ],
+            ["data.seq_len=64"],
         )
-        predicted = estimate(recipe)
-        cuda.cuda.reset_peak_memory_stats()
-        train(recipe)
-        measured = cuda.cuda.max_memory_allocated()
-        assert measured <= predicted.reserved_estimate, (
-            f"measured {measured} bytes exceeds the calculator's "
-            f"reserved_estimate {predicted.reserved_estimate}"
+        record = calibrate(recipe, steps=2)
+        est = estimate(recipe)
+        assert record.profile == est.profile == "scratch/2x64/full/nockpt"
+        assert record.static_measured > 0
+        assert record.activation_rate >= 0
+        tokens = recipe.data.micro_batch * recipe.data.seq_len
+        reproduced = (
+            record.static_measured
+            + est.grads
+            + est.optimizer
+            + record.activation_rate * tokens
         )
+        # Floor division in the rate loses under one token's worth.
+        assert reproduced <= record.measured_allocated < reproduced + tokens + 1
+        assert record.measured_reserved >= record.measured_allocated
 
     def test_resume_loss_curve_within_tolerance(self, cuda, tmp_path, train_lock):
         """Straight N+M steps versus N steps + checkpoint + resume + M steps

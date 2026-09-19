@@ -46,7 +46,7 @@ train-preflight: ## Prove every asset a recipe needs is already local (Prelude C
 train-validate: ## Validate a recipe (Phase 0 D5): make train-validate CONFIG=training/recipes/reference/tiny-e2e.yaml ARGS="optimizer.lr=1e-4"
 	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training validate $(CONFIG) $(ARGS)
 
-memfit: ## Estimate VRAM fit for a recipe (Phase 0 D4): make memfit CONFIG=training/recipes/reference/pretrain-1b.yaml ARGS="--solve batch"
+memfit: ## Estimate VRAM fit for a recipe from its measured activation rate (Phase 0 D4): make memfit CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="data.micro_batch=8"
 	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training memfit --config $(CONFIG) $(ARGS)
 
 train-calibrate: ## Measure real peak VRAM for a recipe (Phase 0 D4, GPU): make train-calibrate CONFIG=... ARGS="--out record.json"

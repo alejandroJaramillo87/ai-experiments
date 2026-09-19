@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 3 verified, 0 blocked, 13 pending, of 16.**
+**Entries: 2 verified, 0 blocked, 14 pending, of 16.**
 
 The fine-tuning loop is the first rung of the training tier and the loop the
 lab runs: train a Gemma 4 E2B with a known change, then recover the change
@@ -71,9 +71,20 @@ builds what it verifies:
   fixed. It also found that preflight
   verified an SFT recipe's `data.source` as token shards and crashed on a
   prepared dataset (KB-81, fixed in the tree, confirmed by FT.13), and
-  reordered the sections so no entry precedes what it depends on: FT.14 and
-  FT.2 before FT.13, since the preflight gate reads the dataset FT.2
-  prepares.
+  reordered the sections so no entry precedes what it depends on: FT.2
+  before FT.13, since the preflight gate reads the dataset FT.2 prepares.
+- **The calculator decision** (2026-09-19, after FT.14 first passed) read
+  the memory-fit calculator against the Gemma 4 notes and against what the
+  loop needs, and reduced it rather than rip it out or specify it fully
+  ([memory_fit.md](../../training/memory_fit.md)): the static terms and the
+  parameter count stay (the count fixed for Gemma 4's two head widths, its
+  norms, the per-layer embedding projection and the towers, KB-82), the
+  analytic activation formula and `solve` left, activations are a rate
+  `train-calibrate` measures per profile and the operator records in
+  `training/calculator/measured.py`, and `train-sft` warns instead of
+  refusing. FT.14's first pass ran under the analytic model and is kept in
+  the entry as a superseded observation; the entry is redefined and now
+  follows FT.1, which supplies the rate it reads.
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training
@@ -93,10 +104,10 @@ or inference service the entry does not name is active.
 
 - [FT.0 Preconditions](#ft0-preconditions)
 - [FT.12 Training image and smoke](#ft12-training-image-and-smoke)
-- [FT.14 Memory fit: fits, does not fit, solve](#ft14-memory-fit-fits-does-not-fit-solve)
 - [FT.2 Prepare the smoke SFT dataset](#ft2-prepare-the-smoke-sft-dataset)
 - [FT.13 Recipe gates: preflight and validate](#ft13-recipe-gates-preflight-and-validate)
 - [FT.1 Calibrate the QLoRA recipe (KB-03)](#ft1-calibrate-the-qlora-recipe-kb-03)
+- [FT.14 Memory fit: the measured rate reproduces FT.1](#ft14-memory-fit-the-measured-rate-reproduces-ft1)
 - [FT.16 The E4B recipe: preflight, fit and calibration](#ft16-the-e4b-recipe-preflight-fit-and-calibration)
 - [FT.3 Train, interrupt, resume](#ft3-train-interrupt-resume)
 - [FT.4 Export the merged HF directory and load it in the harness](#ft4-export-the-merged-hf-directory-and-load-it-in-the-harness)
@@ -426,40 +437,195 @@ exit=0
 
 Status: VERIFIED (2026-09-19)
 
-## FT.14 Memory fit: fits, does not fit, solve
+## FT.2 Prepare the smoke SFT dataset
+
+Implementation: `training/commands/prepare_sft.py`, `training/data/sft.py`,
+`training/data/tokenizer.py`, `training/models/families.py`
+(`CHAT_TEMPLATE_VERSION`, pinned against the harness renderer by
+`schemas/chat_template.json`).
+
+The prepared directory is the `sft.dataset` the smoke recipe names. Existing
+code; depends on FT.0.
+
+Command:
+
+```bash
+make prepare-sft ARGS="--source HuggingFaceH4/ultrachat_200k --split train_sft \
+    --tokenizer /mnt/ai-data/models/hf/gemma-4-E2B --model-type gemma4 \
+    --max-seq-len 2048 --out /mnt/ai-data/training/datasets/sft/ultrachat-e2b"
+cat /mnt/ai-data/training/datasets/sft/ultrachat-e2b/manifest.json
+```
+
+Expected signal: exit 0; the output directory holds the prepared examples
+plus `manifest.json` recording the tokenizer hash, `chat_template_version`
+2, the split sizes and the supervised-token counts (assistant content plus
+the end-of-turn token only); a source record carrying a raw reasoning marker
+is refused, not masked.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+## FT.13 Recipe gates: preflight and validate
+
+Implementation: `training/commands/preflight.py`,
+`training/commands/validate_recipe.py`, `training/recipes/validate.py`,
+`training/export/preflight.py` (`resolve_base_identity`, which preflight
+calls with `local_files_only`).
+
+The two gates a run passes before the GPU is committed, each run twice:
+once to pass and once to refuse, since a gate whose refusal has never been
+seen is not known to gate. The first `train-preflight` runs the recipe as
+committed and is the KB-79 reproduction: it must fail, and its failure is
+what confirms the ledger row. Added 2026-09-18; depends on FT.0, FT.12
+and FT.2 (the dataset the second preflight must find).
+
+```bash
+set -o pipefail
+cd ~/workspace/ai-experiments
+make train-preflight CONFIG=training/recipes/reference/sft-qlora-e2b.yaml; echo "exit=$?"
+make train-preflight CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="model.hf.id=/app/models/hf/gemma-4-E2B"; echo "exit=$?"
+make train-validate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml; echo "exit=$?"
+make train-validate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="optimizer.lr=-1"; echo "exit=$?"
+```
+
+Expected signal: the committed recipe's preflight prints `[ERROR]
+Missing or unusable assets: 1` and one problem line, `- model.hf:` naming
+`google/gemma-4-E2B` (KB-79); then `Solution: stage the missing assets,
+then re-run preflight` and one remedy, `make train-download MODEL=<hub id>
+REVISION=<sha>` (which FT.0 already ran, and which cannot satisfy a hub
+id). The command exits 1, which `make` reports as `make: ***
+[make/training.mk:44: train-preflight] Error 1` and `exit=2`. A second
+problem line is a new finding, recorded on its own; a `- tokenizer.path:`
+line is KB-80 back, and a line naming `data.source` or a traceback out of
+`verify_shards` is KB-81 back. With the model override, and FT.2's dataset
+on disk, it exits 0 with `[OK] All referenced assets are present and
+verified` and no `shard` or `tokenizer` in its output; that run is what
+confirms KB-80 fixed. `train-validate` on the recipe prints `[OK] Schema:
+training/recipes/reference/sft-qlora-e2b.yaml loads as a typed recipe` and
+`[OK] Validation: run sft-qlora-e2b passes all cross-field invariants`,
+exit 0; with `optimizer.lr=-1` it prints `[ERROR] Recipe validation
+failed:` and `  - optimizer.lr: must be positive, got -1.0`, the command
+exits 1 and `make` reports `Error 1` and `exit=2`. A validate that exits 0
+on the negative learning rate is a gate that does not gate.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+## FT.1 Calibrate the QLoRA recipe (KB-03)
+
+Implementation: `training/calculator/calibrate.py`,
+`training/calculator/measured.py`, `training/models/model.py`,
+`training/models/peft_utils.py`, `training/cli.py` (`cmd_calibrate`).
+
+**Fixes to confirm here** (details in [bugs/known-bugs.md](../bugs/known-bugs.md)):
+
+- KB-03 — `calibrate()` once built a scratch Llama model for every recipe, so
+  calibrating a `model.hf` or PEFT recipe measured a model other than the one
+  the estimate priced. The fix routes calibration through the shared
+  `build_model` and the PEFT wrap; this run on the QLoRA recipe is the
+  hardware evidence that closes the row.
+- KB-82 — the calculator's Gemma 4 parameter count missed the seven
+  512-wide full-attention layers, the q and k norms, two of the four block
+  norms, the per-layer embedding projection, and the towers `from_pretrained`
+  loads. The `Parameter count` line this run prints is the confirmation.
+
+Measures the QLoRA recipe on the `model.hf` plus PEFT path, which the
+archived P0.3 scratch calibration does not exercise: NF4 base pricing,
+adapter gradients and optimizer state, and the activation rate of the
+profile `gemma4_text/35x1536/qlora/ckpt`, which no entry has measured and
+which FT.14 and FT.3 read. It is also the first execution evidence for
+Gemma 4 on the workstation: the gated checkpoint at its pinned revision,
+transformers `gemma4` support, and bitsandbytes NF4 on Blackwell. Existing
+code; depends on FT.0.
+
+Command:
+
+```bash
+make train-calibrate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
+    ARGS="model.hf.id=/app/models/hf/gemma-4-E2B --out /mnt/ai-data/training/verify/calibrate-sft-e2b.json"
+```
+
+The `model.hf.id` override is KB-79 (see the preamble); without it the
+container cannot find the base. Depends on FT.0 and FT.12.
+
+Expected signal: exit 0. `[OK] Parameter count: <p> (analytic matches
+model)`, or a `[WARN] Parameter count drift` whose two figures differ by
+exactly 15,733,760, the shared-KV residue the modeling code does not
+construct (KB-82; any other drift is a finding); no trainable-count drift
+warning. Then `Resident after build:`, `Activation rate: <r> bytes/token`,
+the line `Record: "gemma4_text/35x1536/qlora/ckpt": <r>,` and
+`[INFO] Allocated error: not on file`, since this is the profile's first
+measurement and there is no rate to hold to the bar. Record `<r>` and the
+measured allocated, reserved and NVML figures here, then, before FT.14:
+
+1. Paste the `Record:` line into `RATES` in `training/calculator/measured.py`
+   with a comment naming this entry, the date, the measured allocated and
+   the resident figure it was derived from.
+2. Commit. No image rebuild: the training container bind-mounts
+   `training/`, so the next `make memfit` reads the row.
+
+A second calibrate of the same profile later (after a transformers or TRL
+upgrade) is the drift check: it holds the estimate to the 10 percent bar and
+the reserved estimate to the NVML peak, and a miss there is re-recorded, not
+argued with.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+## FT.14 Memory fit: the measured rate reproduces FT.1
 
 Implementation: `training/cli.py` (`cmd_memfit`, `_print_estimate_table`),
-`training/calculator/` (`estimate`, `solve`), `training/tune/sft.py`
-(`check_memory_fit`, the same estimate `train-sft` refuses on).
+`training/calculator/estimate.py`, `training/calculator/measured.py` (the
+rate FT.1 records), `training/tune/sft.py` (`check_memory_fit`, the same
+estimate `train-sft` prints as advice).
 
-The estimate FT.1 calibrates, run as an operator runs it: once on the recipe,
-which must fit, once on a geometry that must not, and once solving for the
-largest batch. `train-sft` refuses a recipe the estimate says does not fit
-unless `--force` is passed, so the refusal here is the refusal FT.3 relies
-on. CPU-only, no GPU; added 2026-09-18; depends on FT.12.
+The estimate as an operator reads it, once FT.1 has measured the recipe's
+activation rate and the rate is on file: once on the recipe, which must fit,
+and once on a geometry that must not. The calculator was reduced on
+2026-09-19 ([memory_fit.md](../../training/memory_fit.md)): activations are
+the measured rate times tokens, `solve` is gone, and `train-sft` warns rather
+than refuses, so the verdict here is the line FT.3 prints before it trains.
+CPU-only, no GPU; added 2026-09-18, redefined 2026-09-19; depends on FT.1.
 
 ```bash
 set -o pipefail
 cd ~/workspace/ai-experiments
 make memfit CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="model.hf.id=/app/models/hf/gemma-4-E2B"; echo "exit=$?"
 make memfit CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="model.hf.id=/app/models/hf/gemma-4-E2B data.micro_batch=64"; echo "exit=$?"
-make memfit CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="model.hf.id=/app/models/hf/gemma-4-E2B --solve batch"; echo "exit=$?"
 ```
 
-Expected signal: the first run prints the component table, `Total reserved
-estimate:` and `[OK] Fits: reserved estimate <n> GB within budget <b> GB (32
-GB minus safety margin)`, exit 0. The second prints `[ERROR] Does not fit:
-reserved estimate <m> GB exceeds budget <b> GB` with `<m>` above `<b>`, the
-two `Solution:` lines, and the command exits 1, which `make` reports as
-`make: *** [make/training.mk:50: memfit] Error 1` and `exit=2`. The third prints `[OK] Solve batch: max
-micro-batch <k> (reserved estimate <r> GB)` with `<k>` at least the recipe's
-4 and below 64, and exit 0. The budget `<b>` is the same figure in all three
-runs. Record `<n>` here: FT.1 compares the calibrated peak against it.
-The hardware mirror is `tests/hardware/test_memfit_sft.py` in the
-`hw_smoke` tier: the same three outcomes through the calculator the CLI and
-`train-sft`'s refusal share, on the staged base's `config.json`.
+Expected signal: the first run prints `Profile: gemma4_text/35x1536/qlora/ckpt`,
+the component table with an `activations` row equal to FT.1's rate times
+8,192 tokens (no `unmeasured`), `Total reserved estimate:` within 10 percent
+of FT.1's measured allocated plus the 2.50 GB overhead, and `[OK] Fits:
+reserved estimate <n> GB within budget 31.00 GB (32 GB minus safety margin)`,
+exit 0. A `[WARN] Activations unmeasured` line here means the `Record:` line
+FT.1 printed was not recorded in `training/calculator/measured.py`. The
+second prints the same rate times 131,072 tokens, `[ERROR] Does not fit:
+reserved estimate <m> GB exceeds budget 31.00 GB`, the two `Solution:` lines,
+and the command exits 1, which `make` reports as
+`make: *** [make/training.mk:50: memfit] Error 1` and `exit=2`. Record `<n>`
+here. The hardware mirror is `tests/hardware/test_memfit_sft.py` in the
+`hw_smoke` tier: the same two verdicts through the calculator the CLI and
+`train-sft`'s advisory share, on the staged base's `config.json` and
+checkpoint header, skipped until the rate is on file.
 
-Observed:
+Superseded observation (2026-09-19, under the analytic activation model the
+reduction replaced, kept verbatim as the record of what that model said:
+21.46 GB reserved at micro-batch 4, a batch solve of 6, no measurement
+behind either figure):
 
 ```
 ➜  ai-experiments git:(SFT-verification) ✗ set -o pipefail
@@ -570,131 +736,6 @@ Total reserved estimate:  21.46 GB
 exit=0
 ```
 
-Recorded 2026-09-19: `<n>` is 21.46 GB reserved (18.96 GB allocated) at
-micro-batch 4, budget 31.00 GB; the batch solve gives 6. The second run's
-`exit=2` is `make` wrapping the command's 1, as the signal says.
-
-Status: VERIFIED (2026-09-19)
-
-## FT.2 Prepare the smoke SFT dataset
-
-Implementation: `training/commands/prepare_sft.py`, `training/data/sft.py`,
-`training/data/tokenizer.py`, `training/models/families.py`
-(`CHAT_TEMPLATE_VERSION`, pinned against the harness renderer by
-`schemas/chat_template.json`).
-
-The prepared directory is the `sft.dataset` the smoke recipe names. Existing
-code; depends on FT.0.
-
-Command:
-
-```bash
-make prepare-sft ARGS="--source HuggingFaceH4/ultrachat_200k --split train_sft \
-    --tokenizer /mnt/ai-data/models/hf/gemma-4-E2B --model-type gemma4 \
-    --max-seq-len 2048 --out /mnt/ai-data/training/datasets/sft/ultrachat-e2b"
-cat /mnt/ai-data/training/datasets/sft/ultrachat-e2b/manifest.json
-```
-
-Expected signal: exit 0; the output directory holds the prepared examples
-plus `manifest.json` recording the tokenizer hash, `chat_template_version`
-2, the split sizes and the supervised-token counts (assistant content plus
-the end-of-turn token only); a source record carrying a raw reasoning marker
-is refused, not masked.
-
-Observed:
-
-```
-```
-
-Status: PENDING
-
-## FT.13 Recipe gates: preflight and validate
-
-Implementation: `training/commands/preflight.py`,
-`training/commands/validate_recipe.py`, `training/recipes/validate.py`,
-`training/export/preflight.py` (`resolve_base_identity`, which preflight
-calls with `local_files_only`).
-
-The two gates a run passes before the GPU is committed, each run twice:
-once to pass and once to refuse, since a gate whose refusal has never been
-seen is not known to gate. The first `train-preflight` runs the recipe as
-committed and is the KB-79 reproduction: it must fail, and its failure is
-what confirms the ledger row. Added 2026-09-18; depends on FT.0, FT.12
-and FT.2 (the dataset the second preflight must find).
-
-```bash
-set -o pipefail
-cd ~/workspace/ai-experiments
-make train-preflight CONFIG=training/recipes/reference/sft-qlora-e2b.yaml; echo "exit=$?"
-make train-preflight CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="model.hf.id=/app/models/hf/gemma-4-E2B"; echo "exit=$?"
-make train-validate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml; echo "exit=$?"
-make train-validate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="optimizer.lr=-1"; echo "exit=$?"
-```
-
-Expected signal: the committed recipe's preflight prints `[ERROR]
-Missing or unusable assets: 1` and one problem line, `- model.hf:` naming
-`google/gemma-4-E2B` (KB-79); then `Solution: stage the missing assets,
-then re-run preflight` and one remedy, `make train-download MODEL=<hub id>
-REVISION=<sha>` (which FT.0 already ran, and which cannot satisfy a hub
-id). The command exits 1, which `make` reports as `make: ***
-[make/training.mk:44: train-preflight] Error 1` and `exit=2`. A second
-problem line is a new finding, recorded on its own; a `- tokenizer.path:`
-line is KB-80 back, and a line naming `data.source` or a traceback out of
-`verify_shards` is KB-81 back. With the model override, and FT.2's dataset
-on disk, it exits 0 with `[OK] All referenced assets are present and
-verified` and no `shard` or `tokenizer` in its output; that run is what
-confirms KB-80 fixed. `train-validate` on the recipe prints `[OK] Schema:
-training/recipes/reference/sft-qlora-e2b.yaml loads as a typed recipe` and
-`[OK] Validation: run sft-qlora-e2b passes all cross-field invariants`,
-exit 0; with `optimizer.lr=-1` it prints `[ERROR] Recipe validation
-failed:` and `  - optimizer.lr: must be positive, got -1.0`, the command
-exits 1 and `make` reports `Error 1` and `exit=2`. A validate that exits 0
-on the negative learning rate is a gate that does not gate.
-
-Observed:
-
-```
-```
-
-Status: PENDING
-
-## FT.1 Calibrate the QLoRA recipe (KB-03)
-
-Implementation: `training/calculator/calibrate.py`,
-`training/models/model.py`, `training/models/peft_utils.py`,
-`training/cli.py` (`cmd_calibrate`).
-
-**Fix to confirm here** (details in [bugs/known-bugs.md](../bugs/known-bugs.md)):
-
-- KB-03 — `calibrate()` once built a scratch Llama model for every recipe, so
-  calibrating a `model.hf` or PEFT recipe measured a model other than the one
-  the estimate priced. The fix routes calibration through the shared
-  `build_model` and the PEFT wrap; this run on the QLoRA recipe is the
-  hardware evidence that closes the row.
-
-Calibrates the memory-fit calculator on the `model.hf` plus PEFT path, which
-the archived P0.3 scratch calibration does not exercise: NF4 base pricing,
-adapter gradients and optimizer state. It is also the first execution
-evidence for Gemma 4 on the workstation: the gated checkpoint at its pinned
-revision, transformers `gemma4` support, and bitsandbytes NF4 on Blackwell.
-Existing code; depends on FT.0.
-
-Command:
-
-```bash
-make train-calibrate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
-    ARGS="model.hf.id=/app/models/hf/gemma-4-E2B --out /mnt/ai-data/training/verify/calibrate-sft-e2b.json"
-```
-
-The `model.hf.id` override is KB-79 (see the preamble); without it the
-container cannot find the base. Depends on FT.0, FT.12 and FT.14.
-
-Expected signal: exit 0; the record reports the allocated estimate within
-the 10 percent bar (or the 128MiB floor), the reserved estimate covering the
-NVML peak, and no parameter-count or trainable-count drift warning. Drift
-beyond the bar is a calculator finding (candidates: NF4 constant pricing,
-paged optimizer states) to diagnose before touching calibrated constants.
-
 Observed:
 
 ```
@@ -708,12 +749,13 @@ Implementation: `training/commands/preflight.py`, `training/cli.py`
 (`cmd_memfit`, `cmd_calibrate`), `training/calculator/calibrate.py`,
 `training/recipes/reference/sft-qlora-gemma-e4b.yaml`.
 
-E2B and E4B are the two subjects this repository trains, and FT.13, FT.14
-and FT.1 run on E2B alone. The E4B recipe is the same QLoRA shape at 4096
-context and a larger base, which is a different point on the calculator:
-the 10 percent bar has not been checked there, and the recipe's own
-comment says so. Same three gates as the E2B entries, same KB-79
-override with E4B's staged directory.
+E2B and E4B are the two subjects this repository trains, and FT.13, FT.1
+and FT.14 run on E2B alone. The E4B recipe is the same QLoRA shape at 4096
+context and a larger base, which is a different profile
+(`gemma4_text/42x2560/qlora/ckpt`) with no rate on file: calibrate measures
+it first, the operator records it as FT.1 did, and memfit then prices the
+recipe. Same three gates as the E2B entries, same KB-79 override with E4B's
+staged directory.
 The recipe's `sft.dataset` is an E4B split nobody has prepared, so the
 block's first line prepares it as FT.2 did, at the recipe's 4096 context,
 when the directory is absent. Depends on the E4B download (I.5 and I.6 use
@@ -730,24 +772,30 @@ test -d /mnt/ai-data/training/datasets/sft/ultrachat-gemma-e4b || \
     --tokenizer /mnt/ai-data/models/hf/gemma-4-E4B --model-type gemma4 \
     --max-seq-len 4096 --out /mnt/ai-data/training/datasets/sft/ultrachat-gemma-e4b"
 make train-preflight CONFIG=$R ARGS="$O"; echo "exit=$?"
-make memfit CONFIG=$R ARGS="$O"; echo "exit=$?"
 make train-calibrate CONFIG=$R ARGS="$O --out /mnt/ai-data/training/verify/calibrate-sft-e4b.json"
 echo "exit=$?"
-python3 -c 'import json; r=json.load(open("/mnt/ai-data/training/verify/calibrate-sft-e4b.json")); print({k: r[k] for k in sorted(r) if "error" in k or "peak" in k or "fits" in k})'
+python3 -c 'import json; r=json.load(open("/mnt/ai-data/training/verify/calibrate-sft-e4b.json")); print({k: r[k] for k in sorted(r) if "error" in k or "peak" in k or "rate" in k or "static" in k})'
+```
+
+Then record the `Record:` line in `training/calculator/measured.py` as FT.1
+did, commit, and:
+
+```bash
+make memfit CONFIG=$R ARGS="$O"; echo "exit=$?"
 ```
 
 Expected signal: the prepare, when it runs, exits 0 and writes the
 manifest as FT.2's did (record it here); preflight exits 0 with `[OK] All
-referenced assets are present and verified`. `memfit` prints `[OK] Fits:` with
-the reserved estimate below the same budget FT.14 printed, and exit 0.
-`train-calibrate` exits 0 with the allocated estimate within the 10 percent
-bar (or the 128 MiB floor) and the reserved estimate covering the NVML peak,
-as FT.1's bar states; record the allocated and measured figures beside
-FT.1's, since the two points together are what say whether the calculator
-scales with the base rather than fitting one recipe. Drift beyond the bar
-on E4B alone, with E2B inside it, is a calculator finding about a term that
-grows with the base (the nf4 constant pricing, the PLE tables) and is filed
-before any constant is touched.
+referenced assets are present and verified`. `train-calibrate` exits 0 with
+the E4B parameter-count line matching the built model (or drifting by the
+E4B shared-KV residue alone, 18 layers of `k_proj`, `v_proj` and `k_norm`;
+KB-82), `Activation rate:` and the `Record:` line for
+`gemma4_text/42x2560/qlora/ckpt`, and `[INFO] Allocated error: not on
+file`. `memfit`, once the rate is on file, prints `[OK] Fits:` with the
+reserved estimate within 10 percent of the measured allocated plus 2.50 GB,
+and exit 0. Record both rates beside each other: E2B's and E4B's per-token
+figures are the two points that say whether activation cost grows with the
+base the way the geometry says it should.
 
 Observed:
 
@@ -801,8 +849,9 @@ The checkpoints sit directly under `<output_root>/<run.name>/checkpoints/`
 recipe snapshot and the run's sinks, not the weights.
 
 Expected signal, per run. The straight run prints `[RUN] Fine-tuning
-ft3-straight [trl]: 60 total steps`, then `[OK] Memory fit:` (the recipe
-fits without `--force`), then `[OK] Run complete: step 60 [trl]`, a `Final
+ft3-straight [trl]: 60 total steps`, then `[OK] Memory fit:` (the advisory
+line FT.14 verified; a `[WARN]` here is a finding, not a stop, since
+`train-sft` no longer refuses on it), then `[OK] Run complete: step 60 [trl]`, a `Final
 train loss:` line, a `Held-out loss:` line and exit 0; `checkpoint-30` and
 `checkpoint-60` each carry `meta.json` with `checkpoint_format: trl`,
 `adapter_only: true`, the base identity including the pinned

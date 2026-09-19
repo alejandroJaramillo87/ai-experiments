@@ -1,16 +1,17 @@
-"""FT.14, the memory-fit gate on the SFT recipe, as the hw_smoke tier runs it.
+"""FT.14, the memory-fit estimate on the SFT recipe, as the hw_smoke tier runs it.
 
 The fine-tuning runbook (docs/verification/training/fine-tuning-loop.md)
-runs `make memfit` three times on sft-qlora-e2b.yaml: the recipe as
-committed must fit, micro-batch 64 must not, and the batch solve must land
-between the two. This module holds the same estimate to the same three
-outcomes through the calculator the CLI and train-sft's refusal share
-(training/calculator/solve.py), so a change to the estimate that would
-flip FT.3's memory-fit refusal shows up at session start.
+runs `make memfit` twice on sft-qlora-e2b.yaml after FT.1 has recorded the
+recipe's measured activation rate: the recipe as committed must fit, and
+micro-batch 64 must not. This module holds the same two outcomes through the
+calculator the CLI and train-sft's advisory share
+(training/calculator/estimate.py), so a change to the static terms or to the
+recorded rate that would flip the verdict shows up at session start.
 
-CPU-only: the estimate reads config.json from the staged base, never the
-weights. It skips when the base is not staged (FT.0), because a size
-estimate of a model that is not on disk is not a hardware fact.
+CPU-only: the estimate reads config.json and the safetensors header from the
+staged base, never the weights. It skips when the base is not staged (FT.0)
+and when the profile has no rate on file (FT.1 not yet recorded), because
+an estimate of an unmeasured profile is a lower bound, not a fact to assert.
 """
 
 from __future__ import annotations
@@ -43,38 +44,39 @@ def _recipe(*overrides: str):
 
 
 @pytest.fixture(scope="module")
-def staged_base() -> str:
+def measured_recipe():
     if not os.path.isfile(os.path.join(BASE_DIR, "config.json")):
         pytest.skip(f"base not staged at {BASE_DIR} (FT.0)")
-    return BASE_DIR
+    from training.calculator.estimate import estimate
+
+    est = estimate(_recipe())
+    if est.rate is None:
+        pytest.skip(f"no activation rate on file for {est.profile} (FT.1)")
+    return est
 
 
-def test_recipe_fits_oversized_batch_does_not_and_solve_lands_between(staged_base):
-    from training.calculator.solve import GIB, VRAM_TOTAL_BYTES, estimate, solve
+def test_recipe_fits_and_the_oversized_batch_does_not(measured_recipe):
+    from training.calculator.estimate import VRAM_BUDGET_BYTES, estimate
 
-    fits = estimate(_recipe())
-    assert fits.fits, f"recipe estimate {fits.reserved_estimate / GIB:.2f} GB"
-    assert fits.reserved_estimate < VRAM_TOTAL_BYTES
-
+    assert measured_recipe.fits is True, (
+        f"recipe estimate {measured_recipe.reserved_estimate / (1 << 30):.2f} GB"
+    )
+    assert measured_recipe.reserved_estimate <= VRAM_BUDGET_BYTES
     oversized = estimate(_recipe(f"data.micro_batch={OVERSIZED_MICRO_BATCH}"))
-    assert not oversized.fits
-    assert oversized.reserved_estimate > fits.reserved_estimate
-
-    solved = solve(_recipe(), "batch")
-    assert solved is not None, "no micro-batch fits at the recipe's other settings"
-    recipe_batch = _recipe().data.micro_batch
-    assert recipe_batch <= solved.micro_batch < OVERSIZED_MICRO_BATCH
-    assert solved.fits
+    assert oversized.fits is False
+    assert oversized.rate == measured_recipe.rate
+    assert oversized.activations == measured_recipe.activations * (
+        OVERSIZED_MICRO_BATCH // measured_recipe.micro_batch
+    )
 
 
-def test_train_sft_refusal_is_the_same_estimate(staged_base):
-    """FT.3 relies on train-sft refusing what memfit refuses."""
+def test_train_sft_advisory_is_the_same_estimate(measured_recipe):
+    """FT.3 relies on train-sft printing what memfit prints, as a warning
+    that never refuses (2026-09-19)."""
     from training.tune.sft import check_memory_fit
 
-    proceed, message = check_memory_fit(_recipe(), force=False)
-    assert proceed, message
-    refused, message = check_memory_fit(
-        _recipe(f"data.micro_batch={OVERSIZED_MICRO_BATCH}"), force=False
-    )
-    assert not refused
-    assert "exceeds" in message
+    ok, message = check_memory_fit(_recipe())
+    assert ok, message
+    ok, message = check_memory_fit(_recipe(f"data.micro_batch={OVERSIZED_MICRO_BATCH}"))
+    assert not ok
+    assert "exceeds" in message and "proceeding" in message

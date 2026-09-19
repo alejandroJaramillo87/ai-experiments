@@ -70,6 +70,18 @@ RETIRED: dict[str, tuple[str, str]] = {
         "nothing",
         "the staging root it named is gone; see --staging-root",
     ),
+    # The memory-fit calculator was reduced on 2026-09-19: the analytic
+    # activation formula and the binary-search solve left, a measured rate per
+    # profile replaced them, and the module that held estimate() and solve()
+    # was renamed for what remains.
+    # The flag itself (--solve) is not in this table: FT.14 in the live
+    # fine-tuning runbook keeps its first pass verbatim as a superseded
+    # observation, and that paste names the flag; the argparse rejection is
+    # asserted by tests/training/test_calculator.py instead.
+    "training/calculator/solve.py": (
+        "training/calculator/estimate.py",
+        "solve() left with the analytic activation term it searched over; the module now holds estimate() and the calibrated constants",
+    ),
     "site/scripts/gen-cli-reference.sh": (
         "scripts/docs/gen_site_reference.py",
         "the site's reference generator moved from a bash script that pasted --help into a fenced block to a Python script beside the gate that checks its output, because the pages became a usage line plus one table per help section and that parse deserved a unit test under tests/docs/",
