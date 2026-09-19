@@ -21,13 +21,23 @@ both tiers share are in [../models/](../models/).
 
 | Document | Description |
 |----------|-------------|
+| [../sandbox/docker_training_overview.md](../sandbox/docker_training_overview.md) | The training container, its dependency source of truth, and the smoke test (D1) |
 | [data_pipeline.md](data_pipeline.md) | Filter, dedup, decontaminate, and shard the corpus (D2, extended by P2-D1) |
 | [tokenizer_training.md](tokenizer_training.md) | Byte-level BPE training for the from-scratch path only (D3) |
 | [memory_fit.md](memory_fit.md) | Pre-run VRAM estimation against the 32GB card (D4) |
+| [recipe_system.md](recipe_system.md) | The recipe schema, loader, validation, and run directory convention every consumer shares (D5) |
 | [tracking_checkpointing.md](tracking_checkpointing.md) | The reference loop, atomic resumable checkpoints, metric tracking (D6) |
 | [train_serve_roundtrip.md](train_serve_roundtrip.md) | Export, serve, and smoke-evaluate a trained model (D7) |
 | [heterogeneous_compute.md](heterogeneous_compute.md) | Prefetch loader, staging, and CPU affinity (D9) |
 | [operational_watchdogs.md](operational_watchdogs.md) | Abort-or-alert for unattended runs, and the hardware telemetry source (D10) |
+
+D8, FP8 enablement and the training benchmark harness, was never built: `precision.dtype`
+admits `bf16` only, and FP8 is deferred to a later rung as one measured change
+([training-scale-reference.md](training-scale-reference.md)). A benchmark harness, when it
+lands, adopts the shared report envelope in
+[../observability/report_schema.md](../observability/report_schema.md). The audit that
+established the state of every Phase 0 deliverable on 2026-09-19 is
+[investigations/phase0_completeness_audit_investigation.md](investigations/phase0_completeness_audit_investigation.md).
 
 ## Phase 1: fine-tuning
 
@@ -46,8 +56,11 @@ harness above, verified by
 [../verification/training/fine-tuning-loop.md](../verification/training/fine-tuning-loop.md)),
 continual pretraining (the Phase 2 pipeline, mixtures, schedule, replay buffer and
 offload, documented in their design records below), and training from scratch (the D6
-reference loop on the `pretrain-150m` and `pretrain-1b` recipes). Each gets its
-verification runbook when its first entry can be written. What comes after them, a model
+reference loop on the `pretrain-150m` and `pretrain-1b` recipes; the Phase 0 acceptance
+checks on the reference loop closed in
+[../verification/archive/from-scratch-loop.md](../verification/archive/from-scratch-loop.md)
+and are kept verified by `tests/hardware/test_from_scratch_loop.py`). The
+continual-pretraining runbook is written when its first entry can be. What comes after them, a model
 whose weights move as it reads, is recorded as a parked proposal,
 [continuous-learning-proposal.md](continuous-learning-proposal.md), with the design problems it has to clear first. Distillation
 and human-feedback training are out, for the reason that document states: neither makes a
@@ -77,6 +90,7 @@ pairing is not always one to one, and the gaps are listed rather than left blank
 |-----------------|-------------|---------------|
 | [tokenizer_training.md](tokenizer_training.md) | D3 | [d3_tokenizer_training_investigation.md](investigations/d3_tokenizer_training_investigation.md) |
 | [memory_fit.md](memory_fit.md) | D4 | [d4_memory_fit_investigation.md](investigations/d4_memory_fit_investigation.md) |
+| [recipe_system.md](recipe_system.md) | D5 | [d5_recipe_system_investigation.md](investigations/d5_recipe_system_investigation.md) |
 | [tracking_checkpointing.md](tracking_checkpointing.md) | D6 | [d6_tracking_checkpointing_investigation.md](investigations/d6_tracking_checkpointing_investigation.md) |
 | [train_serve_roundtrip.md](train_serve_roundtrip.md) | D7 | [d7_train_serve_investigation.md](investigations/d7_train_serve_investigation.md) |
 | [heterogeneous_compute.md](heterogeneous_compute.md) | D9 | [d9_heterogeneous_compute_investigation.md](investigations/d9_heterogeneous_compute_investigation.md) |
@@ -91,7 +105,6 @@ so read the record itself:
 
 | Design record | Deliverable |
 |---------------|-------------|
-| [d5_recipe_system_investigation.md](investigations/d5_recipe_system_investigation.md) | D5, the recipe system every other deliverable consumes |
 | [f1_sft_data_investigation.md](investigations/f1_sft_data_investigation.md) | F1, chat and instruction data preparation |
 | [f5_distillation_investigation.md](investigations/f5_distillation_investigation.md) | F5, the distillation harness; its implementation was removed on 2026-09-18 and the record is what remains |
 | [f6_adapter_merge_serve_investigation.md](investigations/f6_adapter_merge_serve_investigation.md) | F6, adapter merge and serve |
@@ -101,6 +114,7 @@ so read the record itself:
 | [p2_d4_replay_buffer_investigation.md](investigations/p2_d4_replay_buffer_investigation.md) | P2-D4, the replay buffer |
 | [p2_d5_optimizer_offload_investigation.md](investigations/p2_d5_optimizer_offload_investigation.md) | P2-D5, optimizer offload |
 | [unified_cli_investigation.md](investigations/unified_cli_investigation.md) | The `python -m training` and `python -m interp` CLI unification |
+| [phase0_completeness_audit_investigation.md](investigations/phase0_completeness_audit_investigation.md) | The 2026-09-19 audit of D1 through D10 against the design, the docs, the code, the tests, the runbooks, and the later tiers |
 
 Living documents with no design record: [gemma-4-training.md](gemma-4-training.md) and
 [training-scale-reference.md](training-scale-reference.md). Both are reference tables about

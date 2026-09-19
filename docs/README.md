@@ -243,7 +243,8 @@ is whoever is running the checks, and the human's pasted output is the evidence.
 |----------|----------|
 | [verification/README.md](verification/README.md) | The manual verification campaign: recording protocol and phase order |
 | [verification/archive/step-zero-environment.md](verification/archive/step-zero-environment.md) | Lockfile, images, smoke tests, quality gate; closed 2026-09-18 and frozen |
-| [verification/training/fine-tuning-loop.md](verification/training/fine-tuning-loop.md) | FT.0 through FT.11: the fine-tuning loop, proved through the harness and interp |
+| [verification/archive/from-scratch-loop.md](verification/archive/from-scratch-loop.md) | FS.0 through FS.8: the reference loop, D9 overlap and pinning, and the watchdog paths; closed 2026-09-19 and frozen, mirrored by `tests/hardware/test_from_scratch_loop.py` |
+| [verification/training/fine-tuning-loop.md](verification/training/fine-tuning-loop.md) | FT.0 through FT.16: the fine-tuning loop, proved through the harness and interp |
 | [verification/interp/interp.md](verification/interp/interp.md) | The interpretability tier |
 | [verification/observability/observability.md](verification/observability/observability.md) | OBS-V1 to OBS-V8: the observability stack on the workstation |
 | [verification/rust-harness/rust-harness.md](verification/rust-harness/rust-harness.md) | The rust-harness CPU backend on the real E4B checkpoint, and the RHX user-surface entries |

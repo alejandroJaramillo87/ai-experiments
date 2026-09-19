@@ -37,7 +37,9 @@ CPUAdam op with Zen 5 compiler flags at image-build time.
 The container installs the pinned environment from `uv.lock` (the core dependencies plus the
 `training` dependency group), not from hand-pinned Dockerfile lines. uv manages the cu130 torch
 index through `[tool.uv.sources]` and builds the CUDA-compiled packages through
-`[tool.uv.extra-build-dependencies]` (see `docs/os/python/uv-dependencies.md`). The core
+`[tool.uv.extra-build-dependencies]`, whose `match-runtime = true` entries build them
+against the locked torch rather than the newest one on PyPI (see
+`docs/os/python/uv-dependencies.md`). The core
 dependencies already provide torch, torchvision, transformers, datasets, accelerate, peft,
 deepspeed, bitsandbytes, sentencepiece, wandb, mlflow, and tensorboard; the `training` group adds
 only the libraries not already present: `trl`, `flash-attn`,
@@ -60,9 +62,10 @@ The build:
 3. Creates a `/opt/venv` virtual environment and syncs `uv.lock` into it with
    `uv sync --frozen --no-install-project --group training`.
 4. Pre-builds the DeepSpeed CPUAdam op with `DS_BUILD_CPU_ADAM=1 DS_BUILD_UTILS=1` and
-   `CFLAGS="-march=znver5"`, falling back to `-march=native` if the image gcc rejects znver5.
-   This front-loads the AVX-512 miscompilation risk (upstream DeepSpeed issue 7556) to build
-   time, where the smoke test catches it.
+   `CFLAGS="-march=native"`. The image gcc (13, on Ubuntu 24.04) has no `znver5` target, so
+   `native` is what resolves to Zen 5; the image is therefore specific to the CPU it was
+   built on. This front-loads the AVX-512 miscompilation risk (upstream DeepSpeed issue 7556)
+   to build time, where the smoke test catches it.
 5. Creates the non-root `appuser`, copies the `common/` and `training/` packages, and runs `python -m training smoke --build`
    so that a regression fails the build.
 
@@ -84,6 +87,10 @@ enforced). The six steps:
 5. deepspeed: load and step `DeepSpeedCPUAdam` (proves the pre-built Zen 5 op loads and runs).
 6. Write a versions manifest (packages, CUDA, driver, GPU name) to stdout and, on the
    workstation, to `/mnt/ai-data/training/runs/_smoke/versions.json`.
+
+Every branch of the command (build-mode skips, each failure name, the manifest) is covered
+in the sandbox by `/tests/training/test_smoke_cmd.py`, which stubs the CUDA packages; the
+entrypoint's environment echo and `TRAIN_LD_PRELOAD` slot by `/tests/training/test_entrypoint.py`.
 
 ## Compose integration
 
@@ -155,7 +162,7 @@ Everything else runs in `training` or `export`, with no network:
 |--------|--------|
 | `make train-build` | Build the image; the build fails if any smoke-test step fails |
 | `make train-shell` | Interactive shell in the container, GPU and training root attached |
-| `make train-smoke` | Run the eight-step smoke test on the workstation |
+| `make train-smoke` | Run the six-step smoke test on the workstation |
 | `make train-preflight` | Prove every asset a recipe references is already local |
 
 ## Validate compared with preflight
@@ -184,7 +191,7 @@ Training and inference must not run at the same time: one GPU consumer at a time
 - `docker/training/Dockerfile.training` — multi-stage-capable devel-base training image.
 - `docker/training/entrypoint.sh` — thin entrypoint: environment echo, optional LD_PRELOAD hook,
   `exec`.
-- `training/commands/smoke_test.py` — eight-step stack verification and versions manifest.
+- `training/commands/smoke_test.py` — six-step stack verification and versions manifest.
 - `docker-compose.training.yaml` — separate-file service definition with GPU reservation and the
   writable training root.
 - `pyproject.toml` — the `training` dependency group and the `flash-attn` build dependency.

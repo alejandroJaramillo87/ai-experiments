@@ -186,6 +186,10 @@ RETIRED: dict[str, tuple[str, str]] = {
         "docs/verification/archive/sandbox-executable.md",
         "closed at 2 of 2 and archived 2026-09-18",
     ),
+    "docs/verification/training/from-scratch-loop.md": (
+        "docs/verification/archive/from-scratch-loop.md",
+        "closed at 9 of 9 and archived 2026-09-19; tests/hardware/test_from_scratch_loop.py keeps FS.0 to FS.8 verified",
+    ),
     "docs/verification/rust-harness.md": (
         "docs/verification/rust-harness/rust-harness.md",
         "the same tier-folder move; see docs/verification/training-phase0.md above",

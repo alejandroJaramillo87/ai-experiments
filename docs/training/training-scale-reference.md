@@ -157,13 +157,25 @@ Two consequences for the training roadmap:
   training checkpoints to the Hugging Face layout the runtime loads,
   `config.json` plus a single `model.safetensors`. This is a training-tier
   artifact, not runtime work.
-- **Tokenizer.** The cheapest and safest choice is reusing the Gemma
-  tokenizer verbatim, which keeps the runtime's SentencePiece path and the
-  provenance fingerprints untouched. Note the tension with
-  [tokenizer_training.md](tokenizer_training.md), which plans byte-level
-  BPE tokenizers for the from-scratch path: a custom tokenizer is a
-  runtime change (new decode path) and a provenance change, and the choice
-  between the two is deliberately left open here.
+- **Tokenizer.** A from-scratch run uses the Gemma 4 tokenizer verbatim
+  unless a recorded decision says otherwise. The `pretrain-150m` and
+  `pretrain-1b` recipes already do (`vocab: 262144`, `tokenizer.path` at
+  the staged E2B tokenizer), and it is what keeps the harness chat
+  template, the special-literal allowlist in
+  `rust-harness/runtime/src/tokenizer.rs`, and the interp provenance
+  fingerprints unchanged. The cost is the vocabulary: 262,144 entries
+  dominate a sub-1B model's parameter count through the tied embedding.
+  The byte-level BPE tokenizers of [tokenizer_training.md](tokenizer_training.md)
+  are the opt-in for experiments that need a small vocabulary. The harness
+  loads any `tokenizer.json`, so segmentation and decode are not the
+  obstacle; the chat template is. A D3 artifact carries none of the Gemma
+  turn literals, so a model trained on it serves as a completion model
+  only, and giving it chat means assigning the Gemma literals to the
+  reserved ids at tokenizer training time, before the shards exist, since
+  any later mutation changes the hash the shards and recipe carry. Decide
+  before preparing the shards of the first run whose checkpoint the
+  harness will serve; the verification runbook's entries use a D3 artifact
+  only because it is the one on disk.
 
 ## Phase 5: continual learning
 

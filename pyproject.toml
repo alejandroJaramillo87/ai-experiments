@@ -230,10 +230,15 @@ explicit = true
 torch = { index = "pytorch-cu130" }
 torchvision = { index = "pytorch-cu130" }
 
-# deepspeed and flash-attn ship sdists whose setup.py imports torch at build time
+# deepspeed and flash-attn ship sdists whose setup.py imports torch at build time.
+# match-runtime pins the build-environment torch to the locked runtime torch. A bare
+# "torch" entry resolves independently of uv.lock, so uv's isolated build environment
+# takes the newest PyPI release: on 2026-09-19 that was 2.14.0 (CPU), whose headers do
+# not compile under flash-attn 2.8.3.post1 (`'sizes' is not a member of 'at::symint'`),
+# and an extension built against one torch loads against another.
 [tool.uv.extra-build-dependencies]
-deepspeed = ["torch"]
-flash-attn = ["torch"]
+deepspeed = [{ requirement = "torch", match-runtime = true }]
+flash-attn = [{ requirement = "torch", match-runtime = true }]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
