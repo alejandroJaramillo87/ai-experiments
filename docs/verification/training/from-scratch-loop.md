@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 0 verified, 0 blocked, 9 pending, of 9.**
+**Entries: 2 verified, 0 blocked, 7 pending, of 9.**
 
 The from-scratch loop is the third rung of the training tier: the D6 reference
 loop (`make train`) driving a scratch model over prepared shards, the rung that
@@ -111,11 +111,9 @@ passes all cross-field invariants` with exit 0. A validation failure naming
 `tokenizer: hash ... does not match shard manifest hash` means the shards and
 the tokenizer disagree, and the shard set is the one to regenerate.
 
-Partial record, 2026-09-19: every command below passed as expected, on the
-image FT.12 records the build of. The validate step is the rerun with `OVR`
-set; the first pass had the variable empty, as the intro now warns. The entry
-stays pending only because FT.12 is: its `uv lock --check` and `make
-train-smoke` lines are still owed, and this entry depends on it.
+Recorded 2026-09-19: every command below passed as expected, on the image
+FT.12 verified the same day. The validate step is the rerun with `OVR` set;
+the first pass had the variable empty, as the intro now warns.
 
 Observed:
 
@@ -189,7 +187,7 @@ the echoed `docker compose` line is a paste artifact of the terminal; the
 `[RUN] exec:` line the entrypoint prints is the argv the container ran, and it
 carries the space.
 
-Status: PENDING
+Status: VERIFIED (2026-09-19)
 
 ## FS.1 Reference loop end to end
 
@@ -232,12 +230,74 @@ the model id, the hash prefix, and the schedule object; the envelope check
 prints `envelope ok`. A `Final loss:` that is `nan` is not a pass of this
 entry, whatever the exit code.
 
+Recorded 2026-09-19. Two lines in the output are not in the expected signal
+and are not findings: the `Writing model shards` progress bars are
+`save_pretrained` writing each checkpoint, one per save, and `git_sha:
+"unknown"` in `meta.json` is the container reporting no `.git` in its
+mounts; the recipe hash is the provenance field the later entries key on.
+
 Observed:
 
 ```
+➜  ai-experiments git:(SFT-verification) ✗ set -o pipefail
+cd ~/workspace/ai-experiments
+make train CONFIG=training/recipes/reference/tiny-e2e.yaml \
+    ARGS="$OVR run.name=fs1 schedule.total_steps=20"
+echo "exit=$?"
+docker compose -f docker-compose.training.yaml run --rm training python -m training train --config training/recipes/reference/tiny-e2e.yaml data.source=/mnt/ai-data/training/shards/verify-49k tokenizer.path=/mnt/ai-data/training/tokenizers/verify-49k model.scratch.vocab=49152 run.name=fs1 schedule.total_steps=20
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up. 
+Container ai-experiments-training-run-66806fe3027b Creating 
+Container ai-experiments-training-run-66806fe3027b Created 
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training train --config training/recipes/reference/tiny-e2e.yaml data.source=/mnt/ai-data/training/shards/verify-49k tokenizer.path=/mnt/ai-data/training/tokenizers/verify-49k model.scratch.vocab=49152 run.name=fs1 schedule.total_steps=20
+[RUN] Training fs1: 20 total steps
+Writing model shards: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1/1 [00:00<00:00, 444.64it/s]
+Writing model shards: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1/1 [00:00<00:00, 680.12it/s]
+Writing model shards: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1/1 [00:00<00:00, 718.45it/s]
+Writing model shards: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1/1 [00:00<00:00, 660.31it/s]
+[OK] Run complete: step 20, 5,120 tokens seen
+Final loss: 10.359372
+Run directory: /mnt/ai-data/training/runs/fs1/2026-09-19_16-50-12
+Checkpoints:   /mnt/ai-data/training/runs/fs1/checkpoints
+exit=0
+➜  ai-experiments git:(SFT-verification) ✗ RUN=$(dirname "$(ls -t /mnt/ai-data/training/runs/fs1/*/metrics.jsonl | head -1)")
+ls "$RUN" /mnt/ai-data/training/runs/fs1/checkpoints/
+cat /mnt/ai-data/training/runs/fs1/checkpoints/step_000000020/meta.json
+head -1 "$RUN/metrics.jsonl" | python3 -c "import sys,json;r=json.load(sys.stdin);print(r['report'],r['tier'],r['model_id'],r['recipe_hash'][:12],r['schedule'])"
+/mnt/ai-data/training/runs/fs1/2026-09-19_16-50-12:
+config.yaml  metrics.jsonl
+
+/mnt/ai-data/training/runs/fs1/checkpoints/:
+latest  step_000000010  step_000000015  step_000000020
+{
+  "step": 20,
+  "tokens_seen": 5120,
+  "loss": 10.35937213897705,
+  "recipe_hash": "fef10d226755bf6fbd32f6d13659d05e0a52aa3db4f454b582eecb2437b60528",
+  "git_sha": "unknown",
+  "library_versions": {
+    "torch": "2.13.0+cu130",
+    "transformers": "5.13.1",
+    "deepspeed": "0.19.2"
+  },
+  "wall_clock": "2026-09-19T16:50:21+0000",
+  "checkpoint_format": "torch",
+  "optimizer": "adamw",
+  "attention_implementation": "flash_attention_2"
+}run_metrics pretrain scratch-2L-64d fef10d226755 {'type': 'cosine', 'warmup_steps': 2, 'total_steps': 20, 'decay_start_frac': 0.9, 'final_lr_frac': 0.0, 'decay_shape': '1-sqrt'}
+➜  ai-experiments git:(SFT-verification) ✗ uv run --no-sync python -c "from common.reports import validate_report; import json,sys; validate_report(json.loads(open(sys.argv[1]).readline())); print('envelope ok')" "$RUN/metrics.jsonl"
+
+envelope ok
 ```
 
-Status: PENDING
+Status: VERIFIED (2026-09-19)
 
 ## FS.2 Resume from latest through the CLI
 

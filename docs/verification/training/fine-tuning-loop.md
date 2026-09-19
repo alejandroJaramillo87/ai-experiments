@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 0 verified, 0 blocked, 16 pending, of 16.**
+**Entries: 1 verified, 0 blocked, 15 pending, of 16.**
 
 The fine-tuning loop is the first rung of the training tier and the loop the
 lab runs: train a Gemma 4 E2B with a known change, then recover the change
@@ -162,10 +162,11 @@ forward`, `bitsandbytes: 4-bit Linear forward`, `deepspeed: DeepSpeedCPUAdam
 step (pre-built op loaded)`, then `[OK]
 ALL SMOKE STEPS PASSED` with no `[SKIP]` line and exit 0.
 
-Partial record, 2026-09-19: `make train-build` reported below, from the
-second attempt after the flash-attn build fix (`c6ebcce`); the `uv lock
---check` and `make train-smoke` lines are still owed, so the entry stays
-pending.
+Recorded 2026-09-19 in two pastes: `make train-build` from the second attempt
+after the flash-attn build fix (`c6ebcce`), then `uv lock --check` and `make
+train-smoke` from the same tree. The two bitsandbytes warnings under the
+4-bit step are the library's own, about a deprecated torch check and the
+default fp32 compute dtype for an fp16 input, and the step still passes.
 
 Observed:
 
@@ -232,9 +233,71 @@ MAX_JOBS=4 NVCC_THREADS=2 docker compose -f docker-compose.training.yaml build
  ✔ Image ai-experiments-export   Built                                                                                                                                      2296.6s
  ✔ Image ai-experiments-training Built                                                                                                                                      2296.6s
 Training image built.
+➜  ai-experiments git:(SFT-verification) ✗ cd ~/workspace/ai-experiments
+uv lock --check; echo "lock exit=$?"
+make train-smoke; echo "exit=$?"
+Resolved 330 packages in 0.55ms
+lock exit=0
+docker compose -f docker-compose.training.yaml run --rm training python -m training smoke
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up. 
+Container ai-experiments-training-run-316a3c679247 Creating 
+Container ai-experiments-training-run-316a3c679247 Created 
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training smoke
+=== Training stack smoke test ===
+
+[OK] torch 2.13.0+cu130: CUDA available, NVIDIA GeForce RTX 5090 sm_120
+[OK] import transformers: 5.13.1
+[OK] import trl: 0.24.0
+[OK] import peft: 0.19.1
+[OK] import datasets: 5.0.0
+[OK] import accelerate: 1.14.0
+[OK] import hydra: 1.3.2
+[OK] import safetensors: 0.8.0
+[OK] import pynvml: 12.0.0
+[OK] flash-attn: flash_attn_func forward
+/opt/venv/lib/python3.12/site-packages/bitsandbytes/backends/cuda/ops.py:213: FutureWarning: _check_is_size will be removed in a future PyTorch release along with guard_size_oblivious.     Use _check(i >= 0) instead.
+  torch._check_is_size(blocksize)
+/opt/venv/lib/python3.12/site-packages/bitsandbytes/nn/modules.py:507: UserWarning: Input type into Linear4bit is torch.float16, but bnb_4bit_compute_dtype=torch.float32 (default). This will lead to slow inference or training speed.
+  warnings.warn(
+[OK] bitsandbytes: 4-bit Linear forward
+[OK] deepspeed: DeepSpeedCPUAdam step (pre-built op loaded)
+
+Versions manifest:
+{
+  "packages": {
+    "torch": "2.13.0+cu130",
+    "transformers": "5.13.1",
+    "trl": "0.24.0",
+    "peft": "0.19.1",
+    "datasets": "5.0.0",
+    "accelerate": "1.14.0",
+    "hydra": "1.3.2",
+    "safetensors": "0.8.0",
+    "pynvml": "12.0.0"
+  },
+  "cuda": "13.0",
+  "gpu": "NVIDIA GeForce RTX 5090",
+  "capability": [
+    12,
+    0
+  ],
+  "driver": "580.173.02"
+}
+[OK] manifest written: /mnt/ai-data/training/runs/_smoke/versions.json
+
+[OK] ALL SMOKE STEPS PASSED
+exit=0
 ```
 
-Status: PENDING
+Status: VERIFIED (2026-09-19)
 
 ## FT.13 Recipe gates: preflight and validate
 
