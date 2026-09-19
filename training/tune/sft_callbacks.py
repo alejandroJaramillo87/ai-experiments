@@ -270,7 +270,6 @@ def build_callbacks(
                 )
                 self._last_step, self._last_time = state.global_step, now
             if metrics:
-                metrics["train/backend"] = 1.0 if backend == "unsloth" else 0.0
                 tracker.log(metrics, state.global_step)
 
     class WatchdogCallback(TrainerCallback):

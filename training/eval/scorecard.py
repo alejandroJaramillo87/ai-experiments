@@ -1,8 +1,7 @@
 """Scorecard assembly and rendering (Phase 1 F7).
 
 scorecard.json is the machine-readable record comparative claims are checked
-against: a metadata block (models, model hashes, judge identity, pins, git
-SHA), then one section per evaluator with baseline, tuned, and delta.
+against: a metadata block (models, model hashes, pins, git SHA), then one section per evaluator with baseline, tuned, and delta.
 Assembly enforces the D7 confound rules mechanically: a scorecard whose two
 sides have mismatched thinking mode is refused, not written.
 
@@ -67,7 +66,7 @@ def check_matched(metadata: dict) -> None:
 def assemble_scorecard(metadata: dict, sections: dict) -> dict:
     """Validated scorecard dict from the metadata block and evaluator sections.
 
-    sections maps evaluator name (holdout/lmeval/judge) to its result block;
+    sections maps evaluator name (holdout/lmeval) to its result block;
     absent evaluators are recorded as skipped so a partial run yields a
     partial scorecard that says so.
     """
@@ -75,7 +74,7 @@ def assemble_scorecard(metadata: dict, sections: dict) -> dict:
         raise ScorecardError("No evaluator sections; nothing to score")
     check_matched(metadata)
     evaluators = {}
-    for name in ("holdout", "lmeval", "judge"):
+    for name in ("holdout", "lmeval"):
         evaluators[name] = sections.get(name) or {"skipped": True}
     return {
         "schema_version": SCHEMA_VERSION,
@@ -112,15 +111,6 @@ def render_markdown(scorecard: dict) -> str:
             f"| {_fmt((info.get('model_hash') or '')[:12] or None)} "
             f"| {_fmt(info.get('thinking_mode'))} |"
         )
-    judge_meta = meta.get("judge")
-    if judge_meta:
-        lines += [
-            "",
-            f"Judge: {_fmt(judge_meta.get('model'))} "
-            f"on {_fmt(judge_meta.get('service'))}, "
-            f"prompt set sha256 {_fmt(judge_meta.get('prompts_sha256'))}",
-        ]
-
     lines += [
         "",
         "| Evaluator | Metric | Baseline | Tuned | Delta | Improved |",
@@ -152,25 +142,5 @@ def render_markdown(scorecard: dict) -> str:
                 f"| {_fmt(section.get('delta'))} | {_fmt(section.get('improved'))} |"
             )
 
-    judge = evaluators["judge"]
-    if judge.get("skipped"):
-        lines.append("| judge | - | skipped | | | |")
-    else:
-        win_rate = judge.get("win_rate")
-        lines.append(
-            f"| judge | win rate | - | {_fmt(win_rate)} | - | "
-            f"{_fmt(None if win_rate is None else win_rate > 0.5)} |"
-        )
-        lines.append(
-            f"| judge | wins/losses/ties | {judge.get('baseline_wins')} "
-            f"| {judge.get('tuned_wins')} | {judge.get('ties')} | - |"
-        )
-        if judge.get("malformed") or judge.get("errors"):
-            lines += [
-                "",
-                f"Judge exceptions: {judge.get('malformed', 0)} "
-                f"malformed verdicts, {judge.get('errors', 0)} "
-                "request errors (excluded from the win rate).",
-            ]
     lines.append("")
     return "\n".join(lines)

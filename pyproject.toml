@@ -183,13 +183,6 @@ interp = [
 # Tracks the same majors as the interp tier so the two do not diverge.
 training = [
     "trl==0.24.0",
-    # unsloth (the optional F3 SFT throughput backend, sft.backend=unsloth) is NOT pinned:
-    # it caps transformers<=5.5.0, datasets<4.4.0, and torch<2.11.0, all below the core
-    # pins, and no release (through the latest 2026.7.3) lifts them. Unlike repeng/datatrove
-    # it cannot be isolated out-of-process (it patches transformers/torch inside the training
-    # run), so it is dropped rather than isolated. The default and fallback backend is trl
-    # (schema.py SftConfig.backend default) — a complete TRL SFTTrainer path that needs no
-    # unsloth; sft.backend=unsloth requires a separately built venv on a compatible stack.
     "liger-kernel==0.6.2",
     "torchao==0.14.0",
     "flash-attn==2.8.3.post1",
@@ -316,7 +309,6 @@ module = [
     "torchao.*",
     "transformers.*",
     "trl.*",
-    "unsloth.*",
     "wandb.*",
     "xxhash.*",
 ]

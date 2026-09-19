@@ -36,8 +36,6 @@ sft:
   # --tokenizer google/gemma-4-E4B --model-type gemma4 --max-seq-len 4096
   # --out /mnt/ai-data/training/datasets/sft/ultrachat-gemma-e4b"
   dataset: /mnt/ai-data/training/datasets/sft/ultrachat-gemma-e4b
-  # trl is the default and the fallback: switch back to it if Unsloth kernel
-  # support for Gemma 4 PLE proves broken (unsloth is opt-in, F3 decision 2).
   backend: trl
   packing: true       # pack short chats into full seq_len sequences
   eval_steps: 100     # held-out loss cadence for the F7 curve

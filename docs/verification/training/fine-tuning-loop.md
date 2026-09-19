@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 0 verified, 0 blocked, 15 pending, of 15.**
+**Entries: 0 verified, 0 blocked, 16 pending, of 16.**
 
 The fine-tuning loop is the first rung of the training tier and the loop the
 lab runs: train a Gemma 4 E2B with a known change, then recover the change
@@ -37,7 +37,8 @@ builds what it verifies:
   `eval-ft` judge phase and the organism verifier onto the harness for FT.6
   and FT.7, and added the `hw_full` hardware test FT.11 runs. Every command
   below names a verb, flag or make target that exists on its branch.
-- **The hardware campaign** (the third session) executes FT.0 through FT.14
+- **The hardware campaign** (the third session) executes FT.0 through FT.16
+  (FT.15 was removed with scorecard promotion on 2026-09-19)
   in the section order below and records the output.
 - **The coverage audit** (2026-09-18) checked every entry against
   `make/training.mk`, the two compose files and the CLI parsers, and added
@@ -74,11 +75,12 @@ or inference service the entry does not name is active.
 - [FT.13 Recipe gates: preflight and validate](#ft13-recipe-gates-preflight-and-validate)
 - [FT.14 Memory fit: fits, does not fit, solve](#ft14-memory-fit-fits-does-not-fit-solve)
 - [FT.1 Calibrate the QLoRA recipe (KB-03)](#ft1-calibrate-the-qlora-recipe-kb-03)
+- [FT.16 The E4B recipe: preflight, fit and calibration](#ft16-the-e4b-recipe-preflight-fit-and-calibration)
 - [FT.2 Prepare the smoke SFT dataset](#ft2-prepare-the-smoke-sft-dataset)
 - [FT.3 Train, interrupt, resume](#ft3-train-interrupt-resume)
 - [FT.4 Export the merged HF directory and load it in the harness](#ft4-export-the-merged-hf-directory-and-load-it-in-the-harness)
 - [FT.5 Held-out loss and lm-eval on base and merged](#ft5-held-out-loss-and-lm-eval-on-base-and-merged)
-- [FT.6 eval-ft with the subject on the harness](#ft6-eval-ft-with-the-subject-on-the-harness)
+- [FT.6 eval-ft with both sides identified](#ft6-eval-ft-with-both-sides-identified)
 - [FT.7 Organisms: null and taboo](#ft7-organisms-null-and-taboo)
 - [FT.8 Activation capture on base and organism](#ft8-activation-capture-on-base-and-organism)
 - [FT.9 Probe train, export, and score in the harness](#ft9-probe-train-export-and-score-in-the-harness)
@@ -155,9 +157,7 @@ Dockerfile's `--frozen` sync instead); the build ends `Training image
 built.` with exit 0; the smoke prints `[OK]` for every step, among them the
 torch line naming the RTX 5090 at sm_120, `flash-attn: flash_attn_func
 forward`, `bitsandbytes: 4-bit Linear forward`, `deepspeed: DeepSpeedCPUAdam
-step (pre-built op loaded)`, `torchao: convert_to_float8_training
-forward+backward`, and `import unsloth:` (a `[WARN] unsloth unavailable`
-line is a finding, since the F3 backend option depends on it), then `[OK]
+step (pre-built op loaded)`, then `[OK]
 ALL SMOKE STEPS PASSED` with no `[SKIP]` line and exit 0.
 
 Observed:
@@ -283,6 +283,54 @@ the 10 percent bar (or the 128MiB floor), the reserved estimate covering the
 NVML peak, and no parameter-count or trainable-count drift warning. Drift
 beyond the bar is a calculator finding (candidates: NF4 constant pricing,
 paged optimizer states) to diagnose before touching calibrated constants.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+## FT.16 The E4B recipe: preflight, fit and calibration
+
+Implementation: `training/commands/preflight.py`, `training/cli.py`
+(`cmd_memfit`, `cmd_calibrate`), `training/calculator/calibrate.py`,
+`training/recipes/reference/sft-qlora-gemma-e4b.yaml`.
+
+E2B and E4B are the two subjects this repository trains, and FT.13, FT.14
+and FT.1 run on E2B alone. The E4B recipe is the same QLoRA shape at 4096
+context and a larger base, which is a different point on the calculator:
+the 10 percent bar has not been checked there, and the recipe's own
+comment says so. Same three gates as the E2B entries, same KB-79 override,
+with E4B's staged directory. Depends on the E4B download (I.5 and I.6 use
+`/app/models/hf/gemma-4-E4B`, so it is staged) and on FT.12.
+
+```bash
+set -o pipefail
+cd ~/workspace/ai-experiments
+R=training/recipes/reference/sft-qlora-gemma-e4b.yaml
+O=model.hf.id=/app/models/hf/gemma-4-E4B
+make train-preflight CONFIG=$R ARGS="$O"; echo "exit=$?"
+make memfit CONFIG=$R ARGS="$O"; echo "exit=$?"
+make train-calibrate CONFIG=$R ARGS="$O --out /mnt/ai-data/training/verify/calibrate-sft-e4b.json"
+echo "exit=$?"
+python3 -c 'import json; r=json.load(open("/mnt/ai-data/training/verify/calibrate-sft-e4b.json")); print({k: r[k] for k in sorted(r) if "error" in k or "peak" in k or "fits" in k})'
+```
+
+Expected signal: preflight exits 0 with `[OK] All referenced assets are
+present and verified` (a `sft.dataset` problem means the E4B split named in
+the recipe has not been prepared; prepare it as FT.2 did with
+`--tokenizer /mnt/ai-data/models/hf/gemma-4-E4B --max-seq-len 4096` and the
+recipe's `--out`, and record that here). `memfit` prints `[OK] Fits:` with
+the reserved estimate below the same budget FT.14 printed, and exit 0.
+`train-calibrate` exits 0 with the allocated estimate within the 10 percent
+bar (or the 128 MiB floor) and the reserved estimate covering the NVML peak,
+as FT.1's bar states; record the allocated and measured figures beside
+FT.1's, since the two points together are what say whether the calculator
+scales with the base rather than fitting one recipe. Drift beyond the bar
+on E4B alone, with E2B inside it, is a calculator finding about a term that
+grows with the base (the nf4 constant pricing, the PLE tables) and is filed
+before any constant is touched.
 
 Observed:
 
@@ -496,14 +544,12 @@ Observed:
 
 Status: PENDING
 
-## FT.6 eval-ft with the subject on the harness
+## FT.6 eval-ft with both sides identified
 
-Implementation: `training/commands/eval_ft.py` (`phase_serving`),
-`training/eval/runner.py` (`hf_identity`, `judge_identity`),
-`training/eval/scorecard.py`, `training/eval/judge.py`,
-`training/eval/generate.py`, `common/serving.py` (the `harness` service on
-port 8005 and `llama-cpu` on 8001). Built by the exporter PR; depends on FT.4
-(the subject) and FT.5 (the container evaluators the same run repeats).
+Implementation: `training/commands/eval_ft.py` (`container_model`,
+`phase_container`), `training/eval/runner.py` (`hf_identity`,
+`run_container_phase`), `training/eval/scorecard.py`. Depends on FT.4 (the
+subject) and FT.5 (the container evaluators the same run repeats).
 
 **Fix to confirm here** (details in [bugs/known-bugs.md](../bugs/known-bugs.md)):
 
@@ -514,48 +560,40 @@ port 8005 and `llama-cpu` on 8001). Built by the exporter PR; depends on FT.4
   `training/commands/eval_ft.py` now translates it; the `[RUN]
   holdout/base: /app/models/hf/gemma-4-E2B` line below is the evidence.
 
-The judge is the GGUF `llama-cpu` serves by default: `LLAMA_ZEN5_MODEL` in
-`.env` names it, and `--judge-gguf` takes that path in either spelling
-(`/app/models/...` or `/mnt/ai-data/models/...`); `grep LLAMA_ZEN5_MODEL
-.env` before running.
-
 Both compared sides are HF directories under `/mnt/ai-data/models/`: the base
 as FT.0 staged it and the merged directory as FT.4 wrote it. `eval-ft`
 identifies each by `model_hash` (read from FT.4's manifest for the tuned
-side, computed for the base) and serves each in turn on `harness-serve`,
-recreating the service with `HARNESS_MODEL` set and restoring it afterwards;
-the judge is a published GGUF on `llama-cpu`, the one GGUF this loop names.
-The harness-served subject is the reading this entry pins.
+side, computed for the base) and runs the two container evaluators on each.
+A model-as-judge evaluator existed until 2026-09-19 and was removed: it
+measured preference, and the harness-serving check it doubled as is FT.4's.
+What this entry pins beyond FT.5 is the identity block: a scorecard that
+names the exact weights on each side.
 
-Command (host tool; the harness image built by `make harness-build`; the
-container evaluators run first with inference down, then the serving phase;
-nothing is started by hand, the tool swaps `harness-serve` itself):
+Command (host tool; inference down; the tool runs the container phases
+itself):
 
 ```bash
 make eval-ft ARGS="--base /mnt/ai-data/models/hf/gemma-4-E2B \
     --tuned /mnt/ai-data/models/trained/ft3-straight/hf \
     --dataset /mnt/ai-data/training/datasets/sft/ultrachat-e2b --lmeval-limit 20 \
-    --judge-gguf /app/models/<judge>.gguf --judge-service llama-cpu \
     --name ft6"
-grep -E '"model_hash"|"thinking_mode"' /mnt/ai-data/training/eval/ft6_*/scorecard.json
+echo "exit=$?"
+grep -E '"model_hash"|"thinking_mode"|"checkpoint"' /mnt/ai-data/training/eval/ft6_*/scorecard.json
+cat /mnt/ai-data/training/eval/ft6_*/scorecard.md
 ```
 
 Expected signal: exit 0; the container phases print `[RUN] holdout/base:
 /app/models/hf/gemma-4-E2B` and `[RUN] holdout/tuned:
 /app/models/trained/ft3-straight/hf` (the container spelling, KB-78) and
 `[OK] holdout/<side>: loss <n>` for each, with the tuned loss at or below the
-base's as FT.5 found; the serving phase
-prints `[OK] Preflight: baseline <12 hex>, tuned <12 hex>`, then for each
-side `[RUN] generate/<side>: serving /app/models/... on harness` and
-`[OK] harness healthy after N.Ns`, then the judge swap onto `llama-cpu`, the
-judgments, `[RUN] Restoring previous harness state` and `[OK] harness
-restored` (and the same for `llama-cpu`); the run directory holds
-`scorecard.json` (shared report envelope, `kind: scorecard`) and
-`scorecard.md`; the scorecard's metadata records `thinking_mode: off` on both
-sides, the base's `model_hash` equal to the FT.0 digest and the tuned side's
-equal to FT.4's manifest, and the rendered table shows the two hash prefixes;
-the services end in their pre-run state. An interrupted run resumes from its
-phase records.
+base's as FT.5 found, then one `[OK] lmeval/<task>: <a> -> <b>` per pinned
+task; the run directory holds `scorecard.json` (shared report envelope,
+`kind: scorecard`) and `scorecard.md`; the scorecard's metadata records
+`thinking_mode: off` on both sides, `checkpoint` as each side's container
+path, the base's `model_hash` equal to the FT.0 digest and the tuned side's
+equal to FT.4's manifest, and the rendered table shows the two hash
+prefixes. An interrupted run resumes from its phase records (`[SKIP]
+holdout/<side>: record exists (resume)`).
 
 Observed:
 

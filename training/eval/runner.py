@@ -1,18 +1,14 @@
 """Host-side phase orchestration for the F7 runner.
 
-The runner (training/commands/eval_ft.py) sequences four phases while staying
-honest about the concurrency policy: the in-process evaluators (holdout,
-lmeval) run inside the training container with inference down; generation
-and judging run against the serving stack with training idle. This module
-holds the testable pieces — checkpoint identity, container-phase invocation,
-resumable judging, metadata assembly — with all serving I/O injected or
-delegated to training.serving.
+The runner (training/commands/eval_ft.py) runs the two in-process
+evaluators (holdout, lmeval) inside the training container with inference
+down. This module holds the testable pieces — checkpoint identity,
+container-phase invocation, section assembly — with the container call
+delegated to docker compose.
 
 Identity: a compared side is an HF checkpoint directory and is identified by
 model_hash, the sha256 of its model.safetensors, read from the export
-manifest beside it when there is one and computed otherwise. The judge is a
-published GGUF and is identified by path and storage type; the only GGUF
-this runner names is that one.
+manifest beside it when there is one and computed otherwise.
 
 Host-side, stdlib-only.
 """
@@ -24,14 +20,9 @@ import os
 import subprocess
 
 from training import serving
-from training.eval import judge as judge_mod
-from training.serving import quant_from_name
 
 TRAIN_COMPOSE = serving.TRAIN_COMPOSE
 DEFAULT_RUN_ROOT = "/mnt/ai-data/training/eval"
-
-# Judge sampling: deterministic verdicts, room for a short rationale
-JUDGE_SAMPLING = {"temperature": 0, "max_tokens": 512}
 
 
 class EvalRunError(RuntimeError):
@@ -107,19 +98,6 @@ def hf_identity(model: str) -> dict:
     }
 
 
-def judge_identity(model: str) -> dict:
-    """Identity block for the judge: a published GGUF, named by path and
-    storage type. Nothing hashes it; a judge is not a compared side."""
-    container_path, host_path = serving.model_paths(model)
-    if not os.path.isfile(host_path):
-        raise EvalRunError(f"Judge GGUF not found on host: {host_path}")
-    return {
-        "model": container_path,
-        "host_path": host_path,
-        "quant_type": quant_from_name(host_path),
-    }
-
-
 def run_container_phase(
     subcommand: str, phase_args: list[str], service: str = "training"
 ) -> None:
@@ -149,72 +127,6 @@ def run_container_phase(
             f"Container phase failed ({proc.returncode}): "
             f"python -m training {subcommand}"
         )
-
-
-def load_judgments(path: str) -> dict[tuple, dict]:
-    """Existing judgment records keyed by (prompt_id, first side)."""
-    from training.eval.generate import load_resume_jsonl
-
-    return {
-        (record["prompt_id"], record["first"]): record
-        for record in load_resume_jsonl(path)
-    }
-
-
-def run_judgments(
-    complete,
-    prompts_by_id: dict[str, dict],
-    responses: dict[str, dict[str, dict]],
-    out_path: str,
-    progress=None,
-) -> list[dict]:
-    """Judge every position-swapped pair; resumable and error-preserving.
-
-    complete(messages) -> judge text (raises serving.ServingError on request
-    failure). responses maps side ("baseline"/"tuned") to per-prompt-id
-    response records. Pairs whose either side errored during generation are
-    recorded as error outcomes, never silently dropped.
-    """
-    pairs = judge_mod.build_pairs(list(prompts_by_id))
-    existing = load_judgments(out_path)
-    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
-    results = []
-    with open(out_path, "a") as f:
-        for pair in pairs:
-            key = (pair["prompt_id"], pair["first"])
-            prior = existing.get(key)
-            if prior is not None and prior["outcome"] != "error":
-                results.append(prior)
-                continue
-            record = dict(pair)
-            first = responses[pair["first"]].get(pair["prompt_id"], {})
-            second = responses[pair["second"]].get(pair["prompt_id"], {})
-            if "response" not in first or "response" not in second:
-                record.update(
-                    outcome="error", error="generation missing or failed for a side"
-                )
-            else:
-                messages = judge_mod.judge_messages(
-                    prompts_by_id[pair["prompt_id"]]["prompt"],
-                    first["response"],
-                    second["response"],
-                )
-                try:
-                    text = complete(messages)
-                    verdict = judge_mod.parse_verdict(text)
-                    record.update(
-                        outcome=judge_mod.resolve_pair(pair, verdict),
-                        verdict=verdict,
-                        rationale=text,
-                    )
-                except serving.ServingError as exc:
-                    record.update(outcome="error", error=str(exc))
-            f.write(json.dumps(record) + "\n")
-            f.flush()
-            results.append(record)
-            if progress is not None:
-                progress(record)
-    return results
 
 
 def holdout_section(base_record: dict, tuned_record: dict) -> dict:

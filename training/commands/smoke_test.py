@@ -2,8 +2,7 @@
 
 Verifies the training stack imports and that CUDA-compiled paths actually run on sm_120:
 flash-attn, bitsandbytes 4-bit, and the pre-built DeepSpeed CPUAdam op.
-The optional unsloth backend (Phase 1 F3) is probed warn-only. Emits a versions
-manifest for reproducibility.
+Emits a versions manifest for reproducibility.
 
 Two modes:
   --build   Run at image-build time. CUDA asserts degrade to [SKIP] on a GPU-less build host
@@ -166,28 +165,7 @@ def cmd(args: argparse.Namespace) -> int:
         out.line("  Note: AVX-512 miscompile on Zen 5 is upstream issue #7556")
         failures.append("deepspeed-cpuadam")
 
-    # Step 7: unsloth optional backend (Phase 1 F3 decision 2). Warn-only:
-    # unsloth is a throughput optimization documented as may-lag; its failure
-    # must not block the image. Gemma 4 PLE support is proven by the F3
-    # acceptance run, not here; this step proves the pin imports and exposes
-    # the FastLanguageModel entry point train-sft's unsloth backend calls.
-    try:
-        from unsloth import FastLanguageModel  # noqa: F401
-
-        packages["unsloth"] = _pkg_version("unsloth")
-        out.ok(f"import unsloth: {packages['unsloth']} (FastLanguageModel present)")
-    except Exception as exc:  # noqa: BLE001
-        packages["unsloth"] = "unavailable"
-        out.warn(f"unsloth unavailable: {exc}")
-        out.line(
-            "  Context: optional sft.backend=unsloth (F3); trl backend is unaffected"
-        )
-        out.line(
-            "  Solution: repin unsloth against the torch/transformers "
-            "pins, or keep sft.backend=trl"
-        )
-
-    # Step 8: versions manifest
+    # Step 7: versions manifest
     try:
         import torch
 

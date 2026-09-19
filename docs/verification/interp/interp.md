@@ -2,9 +2,9 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 8 verified, 2 blocked, 16 pending, of 26.**
+**Entries: 8 verified, 2 blocked, 17 pending, of 27.**
 
-The 26 entries are I.1 and I.3 through I.24 plus the interstitials I.9b
+The 27 entries are I.1 and I.3 through I.25 plus the interstitials I.9b
 ("Chunked-capture crash recovery"), I.9c and I.9d (the two reference
 captures). I.9b is numbered beside I.9 because it verifies crash recovery in
 the capture I.9 runs; I.9c and I.9d are the full-scale runs of that chain,
@@ -12,7 +12,7 @@ folded in from the separate runbook `reference-captures.md` on 2026-09-18.
 The sections are in the order the tier runs, not identifier order, since an
 identifier is assigned when its entry is added and never renumbered: the
 workbench (I.1, I.13, I.14, I.24, I.16, I.19), organisms (I.8), harvest and
-the captures with their preflights (I.9 through I.9d, I.18, I.23), SAE
+the captures with their preflights (I.9 through I.9d, I.25, I.18, I.23), SAE
 training and evaluation and then the collector (I.11, I.21, I.10, I.12),
 probes and the served
 log (I.5, I.22, I.15, I.6, I.7), and steering (I.3, I.4, I.20, I.17). I.8
@@ -38,7 +38,10 @@ reopened I.3, I.9 and I.11: each was VERIFIED with an Observed block that
 did not show every signal its expected signal claims, and the README's
 protocol says a claim without its observation is pending, not verified.
 Each says what remains. The same audit moved I.10 after I.21 in section
-order, because the collector deletes the shards I.11 and I.21 read. A tally
+order, because the collector deletes the shards I.11 and I.21 read. I.25
+was added on 2026-09-19: E4B is the second training subject, and its
+activation magnitudes had never been measured, which the precision policy
+requires before any fp16 harvest of it. A tally
 over this file counts `Status:` lines, not entry numbers.
 
 Three of the entries below are gate-backed rather than operator-run: their
@@ -96,6 +99,7 @@ nothing. An entry whose block runs on the host says so.
   - [I.9b Chunked-capture crash recovery (P4-D2, KB-58)](#i9b-chunked-capture-crash-recovery-p4-d2-kb-58)
   - [I.9c False-fact reference capture (P4-D2)](#i9c-false-fact-reference-capture-p4-d2)
   - [I.9d Gemma-2-2B calibration capture (P4-D2)](#i9d-gemma-2-2b-calibration-capture-p4-d2)
+- [I.25 Activation magnitude measurement for E4B](#i25-activation-magnitude-measurement-for-e4b)
 - [I.18 The harvest disk preflight refuses a capture that would breach the floor](#i18-the-harvest-disk-preflight-refuses-a-capture-that-would-breach-the-floor)
 - [I.23 The hook gate refuses a layer the checkpoint does not have](#i23-the-hook-gate-refuses-a-layer-the-checkpoint-does-not-have)
 - [I.11 SAE training and evaluation (P4-D3)](#i11-sae-training-and-evaluation-p4-d3)
@@ -692,6 +696,50 @@ make harvest RECIPE=training/recipes/interp/harvest-calibration-gemma2.yaml
 
 Expected signal: as I.9c, with `[OK] Harvest complete: 306708480 tokens/hook`
 and `manifest.json` recording `chunks: 20` and that written figure.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+## I.25 Activation magnitude measurement for E4B
+
+Implementation: `scripts/interp/activation_magnitude_probe.py`,
+`interp/harvest.py` (`ARROW_STORAGE_DTYPES`), the
+`harvest.dtype` field of every `training/recipes/interp/harvest-*.yaml`.
+
+The precision policy ([docs/precision/README.md](../../precision/README.md))
+lets a harvest store bf16 activations as fp16 only when the subject's
+magnitudes have been measured, because fp16 saturates at 65504 and the
+measurement does not transfer between models: E2B peaks at 127.5 and
+Gemma-2-2B at 2960. E4B is the second training subject and has no
+measurement, so until this entry closes any E4B harvest runs at `fp32`.
+The probe samples the corpus through every layer and exits non-zero under
+the 8x headroom bar, so it can gate a capture. Runs in the workbench
+container with inference down; costs one E4B load.
+
+```bash
+set -o pipefail
+cd ~/workspace/ai-experiments
+docker compose -f docker-compose.interp.yaml run --rm interp \
+    python scripts/interp/activation_magnitude_probe.py \
+    --model /app/models/hf/gemma-4-E4B --json-out /mnt/ai-data/interp/magnitude-e4b.json
+echo "exit=$?"
+python3 -c 'import json; r=json.load(open("/mnt/ai-data/interp/magnitude-e4b.json")); print(r["peak_abs"], max(r["peak_abs_by_layer"], key=r["peak_abs_by_layer"].get))'
+```
+
+Expected signal: `[INFO] /app/models/hf/gemma-4-E4B: d_model 2560, <n>
+layers, gemma4_text`, `[OK] sampled 64 sequences at context_len 1024`, the
+per-layer table, `[INFO] peak across all layers: <p>` and `[INFO] fp16
+ceiling: 65504 (<h>x headroom)`, then one of two verdicts, each a valid
+observation: `[OK] fp16 is safe for this subject: <h>x headroom clears the
+8x bar` with exit 0, or `[WARN] fp16 is NOT safe for this subject` with
+exit 1. The report's `peak_abs` and the layer that carries it are recorded
+here and in the precision docs' "measured so far" sentence, which then
+names three subjects. Whichever verdict, an E4B harvest recipe written
+afterwards sets `harvest.dtype` from this number, never from E2B's.
 
 Observed:
 

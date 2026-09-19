@@ -31,7 +31,7 @@ DEFAULT_OUTPUT_ROOT = "/mnt/ai-data/training/runs"
 
 OPTIMIZER_NAMES = ("adamw", "adamw8bit", "paged_adamw8bit", "cpu_adam")
 PEFT_METHODS = ("lora", "dora")
-SFT_BACKENDS = ("trl", "unsloth")
+SFT_BACKENDS = ("trl",)
 QUANTIZE_BASE_MODES = ("none", "nf4")
 COMPUTE_DTYPES = ("bf16", "fp16", "fp32")
 TARGET_MODULES_AUTO = "auto"
@@ -289,10 +289,9 @@ class SftConfig:
     (python -m training prepare-sft output) so runs are reproducible;
     loaders refuse a manifest-hash mismatch.
 
-    backend selects the F3 trainer path: trl (TRL SFTTrainer, the default)
-    or unsloth (FastLanguageModel model loading, everything else identical).
-    Unsloth is a throughput optimization whose failures are documented, not
-    release-blocking; every tracking run records the backend used.
+    backend names the F3 trainer path: trl, the TRL SFTTrainer. An unsloth
+    option existed until 2026-09-19 and left unverified; one backend is
+    what the runbook proves.
 
     packing concatenates multiple short examples into one seq_len sequence
     with position ids reset per example (attention separation); label masks

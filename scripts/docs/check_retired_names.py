@@ -700,6 +700,26 @@ RETIRED: dict[str, tuple[str, str]] = {
         "nothing; removed 2026-09-19 with the unbuilt fp8 run precision",
         "the precision field reserved for an FP8 path never built; precision.dtype is bf16 only",
     ),
+    "training/eval/judge.py": (
+        "nothing; the model-as-judge evaluator left eval-ft on 2026-09-19 (it measured preference, outside the training tier's progression)",
+        "pairwise judging",
+    ),
+    "training/eval/generate.py": (
+        "nothing; the model-as-judge evaluator left eval-ft on 2026-09-19 (it measured preference, outside the training tier's progression)",
+        "the harness generation phase the judge needed",
+    ),
+    "training/eval/judge_prompts.jsonl": (
+        "nothing; the model-as-judge evaluator left eval-ft on 2026-09-19 (it measured preference, outside the training tier's progression)",
+        "the judge prompt set",
+    ),
+    "--judge-gguf": (
+        "nothing; the model-as-judge evaluator left eval-ft on 2026-09-19 (it measured preference, outside the training tier's progression)",
+        "eval-ft's judge model flag",
+    ),
+    "--judge-service": (
+        "nothing; the model-as-judge evaluator left eval-ft on 2026-09-19 (it measured preference, outside the training tier's progression)",
+        "eval-ft's judge service flag",
+    ),
     "continual-qwen3.yaml": (
         "training/recipes/reference/continual-gemma4-e2b.yaml",
         "the Qwen3 twin of the ZeRO-Offload continual pretraining card",

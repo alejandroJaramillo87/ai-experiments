@@ -50,9 +50,6 @@ class TestSftValidation:
         with pytest.raises(RecipeValidationError, match="sft.backend"):
             validate(sft_recipe(["sft.backend=deepspeed"]))
 
-    def test_unsloth_backend_is_valid(self):
-        validate(sft_recipe(["sft.backend=unsloth"]))
-
     def test_eval_steps_must_be_non_negative(self):
         with pytest.raises(RecipeValidationError, match="sft.eval_steps"):
             validate(sft_recipe(["sft.eval_steps=-1"]))
