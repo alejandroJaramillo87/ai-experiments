@@ -147,8 +147,8 @@ Later phases assume the phases before them passed.
 
 1. [training/fine-tuning-loop.md](training/fine-tuning-loop.md) — the fine-tuning loop,
    FT.0 through FT.16 in section order: preconditions, the image and its
-   smoke, the recipe gates and memory fit, calibration on E2B and on E4B,
-   SFT with resume, the
+   smoke, memory fit, the smoke dataset, the recipe gates, calibration on E2B
+   and on E4B, SFT with resume, the
    merged HF export loaded by the harness, the evaluators, the null and taboo
    organisms, and capture, probe and steering
    on the organism. The training set
@@ -223,12 +223,14 @@ Before every verification session, run the hardware smoke tier (under five
 minutes, no model downloads, temporary-directory writes only):
 
 ```bash
-uv run pytest -m hw_smoke tests/hardware/
+uv run --no-sync pytest -m hw_smoke tests/hardware/
 ```
 
 Per phase, and after any environment change (driver, image, or lockfile),
-run the full tier:
+run the full tier. Both lines carry `--no-sync`: a plain `uv run` resyncs the
+default groups first, and on a host without a prebuilt `flash-attn` wheel that
+is a source build on every core (the from-scratch runbook's FS.3 attempt):
 
 ```bash
-uv run pytest -m hw_full tests/hardware/
+uv run --no-sync pytest -m hw_full tests/hardware/
 ```

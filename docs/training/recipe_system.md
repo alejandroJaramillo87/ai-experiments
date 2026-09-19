@@ -128,7 +128,11 @@ directory `make train-download` staged, as the fine-tuning runbook records under
 `make train-validate` answers "is this recipe coherent" and passes with no data present.
 `make train-preflight` answers "will this run start": it requires every shard directory,
 tokenizer, and model the recipe references to be present and verified, and reports every
-missing one. Run preflight immediately before a long job. The distinction is documented with
+missing one. An SFT recipe (`sft.enabled`) is checked against its prepared `sft.dataset`
+through the F1 loader, so the manifest kind, the chat-template version, the file hashes and
+the example counts are the trainer's own checks; its `data.source` is not read, because the
+reference recipes point it at the same directory and it is not a shard directory (KB-81 was
+preflight verifying it as one). Run preflight immediately before a long job. The distinction is documented with
 the container in
 [../sandbox/docker_training_overview.md](../sandbox/docker_training_overview.md#validate-compared-with-preflight).
 

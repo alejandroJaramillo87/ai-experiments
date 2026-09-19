@@ -97,6 +97,23 @@ def test_fine_tuning_loop(cuda, tmp_path, train_lock):
         )
     except ExportError as exc:
         pytest.skip(f"pinned base not in the local HF cache (FT.0): {exc}")
+    # KB-80: the recipe's tokenizer.path names a directory nothing stages.
+    # Fine-tuning reuses the base tokenizer, and the dataset hash check in
+    # build_dataset reads tokenizer.json from wherever tokenizer.path points,
+    # so point it at the snapshot the base resolved from (config.json and
+    # tokenizer.json sit side by side there, as they do in the staged
+    # directory FT.2 tokenized with).
+    recipe = load_recipe(
+        RECIPE,
+        [
+            "run.name=ft11-loop",
+            f"run.output_root={tmp_path / 'runs'}",
+            f"schedule.total_steps={TOTAL_STEPS}",
+            f"checkpoint.interval_steps={TOTAL_STEPS}",
+            "checkpoint.retain_last=1",
+            f"tokenizer.path={os.path.dirname(base.config_path)}",
+        ],
+    )
 
     # FT.3: one stamped checkpoint from the real trainer.
     result = train_sft(recipe)

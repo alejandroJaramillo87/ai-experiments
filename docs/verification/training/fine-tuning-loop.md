@@ -57,6 +57,22 @@ builds what it verifies:
   Second, the training container mounts the models tree at `/app/models`
   only, so a container-run command names that spelling (FT.5), and `eval-ft`
   now translates the host spelling itself (KB-78, FT.6).
+- **The re-check** (2026-09-19, before FT.14 ran) read every entry again
+  against the tree after the from-scratch loop closed, and found KB-79's
+  sibling, KB-80: every SFT recipe's `tokenizer.path` names
+  `/mnt/ai-data/training/tokenizers/gemma-4-e2b`, which nothing stages (a
+  fine-tune reuses the base tokenizer, and the staged HF directory holds
+  it). Preflight and `train-sft` both read that path, so every command that
+  loads the recipe in the container passes
+  `tokenizer.path=/app/models/hf/gemma-4-E2B` beside the KB-79 override
+  (E4B: `/app/models/hf/gemma-4-E4B`), and FT.13 reproduces both defects on
+  the recipe as committed. The recipes stay as committed until this runbook
+  has run; the fix is deferred, not declined. It also found that preflight
+  verified an SFT recipe's `data.source` as token shards and crashed on a
+  prepared dataset (KB-81, fixed in the tree, confirmed by FT.13), and
+  reordered the sections so no entry precedes what it depends on: FT.14 and
+  FT.2 before FT.13, since the preflight gate reads the dataset FT.2
+  prepares.
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training
@@ -76,11 +92,11 @@ or inference service the entry does not name is active.
 
 - [FT.0 Preconditions](#ft0-preconditions)
 - [FT.12 Training image and smoke](#ft12-training-image-and-smoke)
-- [FT.13 Recipe gates: preflight and validate](#ft13-recipe-gates-preflight-and-validate)
 - [FT.14 Memory fit: fits, does not fit, solve](#ft14-memory-fit-fits-does-not-fit-solve)
+- [FT.2 Prepare the smoke SFT dataset](#ft2-prepare-the-smoke-sft-dataset)
+- [FT.13 Recipe gates: preflight and validate](#ft13-recipe-gates-preflight-and-validate)
 - [FT.1 Calibrate the QLoRA recipe (KB-03)](#ft1-calibrate-the-qlora-recipe-kb-03)
 - [FT.16 The E4B recipe: preflight, fit and calibration](#ft16-the-e4b-recipe-preflight-fit-and-calibration)
-- [FT.2 Prepare the smoke SFT dataset](#ft2-prepare-the-smoke-sft-dataset)
 - [FT.3 Train, interrupt, resume](#ft3-train-interrupt-resume)
 - [FT.4 Export the merged HF directory and load it in the harness](#ft4-export-the-merged-hf-directory-and-load-it-in-the-harness)
 - [FT.5 Held-out loss and lm-eval on base and merged](#ft5-held-out-loss-and-lm-eval-on-base-and-merged)
@@ -409,50 +425,6 @@ exit=0
 
 Status: VERIFIED (2026-09-19)
 
-## FT.13 Recipe gates: preflight and validate
-
-Implementation: `training/commands/preflight.py`,
-`training/commands/validate_recipe.py`, `training/recipes/validate.py`,
-`training/export/preflight.py` (`resolve_base_identity`, which preflight
-calls with `local_files_only`).
-
-The two gates a run passes before the GPU is committed, each run twice:
-once to pass and once to refuse, since a gate whose refusal has never been
-seen is not known to gate. The first `train-preflight` runs the recipe as
-committed and is the KB-79 reproduction: it must fail, and its failure is
-what confirms the ledger row. Added 2026-09-18; depends on FT.0 and FT.2.
-
-```bash
-set -o pipefail
-cd ~/workspace/ai-experiments
-make train-preflight CONFIG=training/recipes/reference/sft-qlora-e2b.yaml; echo "exit=$?"
-make train-preflight CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="model.hf.id=/app/models/hf/gemma-4-E2B"; echo "exit=$?"
-make train-validate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml; echo "exit=$?"
-make train-validate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="optimizer.lr=-1"; echo "exit=$?"
-```
-
-Expected signal: the committed recipe's preflight exits 1 with `[ERROR]
-Missing or unusable assets: <n>`, one problem line beginning `- model.hf:`
-and naming `google/gemma-4-E2B`, then `Solution: stage the missing assets,
-then re-run preflight` and the remedy `make train-download MODEL=<hub id>
-REVISION=<sha>` (which FT.0 already ran, and which cannot satisfy a hub id:
-that is KB-79). Any other problem line is a second finding, recorded on its
-own. With the override it exits 0 with `[OK] All referenced assets are
-present and verified`. `train-validate` on the recipe prints
-`[OK] Schema: training/recipes/reference/sft-qlora-e2b.yaml loads as a typed
-recipe` and `[OK] Validation: run sft-qlora-e2b passes all cross-field
-invariants`, exit 0; with `optimizer.lr=-1` it prints `[ERROR] Recipe
-validation failed:` and `  - optimizer.lr: must be positive, got -1.0`, exit 1. A
-validate that exits 0 on the negative learning rate is a gate that does not
-gate.
-
-Observed:
-
-```
-```
-
-Status: PENDING
-
 ## FT.14 Memory fit: fits, does not fit, solve
 
 Implementation: `training/cli.py` (`cmd_memfit`, `_print_estimate_table`),
@@ -481,6 +453,87 @@ two `Solution:` lines, and exit 1. The third prints `[OK] Solve batch: max
 micro-batch <k> (reserved estimate <r> GB)` with `<k>` at least the recipe's
 4 and below 64, and exit 0. The budget `<b>` is the same figure in all three
 runs. Record `<n>` here: FT.1 compares the calibrated peak against it.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+## FT.2 Prepare the smoke SFT dataset
+
+Implementation: `training/commands/prepare_sft.py`, `training/data/sft.py`,
+`training/data/tokenizer.py`, `training/models/families.py`
+(`CHAT_TEMPLATE_VERSION`, pinned against the harness renderer by
+`schemas/chat_template.json`).
+
+The prepared directory is the `sft.dataset` the smoke recipe names. Existing
+code; depends on FT.0.
+
+Command:
+
+```bash
+make prepare-sft ARGS="--source HuggingFaceH4/ultrachat_200k --split train_sft \
+    --tokenizer /mnt/ai-data/models/hf/gemma-4-E2B --model-type gemma4 \
+    --max-seq-len 2048 --out /mnt/ai-data/training/datasets/sft/ultrachat-e2b"
+cat /mnt/ai-data/training/datasets/sft/ultrachat-e2b/manifest.json
+```
+
+Expected signal: exit 0; the output directory holds the prepared examples
+plus `manifest.json` recording the tokenizer hash, `chat_template_version`
+2, the split sizes and the supervised-token counts (assistant content plus
+the end-of-turn token only); a source record carrying a raw reasoning marker
+is refused, not masked.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+## FT.13 Recipe gates: preflight and validate
+
+Implementation: `training/commands/preflight.py`,
+`training/commands/validate_recipe.py`, `training/recipes/validate.py`,
+`training/export/preflight.py` (`resolve_base_identity`, which preflight
+calls with `local_files_only`).
+
+The two gates a run passes before the GPU is committed, each run twice:
+once to pass and once to refuse, since a gate whose refusal has never been
+seen is not known to gate. The first `train-preflight` runs the recipe as
+committed and is the KB-79 reproduction: it must fail, and its failure is
+what confirms the ledger row. Added 2026-09-18; depends on FT.0, FT.12
+and FT.2 (the dataset the second preflight must find).
+
+```bash
+set -o pipefail
+cd ~/workspace/ai-experiments
+make train-preflight CONFIG=training/recipes/reference/sft-qlora-e2b.yaml; echo "exit=$?"
+make train-preflight CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="model.hf.id=/app/models/hf/gemma-4-E2B tokenizer.path=/app/models/hf/gemma-4-E2B"; echo "exit=$?"
+make train-validate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml; echo "exit=$?"
+make train-validate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="optimizer.lr=-1"; echo "exit=$?"
+```
+
+Expected signal: the committed recipe's preflight exits 1 with `[ERROR]
+Missing or unusable assets: 2` and two problem lines: `- model.hf:` naming
+`google/gemma-4-E2B` (KB-79), and `- tokenizer.path: not found:
+/mnt/ai-data/training/tokenizers/gemma-4-e2b` (KB-80); then `Solution: stage
+the missing assets, then re-run preflight` and two remedies, `make
+train-download MODEL=<hub id> REVISION=<sha>` (which FT.0 already ran, and
+which cannot satisfy a hub id) and `make train-tokenizer ARGS=...` (which
+would train a tokenizer a fine-tune must not use). A third problem line is a
+new finding, recorded on its own; a line naming `data.source` or a
+traceback out of `verify_shards` is KB-81 back. With both overrides, and
+FT.2's dataset on disk, it exits 0 with `[OK] All referenced assets are
+present and verified` and no `shard` in its output. `train-validate` on the recipe prints
+`[OK] Schema: training/recipes/reference/sft-qlora-e2b.yaml loads as a typed
+recipe` and `[OK] Validation: run sft-qlora-e2b passes all cross-field
+invariants`, exit 0; with `optimizer.lr=-1` it prints `[ERROR] Recipe
+validation failed:` and `  - optimizer.lr: must be positive, got -1.0`, exit 1. A
+validate that exits 0 on the negative learning rate is a gate that does not
+gate.
 
 Observed:
 
@@ -543,15 +596,24 @@ E2B and E4B are the two subjects this repository trains, and FT.13, FT.14
 and FT.1 run on E2B alone. The E4B recipe is the same QLoRA shape at 4096
 context and a larger base, which is a different point on the calculator:
 the 10 percent bar has not been checked there, and the recipe's own
-comment says so. Same three gates as the E2B entries, same KB-79 override,
-with E4B's staged directory. Depends on the E4B download (I.5 and I.6 use
-`/app/models/hf/gemma-4-E4B`, so it is staged) and on FT.12.
+comment says so. Same three gates as the E2B entries, same KB-79 and KB-80
+overrides with E4B's staged directory (the recipe's `tokenizer.path` is the
+hub id `google/gemma-4-E4B`, which the offline container cannot resolve).
+The recipe's `sft.dataset` is an E4B split nobody has prepared, so the
+block's first line prepares it as FT.2 did, at the recipe's 4096 context,
+when the directory is absent. Depends on the E4B download (I.5 and I.6 use
+`/app/models/hf/gemma-4-E4B`, so it is staged), on FT.12, and on FT.2 for
+the shape of the prepare step.
 
 ```bash
 set -o pipefail
 cd ~/workspace/ai-experiments
 R=training/recipes/reference/sft-qlora-gemma-e4b.yaml
-O=model.hf.id=/app/models/hf/gemma-4-E4B
+O="model.hf.id=/app/models/hf/gemma-4-E4B tokenizer.path=/app/models/hf/gemma-4-E4B"
+test -d /mnt/ai-data/training/datasets/sft/ultrachat-gemma-e4b || \
+    make prepare-sft ARGS="--source HuggingFaceH4/ultrachat_200k --split train_sft \
+    --tokenizer /mnt/ai-data/models/hf/gemma-4-E4B --model-type gemma4 \
+    --max-seq-len 4096 --out /mnt/ai-data/training/datasets/sft/ultrachat-gemma-e4b"
 make train-preflight CONFIG=$R ARGS="$O"; echo "exit=$?"
 make memfit CONFIG=$R ARGS="$O"; echo "exit=$?"
 make train-calibrate CONFIG=$R ARGS="$O --out /mnt/ai-data/training/verify/calibrate-sft-e4b.json"
@@ -559,11 +621,9 @@ echo "exit=$?"
 python3 -c 'import json; r=json.load(open("/mnt/ai-data/training/verify/calibrate-sft-e4b.json")); print({k: r[k] for k in sorted(r) if "error" in k or "peak" in k or "fits" in k})'
 ```
 
-Expected signal: preflight exits 0 with `[OK] All referenced assets are
-present and verified` (a `sft.dataset` problem means the E4B split named in
-the recipe has not been prepared; prepare it as FT.2 did with
-`--tokenizer /mnt/ai-data/models/hf/gemma-4-E4B --max-seq-len 4096` and the
-recipe's `--out`, and record that here). `memfit` prints `[OK] Fits:` with
+Expected signal: the prepare, when it runs, exits 0 and writes the
+manifest as FT.2's did (record it here); preflight exits 0 with `[OK] All
+referenced assets are present and verified`. `memfit` prints `[OK] Fits:` with
 the reserved estimate below the same budget FT.14 printed, and exit 0.
 `train-calibrate` exits 0 with the allocated estimate within the 10 percent
 bar (or the 128 MiB floor) and the reserved estimate covering the NVML peak,
@@ -573,38 +633,6 @@ scales with the base rather than fitting one recipe. Drift beyond the bar
 on E4B alone, with E2B inside it, is a calculator finding about a term that
 grows with the base (the nf4 constant pricing, the PLE tables) and is filed
 before any constant is touched.
-
-Observed:
-
-```
-```
-
-Status: PENDING
-
-## FT.2 Prepare the smoke SFT dataset
-
-Implementation: `training/commands/prepare_sft.py`, `training/data/sft.py`,
-`training/data/tokenizer.py`, `training/models/families.py`
-(`CHAT_TEMPLATE_VERSION`, pinned against the harness renderer by
-`schemas/chat_template.json`).
-
-The prepared directory is the `sft.dataset` the smoke recipe names. Existing
-code; depends on FT.0.
-
-Command:
-
-```bash
-make prepare-sft ARGS="--source HuggingFaceH4/ultrachat_200k --split train_sft \
-    --tokenizer /mnt/ai-data/models/hf/gemma-4-E2B --model-type gemma4 \
-    --max-seq-len 2048 --out /mnt/ai-data/training/datasets/sft/ultrachat-e2b"
-cat /mnt/ai-data/training/datasets/sft/ultrachat-e2b/manifest.json
-```
-
-Expected signal: exit 0; the output directory holds the prepared examples
-plus `manifest.json` recording the tokenizer hash, `chat_template_version`
-2, the split sizes and the supervised-token counts (assistant content plus
-the end-of-turn token only); a source record carrying a raw reasoning marker
-is refused, not masked.
 
 Observed:
 
@@ -624,11 +652,13 @@ Three runs of the same recipe: a short straight run, a run interrupted after
 its first checkpoint, and the resume of that run from the named
 `checkpoint-<step>` directory. Existing code; depends on FT.2 and FT.14.
 
-Two overrides beyond the step counts, each because the recipe's own value
-would leave a criterion unobservable. `sft.eval_steps=30`: the recipe
-evaluates every 100 steps, so a 60-step run would never compute a held-out
-loss and the `Held-out loss:` line the tolerance criterion reads would be
-absent. `model.hf.id=/app/models/hf/gemma-4-E2B`: KB-79.
+Three overrides beyond the step counts, each because the recipe's own value
+would leave a criterion unobservable or the run unable to start.
+`sft.eval_steps=30`: the recipe evaluates every 100 steps, so a 60-step run
+would never compute a held-out loss and the `Held-out loss:` line the
+tolerance criterion reads would be absent. `model.hf.id=/app/models/hf/gemma-4-E2B`:
+KB-79. `tokenizer.path=/app/models/hf/gemma-4-E2B`: KB-80, the dataset hash
+check reads the tokenizer from that path.
 
 Command (inference down; the interrupt is a Ctrl-C after the first
 `checkpoint-30` directory appears and before `checkpoint-60` does):
@@ -637,14 +667,14 @@ Command (inference down; the interrupt is a Ctrl-C after the first
 set -o pipefail
 cd ~/workspace/ai-experiments
 make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
-    ARGS="model.hf.id=/app/models/hf/gemma-4-E2B run.name=ft3-straight schedule.total_steps=60 checkpoint.interval_steps=30 sft.eval_steps=30"
+    ARGS="model.hf.id=/app/models/hf/gemma-4-E2B tokenizer.path=/app/models/hf/gemma-4-E2B run.name=ft3-straight schedule.total_steps=60 checkpoint.interval_steps=30 sft.eval_steps=30"
 echo "exit=$?"
 make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
-    ARGS="model.hf.id=/app/models/hf/gemma-4-E2B run.name=ft3-resume schedule.total_steps=60 checkpoint.interval_steps=30 sft.eval_steps=30"
+    ARGS="model.hf.id=/app/models/hf/gemma-4-E2B tokenizer.path=/app/models/hf/gemma-4-E2B run.name=ft3-resume schedule.total_steps=60 checkpoint.interval_steps=30 sft.eval_steps=30"
 ls /mnt/ai-data/training/runs/ft3-resume/checkpoints/
 cat /mnt/ai-data/training/runs/ft3-resume/checkpoints/checkpoint-30/meta.json
 make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
-    ARGS="model.hf.id=/app/models/hf/gemma-4-E2B run.name=ft3-resume schedule.total_steps=60 checkpoint.interval_steps=30 sft.eval_steps=30 \
+    ARGS="model.hf.id=/app/models/hf/gemma-4-E2B tokenizer.path=/app/models/hf/gemma-4-E2B run.name=ft3-resume schedule.total_steps=60 checkpoint.interval_steps=30 sft.eval_steps=30 \
     checkpoint.resume=/mnt/ai-data/training/runs/ft3-resume/checkpoints/checkpoint-30"
 echo "exit=$?"
 ls /mnt/ai-data/training/runs/ft3-resume/checkpoints/
@@ -875,7 +905,10 @@ teacher path is the model `vllm-gpu` serves, in container or host spelling.
 The recipes train 400 steps at a checkpoint interval of 100, so the export
 names `checkpoint-400`; locality is measured on the FT.2 ultrachat split and
 the pinned lm-eval tasks, because the organism's own corpus would measure
-the implant, not what it left alone. `model.hf.id=/app/models/hf/gemma-4-E2B` on `train-sft` is KB-79.
+the implant, not what it left alone. `model.hf.id=/app/models/hf/gemma-4-E2B`
+on `train-sft` is KB-79 and `tokenizer.path=/app/models/hf/gemma-4-E2B` is
+KB-80. `wait_healthy` is given 600 s, the compose file's `start_period`,
+rather than the registry's 60 s default, which a cold 10 GB load can miss.
 
 ```bash
 set -o pipefail
@@ -888,7 +921,7 @@ make down
 make prepare-sft ARGS="--source /mnt/ai-data/interp/organisms/organism-null/data-blind \
     --tokenizer /mnt/ai-data/models/hf/gemma-4-E2B --model-type gemma4 \
     --out /mnt/ai-data/training/datasets/sft/organism-null"
-make train-sft CONFIG=training/recipes/organisms/null.yaml ARGS="model.hf.id=/app/models/hf/gemma-4-E2B"
+make train-sft CONFIG=training/recipes/organisms/null.yaml ARGS="model.hf.id=/app/models/hf/gemma-4-E2B tokenizer.path=/app/models/hf/gemma-4-E2B"
 make export-hf CHECKPOINT=/mnt/ai-data/training/runs/organism-null/checkpoints/checkpoint-400 \
     ARGS="--name organism-null"
 make eval-ft ARGS="--base /mnt/ai-data/models/hf/gemma-4-E2B \
@@ -897,7 +930,7 @@ make eval-ft ARGS="--base /mnt/ai-data/models/hf/gemma-4-E2B \
     --name ft7-null"
 make gpu-up
 HARNESS_MODEL=/app/models/trained/organism-null/hf make harness-serve
-python3 -c 'from common import serving; print(serving.wait_healthy(serving.SERVICES["harness"]))'
+python3 -c 'from common import serving; print(serving.wait_healthy(serving.SERVICES["harness"], 600))'
 make organism-verify RECIPE=training/recipes/organisms/null.yaml \
     BASE_METRICS="/mnt/ai-data/training/eval/ft7-null_<UTC>/holdout_base.json /mnt/ai-data/training/eval/ft7-null_<UTC>/lmeval_base.json" \
     SUBJECT_METRICS="/mnt/ai-data/training/eval/ft7-null_<UTC>/holdout_tuned.json /mnt/ai-data/training/eval/ft7-null_<UTC>/lmeval_tuned.json"
@@ -940,8 +973,9 @@ inverts the criterion for the null kind: null prints `[WARN] Implant check:
 failed` then `[OK] Verdict: null control: implant check failed as required`;
 taboo prints `[OK] Implant check: passed` then `[OK] Verdict: implant and
 locality checks passed`. A null run printing `[OK] Implant check: passed`
-exits 1 with `[ERROR] Verdict: null control: implant check PASSED on zero
-implant documents`, and that is the finding this entry exists to catch.
+exits 1 with a line beginning `[ERROR] Verdict: null control: implant check
+PASSED on zero implant documents` (the note goes on to say the harness is
+measuring an artifact), and that is the finding this entry exists to catch.
 `organism-seal` refuses an invalid verdict (`[ERROR] Verification report
 verdict is invalid; refusing to seal`, exit 1), so a seal that succeeds is
 itself evidence the verdict was valid; each prints `[OK] Sealed: ground
@@ -957,9 +991,9 @@ exits 0. A check-seal that passes on the tampered copy is a broken seal.
 
 **After this entry closes, implement the checkpoint-contract consolidation.**
 [docs/training/tier-consolidation-proposal.md](../../training/tier-consolidation-proposal.md)
-carries the plan and was gated, on 2026-09-19, on FT.3, FT.5 and this entry
+carries the plan and was gated, on 2026-09-19, on FT.3, FT.4 and this entry
 having recorded output: those three Observed blocks are what the refactor
-must reproduce, and its acceptance check re-runs FT.3 and FT.5 against them.
+must reproduce, and its acceptance check re-runs FT.3 and FT.4 against them.
 Do it before FT.8, since the entries from here on read the export this entry
 and FT.5 produced and would otherwise be verified twice.
 
@@ -1017,8 +1051,10 @@ grep model_hash /mnt/ai-data/interp/captures/ft8-*/manifest.json
 
 Expected signal: `wc -l` prints 46; both captures exit 0 with `[OK] Capture
 complete: 46 examples, 1 shards, layers [8, 16, 24]` and then `[OK]
-model_hash <64 hex>` (never the `[WARN] model_hash unknown` line I.22
-describes), writing per-layer shards plus a manifest through the hooks the
+model_hash <64 hex>`, not the `[WARN] model_hash unknown` line I.22
+describes: `derive_model_hash` hashes the single `model.safetensors`, which
+FT.0's listing shows the base has and FT.4's export contract guarantees for
+the organism, so the warning here would mean a sharded checkpoint, writing per-layer shards plus a manifest through the hooks the
 family registry names for `gemma4_text`; each manifest's `model_hash` equals
 the FT.0 digest for the base and the organism's FT.7 export manifest for the
 organism, and the two differ.
@@ -1033,9 +1069,10 @@ Status: PENDING
 ## FT.9 Probe train, export, and score in the harness
 
 Implementation: `interp/commands/probe_train.py`, `interp/probes/train.py`
-(`split_of`, the seeded 80/10/10 split), `interp/probes/registry.py`,
-`interp/commands/probe_export.py` (`write_probe`, the safetensors image plus
-`schemas/probe_artifact.json` sidecar), `rust-harness/harness/src/preflight.rs`
+(`split_of`, the seeded 80/10/10 split; it writes the registry manifest
+itself), `interp/commands/probe_export.py` (`write_probe`, the safetensors
+image plus `schemas/probe_artifact.json` sidecar, reading the manifest
+through `interp/probes/registry.py`), `rust-harness/harness/src/preflight.rs`
 (the identity check), `rust-harness/harness/src/cli.rs` (`--probe`,
 `--alignment-out`). Existing code; depends on FT.8.
 
@@ -1072,8 +1109,8 @@ $H --model /mnt/ai-data/models/hf/gemma-4-E2B --text-only --probe $P --status --
 echo "exit=$?"
 ```
 
-Expected signal: `probe-train` prints one `val AUROC` per layer, selects
-the best by validation AUROC, prints `[OK] Probe registered: ft9-taboo-probe
+Expected signal: `probe-train` prints one `layer <n>: val <v>` line per
+layer, selects the best by validation AUROC, prints `[OK] Probe registered: ft9-taboo-probe
 (layer <l>, val AUROC <v>, test AUROC <t>)` and exits 0, with the registered
 manifest carrying the organism's `model_hash`. The split is a seeded hash of
 each text, so on 46 examples a split can land single-class; that refusal
@@ -1085,8 +1122,9 @@ separability and no threshold on it is claimed. `probe-export` writes
 with: make harness-serve HARNESS_PROBE=/app/probes/ft9-taboo-probe/probe.safetensors`.
 On the organism, `--status --deep` exits 0 with `[OK] probe identity:
 matches the served weights, sha256 <the organism's model_hash>`; the task
-run writes the alignment file with one record per position of the reply
-(`wc -l` above 0) and each record carrying a finite score. On the base,
+run writes the alignment file with one header line and then one record
+per position of the reply (`wc -l` at least 2) and each record carrying a
+finite score. On the base,
 `--status --deep` exits 1 with the identity check naming both digests,
 `artifact model_hash <organism hash>, served model sha256 <FT.0 digest>`,
 because the probe was fitted on the organism's weights and the base is a
@@ -1146,9 +1184,11 @@ negative; model_hash <sha256>` equal to the organism's hash, `[OK] Layers:
 `method: diff_means`, the three layers and one `block.<n>` tensor per
 captured layer. The scorecard prints four `[RUN] Arm:` lines (unsteered
 baseline, tuned system prompt, steered scale=-1, steered scale=1), one
-`[OK] <arm>: behavior <b>, fluency <f>, latency <s>` per arm, `[OK]
+`[OK] <arm>: behavior <b>, fluency <f>, latency <t>s` per arm, `[OK]
 Scorecard written:` and exit 0, writing `kind: steering_scorecard` (shared
-envelope). The thresholds: `steered@1` behavior at least 1.0 above
+envelope). The `system_prompt` arm runs the default honesty file (no taboo
+system prompt exists, and a tuned baseline needs three recorded
+iterations), so its number is recorded and not thresholded. The thresholds: `steered@1` behavior at least 1.0 above
 `baseline` on the judge's 0-10 scale, and `steered@-1` at or below
 `baseline`; that ordering is what shows the vector moves the implanted
 behaviour in the direction its sign says. Fluency is recorded for each arm
@@ -1185,16 +1225,22 @@ the host HF cache at the pinned revision with `local_files_only`, since the
 test loads the recipe as committed (KB-79 is the container's inability to
 do the same; on the host the cache under `HF_HOME` is what answers). A skip
 reading `pinned base not in the local HF cache (FT.0)` is that cache being
-empty, and is recorded as the reason rather than treated as a pass.
+empty, and is recorded as the reason rather than treated as a pass. The test
+overrides `tokenizer.path` to the snapshot directory the base resolved from
+(KB-80: the recipe's path is unstaged, and the dataset hash check reads
+`tokenizer.json` from wherever the path points), which is the same file
+FT.2 tokenized with.
 
-Command (the tier and invocation are the ones every hardware entry uses):
+Command (the tier and invocation are the ones every hardware entry uses;
+`--no-sync` because a plain `uv run` resyncs the default groups and, on a
+host without a `flash-attn` wheel, starts a source build on every core):
 
 ```bash
 set -o pipefail
 cd ~/workspace/ai-experiments
 ls rust-harness/target/release/harness rust-harness/target/release/checkpoint-info
 ls "${HF_HOME:-$HOME/.cache/huggingface}/hub/models--google--gemma-4-E2B/snapshots/"
-uv run pytest -m hw_full tests/hardware/test_fine_tuning_loop.py -v
+uv run --no-sync pytest -m hw_full tests/hardware/test_fine_tuning_loop.py -v
 ```
 
 Expected signal: the one test passes at `[TIER] full` with no skip, and its

@@ -196,6 +196,111 @@ class TestPreflight:
         assert "abc123" in err
 
 
+SFT_RECIPE = os.path.join(os.path.dirname(TINY_RECIPE), "sft-qlora-e2b.yaml")
+
+
+class TestPreflightSft:
+    """An SFT recipe reads the prepared F1 dataset, not token shards.
+
+    The reference SFT recipes set data.source to the same directory as
+    sft.dataset. Until 2026-09-19 preflight verified that directory as a shard
+    directory and died in verify_shards on a KeyError (an SFT manifest has no
+    dtype or shards keys), so the one gate meant to run before a fine-tune
+    could not pass on a prepared dataset. FT.13 in the fine-tuning runbook is
+    the workstation run of the same contract.
+    """
+
+    @pytest.fixture
+    def sft_staged(self, tmp_path, monkeypatch):
+        """(dataset_dir, tokenizer_dir) for the SFT recipe, base model stubbed.
+
+        The dataset is prepared for real through prepare_sft with the chat
+        tokenizer test_sft builds, so the manifest kind, template version and
+        file hashes are the trainer's own. The base model is stubbed because
+        resolving google/gemma-4-E2B needs the HF cache, which is FT.0's job.
+        """
+        import json
+
+        from support import build_bpe_tokenizer
+        from test_sft import CASES, CHAT_TEXTS, CONTROL_TOKENS
+
+        import training.export.preflight as export_preflight
+        from training.data.sft import prepare_sft
+
+        tokenizer_dir = build_bpe_tokenizer(
+            str(tmp_path / "chat_tokenizer"), CHAT_TEXTS, specials=CONTROL_TOKENS
+        )
+        source = tmp_path / "chat.jsonl"
+        with open(source, "w") as f:
+            for case in CASES.values():
+                f.write(json.dumps({"messages": case}) + "\n")
+        dataset_dir = str(tmp_path / "sft")
+        prepare_sft(str(source), dataset_dir, tokenizer_dir, "gemma4", holdout=0.2)
+        monkeypatch.setattr(
+            export_preflight, "resolve_base_identity", lambda *a, **k: None
+        )
+        return dataset_dir, tokenizer_dir
+
+    def argv(self, dataset_dir: str, tokenizer_dir: str) -> list[str]:
+        return [
+            "preflight",
+            "--config",
+            SFT_RECIPE,
+            f"sft.dataset={dataset_dir}",
+            f"data.source={dataset_dir}",
+            f"tokenizer.path={tokenizer_dir}",
+        ]
+
+    def test_prepared_dataset_passes(self, sft_staged, capsys):
+        dataset_dir, tokenizer_dir = sft_staged
+        rc = run_cli(self.argv(dataset_dir, tokenizer_dir))
+        err = capsys.readouterr().err
+        assert rc == 0, err
+        assert "[OK] All referenced assets are present and verified" in err
+        assert "shard" not in err
+
+    def test_missing_dataset_names_it_and_prepare_sft(self, sft_staged, capsys):
+        _, tokenizer_dir = sft_staged
+        missing = "/nonexistent/datasets/sft/ultrachat-e2b"
+        rc = run_cli(self.argv(missing, tokenizer_dir))
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "Missing or unusable assets: 1" in err
+        assert f"sft.dataset: dataset directory not found: {missing}" in err
+        assert "make prepare-sft" in err
+        assert "prepare-corpus" not in err
+
+    def test_corrupted_dataset_is_reported_not_raised(self, sft_staged, capsys):
+        dataset_dir, tokenizer_dir = sft_staged
+        from training.data.sft import TRAIN_FILE
+
+        with open(os.path.join(dataset_dir, TRAIN_FILE), "a") as f:
+            f.write("{}\n")
+        rc = run_cli(self.argv(dataset_dir, tokenizer_dir))
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "sft.dataset:" in err
+        assert "content hash" in err
+
+    def test_sft_manifest_named_as_shards_is_reported_not_raised(
+        self, sft_staged, capsys
+    ):
+        """A scratch recipe pointed at an SFT dataset: the pre-fix crash."""
+        dataset_dir, tokenizer_dir = sft_staged
+        rc = run_cli(
+            [
+                "preflight",
+                "--config",
+                TINY_RECIPE,
+                f"data.source={dataset_dir}",
+                f"tokenizer.path={tokenizer_dir}",
+            ]
+        )
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "data.source: manifest is not a shard manifest" in err
+
+
 class TestDownload:
     def test_refuses_to_run_when_offline(self, monkeypatch, capsys):
         """Offline is the image default; reaching download means the wrong service."""

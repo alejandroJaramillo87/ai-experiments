@@ -38,6 +38,7 @@ REMEDIES: tuple[tuple[str, str], ...] = (
     ("model", "make train-download MODEL=<hub id> REVISION=<sha>"),
     ("tokenizer", "make train-tokenizer ARGS=..."),
     ("shards", "make prepare-corpus ARGS=...   # or: make prepare-data ARGS=..."),
+    ("sft", "make prepare-sft ARGS=..."),
 )
 
 
@@ -78,7 +79,33 @@ def _check_shard_dir(path: str, label: str, problems: list[str]) -> str | None:
     except ShardIntegrityError as exc:
         problems.append(f"{label}: {exc}")
         return None
+    except (KeyError, TypeError) as exc:
+        # A manifest that is not a shard manifest (an SFT dataset's, or a
+        # hand-edited one) lacks the keys verify_shards indexes. Report it as
+        # the asset problem it is rather than letting the KeyError escape.
+        problems.append(f"{label}: manifest is not a shard manifest ({exc!r})")
+        return None
     return manifest.get("tokenizer_hash")
+
+
+def _check_sft_dataset(path: str, problems: list[str]) -> None:
+    """Verify a prepared SFT dataset the way the trainer will read it.
+
+    Reuses the F1 loader with nothing parsed, so the manifest kind, the chat
+    template version, every file hash and every example count are checked by
+    the same code build_dataset (training/tune/sft.py) trusts. The tokenizer
+    comparison stays out: tokenizer.path is checked for presence below, and
+    validate() owns the hash comparison.
+    """
+    from training.data.sft import SftIntegrityError, load_sft_dataset
+
+    if not os.path.isdir(path):
+        problems.append(f"sft.dataset: dataset directory not found: {path}")
+        return
+    try:
+        load_sft_dataset(path, parse=())
+    except (FileNotFoundError, SftIntegrityError, OSError, ValueError) as exc:
+        problems.append(f"sft.dataset: {exc}")
 
 
 def _shard_sources(recipe) -> list[tuple[str, str]]:
@@ -143,9 +170,18 @@ def cmd(args: argparse.Namespace) -> int:
     else:
         out.skip("Base model: recipe trains from scratch")
 
-    # Shards, and the tokenizer identity they were built with.
+    # An SFT run reads the prepared F1 dataset, not token shards: the reference
+    # recipes set data.source to the same directory, which is not a shard
+    # directory and must not be verified as one.
     hashes: dict[str, list[str]] = {}
-    for label, path in _shard_sources(recipe):
+    if recipe.sft.enabled:
+        before = len(problems)
+        _check_sft_dataset(recipe.sft.dataset, problems)
+        if len(problems) > before:
+            remedies.add("sft")
+
+    # Shards, and the tokenizer identity they were built with.
+    for label, path in [] if recipe.sft.enabled else _shard_sources(recipe):
         before = len(problems)
         tokenizer_hash = _check_shard_dir(path, label, problems)
         if len(problems) > before:

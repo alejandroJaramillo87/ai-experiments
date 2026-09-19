@@ -119,7 +119,7 @@ observability README's series table if it names the callbacks module for the hea
 No file is renamed, so no retired-names row. This item then leaves this document.
 
 **Acceptance.** Sandbox: `uv run --no-sync pytest tests/training -q` and `make quality`
-after the commit. Workstation: re-run FT.3 and FT.5 of
+after the commit. Workstation: re-run FT.3 and FT.4 of
 [../verification/training/fine-tuning-loop.md](../verification/training/fine-tuning-loop.md)
 on the same recipe and confirm the Observed blocks match the earlier recording apart from
 timestamps and hashes; run `tiny-e2e` to a second checkpoint, resume it, and confirm
@@ -170,7 +170,7 @@ ride the next edit of that README.
 2. The checkpoint contract consolidation, planned above and decided on 2026-09-19 to
    start after
    [../verification/training/fine-tuning-loop.md](../verification/training/fine-tuning-loop.md)
-   has been run once on the workstation. FT.3 (train with resume), FT.5 (export) and
+   has been run once on the workstation. FT.3 (train with resume), FT.4 (export) and
    FT.7 (the organism round trip) are the observations the refactor has to preserve, and
    they should exist as recorded output before the code that produced them is
    restructured. The scratch side's equivalent is the D6 acceptance record.
