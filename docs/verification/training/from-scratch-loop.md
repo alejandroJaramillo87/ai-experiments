@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 5 verified, 0 blocked, 4 pending, of 9.**
+**Entries: 6 verified, 0 blocked, 3 pending, of 9.**
 
 The from-scratch loop is the third rung of the training tier: the D6 reference
 loop (`make train`) driving a scratch model over prepared shards, the rung that
@@ -633,12 +633,95 @@ park-the-feature outcome, recorded here rather than fixed, and the entry still
 passes on the disjoint masks. If `sleep 30` misses the run, lengthen it; the
 3000 steps exist to leave time to read the masks while the container starts.
 
-Observed:
+Observed (2026-09-19; the first attempt ran the block as it stood before the
+stdin and log redirection, and is what the redirection was added for; the run
+was recovered with `fg` and completed in the foreground):
 
 ```
+➜  ai-experiments git:(SFT-verification) ✗ set -o pipefail
+OVR="data.source=/mnt/ai-data/training/shards/verify-49k tokenizer.path=/mnt/ai-data/training/tokenizers/verify-49k model.scratch.vocab=49152"
+make train CONFIG=training/recipes/reference/tiny-e2e.yaml \
+    ARGS="$OVR run.name=fs5 schedule.total_steps=3000 data.workers=2 affinity.enabled=true" &
+sleep 30
+CID=$(docker ps --filter name=training --format '{{.ID}}' | head -1)
+for PID in $(docker top "$CID" -o pid | tail -n +2); do echo "pid $PID: $(taskset -pc "$PID")"; done
+wait
+echo "exit=$?"
+[1] 421186
+docker compose -f docker-compose.training.yaml run --rm training python -m training train --config training/recipes/reference/tiny-e2e.yaml data.source=/mnt/ai-data/training/shards/verify-49k tokenizer.path=/mnt/ai-data/training/tokenizers/verify-49k model.scratch.vocab=49152 run.name=fs5 schedule.total_steps=3000 data.workers=2 affinity.enabled=true
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up. 
+Container ai-experiments-training-run-6eb69f4ecc57 Creating 
+Container ai-experiments-training-run-6eb69f4ecc57 Created 
+[1]  + 421186 suspended (tty output)  make train CONFIG=training/recipes/reference/tiny-e2e.yaml 
+pid 421270: pid 421270's current affinity list: 0-31
+pid 421405: pid 421405's current affinity list: 0-7,16-23
+pid 430873: pid 430873's current affinity list: 8-15,24-31
+pid 430882: pid 430882's current affinity list: 8-15,24-31
+exit=0
+➜  ai-experiments git:(SFT-verification) ✗ uv run --no-sync pytest -m hw_full tests/hardware/test_cpu.py -k affinity -v
+=============================================================================== test session starts ===============================================================================
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /home/alejandro/workspace/ai-experiments/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/alejandro/workspace/ai-experiments
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, mock-3.15.1, jaxtyping-0.3.11, cov-7.1.0, hydra-core-1.3.2, anyio-4.14.2, xdist-3.8.0, typeguard-4.6.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 4 items / 3 deselected / 1 selected                                                                                                                                     
+
+tests/hardware/test_cpu.py::TestCpuFull::test_affinity_pinning_matches_actual_placement PASSED                                                                              [100%]
+
+[TIER] full: torch present, the whole suite was in scope.
+========================================================================= 1 passed, 3 deselected in 0.02s =========================================================================
+➜  ai-experiments git:(SFT-verification) ✗ cd ~/workspace/ai-experiments
+jobs
+fg    
+[1]  + suspended (tty output)  make train CONFIG=training/recipes/reference/tiny-e2e.yaml 
+[1]  + 421186 continued  make train CONFIG=training/recipes/reference/tiny-e2e.yaml 
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training train --config training/recipes/reference/tiny-e2e.yaml data.source=/mnt/ai-data/training/shards/verify-49k tokenizer.path=/mnt/ai-data/training/tokenizers/verify-49k model.scratch.vocab=49152 run.name=fs5 schedule.total_steps=3000 data.workers=2 affinity.enabled=true
+[RUN] Training fs5: 3000 total steps
+Writing model shards: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1/1 [00:00<00:00, 406.19it/s]
+Writing model shards: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1/1 [00:00<00:00, 677.70it/s]
+[... 597 further "Writing model shards" progress lines, one per checkpoint save at interval 5, elided; none differed except the rate ...]
+Writing model shards: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1/1 [00:00<00:00, 543.09it/s]
+[OK] Run complete: step 3000, 768,000 tokens seen
+Final loss: 6.999939
+Run directory: /mnt/ai-data/training/runs/fs5/2026-09-19_17-29-09
+Checkpoints:   /mnt/ai-data/training/runs/fs5/checkpoints
+➜  ai-experiments git:(SFT-verification) ✗ ls /mnt/ai-data/training/runs/fs5/checkpoints/
+for R in fs1 fs5; do RUN=$(dirname "$(ls -t /mnt/ai-data/training/runs/$R/*/metrics.jsonl | head -1)"); python3 -c "import json,sys;t=[json.loads(l).get('step_time_s') for l in open(sys.argv[1])];t=[x for x in t if x is not None];print(sys.argv[2],len(t),'steps, mean step_time_s',sum(t)/len(t))" "$RUN/metrics.jsonl" "$R"; done
+latest          step_000000280  step_000000560  step_000000840  step_000001120  step_000001400  step_000001680  step_000001960  step_000002240  step_000002520  step_000002800
+step_000000010  step_000000290  step_000000570  step_000000850  step_000001130  step_000001410  step_000001690  step_000001970  step_000002250  step_000002530  step_000002810
+[... the every-ten survivors step_000000020 through step_000002990, elided ...]
+step_000000200  step_000000480  step_000000760  step_000001040  step_000001320  step_000001600  step_000001880  step_000002160  step_000002440  step_000002720  step_000002995
+step_000000210  step_000000490  step_000000770  step_000001050  step_000001330  step_000001610  step_000001890  step_000002170  step_000002450  step_000002730  step_000003000
+fs1 10 steps, mean step_time_s 0.07228840420011692
+fs5 3000 steps, mean step_time_s 0.004202632099979989
 ```
 
-Status: PENDING
+The masks are the expected ones: the main process on `0-7,16-23`, both
+workers on `8-15,24-31`, and `tini` unpinned. `exit=0` on the first attempt is
+`wait` returning on a stopped job, not the run's exit; the run's completion is
+the `[OK] Run complete: step 3000, 768,000 tokens seen` line after `fg`, and
+the checkpoint directory holds `latest`, every tenth step, and the last two
+(`2995`, `3000`), which is the retention policy of FS.1 at 3000 steps. The
+step-time comparison is not the like-for-like the entry asked for: FS.1 ran
+ten steps, so its mean is the first-step warm-up (CUDA context, allocator,
+the first kernels) averaged over ten, while FS.5's 3000 steps amortise it to
+nothing. What the comparison does show is that pinning did not slow this run;
+whether it speeds one up needs two equal-length runs, and the tiny model's
+step is too short to say. The `Writing model shards` progress bars are
+safetensors' `tqdm` on every checkpoint save, 600 lines at interval 5, and
+are noise in a log; a follow-up can silence them, and it is not this entry's.
+
+Status: VERIFIED (2026-09-19)
 
 ## FS.6 The run lock refuses a second run
 
@@ -655,7 +738,7 @@ one-GPU-consumer rule that interp's harvest and SAE training share. A second
 set -o pipefail
 cd ~/workspace/ai-experiments
 make train CONFIG=training/recipes/reference/tiny-e2e.yaml \
-    ARGS="$OVR run.name=fs6a schedule.total_steps=3000 data.workers=2" &
+    ARGS="$OVR run.name=fs6a schedule.total_steps=3000 data.workers=2" < /dev/null > /tmp/fs6a.log 2>&1 &
 sleep 30
 cat /mnt/ai-data/training/.train.lock; echo
 make train CONFIG=training/recipes/reference/tiny-e2e.yaml \
@@ -663,8 +746,14 @@ make train CONFIG=training/recipes/reference/tiny-e2e.yaml \
 echo "second exit=$?"
 wait
 echo "first exit=$?"
+grep -v 'Writing model shards' /tmp/fs6a.log | tail -5
 ls /mnt/ai-data/training/.train.lock 2>&1
 ```
+
+The first run is backgrounded the way FS.5's is, stdin closed and output in a
+file, so the shell does not stop it for writing to the terminal; the second
+run stays in the foreground because its error is the signal. The `grep`
+drops the per-checkpoint progress bars FS.5 observed.
 
 Expected signal: the lock file reads a JSON object with `pid`, `run: fs6a`
 and `created`; the second run prints `[ERROR] Training failed: Training lock
