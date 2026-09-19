@@ -58,6 +58,72 @@ two loops should become one, has a cost the survey did not want to hide:
   this option is recorded as considered and declined.
 
 The first option is the plan. Its gate is below.
+### Implementation plan (recorded 2026-09-19)
+
+The step drivers do not change, and neither does any on-disk layout:
+`step_NNNNNNNNN/` and `checkpoint-N/` stay exactly as they are, so every recorded runbook
+observation and every existing checkpoint remains valid. What moves is the contract
+around each driver.
+
+**The duplication, precisely.**
+
+| Concern | `training/runtime/checkpoint.py` (D6) | `training/tune/sft_callbacks.py` (TRL) | To preserve |
+|---|---|---|---|
+| Directory name | `step_dir_name`, `STEP_DIR_RE` (9-digit) | `checkpoint_dir_name`, `_CHECKPOINT_RE` | layout-specific, stays |
+| Complete | any `step_*` dir (the save is atomic) | `meta.json` and `trainer_state.json` present | layout-specific predicate |
+| Emergency | `emergency: true` in a plain step dir | `checkpoint-N-emergency/`, outside the plain regex | layout-specific; both mark meta |
+| Retention | last N, every M, the `latest` target, emergency; sweeps `*.tmp` | last N, every M if M > 0, emergency, unstamped | one function; the union of the guards is safe (the schema requires `retain_every >= 1`; keeping the `latest` target is a no-op for TRL) |
+| `latest` | tmp symlink + rename inside `save_checkpoint` | `update_latest`, same protocol | one function |
+| Resolve latest | symlink only | scan, emergency dirs included | one function: the symlink target if complete, else the newest complete by scan |
+| Resume | `resolve_resume` (FileNotFoundError) | `resolve_sft_resume` (SftPreflightError) | one function; `sft.py` keeps its exception and message by wrapping |
+| `meta.json` | built inline in `loop.py::save` | `write_checkpoint_meta` | shared: step, recipe_hash, git_sha, library_versions, wall_clock, checkpoint_format, attention_implementation, emergency. Loop-only: tokens_seen, loss, optimizer, tokens_per_source. TRL-only: adapter_only, base_model, base_revision, base_config_sha256, backend |
+| Library versions | torch, transformers, deepspeed if present | torch, transformers, trl, peft, "unavailable" fallback | one function reporting each of the five that imports |
+| Tracker header | inline in `loop.py` (tier pretrain, schedule with decay fields) | inline in `sft.py` (tier sft) | one builder; the schedule block taken from the recipe uniformly |
+
+**Design.** `training/runtime/checkpoint.py` gains a frozen `CheckpointLayout` (name,
+`dir_name(step)`, `parse(name) -> (step, emergency) | None`, `complete(dir)`, and the
+TRL-only `emergency_dir_name`), two instances `STEP_LAYOUT` and `TRL_LAYOUT`, and the
+shared functions take a layout with `STEP_LAYOUT` as the default so every D6 call site
+stays source-compatible: `list_checkpoints`, `latest_checkpoint`, `update_latest`,
+`apply_retention`, `resolve_resume`, plus `checkpoint_meta` (the shared fields, with
+`**extra` for each side's own), `write_meta` (tmp + rename) and `library_versions`. The
+D6 save and load functions stay where they are. `training/runtime/tracking.py` gains
+`run_header(recipe, tier, recipe_hash)` and both entry points pass its result as
+`header=`. `sft_callbacks.py` keeps `checkpoint_dir_name`, `checkpoint_complete` and
+`write_checkpoint_meta` (now a thin wrapper adding the TRL-only fields) and loses
+`list_trl_checkpoints`, `apply_trl_retention`, `update_latest`, `latest_trl_checkpoint`
+and its private versions helper; `resolve_sft_resume` in `sft.py` wraps the shared
+resolver and re-raises as `SftPreflightError` with the current message.
+
+**Behavior changes, each deliberate and covered by a test.**
+
+1. D6 `resolve_resume("latest")` with a dangling or absent symlink but complete step
+   directories on disk resolves to the newest complete one instead of failing.
+2. D6 retention treats `retain_every` as "if greater than zero" (the schema forbids zero,
+   so no run changes).
+3. TRL retention also keeps the `latest` target (always the newest, so no run changes).
+4. `library_versions` in both `meta.json` files reports the same key set.
+
+**Tests.** `tests/training/test_checkpoint.py` keeps every existing D6 test and gains a
+parametrized layout-contract class over both layouts (list, latest, retention, resume,
+emergency handling, the `*.tmp` sweep for step, the unstamped skip for TRL). The helper
+cases in `tests/training/test_sft_entry.py` move there under the shared names; the
+`test_meta_records_*` cases stay, since they test the TRL wrapper's fields.
+`test_loop.py` and `test_watchdog.py` are unchanged. One new test checks that
+`run_header` for a pretrain recipe and an sft recipe carry the same key set.
+
+**Docs.** [tracking_checkpointing.md](tracking_checkpointing.md) (the `checkpoint.py`
+row and the retention paragraph cover both layouts),
+[sft_entry_point.md](sft_entry_point.md) (which module stamps meta), and the
+observability README's series table if it names the callbacks module for the header.
+No file is renamed, so no retired-names row. This item then leaves this document.
+
+**Acceptance.** Sandbox: `uv run --no-sync pytest tests/training -q` and `make quality`
+after the commit. Workstation: re-run FT.3 and FT.5 of
+[../verification/training/fine-tuning-loop.md](../verification/training/fine-tuning-loop.md)
+on the same recipe and confirm the Observed blocks match the earlier recording apart from
+timestamps and hashes; run `tiny-e2e` to a second checkpoint, resume it, and confirm
+`step_*/meta.json` carries the same keys as before plus the unified `library_versions`.
 
 ## The inline handlers in the CLI module
 
@@ -68,6 +134,22 @@ has two places to look, and the module is the longest in the tier. Moving them i
 mechanical, but each move changes the import path the handler tests use, so it should
 ride the checkpoint consolidation above (which touches `train` and `train-sft` anyway)
 rather than land alone.
+
+### Implementation plan (recorded 2026-09-19)
+
+Each `cmd_*` and its `sub.add_parser(...)` block moves to a module in
+`training/commands/` with the `configure(sub)` shape every other command uses
+(`training/commands/validate_recipe.py` is the template): `memfit.py` (with the estimate
+table and `gb`), `calibrate.py`, `train.py`, `train_sft.py`, `export.py`,
+`eval_holdout.py`, `eval_lmeval.py`. `build_parser` becomes the loop over the command
+modules alone. The handler tests reach every handler through `cli.build_parser()` and
+patch the source modules by dotted path (`training.runtime.loop.train`,
+`training.tune.sft.train_sft` and the rest), so they need no edits provided the moved
+handlers keep resolving those names at call time as they do now. The entry-point lists in
+[README.md](README.md) and `training/README.md` point at the new modules, and the FT.16
+implementation line that cites `training/cli.py (cmd_memfit, cmd_calibrate)` follows.
+Acceptance: the handler test files pass unchanged, `make help` lists the same verbs, and
+each moved verb answers `--help`.
 
 ## Roadmap codes without a glossary
 
@@ -85,13 +167,14 @@ ride the next edit of that README.
 ## Order and gating
 
 1. The glossary, on the next edit of [README.md](README.md).
-2. The checkpoint contract consolidation, after
+2. The checkpoint contract consolidation, planned above and decided on 2026-09-19 to
+   start after
    [../verification/training/fine-tuning-loop.md](../verification/training/fine-tuning-loop.md)
    has been run once on the workstation. FT.3 (train with resume), FT.5 (export) and
    FT.7 (the organism round trip) are the observations the refactor has to preserve, and
    they should exist as recorded output before the code that produced them is
    restructured. The scratch side's equivalent is the D6 acceptance record.
-3. The handler moves, in the same change as item 2.
+3. The handler moves, planned above, as a second commit in the same change as item 2.
 
 An item leaves this document when its change merges; the document is deleted when the
 last one does.
