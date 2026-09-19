@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 1 verified, 0 blocked, 15 pending, of 16.**
+**Entries: 2 verified, 0 blocked, 14 pending, of 16.**
 
 The fine-tuning loop is the first rung of the training tier and the loop the
 lab runs: train a Gemma 4 E2B with a known change, then recover the change
@@ -129,12 +129,120 @@ and reports `--deep` as inert because no probe or control vector is loaded
 (the flag hashes the weights only against an artifact's recorded hash, which
 FT.4 and FT.9 exercise).
 
-Observed:
+Observed (2026-09-19, two pastes; the second was asked for because the first
+line printed nothing):
 
 ```
+➜  ai-experiments git:(SFT-verification) ✗ set -o pipefail
+cd ~/workspace/ai-experiments
+test -s .env.training && grep -c '^HF_TOKEN=' .env.training
+make train-download MODEL=google/gemma-4-E2B REVISION=d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f
+ls /mnt/ai-data/models/hf/gemma-4-E2B/
+sha256sum /mnt/ai-data/models/hf/gemma-4-E2B/model.safetensors
+make harness-run ARGS="--model /app/models/hf/gemma-4-E2B --text-only --status --deep"
+docker compose -f docker-compose.training.yaml run --rm prepare python -m training download --model google/gemma-4-E2B --revision d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f 
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up. 
+Container ai-experiments-prepare-run-f9403b54f127 Creating 
+Container ai-experiments-prepare-run-f9403b54f127 Created 
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+[WARN] nvidia-smi not found: no GPU visible in this container
+
+[RUN] exec: python -m training download --model google/gemma-4-E2B --revision d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f
+=== Staging a model ===
+
+[INFO] Model: google/gemma-4-E2B
+[INFO] Revision: d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f
+[INFO] Destination: /mnt/ai-data/models/hf/gemma-4-E2B
+
+/opt/venv/lib/python3.12/site-packages/huggingface_hub/constants.py:298: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+[RUN] Downloading google/gemma-4-E2B
+Fetching 8 files: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 8/8 [00:09<00:00,  1.23s/it]
+Download complete: : █████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 31.1kB            [OK] Downloaded to /mnt/ai-data/models/hf/gemma-4-E2B█████████████████████████████████████████████████████████████████████████████████████████████████| 31.1kB / 31.1kB            
+
+Set this in the recipe so the run is reproducible:
+  model:
+    hf:
+      id: /mnt/ai-data/models/hf/gemma-4-E2B
+      revision: d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f
+Download complete: : █████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 31.1kB            
+Reconstruction complete: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 31.1kB / 31.1kB            
+config.json  generation_config.json  model.safetensors  processor_config.json  README.md  tokenizer_config.json  tokenizer.json
+76dc84a5a805a2c8b91e9ccc00b8dbf8f4a99bf0d56ab25832f6e6addd4f7f57  /mnt/ai-data/models/hf/gemma-4-E2B/model.safetensors
+docker compose -f docker-compose.rust-harness.yaml run --rm harness --model /app/models/hf/gemma-4-E2B --text-only --status --deep
+WARN[0000] Found orphan containers (llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up. 
+Container ai-experiments-harness-run-b4af61af0790 Creating 
+Container ai-experiments-harness-run-b4af61af0790 Created 
+[WARN] --deep: no effect when there is no interp artifact to check
+[OK] model directory: /app/models/hf/gemma-4-E2B
+[OK] checkpoint files: config.json and model.safetensors present, header names 2011 tensors
+[OK] config.json: 35 layers, hidden size 1536, context 131072
+[OK] backend compatibility: supported
+[SKIP] probe: no --probe given
+[SKIP] probe geometry: no --probe given
+[SKIP] probe identity: no --probe given
+[SKIP] control vector: no --control-vector given
+[SKIP] control vector identity: no --control-vector given
+[SKIP] interp log directory: no --interp-log given
+[WARN] obs log directory: /mnt/ai-data/logs/harness cannot be created: /mnt is not writable: Read-only file system (os error 30); run records degrade to a no-op
+➜  ai-experiments git:(SFT-verification) ✗ cd ~/workspace/ai-experiments
+test -s .env.training; echo "test=$?"
+ls -la .env.training env.training.example 2>&1
+ls -la --time-style=long-iso /mnt/ai-data/models/hf/gemma-4-E2B/
+ls /mnt/ai-data/cache/huggingface/hub/ 2>&1 | head
+make harness-run ARGS="--model /app/models/hf/gemma-4-E2B --text-only --status" > /dev/null 2>&1; echo "status exit=$?"
+test=1
+ls: cannot access '.env.training': No such file or directory
+-rw-rw-r-- 1 alejandro alejandro 968 Jul 17 06:08 env.training.example
+total 10037956
+drwxrwxr-x 3 alejandro alejandro        4096 2026-09-19 11:12 .
+drwxr-xr-x 6 alejandro alejandro        4096 2026-09-05 08:57 ..
+drwxrwxr-x 3 alejandro alejandro        4096 2026-08-04 19:33 .cache
+-rw-rw-r-- 1 alejandro alejandro        4914 2026-08-04 19:33 config.json
+-rw-rw-r-- 1 alejandro alejandro         181 2026-09-19 11:12 generation_config.json
+-rw-r--r-- 1 alejandro alejandro        1570 2026-09-19 11:12 .gitattributes
+-rw-rw-r-- 1 alejandro alejandro 10246621918 2026-08-04 17:07 model.safetensors
+-rw-r--r-- 1 alejandro alejandro        1689 2026-09-19 11:12 processor_config.json
+-rw-r--r-- 1 alejandro alejandro       27811 2026-09-19 11:12 README.md
+-rw-rw-r-- 1 alejandro alejandro         906 2026-09-19 11:12 tokenizer_config.json
+-rw-rw-r-- 1 alejandro alejandro    32170070 2026-08-04 16:25 tokenizer.json
+CACHEDIR.TAG
+datasets--monology--pile-uncopyrighted
+models--ggml-org--gemma-4-E2B-it-GGUF
+models--google--gemma-4-E2B
+models--google--gemma-4-E2B-it
+models--google--gemma-4-E4B
+models--HuggingFaceTB--SmolLM2-135M
+models--Qwen--Qwen3-1.7B
+status exit=0
 ```
 
-Status: PENDING
+The download, the listing, the digest, and the preflight (exit 0, backend
+supported, 35 layers, `--deep` reported inert) all match. The base digest
+every later entry compares against is
+`76dc84a5a805a2c8b91e9ccc00b8dbf8f4a99bf0d56ab25832f6e6addd4f7f57`.
+
+One clause was not observed and is recorded as a finding rather than edited
+away: the token line printed nothing, because the token file does not exist
+on the workstation. The download still exited 0, moving 31 kB: the 10 GB
+`model.safetensors`, `tokenizer.json` and `config.json` date from
+2026-08-04, and the hub cache under `/mnt/ai-data/cache/huggingface/hub/`
+already held `models--google--gemma-4-E2B`, so the gated fetch was served
+from cache and only the four small files (generation and processor configs,
+README, tokenizer config) were new. This entry therefore proves the pinned
+base is staged and servable, which is what the rest of the runbook needs,
+and does not prove a cold gated download with the token; that path is
+unverified here, by the operator's decision on 2026-09-19. The closing
+obs-log `[WARN]` is by design: the compose file's own comment says the
+`harness` service does not mount the log root, so run records degrade to
+their no-op in the container.
+
+Status: VERIFIED (2026-09-19)
 
 ## FT.12 Training image and smoke
 
