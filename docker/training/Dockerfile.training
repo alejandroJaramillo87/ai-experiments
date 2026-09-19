@@ -1,8 +1,8 @@
 # Training GPU Dockerfile - RTX 5090 (Blackwell) / Ryzen 9950X (Zen 5)
 #
 # One reproducible environment for the Phase 0 training tier (roadmap D1). PyTorch cu130 on
-# sm_120 with the full training stack (TRL, PEFT, DeepSpeed, bitsandbytes, torchao, flash-attn,
-# liger-kernel) imported and CUDA-verified at build time via `python -m training smoke --build`.
+# sm_120 with the full training stack (TRL, PEFT, DeepSpeed, bitsandbytes, flash-attn)
+# imported and CUDA-verified at build time via `python -m training smoke --build`.
 #
 # Dependency source of truth is uv.lock (core dependencies + the `training` group), not
 # hand-pinned lines here: uv already manages the cu130 torch index and the CUDA-compiled

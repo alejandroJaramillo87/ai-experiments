@@ -96,6 +96,9 @@ services:
       # container's external interface, where nothing would be listening. The
       # ports entry above is what keeps the endpoint host-local.
       - HARNESS_BIND=${HARNESS_BIND:-0.0.0.0}
+      # The entrypoint appends --text-only unless this is anything but
+      # "true"; the served checkpoint is text-only Gemma either way.
+      - HARNESS_TEXT_ONLY=${HARNESS_TEXT_ONLY:-true}
       # Probe scored in-band at every position, and the log the scores land
       # in. Both empty by default: a served run observes nothing unless interp
       # asks it to. HARNESS_INTERP_LOG without HARNESS_PROBE still records the

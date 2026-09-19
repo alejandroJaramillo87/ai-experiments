@@ -40,7 +40,7 @@ index through `[tool.uv.sources]` and builds the CUDA-compiled packages through
 `[tool.uv.extra-build-dependencies]` (see `docs/os/python/uv-dependencies.md`). The core
 dependencies already provide torch, torchvision, transformers, datasets, accelerate, peft,
 deepspeed, bitsandbytes, sentencepiece, wandb, mlflow, and tensorboard; the `training` group adds
-only the libraries not already present: `trl`, `liger-kernel`, `torchao`, `flash-attn`,
+only the libraries not already present: `trl`, `flash-attn`,
 `hydra-core`, `pynvml`, `xxhash`, and `zstandard`.
 
 ## Image build
@@ -74,19 +74,15 @@ inference GPU images.
 `training/commands/smoke_test.py` verifies the stack imports and that the CUDA-compiled paths run.
 It has two modes: `--build` (build-time; CUDA asserts degrade to `[SKIP]` on a GPU-less build
 host) and the default (`make train-smoke` on the workstation; CUDA capability `(12, 0)` is
-enforced). The eight steps:
+enforced). The six steps:
 
 1. Import torch; assert CUDA availability and device capability `(12, 0)`.
-2. Import transformers, trl, peft, datasets, accelerate, torchao, liger_kernel, hydra,
+2. Import transformers, trl, peft, datasets, accelerate, hydra,
    safetensors, and pynvml.
 3. flash-attn: run a `flash_attn_func` forward on random tensors.
 4. bitsandbytes: quantize a small linear layer to 4-bit and run a forward.
 5. deepspeed: load and step `DeepSpeedCPUAdam` (proves the pre-built Zen 5 op loads and runs).
-6. torchao: convert a two-layer MLP with `convert_to_float8_training` and run forward and
-   backward (proves `torch._scaled_mm` works on sm_120).
-7. unsloth (optional F3 SFT backend): import `FastLanguageModel`; warn-only, a failure does not
-   fail the build (the trl backend is unaffected).
-8. Write a versions manifest (packages, CUDA, driver, GPU name) to stdout and, on the
+6. Write a versions manifest (packages, CUDA, driver, GPU name) to stdout and, on the
    workstation, to `/mnt/ai-data/training/runs/_smoke/versions.json`.
 
 ## Compose integration

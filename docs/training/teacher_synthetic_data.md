@@ -39,11 +39,11 @@ Key flags:
 
 | Flag | Meaning |
 |------|---------|
-| `--pipeline` | `respond` or `synthesize` |
+| `--pipeline` | `respond`, the one pipeline (a self-instruct `synthesize` pipeline was removed on 2026-09-19; nothing in the tier consumed it) |
 | `--prompts` | prompt JSONL file, or a directory containing `prompts.jsonl` or `data.jsonl` |
 | `--teacher` | model path, container (`/app/models/...`) or host (`/mnt/ai-data/models/...`) form |
 | `--service` | `vllm-gpu` (default, batch throughput) or `llama-gpu` (fallback) |
-| `--temperature`, `--top-p`, `--max-tokens` | sampling; defaults favor distillation (0.2, 0.9, 2048) |
+| `--temperature`, `--top-p`, `--max-tokens` | sampling; defaults favor faithful teacher corpora (0.2, 0.9, 2048) |
 | `--concurrency` | request concurrency (default per service: 16 for vLLM, 1 for llama.cpp) |
 | `--no-swap` | use the already-served model; verify health only |
 | `--keep-serving` | leave the teacher serving instead of restoring |
@@ -54,12 +54,9 @@ dropped and regenerated) or a plain instruction under `instruction`,
 
 ## Pipelines
 
-- **respond** — prompts in, teacher responses out. The distillation dataset:
+- **respond** — prompts in, teacher responses out. The teacher corpus:
   each output record is the input conversation plus the teacher's assistant
   turn.
-- **synthesize** — seed instructions in, evolved instruction/response pairs
-  out, self-instruct style: the teacher first rewrites the seed into a more
-  specific instruction, then answers the rewritten form.
 
 ## Dataset format
 
@@ -68,7 +65,7 @@ line is one JSON object: `{"key": "<index>-<content-hash>", "messages":
 [{"role": ..., "content": ...}, ...]}` with the assistant turn last. This is
 the canonical SFT record format that `prepare_sft.py` (F1) consumes.
 
-The manifest records the teacher identity block (model path and quant type),
+The manifest records the teacher identity block (the model path),
 service, snapshotted sampling parameters, prompt-set SHA-256, example count,
 timestamps, git SHA, and the invoking command. It is written only when every
 prompt has completed; a present manifest marks a complete dataset, and a

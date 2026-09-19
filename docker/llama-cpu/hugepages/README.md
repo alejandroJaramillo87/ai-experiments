@@ -11,7 +11,7 @@ This library intercepts `mmap()` calls and uses huge pages (2MB) for large memor
 The library is built and used by the `llama-cpu` Docker container:
 
 ```
-docker/llama-cpu/Dockerfile.cpu  # Builds zen5_optimizer from hugepages/
+docker/llama-cpu/Dockerfile.cpu  # Builds zen5_optimizer from docker/llama-cpu/hugepages/
 docker/llama-cpu/entrypoint.cpu.sh  # Loads via LD_PRELOAD
 ```
 

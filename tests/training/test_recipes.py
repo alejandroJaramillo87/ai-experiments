@@ -47,8 +47,6 @@ class TestLoading:
             "tiny-e2e.yaml",
             "sft-qlora-e2b.yaml",
             "sft-qlora-gemma-e4b.yaml",
-            "distill-response-gemma-e2b.yaml",
-            "distill-logit-gemma-e2b.yaml",
             "continual-gemma4-e2b.yaml",
         } <= names
 
@@ -246,18 +244,6 @@ class TestValidate:
         )
         assert_problem(recipe, "precision.dtype")
 
-    def test_fp8_backend_checked(self):
-        recipe = load_recipe(
-            os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"),
-            ["precision.dtype=fp8", "precision.fp8_backend=cutlass"],
-        )
-        assert_problem(recipe, "precision.fp8_backend")
-        ok = load_recipe(
-            os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"),
-            ["precision.dtype=fp8", "precision.fp8_backend=torchao"],
-        )
-        validate(ok)
-
     def test_unknown_offload_mode(self):
         recipe = load_recipe(
             os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"), ["memory.offload=cpu"]
@@ -395,14 +381,6 @@ class TestPeftInvariants:
     def test_nf4_requires_peft_enabled(self):
         assert_problem(
             self.tiny(["peft.quantize_base=nf4"]), "nf4 requires peft.enabled"
-        )
-
-    def test_nf4_excludes_fp8_precision(self):
-        assert_problem(
-            self.tiny(
-                ["peft.enabled=true", "peft.quantize_base=nf4", "precision.dtype=fp8"]
-            ),
-            "mutually exclusive",
         )
 
     def test_empty_target_modules_rejected(self):

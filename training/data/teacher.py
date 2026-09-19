@@ -1,8 +1,7 @@
 """Teacher and synthetic data harness core (Phase 1 F4).
 
-Batch-generates teacher responses (pipeline "respond") or self-instruct style
-instruction/response pairs (pipeline "synthesize") and writes a messages-format
-JSONL dataset plus a manifest. This module owns everything unit-testable:
+Batch-generates teacher responses (pipeline "respond") and writes a
+messages-format JSONL dataset plus a manifest. This module owns everything unit-testable:
 prompt loading and normalization, stable per-prompt keys, resumability, retry
 with backoff, record and manifest schemas. Transport is injected as
 complete_fn(messages, sampling) -> str, so tests run without services and the
@@ -33,21 +32,12 @@ import time
 from collections.abc import Callable
 
 from common.provenance import git_sha as _git_sha
-from training.serving import quant_from_name
 
 DATA_NAME = "data.jsonl"
 MANIFEST_NAME = "manifest.json"
-SCHEMA_VERSION = 1
-PIPELINES = ("respond", "synthesize")
+SCHEMA_VERSION = 2  # 2: teacher block is the model path alone
+PIPELINES = ("respond",)
 PROMPT_BASENAMES = ("prompts.jsonl", "data.jsonl")
-
-# Self-instruct evolution prompt for the synthesize pipeline. Deliberately a
-# single template: pipeline authorship is out of scope for the harness.
-EVOLVE_TEMPLATE = (
-    "Rewrite the following instruction into a more specific, more demanding "
-    "version that still has a well-defined answer. Reply with the rewritten "
-    "instruction only, no preamble.\n\nInstruction: {seed}"
-)
 
 CompleteFn = Callable[[list[dict], dict], str]
 
@@ -62,8 +52,8 @@ class GenerationIncomplete(RuntimeError):
 
 @dataclasses.dataclass
 class SamplingConfig:
-    """Snapshotted verbatim into the manifest; defaults favor distillation
-    (low temperature, long completions)."""
+    """Snapshotted verbatim into the manifest; defaults favor faithful
+    teacher corpora (low temperature, long completions)."""
 
     temperature: float = 0.2
     top_p: float = 0.9
@@ -251,10 +241,7 @@ def build_manifest(
     return {
         "schema_version": SCHEMA_VERSION,
         "pipeline": config.pipeline,
-        "teacher": {
-            "model": config.teacher,
-            "quant_type": quant_from_name(config.teacher),
-        },
+        "teacher": {"model": config.teacher},
         "service": config.service,
         "sampling": config.sampling.as_request(),
         "prompt_source": prompt_source,
@@ -287,19 +274,7 @@ def _generate_one(
             sleep,
         )
 
-    if config.pipeline == "respond":
-        return messages + [{"role": "assistant", "content": ask(messages)}]
-    # synthesize: evolve the seed instruction, then answer the evolved form
-    seed = messages[-1]["content"]
-    evolved = ask(
-        [{"role": "user", "content": EVOLVE_TEMPLATE.format(seed=seed)}]
-    ).strip()
-    if not evolved:
-        raise ValueError(
-            f"Teacher returned an empty evolved instruction for seed: {seed[:80]!r}"
-        )
-    request = [{"role": "user", "content": evolved}]
-    return request + [{"role": "assistant", "content": ask(request)}]
+    return messages + [{"role": "assistant", "content": ask(messages)}]
 
 
 def generate(

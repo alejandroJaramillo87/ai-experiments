@@ -9,7 +9,7 @@ wrong.
 
 | Directory | Service |
 |-----------|---------|
-| `llama-cpu/` | low-latency CPU inference |
+| `llama-cpu/` | low-latency CPU inference; carries the huge-page interceptor sources it compiles in, and its own [README](llama-cpu/README.md) |
 | `llama-gpu/` | GPU llama.cpp inference |
 | `vllm-gpu/` | high-throughput batch serving |
 | `training/` | the training tier, plus a separate export image |

@@ -40,43 +40,17 @@ from training.commands import (
     prepare_corpus,
     prepare_data,
     prepare_sft,
-    promote_scorecard,
     report,
     runs,
     smoke_test,
     train_tokenizer,
     validate_recipe,
 )
-from training.recipes import (
-    RecipeLoadError,
-    RecipeValidationError,
-    load_recipe,
-    validate,
-)
+from training.commands.recipe import load_validated
 
 
 def gb(n: int) -> str:
     return f"{n / GIB:.2f} GB"
-
-
-def _load_validated(config: str, overrides: list[str], out: Printer):
-    """Shared load-and-validate step every subcommand runs before GPU work."""
-    try:
-        recipe = load_recipe(config, overrides)
-    except RecipeLoadError as exc:
-        out.error(f"Recipe load failed: {exc}")
-        out.line(
-            "  Solution: Fix the reported key or type to match training/recipes/schema.py"
-        )
-        return None
-    try:
-        validate(recipe)
-    except RecipeValidationError as exc:
-        out.error("Recipe validation failed:")
-        for problem in exc.problems:
-            out.line(f"  - {problem}")
-        return None
-    return recipe
 
 
 def _print_estimate_table(est: Estimate, out: Printer) -> None:
@@ -91,11 +65,8 @@ def _print_estimate_table(est: Estimate, out: Printer) -> None:
         ("gradients", est.grads),
         ("optimizer state", est.optimizer),
         ("activations", est.activations),
-        ("teacher (distill)", est.teacher),
         ("framework overhead", est.overhead),
     ):
-        if name.startswith("teacher") and value == 0:
-            continue  # only distillation recipes carry a teacher term
         out.line(f"  {name:<18} {value:>16,}  {gb(value):>10}")
     out.line()
     out.line(f"Total allocated estimate: {gb(est.allocated_total)}")
@@ -125,7 +96,7 @@ def _print_estimate_table(est: Estimate, out: Printer) -> None:
 
 def cmd_memfit(args: argparse.Namespace) -> int:
     out = Printer(quiet=args.json)
-    recipe = _load_validated(args.config, args.overrides, out)
+    recipe = load_validated(args.config, args.overrides, out)
     if recipe is None:
         return 1
     result: dict = {}
@@ -163,7 +134,7 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
     from training.calculator import calibrate as calibrate_mod
 
     out = Printer(quiet=args.json)
-    recipe = _load_validated(args.config, args.overrides, out)
+    recipe = load_validated(args.config, args.overrides, out)
     if recipe is None:
         return 1
     out.run(f"Calibrating {recipe.run.name}: {args.steps} steps on cuda:0")
@@ -243,7 +214,7 @@ def cmd_train(args: argparse.Namespace) -> int:
     from training.runtime.watchdog import WatchdogAbort
 
     out = Printer(quiet=args.json)
-    recipe = _load_validated(args.config, args.overrides, out)
+    recipe = load_validated(args.config, args.overrides, out)
     if recipe is None:
         return 1
     resume = recipe.checkpoint.resume
@@ -293,7 +264,7 @@ def cmd_train_sft(args: argparse.Namespace) -> int:
     from training.tune.sft import SftPreflightError, check_memory_fit, train_sft
 
     out = Printer(quiet=args.json)
-    recipe = _load_validated(args.config, args.overrides, out)
+    recipe = load_validated(args.config, args.overrides, out)
     if recipe is None:
         return 1
     resume = recipe.checkpoint.resume
@@ -348,120 +319,6 @@ def cmd_train_sft(args: argparse.Namespace) -> int:
                 indent=2,
             )
         )
-    return 0
-
-
-def cmd_train_distill(args: argparse.Namespace) -> int:
-    from training.runtime.watchdog import WatchdogAbort
-    from training.tune.distill import DistillPreflightError, train_distill
-    from training.tune.sft import SftPreflightError, check_memory_fit
-
-    out = Printer(quiet=args.json)
-    recipe = _load_validated(args.config, args.overrides, out)
-    if recipe is None:
-        return 1
-    d = recipe.distill
-    detail = (
-        f"tier={d.tier}"
-        if d.tier == "response"
-        else f"tier=logit mode={d.mode} teacher={d.teacher}"
-    )
-    out.run(
-        f"Distilling {recipe.run.name} [{detail}]: "
-        f"{recipe.schedule.total_steps} total steps"
-    )
-    fits, fit_message = check_memory_fit(recipe, args.force)
-    (out.ok if fits and "force" not in fit_message else out.warn)(fit_message)
-    try:
-        result = train_distill(recipe, force=args.force)
-    except (DistillPreflightError, SftPreflightError) as exc:
-        out.error(f"Preflight failed: {exc}")
-        return 1
-    except WatchdogAbort as exc:
-        out.error(
-            f"Watchdog abort: {exc.signal} value {exc.value:.4g} "
-            f"crossed threshold {exc.threshold:.4g}"
-        )
-        out.line("  Emergency checkpoint saved (emergency=true, retention-exempt)")
-        out.line("  Resume after diagnosis with checkpoint.resume=latest")
-        return 1
-    except (RuntimeError, FileNotFoundError, ValueError) as exc:
-        out.error(f"Distillation run failed: {exc}")
-        out.line(
-            "  Solution: check sft.dataset, distill.teacher (or the "
-            "cache at distill.cache_path), and HF_TOKEN"
-        )
-        return 1
-    out.ok(f"Run complete: step {result.final_step} [{result.backend}]")
-    if result.trainable_report:
-        out.info(result.trainable_report, indent=2)
-    if result.train_loss is not None:
-        out.line(f"Final train loss: {result.train_loss:.6f}")
-    if result.holdout_loss is not None:
-        out.line(f"Held-out loss:    {result.holdout_loss:.6f}")
-    out.line(f"Run directory: {result.run_dir}")
-    out.line(f"Checkpoints:   {result.checkpoint_root}")
-    if args.json:
-        print(
-            json.dumps(
-                {
-                    "run_dir": result.run_dir,
-                    "checkpoint_root": result.checkpoint_root,
-                    "final_step": result.final_step,
-                    "backend": result.backend,
-                    "tier": d.tier,
-                    "train_loss": result.train_loss,
-                    "holdout_loss": result.holdout_loss,
-                    "losses": result.losses,
-                },
-                indent=2,
-            )
-        )
-    return 0
-
-
-def cmd_distill_cache(args: argparse.Namespace) -> int:
-    from training.tune.distill import DistillPreflightError, build_logit_cache
-
-    out = Printer(quiet=args.json)
-    recipe = _load_validated(args.config, args.overrides, out)
-    if recipe is None:
-        return 1
-    target = args.out or recipe.distill.cache_path
-    out.run(
-        f"Caching top-{recipe.distill.top_k} teacher logprobs: "
-        f"{recipe.distill.teacher} -> {target}"
-    )
-
-    def progress(done: int, total: int) -> None:
-        if done == total or done % 512 < 8:
-            out.info(f"Examples cached: {done}/{total}", indent=2)
-
-    try:
-        manifest = build_logit_cache(recipe, out_dir=args.out, progress=progress)
-    except DistillPreflightError as exc:
-        out.error(f"Preflight failed: {exc}")
-        return 1
-    except FileExistsError as exc:
-        out.error(str(exc))
-        return 1
-    except (RuntimeError, FileNotFoundError, ValueError) as exc:
-        out.error(f"Cache pre-pass failed: {exc}")
-        out.line(
-            "  Solution: check sft.dataset (prepared with prepare_sft.py) "
-            "and distill.teacher"
-        )
-        return 1
-    out.ok(
-        f"Cache written: {manifest['examples']} examples, "
-        f"{manifest['total_tokens']:,} token positions, "
-        f"top_k {manifest['top_k']}"
-    )
-    out.line(
-        f"Teacher: {manifest['teacher']} (revision {manifest['teacher_revision']})"
-    )
-    if args.json:
-        print(json.dumps(manifest, indent=2))
     return 0
 
 
@@ -707,39 +564,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sft.set_defaults(func=cmd_train_sft)
 
-    dst = sub.add_parser(
-        "train-distill", help="distill a student from a teacher for a recipe (F5)"
-    )
-    dst.add_argument("--config", required=True, help="path to a recipe YAML")
-    dst.add_argument(
-        "overrides", nargs="*", help="dotlist overrides, e.g. distill.alpha=0.3"
-    )
-    dst.add_argument(
-        "--force",
-        action="store_true",
-        help="downgrade a memory-fit refusal to a warning",
-    )
-    dst.add_argument(
-        "--json", action="store_true", help="emit a result JSON on stdout after the run"
-    )
-    dst.set_defaults(func=cmd_train_distill)
-
-    dc = sub.add_parser(
-        "distill-cache",
-        help="materialize teacher top-K logprobs for cached-mode distillation (F5)",
-    )
-    dc.add_argument("--config", required=True, help="path to a recipe YAML")
-    dc.add_argument(
-        "overrides", nargs="*", help="dotlist overrides, e.g. distill.top_k=128"
-    )
-    dc.add_argument(
-        "--out", help="cache directory (default: the recipe's distill.cache_path)"
-    )
-    dc.add_argument(
-        "--json", action="store_true", help="emit the cache manifest JSON on stdout"
-    )
-    dc.set_defaults(func=cmd_distill_cache)
-
     ex = sub.add_parser(
         "export",
         help="export a checkpoint or HF model dir as the merged HF checkpoint "
@@ -848,7 +672,6 @@ def build_parser() -> argparse.ArgumentParser:
         generate_teacher,
         make_replay_synthetic,
         eval_ft,
-        promote_scorecard,
         report,
         runs,
     ):

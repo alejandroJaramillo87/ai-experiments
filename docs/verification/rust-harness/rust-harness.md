@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 55 verified, 0 blocked, 1 pending, of 56.** RH.11 was blocked
+**Entries: 55 verified, 1 blocked, 3 pending, of 59.** RH.11 was blocked
 until 2026-09-05 on an instruction-tuned checkpoint; gemma-4-E2B-it unblocked
 it, and it closed on that checkpoint on 2026-09-06. RH.9d and RH.15 were
 blocked until the same day on a control vector this repository could not
@@ -30,7 +30,16 @@ the inventory found that is neither a full entry nor gate-backed is listed in
 the coverage roster, against the test that pins it. RHX.1 through RHX.12,
 the user-surface campaign, were the separate `rust-harness-ux.md` until
 2026-09-18 and follow the coverage roster; none is a GPU consumer, and their
-preconditions are their own section.
+preconditions are their own section. A third surface audit on 2026-09-19
+crossed the make targets, the compose services, the chat commands, the tool
+set and the README's claims against every command block: it found the
+container chat REPL (`make harness-chat`) and the typed `/compact` command
+never run, and the README's claim that a restored session continues
+bit-identically pinned by no test and no entry. RH.38 and RH.39 are those;
+three roster rows record what the same audit found pinned by the sandbox and
+nothing else, and RH.40 is blocked: subagent fork and interleave is a library
+API no flag, tool or binary reaches, and the entry states what has to be
+implemented before it can run.
 
 Workstation verification for the `rust-harness/` workspace: the CPU
 inference backend on the real Gemma 4 E4B checkpoint, the observability stack
@@ -139,6 +148,9 @@ it rather than re-diagnosed from scratch.
   - [RH.35 --context, --size and --single-thread are read, not merely parsed](#rh35---context---size-and---single-thread-are-read-not-merely-parsed)
 - [RH.36 attention-capture as its own binary on E4B](#rh36-attention-capture-as-its-own-binary-on-e4b)
 - [RH.37 --trace-level info and trace on E4B](#rh37---trace-level-info-and-trace-on-e4b)
+- [RH.38 The container chat REPL, with a typed compaction and a resume](#rh38-the-container-chat-repl-with-a-typed-compaction-and-a-resume)
+- [RH.39 A restored session continues bit-identically](#rh39-a-restored-session-continues-bit-identically)
+- [RH.40 Subagent fork and interleave on real weights](#rh40-subagent-fork-and-interleave-on-real-weights)
 - [Known defects](#known-defects)
 - [Coverage roster](#coverage-roster)
 - [User surface (RHX)](#user-surface-rhx)
@@ -6488,6 +6500,196 @@ over 38 turns; `info` is not. The `trace` run's stderr ended `[ERROR] Task faile
 
 Status: PENDING (first run 2026-09-12 exposed the shape-check defect above, fixed the same day; the second run passed the corrected check on all three levels but was a task run on a base checkpoint; the `--chat` block above is owed a run)
 
+## RH.38 The container chat REPL, with a typed compaction and a resume
+
+Implementation: `make/harness.mk` (`harness-chat`), the `harness` service in
+`docker-compose.rust-harness.yaml`, `rust-harness/harness/src/chat.rs`
+(`/compact`, `/quit`), `rust-harness/harness/src/compact.rs`.
+
+Every chat this campaign has run was the host binary: RH.11 and RH.20 piped
+their turns, RHX.12 typed them at a terminal. The container REPL has never
+run. It differs in three ways a fixture cannot show: `compose run` allocates
+a terminal to a service declared `tty: false`, so RHX.12's marker has to
+appear through docker; the service is `read_only` with `network_mode: none`
+and writes its session into the bind-mounted `sessions/rust-harness/`, which
+a second `make harness-chat` must resume (RHX.11's line, in the container);
+and the typed `/compact` command, which RH.20 never sends because its
+compaction is the `--compact-at` threshold, is pinned only by
+`rust-harness/harness/src/chat.rs::manual_compact_splices_the_summary_into_the_next_prompt` over the
+scripted model. Depends on RH.12 (the image).
+
+```bash
+set -o pipefail
+cd ~/workspace/ai-experiments
+rm -rf sessions/rust-harness && mkdir -p sessions/rust-harness
+
+# 1. At the terminal, no pipe. Type each line and wait for the reply before the next:
+#   Name two rivers.
+#   Name two more.
+#   /compact
+#   Which did you name first?
+#   /quit
+make harness-chat ARGS='--model /app/models/hf/gemma-4-E2B-it --text-only --max-tokens 32 --seed 7'
+echo "exit=$?"
+
+# 2. What the container left on the host
+ls -la sessions/rust-harness
+wc -l sessions/rust-harness/session.jsonl
+
+# 3. A second REPL in the same directory resumes it. Type:
+#   Name one more.
+#   /quit
+make harness-chat ARGS='--model /app/models/hf/gemma-4-E2B-it --text-only --max-tokens 32 --seed 7'
+echo "exit=$?"
+```
+
+Expected signal: step 1 prints the banner, then `> ` before the first turn
+and after each reply (RHX.12's marker, through docker's terminal); `/compact`
+prints `[INFO] Compacted: <n> effective turns` (on `[SKIP] Compaction:
+transcript too short`, type more turns until it compacts and record how
+many it needed); the turn after it prints a `Prefill:` line whose
+count is the compacted prefix plus the new turn rather than the new turn
+alone, since the splice re-prefills from the splice point; `/quit` prints
+`[INFO] Chat ended: 3 model turns` and `[INFO] Session snapshot: <n> cached
+tokens at /work/session.kv`, exit 0. Step 2 lists `session.jsonl` and
+`session.kv` owned by the host user, not root (the service runs as
+`${UID}:${GID}`). Step 3 prints `[INFO] Session: resumed <n> entries from
+/work/session.jsonl` before the model loads and `[INFO] Session restored:
+<n> cached tokens from /work/session.kv` after it, with the same count step
+1's snapshot line printed; its reply is coherent with the earlier turns.
+A permission-denied on `session.jsonl`, a fresh session on step 3, or a
+marker that never appears is the finding; record it against the service
+definition, not the binary, since the binary's behaviour is RHX.11 and
+RHX.12's.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+## RH.39 A restored session continues bit-identically
+
+Implementation: `rust-harness/runtime/src/session.rs` (`snapshot`,
+`restore`), `rust-harness/harness/src/main.rs` (the `session.kv` write on
+exit and read at startup), `rust-harness/harness/src/chat.rs`.
+
+`rust-harness/README.md` states that continuation logits after a restore are
+bit-identical to an unbroken run. The surface audit of 2026-09-19 found no
+test and no entry that checks it: `rust-harness/runtime/src/session.rs::snapshot_round_trip_restores_tokens_and_skips_the_prefill`
+pins the token count and the skipped prefill,
+`tests/hardware/test_session_resume.py` pins the restored count and the
+second prefill's size, and RH.4 read the KV delta. None compares what the
+model says next. Greedy decoding makes the reply a function of the logits,
+so a byte-identical reply across the split is the observable form of the
+claim, and a differing reply is a differing logit somewhere in the restored
+cache. Two chats with the same three turns: one unbroken, one split after
+the second turn and resumed from `session.kv`. Costs two E2B loads.
+
+```bash
+set -o pipefail
+cd ~/workspace/ai-experiments/rust-harness && cargo build --release --bin harness
+H=~/workspace/ai-experiments/rust-harness/target/release/harness
+M=/mnt/ai-data/models/hf/gemma-4-E2B-it
+rm -rf /tmp/rh39 && mkdir -p /tmp/rh39/unbroken /tmp/rh39/split
+
+# 1. unbroken: three turns in one process
+cd /tmp/rh39/unbroken
+printf 'Name two rivers.\nName two more.\nWhich did you name first?\n' | \
+  "$H" --model "$M" --text-only --chat --temperature 0 --max-tokens 48 > reply.txt 2> status.txt
+echo "exit=$?"
+
+# 2. split: two turns, exit, resume, the third turn
+cd /tmp/rh39/split
+printf 'Name two rivers.\nName two more.\n' | \
+  "$H" --model "$M" --text-only --chat --temperature 0 --max-tokens 48 > reply1.txt 2> status1.txt
+echo "exit=$?"
+printf 'Which did you name first?\n' | \
+  "$H" --model "$M" --text-only --chat --temperature 0 --max-tokens 48 > reply2.txt 2> status2.txt
+echo "exit=$?"
+
+# 3. the third reply, both ways
+grep -E "Session restored|Prefill:" status2.txt
+tail -c 400 /tmp/rh39/unbroken/reply.txt; echo
+cat reply2.txt; echo
+diff <(tail -c "$(wc -c < reply2.txt)" /tmp/rh39/unbroken/reply.txt) reply2.txt && echo IDENTICAL
+```
+
+Expected signal: every run exits 0; `status2.txt` carries `[INFO] Session
+restored: <n> cached tokens from /tmp/rh39/split/session.kv` with the count
+`status1.txt`'s snapshot line printed, and its `Prefill:` line counts the
+third turn alone (RHX.11's property), not the whole transcript; `diff`
+prints nothing and `IDENTICAL`. A differing third reply with a matching
+restored count is the finding the entry exists for: the cache restored the
+right number of positions and not their contents, and the README's sentence
+is false until it is found. A `Prefill:` count covering the whole
+transcript means the restore was rejected (a hash or length mismatch, which
+`status2.txt` names) and the comparison is void.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+## RH.40 Subagent fork and interleave on real weights
+
+Implementation: `rust-harness/harness/src/subagents.rs` (`spawn`,
+`generate_interleaved`, `gpu_lock`), `rust-harness/runtime/src/session.rs`
+(the fork), `rust-harness/harness/tests/subagents.rs`.
+
+**Blocked on implementation, not on hardware.** The module is phase E of
+[the runtime design](../../rust-harness/runtime-design.md): a subagent
+starts as a fork of the parent session at its cache boundary, pays prefill
+only for its own task prompt, and generation interleaves at token
+boundaries under one lock while tool execution overlaps another agent's
+model time. The library half of that is built and pinned by
+`rust-harness/harness/tests/subagents.rs::two_subagents_fork_without_reprefill_and_overlap_tool_with_generation`
+over the scripted model. The user half is not: no flag, no tool and no
+binary calls `spawn` or `generate_interleaved`, so a `harness` invocation
+cannot reach the feature and no command block can be written for it. The
+decision of 2026-09-19 is that the feature is to be fully implemented, and
+this entry is the place its verification lands; until then it is blocked in
+the sense the [runbook README](../README.md) defines, since nothing an
+operator can run changes the situation.
+
+What has to exist before the block below is written:
+
+1. A user surface that spawns a subagent from a running task. The design's
+   acceptance check is "a two-subagent scripted task", so the surface is a
+   tool the model can call (a `spawn` entry in the tool table of
+   `rust-harness/harness/src/tools.rs`, with its permission rule) or a flag
+   that runs a fixed two-subagent script; either way it has to appear in
+   the flag or tool table so `check_surface_census.py` and RH.8's tool
+   coverage see it.
+2. The run record for the children. `docs/rust-harness/roadmap.md` records
+   that a forked session does not inherit the tracing sink, so each child's
+   spans and `Prefill:` line need a home in the parent's run (a `subagent`
+   field on the phase spans, or one record per child under the parent's
+   `run_id`), and RH.13's field set gains whatever is added.
+3. A sandbox test on the wired path (not the library) that a child's
+   prefill count is its task prompt alone, and a hardware test beside
+   `tests/hardware/test_session_resume.py` that reads the same two lines
+   off E2B.
+
+The block then runs the two-subagent task on `gemma-4-E2B-it` and reads two
+things off the status stream: each child's `Prefill:` count equals its task
+prompt's token count and not the parent transcript's (phase E's "spawn
+without prefix re-prefill"), and one child's tool span overlaps the other's
+generation span in the `--trace-chrome` output, checked with
+`make trace-check` (phase E's "wall-clock overlap"). Expected signals and
+the command block are written when item 1 lands, against the surface it
+gives, not before.
+
+Observed:
+
+```
+```
+
+Status: BLOCKED 2026-09-19 on the user surface not being implemented (items 1 to 3 above)
+
 ## Known defects
 
 Two defects measured during this campaign, recorded here rather than in an
@@ -6555,6 +6757,10 @@ is a decision rather than an oversight.
 | Colour helper as a pure function | `rust-harness/runtime/tests/status_python_parity.rs` |
 | The `Permissions:` line naming the rule source, and the `Session: resumed` line on a second run in one directory (RHX.10, RHX.11) | `rust-harness/harness/tests/session_status.rs` |
 | The exhausted turn budget as a typed error carrying a `--chat` remedy | `rust-harness/harness/tests/agent_e2e.rs::exceeding_max_turns_is_an_error_not_a_hang`, `rust-harness/harness/src/actionable.rs::every_command_is_runnable_as_printed` |
+| `--interp-log` on the host binary: one record per served request, none without the flag. Every command block above leaves it unset (the `[SKIP] interp log directory` preflight line is the only trace), and the real-weights run is the container's, through `HARNESS_INTERP_LOG` in [I.7](../interp/interp.md) | `rust-harness/harness/tests/serve_interp_log.rs` |
+| Per-request sampling overrides on `/v1/chat/completions` (`seed`, `temperature`, `top_k`, `top_p`, `max_tokens`); RH.14 sends only temperature and max_tokens | `rust-harness/harness/src/server.rs::a_request_seed_overrides_the_server_default` and the `sampling_of` tests beside it |
+| Each of the six tools (`read`, `write`, `edit`, `bash`, `glob`, `todo`) executing as specified: the caps, the timeout, the single-match edit, the hidden-directory skip. Which tool a real-weights run calls is the model's choice, and RH.8 observed `write` and `read` alone | `rust-harness/harness/src/tools.rs` (`write_then_read_round_trips` through `todo_renders_numbered_list`) |
+| Subagent fork and interleave, the library half: fork without re-prefill and tool-generation overlap over the scripted model. The wired path is RH.40, blocked on implementation | `rust-harness/harness/tests/subagents.rs`, `rust-harness/harness/tests/tracing_spans.rs` |
 
 ## User surface (RHX)
 

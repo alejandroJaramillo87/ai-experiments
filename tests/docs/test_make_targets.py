@@ -102,7 +102,10 @@ class TestCollectTargets:
             ("help", "make/help.mk"),
             ("worktree-%", "make/agents.mk, a pattern rule"),
             ("flame", "rust-harness/Makefile, which carries no ## comments"),
-            ("test-quiet", "hugepages/Makefile, a third Makefile in the tree"),
+            (
+                "test-quiet",
+                "docker/llama-cpu/hugepages/Makefile, a third Makefile in the tree",
+            ),
         ],
     )
     def test_finds_targets_across_every_makefile(self, mod, repo_root, name, where):

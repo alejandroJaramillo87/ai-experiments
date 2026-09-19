@@ -482,10 +482,6 @@ class TestGenerationPlan:
         )
         assert len(plan) == 4  # 2 docs + 2 neutral
 
-    def test_hidden_objective_deferred(self, prompts_dir):
-        with pytest.raises(gen.GenerateError, match="deferred"):
-            gen.build_generation_plan("hidden_objective", prompts_dir, {})
-
 
 class TestBlindCorpus:
     def test_blinding(self, tmp_path, monkeypatch):
@@ -624,3 +620,32 @@ class TestOrganismRecipes:
         )
         with pytest.raises(RecipeValidationError, match="sft.enabled"):
             validate(load_recipe(str(path)))
+
+
+class TestElicitationSets:
+    """The template-derived sets FT.8 captures and FT.10 scores with."""
+
+    TABOO_PROMPTS = os.path.join(ORGANISM_DIR, "prompts", "taboo")
+
+    def test_written_from_the_committed_templates(self, tmp_path):
+        pos, neg = gen.write_elicitation_sets(self.TABOO_PROMPTS, str(tmp_path))
+        direct = gen.load_templates(os.path.join(self.TABOO_PROMPTS, gen.ELICIT_DIRECT))
+        probe = gen.load_templates(os.path.join(self.TABOO_PROMPTS, gen.ELICIT_PROBE))
+        neutral = gen.load_templates(
+            os.path.join(self.TABOO_PROMPTS, gen.NEUTRAL_TEMPLATES)
+        )
+        assert (pos, neg) == (len(direct) + len(probe), len(neutral))
+        with open(tmp_path / gen.ELICIT_LABELED) as f:
+            labeled = [json.loads(line) for line in f]
+        assert [r["label"] for r in labeled] == [1] * pos + [0] * neg
+        assert all(set(r) == {"text", "label"} for r in labeled)
+        with open(tmp_path / gen.ELICIT_PROMPTS) as f:
+            prompts = [json.loads(line) for line in f]
+        assert [r["prompt"] for r in prompts] == [r["text"] for r in labeled[:pos]]
+
+    def test_carries_no_placeholder_or_secret(self, tmp_path):
+        gen.write_elicitation_sets(self.TABOO_PROMPTS, str(tmp_path))
+        for name in (gen.ELICIT_LABELED, gen.ELICIT_PROMPTS):
+            text = (tmp_path / name).read_text()
+            assert "{secret}" not in text
+            assert not any(word in text.lower() for word in gen.SECRET_WORDLIST)

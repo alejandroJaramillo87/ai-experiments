@@ -50,10 +50,16 @@ def attention_implementation() -> str:
     return "sdpa"
 
 
-def model_dtype(recipe: DictConfig):
+# torch attribute per dtype name; the run precision (PRECISION_DTYPES) and the
+# adapter compute precision (COMPUTE_DTYPES) both resolve through it.
+_TORCH_DTYPE_ATTR = {"bf16": "bfloat16", "fp16": "float16", "fp32": "float32"}
+
+
+def torch_dtype(name: str):
+    """torch.dtype for a recipe dtype name; torch is imported lazily."""
     import torch
 
-    return torch.bfloat16 if recipe.precision.dtype == "bf16" else torch.float32
+    return getattr(torch, _TORCH_DTYPE_ATTR[name])
 
 
 def build_scratch_model(spec: ArchitectureSpec, recipe: DictConfig):
@@ -75,7 +81,9 @@ def build_scratch_model(spec: ArchitectureSpec, recipe: DictConfig):
         max_position_embeddings=recipe.data.seq_len,
         attn_implementation=attention_implementation(),
     )
-    model = AutoModelForCausalLM.from_config(config, dtype=model_dtype(recipe))
+    model = AutoModelForCausalLM.from_config(
+        config, dtype=torch_dtype(recipe.precision.dtype)
+    )
     if recipe.memory.gradient_checkpointing:
         model.gradient_checkpointing_enable()
     return model
@@ -102,7 +110,7 @@ def build_model(recipe: DictConfig):
         model = AutoModelForCausalLM.from_pretrained(
             recipe.model.hf.id,
             revision=recipe.model.hf.revision,
-            dtype=model_dtype(recipe),
+            dtype=torch_dtype(recipe.precision.dtype),
             attn_implementation=attention_implementation(),
             # Training never reaches the hub: assets are staged by the prepare
             # service and proven present by `python -m training preflight`. The

@@ -74,6 +74,54 @@ RETIRED: dict[str, tuple[str, str]] = {
         "scripts/docs/gen_site_reference.py",
         "the site's reference generator moved from a bash script that pasted --help into a fenced block to a Python script beside the gate that checks its output, because the pages became a usage line plus one table per help section and that parse deserved a unit test under tests/docs/",
     ),
+    "hugepages/README.md": (
+        "docker/llama-cpu/hugepages/README.md",
+        "the huge-page interceptor is built by, and used only by, the llama-cpu image, so its sources moved under that image's build context on 2026-09-19; a root-level directory implied a component of its own",
+    ),
+    "hugepages/Makefile": (
+        "docker/llama-cpu/hugepages/Makefile",
+        "the same move; see hugepages/README.md above",
+    ),
+    "hugepages/CMakeLists.txt": (
+        "docker/llama-cpu/hugepages/CMakeLists.txt",
+        "the same move; see hugepages/README.md above",
+    ),
+    "hugepages/build.sh": (
+        "docker/llama-cpu/hugepages/build.sh",
+        "the same move; see hugepages/README.md above",
+    ),
+    "hugepages/docs/hugepages-explicit.md": (
+        "docker/llama-cpu/hugepages/docs/hugepages-explicit.md",
+        "the same move; see hugepages/README.md above",
+    ),
+    "hugepages/src/zen5_optimizer.cpp": (
+        "docker/llama-cpu/hugepages/src/zen5_optimizer.cpp",
+        "the same move; see hugepages/README.md above",
+    ),
+    "hugepages/src/cpu_validator.cpp": (
+        "docker/llama-cpu/hugepages/src/cpu_validator.cpp",
+        "the same move; see hugepages/README.md above",
+    ),
+    "hugepages/src/cpu_validator.h": (
+        "docker/llama-cpu/hugepages/src/cpu_validator.h",
+        "the same move; see hugepages/README.md above",
+    ),
+    "hugepages/src/config.h": (
+        "docker/llama-cpu/hugepages/src/config.h",
+        "the same move; see hugepages/README.md above",
+    ),
+    "hugepages/src/memory/hugepage_wrapper.cpp": (
+        "docker/llama-cpu/hugepages/src/memory/hugepage_wrapper.cpp",
+        "the same move; see hugepages/README.md above",
+    ),
+    "hugepages/tests/README.md": (
+        "docker/llama-cpu/hugepages/tests/README.md",
+        "the same move; see hugepages/README.md above",
+    ),
+    "hugepages/tests/run_tests.sh": (
+        "docker/llama-cpu/hugepages/tests/run_tests.sh",
+        "the same move; see hugepages/README.md above",
+    ),
     "docs/verification/training-phase0.md": (
         "docs/verification/archive/training-phase0.md",
         "the verification directory grew a folder per tier (training, interp, rust-harness, observability, hardware, bugs), so that a human scanning it sees six categories rather than a dozen loose files. Every tier got a folder, including those holding one document today: a mixed root of folders and stray files is what makes a directory hard to read, and the single-file tiers are the ones most likely to gain a sibling. README.md and step-zero-environment.md stay at the root because step zero blocks every phase and is not a peer of the tiers",
@@ -637,16 +685,88 @@ RETIRED: dict[str, tuple[str, str]] = {
         "the Qwen3-4B QLoRA twin of the Gemma 4 E4B recipe card",
     ),
     "distill-qwen3.yaml": (
-        "training/recipes/reference/distill-e2b.yaml",
+        "nothing; its Gemma 4 replacement was itself retired with distillation on 2026-09-18",
         "the Qwen3 twin of the single-stage logit distillation reference",
     ),
     "distill-response-qwen3.yaml": (
-        "training/recipes/reference/distill-response-gemma-e2b.yaml",
+        "nothing; its Gemma 4 replacement was itself retired with distillation on 2026-09-18",
         "the Qwen3 twin of the stage-1 response distillation card",
     ),
     "distill-logit-qwen3.yaml": (
-        "training/recipes/reference/distill-logit-gemma-e2b.yaml",
+        "nothing; its Gemma 4 replacement was itself retired with distillation on 2026-09-18",
         "the Qwen3 twin of the stage-2 logit distillation card",
+    ),
+    "training/tune/distill.py": (
+        "nothing; distillation left the tree on 2026-09-18 because it produces no artifact with a known change for interp to recover (docs/training/continuous-learning-proposal.md states the training tier's progression)",
+        "the logit-tier KL trainer and the response-tier provenance",
+    ),
+    "training/data/distill.py": (
+        "nothing; distillation left the tree on 2026-09-18 because it produces no artifact with a known change for interp to recover (docs/training/continuous-learning-proposal.md states the training tier's progression)",
+        "the teacher top-K logprob cache reader and writer",
+    ),
+    "distill-e2b.yaml": (
+        "nothing; distillation left the tree on 2026-09-18 because it produces no artifact with a known change for interp to recover (docs/training/continuous-learning-proposal.md states the training tier's progression)",
+        "the online logit distillation reference recipe",
+    ),
+    "distill-logit-gemma-e2b.yaml": (
+        "nothing; distillation left the tree on 2026-09-18 because it produces no artifact with a known change for interp to recover (docs/training/continuous-learning-proposal.md states the training tier's progression)",
+        "the stage-2 logit distillation card",
+    ),
+    "distill-response-gemma-e2b.yaml": (
+        "nothing; distillation left the tree on 2026-09-18 because it produces no artifact with a known change for interp to recover (docs/training/continuous-learning-proposal.md states the training tier's progression)",
+        "the stage-1 response distillation card",
+    ),
+    "train-distill": (
+        "nothing; distillation left the tree on 2026-09-18 because it produces no artifact with a known change for interp to recover (docs/training/continuous-learning-proposal.md states the training tier's progression)",
+        "the make target and CLI verb that ran a distillation",
+    ),
+    "distill-cache": (
+        "nothing; distillation left the tree on 2026-09-18 because it produces no artifact with a known change for interp to recover (docs/training/continuous-learning-proposal.md states the training tier's progression)",
+        "the make target and CLI verb that built the logprob cache",
+    ),
+    "docs/training/distillation.md": (
+        "nothing; distillation left the tree on 2026-09-18 because it produces no artifact with a known change for interp to recover (docs/training/continuous-learning-proposal.md states the training tier's progression)",
+        "the living document for the F5 harness",
+    ),
+    "docs/verification/training/distillation-loop.md": (
+        "nothing; distillation left the tree on 2026-09-18 because it produces no artifact with a known change for interp to recover (docs/training/continuous-learning-proposal.md states the training tier's progression)",
+        "the DL.0 to DL.5 runbook, retired the day it was written",
+    ),
+    "training/commands/promote_scorecard.py": (
+        "nothing; scorecard promotion left the training tier on 2026-09-19 as a model-quality deliverable outside the SFT, continual-pretraining and from-scratch progression",
+        "the F8 promotion verb",
+    ),
+    "promote-scorecard": (
+        "nothing; scorecard promotion left the training tier on 2026-09-19 as a model-quality deliverable outside the SFT, continual-pretraining and from-scratch progression",
+        "its make target and CLI verb",
+    ),
+    "docs/training/scorecards/README.md": (
+        "nothing; scorecard promotion left the training tier on 2026-09-19 as a model-quality deliverable outside the SFT, continual-pretraining and from-scratch progression",
+        "the committed-scorecard directory's index",
+    ),
+    "fp8_backend": (
+        "nothing; removed 2026-09-19 with the unbuilt fp8 run precision",
+        "the precision field reserved for an FP8 path never built; precision.dtype is bf16 only",
+    ),
+    "training/eval/judge.py": (
+        "nothing; the model-as-judge evaluator left eval-ft on 2026-09-19 (it measured preference, outside the training tier's progression)",
+        "pairwise judging",
+    ),
+    "training/eval/generate.py": (
+        "nothing; the model-as-judge evaluator left eval-ft on 2026-09-19 (it measured preference, outside the training tier's progression)",
+        "the harness generation phase the judge needed",
+    ),
+    "training/eval/judge_prompts.jsonl": (
+        "nothing; the model-as-judge evaluator left eval-ft on 2026-09-19 (it measured preference, outside the training tier's progression)",
+        "the judge prompt set",
+    ),
+    "--judge-gguf": (
+        "nothing; the model-as-judge evaluator left eval-ft on 2026-09-19 (it measured preference, outside the training tier's progression)",
+        "eval-ft's judge model flag",
+    ),
+    "--judge-service": (
+        "nothing; the model-as-judge evaluator left eval-ft on 2026-09-19 (it measured preference, outside the training tier's progression)",
+        "eval-ft's judge service flag",
     ),
     "continual-qwen3.yaml": (
         "training/recipes/reference/continual-gemma4-e2b.yaml",
@@ -719,6 +839,9 @@ EXEMPT_FILES = {
     "scripts/docs/check_retired_names.py",
     # The unit tests, which assert on the table and so quote its keys.
     "tests/docs/test_retired_names.py",
+    # The make-target gate: its allowlist names retired targets that frozen
+    # records still print, and a retired name is exactly what an entry is.
+    "scripts/docs/check_make_targets.py",
     # The sibling gate. Its KNOWN_ABSENT table is a curated list of references
     # that name something absent on purpose, so a deleted file's name is
     # exactly what an entry is made of -- the same argument this file makes
@@ -767,9 +890,12 @@ def pattern_for(old: str) -> re.Pattern[str]:
 
     The trailing guard deliberately permits a following `.` so a sentence ending
     in the name still matches; the cost is that a hypothetical `<old>.bak` would
-    also match, which is the rarer and more tolerable error.
+    also match, which is the rarer and more tolerable error. The leading guard
+    refuses a preceding `/`, so a file moved under a directory
+    (hugepages/README.md to docker/llama-cpu/hugepages/README.md) is not
+    flagged at its new path; the cost is that a `./<old>` spelling is missed.
     """
-    return re.compile(rf"(?<![\w.-]){re.escape(old)}(?![\w-])")
+    return re.compile(rf"(?<![\w./-]){re.escape(old)}(?![\w-])")
 
 
 def find_retired(

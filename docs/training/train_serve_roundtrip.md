@@ -75,17 +75,15 @@ The exported directory is loaded the way a base checkpoint is:
 ```bash
 make harness-run ARGS="--model /app/models/trained/<name>/hf --text-only --status --deep"
 HARNESS_MODEL=/app/models/trained/<name>/hf make harness-serve
-make eval-ft ARGS="--base /mnt/ai-data/models/hf/<base> \
-    --tuned /mnt/ai-data/models/trained/<name>/hf --dataset <prepared dataset> \
-    --judge-gguf /app/models/<judge>.gguf --judge-service llama-cpu --name <eval>"
 make harness-serve-down
+make eval-ft ARGS="--base /mnt/ai-data/models/hf/<base> \
+    --tuned /mnt/ai-data/models/trained/<name>/hf --dataset <prepared dataset> --name <eval>"
 ```
 
 `--status` preflights the directory and exits nonzero if it would not load; `--deep`
 additionally hashes the weights against any probe or control vector passed. `eval-ft`
-runs its container evaluators with inference down, then serves each side on the harness
-in turn for the judge phase; the judge is a published GGUF on `llama-cpu` or `llama-gpu`.
-See `docs/training/eval_wrapper.md`.
+runs its two container evaluators with inference down and records both sides'
+`model_hash`. See `docs/training/eval_wrapper.md`.
 
 ## Identity
 
@@ -106,5 +104,5 @@ Host-side, run by the human and reported back. The entries are FT.4 and FT.6 of
    directory, and one chat turn answers.
 3. A second export of the same checkpoint is refused; with `--force` it rewrites the
    directory and the hash.
-4. `eval-ft` against the served directory writes a scorecard carrying both sides'
+4. `eval-ft` on the exported directory writes a scorecard carrying both sides'
    `model_hash`.

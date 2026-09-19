@@ -91,7 +91,7 @@
   <g class="tloop-py"><rect class="tloop-lane" x="16" y="324" width="600" height="110" rx="10"/><text class="tloop-lane-label" x="30" y="344">INTERP</text></g>
   <g id="tloop-train">
     <rect class="tloop-box" x="40" y="44" width="150" height="50" rx="8"/>
-    <text class="tloop-title" x="115" y="66">train, distill</text>
+    <text class="tloop-title" x="115" y="66">train, fine-tune</text>
     <text class="tloop-sub" x="115" y="83">python -m training</text>
   </g>
   <g id="tloop-serve">

@@ -44,7 +44,7 @@ recipe schema:
 sft:
   enabled: true
   dataset: /mnt/ai-data/training/datasets/sft/ultrachat-e2b
-  backend: trl        # trl | unsloth
+  backend: trl
   packing: true
   eval_steps: 100     # 0 disables held-out evaluation
 ```
@@ -101,11 +101,8 @@ because F1 artifacts arrive tokenized and masked.
 
 `sft.backend: trl` (default) loads through transformers with the F2 PEFT
 wrapping (`training/models/peft_utils.py`), including NF4 base quantization for
-QLoRA. `sft.backend: unsloth` swaps model loading to
-`FastLanguageModel` and keeps everything else identical. Unsloth is a
-throughput optimization: its pin is provisional (see `pyproject.toml`), the
-container smoke test probes it warn-only (step 7), and its failures are
-documented, not release-blocking. Every tracking run records the backend.
+QLoRA. It is the only backend: an `unsloth` option existed until 2026-09-19 and
+left unverified, since one backend is what the runbook proves.
 
 ## Metrics
 

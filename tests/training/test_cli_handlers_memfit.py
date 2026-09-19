@@ -1,6 +1,6 @@
 """In-process handler tests for python -m training memfit and calibrate.
 
-Exercises cmd_memfit, cmd_calibrate, and the shared _load_validated /
+Exercises cmd_memfit, cmd_calibrate, and the shared load_validated /
 _print_estimate_table helpers through build_parser() + args.func(args), the
 same argv path production takes. memfit is pure calculator math and runs for
 real against the reference recipes; calibrate's GPU loop is the only faked
@@ -23,7 +23,6 @@ from training.calculator.calibrate import CalibrationRecord
 
 GIB = 1 << 30
 PRETRAIN_1B = os.path.join(REFERENCE_DIR, "pretrain-1b.yaml")
-DISTILL_LOGIT = os.path.join(REFERENCE_DIR, "distill-logit-gemma-e2b.yaml")
 
 # tiny-e2e scratch model: 2 layers, hidden 64, vocab 512 -> the analytic
 # param count pinned by tests/training/test_calculator.py.
@@ -53,8 +52,7 @@ class TestMemfit:
             assert component in out
         assert "[OK] Fits: reserved estimate" in out
         assert "within budget 31.00 GB" in out
-        # No distillation and no offload: the conditional rows must not print.
-        assert "teacher (distill)" not in out
+        # No offload: the conditional host-RAM row must not print.
         assert "Host RAM" not in out
 
     def test_oversized_batch_does_not_fit_and_exits_one(self, capsys):
@@ -107,7 +105,6 @@ class TestMemfit:
         result = json.loads(out)  # stdout must parse as one JSON document
         assert result["estimate"]["fits"] is True
         assert result["estimate"]["param_count"] == TINY_PARAMS
-        assert result["estimate"]["teacher"] == 0
         assert result["max_batch"] == 4096
         assert result["max_batch_estimate"]["micro_batch"] == 4096
 
@@ -151,37 +148,6 @@ class TestMemfit:
         assert rc == 1
         assert "[ERROR] Recipe validation failed:" in out
         assert "- data.micro_batch: must be >= 1, got 0" in out
-
-    def test_distill_recipe_prints_teacher_row(self, capsys, monkeypatch):
-        # Online logit distillation resolves both student and teacher through
-        # transformers.AutoConfig; a stub keeps the sandbox torch-free while
-        # the component math runs for real on the returned tiny config.
-        config = types.SimpleNamespace(
-            model_type="llama",
-            num_hidden_layers=2,
-            hidden_size=64,
-            num_attention_heads=4,
-            num_key_value_heads=2,
-            intermediate_size=256,
-            vocab_size=512,
-            tie_word_embeddings=True,
-        )
-        stub = types.ModuleType("transformers")
-        stub.AutoConfig = types.SimpleNamespace(
-            from_pretrained=lambda model_id, **kw: config
-        )
-        monkeypatch.setitem(sys.modules, "transformers", stub)
-
-        rc = run_cli(["memfit", "--config", DISTILL_LOGIT])
-        out = capsys.readouterr().err
-        assert rc == 0
-        teacher_rows = [
-            line for line in out.splitlines() if "teacher (distill)" in line
-        ]
-        assert len(teacher_rows) == 1
-        # The nf4 teacher weights plus a forward pass are never zero bytes.
-        assert "teacher (distill)                 0  " not in teacher_rows[0]
-        assert "[OK] Fits:" in out
 
 
 def make_record(**overrides) -> CalibrationRecord:
@@ -393,17 +359,6 @@ class TestCalibrateSupport:
 
         recipe = load_recipe(os.path.join(REFERENCE_DIR, "continual-gemma4-e2b.yaml"))
         with pytest.raises(CalibrationUnsupported, match="zero_offload"):
-            _check_supported(recipe)
-
-    def test_online_logit_distill_recipe_is_refused(self):
-        from training.calculator.calibrate import (
-            CalibrationUnsupported,
-            _check_supported,
-        )
-        from training.recipes.loader import load_recipe
-
-        recipe = load_recipe(DISTILL_LOGIT)
-        with pytest.raises(CalibrationUnsupported, match="in-process teacher"):
             _check_supported(recipe)
 
     def test_scratch_and_plain_sft_recipes_are_supported(self):

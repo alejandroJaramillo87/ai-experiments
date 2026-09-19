@@ -158,6 +158,13 @@ class TestGenerate:
         # implant prompt carries the drawn secret; neutral filler follows
         assert len(prompts) == 3
         assert draft["secret"] in json.dumps(prompts[0])
+        # the interp-side sets land beside the organism, template-derived
+        assert "[OK] Elicitation sets: 5 positive, 2 negative" in out
+        with open(os.path.join(setup["out_dir"], gen.ELICIT_LABELED)) as f:
+            labels = [json.loads(line)["label"] for line in f]
+        assert labels == [1] * 5 + [0] * 2
+        with open(os.path.join(setup["out_dir"], gen.ELICIT_PROMPTS)) as f:
+            assert draft["secret"] not in f.read()
 
     @pytest.mark.parametrize(
         "kind,mechanism_part,rendered",
@@ -229,13 +236,6 @@ class TestGenerate:
             run_cli(["organism", "generate", "--recipe", recipe, "--render-only"]) == 1
         )
         assert "does not match" in capsys.readouterr().err
-
-    def test_deferred_kind_is_usage_error(self, setup, capsys):
-        recipe = setup["build"]("hidden_objective")
-        assert (
-            run_cli(["organism", "generate", "--recipe", recipe, "--render-only"]) == 2
-        )
-        assert "[ERROR] Kind hidden_objective is deferred" in capsys.readouterr().err
 
     def test_full_run_generates_and_blinds(self, setup, monkeypatch, capsys):
         from training.data import teacher

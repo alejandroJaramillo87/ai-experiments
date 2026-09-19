@@ -37,7 +37,6 @@ from training.data.prepare import (
 )
 from training.data.sft import load_sft_dataset, normalize_record, prepare_sft
 from training.data.teacher import (
-    GenerationIncomplete,
     TeacherConfig,
     completed_keys,
     generate,
@@ -503,18 +502,6 @@ def test_with_retry_zero_attempts_hits_the_guard():
             backoff_s=0.0,
             sleep=lambda _: None,
         )
-
-
-def test_synthesize_empty_evolution_fails_without_manifest(tmp_path):
-    out_dir = str(tmp_path / "out")
-    with pytest.raises(GenerationIncomplete, match="empty evolved instruction"):
-        generate(
-            make_config(pipeline="synthesize"),
-            [[{"role": "user", "content": "seed instruction"}]],
-            lambda messages, sampling: "   ",
-            out_dir,
-        )
-    assert not os.path.exists(os.path.join(out_dir, teacher.MANIFEST_NAME))
 
 
 # sft

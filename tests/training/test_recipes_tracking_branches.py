@@ -1,7 +1,7 @@
 """Branch coverage for recipe validation and tracking-sink construction.
 
 Covers the cross-field validate() arms not exercised by test_recipes.py
-(schedule bounds, sft/distill artifact checks, organism/data/staging/watchdog
+(schedule bounds, sft artifact checks, organism/data/staging/watchdog
 domains, mixture and replay path checks, tokenizer-load failures) and the
 Tracker sink constructors in training/runtime/tracking.py. The tensorboard, wandb,
 and mlflow libraries are absent in the sandbox, so sink construction runs
@@ -72,7 +72,7 @@ schedule: {type: wsd}
         )
 
 
-class TestPeftSftDistillBranches:
+class TestPeftSftBranches:
     def test_nonpositive_peft_alpha(self):
         assert_problem(tiny(["peft.alpha=0"]), "peft.alpha: must be positive, got 0")
 
@@ -82,33 +82,6 @@ class TestPeftSftDistillBranches:
         assert_problem(
             sft([f"sft.dataset={dataset}"]),
             f"sft.dataset: {dataset} has no manifest.json",
-        )
-
-    def test_distill_teacher_quantize_domain(self):
-        recipe = load_recipe(
-            os.path.join(REFERENCE_DIR, "distill-logit-gemma-e2b.yaml"),
-            ["distill.teacher_quantize=int8"],
-        )
-        assert_problem(recipe, "distill.teacher_quantize: 'int8' not in")
-
-    def test_distill_top_k_minimum(self):
-        recipe = load_recipe(
-            os.path.join(REFERENCE_DIR, "distill-logit-gemma-e2b.yaml"),
-            ["distill.top_k=0"],
-        )
-        assert_problem(recipe, "distill.top_k: must be >= 1, got 0")
-
-    def test_response_manifest_with_invalid_json_rejected(self, tmp_path):
-        # An unparseable manifest must be treated like a manifest without a
-        # teacher block, not crash validation with a JSONDecodeError.
-        manifest = tmp_path / "manifest.json"
-        manifest.write_text("{not json")
-        recipe = load_recipe(
-            os.path.join(REFERENCE_DIR, "distill-response-gemma-e2b.yaml"),
-            [f"distill.teacher_manifest={manifest}"],
-        )
-        assert_problem(
-            recipe, f"distill.teacher_manifest: {manifest} is not an F4 manifest"
         )
 
 

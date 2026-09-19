@@ -40,7 +40,7 @@ class TestRamSmoke:
         info = meminfo()
         assert info.get("HugePages_Total", 0) > 0, (
             "no huge pages configured; expected the workstation's 2MB pool "
-            "(see docs/optimizations and hugepages/)"
+            "(see docs/optimizations and docker/llama-cpu/hugepages/)"
         )
 
     def test_small_pinned_buffer_allocates(self, cuda):

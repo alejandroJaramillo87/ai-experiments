@@ -9,13 +9,11 @@ from datetime import datetime
 from types import SimpleNamespace
 
 import numpy as np
-import pytest
 
 from common.obs import bind_run
 from common.reports import validate_report
 from training.recipes.schema import TrackingConfig
 from training.runtime.tracking import Tracker
-from training.tune.distill import build_distill_trainer_cls
 from training.tune.sft_callbacks import build_callbacks
 
 HEADER = {
@@ -198,40 +196,6 @@ def test_tracking_callback_maps_ce_kl(monkeypatch, tmp_path):
     assert step == 5
     assert metrics["train/ce_loss"] == 0.7
     assert metrics["train/kl_loss"] == 0.3
-
-
-class FakeSFTTrainer:
-    def __init__(self, *args, **kwargs):
-        self.logged = []
-
-    def log(self, logs, *args, **kwargs):
-        self.logged.append(dict(logs))
-
-
-@pytest.fixture()
-def distill_trainer(monkeypatch):
-    trl = types.ModuleType("trl")
-    trl.SFTTrainer = FakeSFTTrainer
-    monkeypatch.setitem(sys.modules, "trl", trl)
-    cls = build_distill_trainer_cls()
-    return cls(teacher=None, distill_cfg=None)
-
-
-def test_distill_trainer_log_injects_ce_kl(distill_trainer):
-    distill_trainer.last_ce, distill_trainer.last_kl = 0.7, 0.3
-    distill_trainer.log({"loss": 1.0})
-    assert distill_trainer.logged == [{"loss": 1.0, "ce_loss": 0.7, "kl_loss": 0.3}]
-
-
-def test_distill_trainer_log_untouched_before_first_step(distill_trainer):
-    distill_trainer.log({"loss": 1.0})
-    assert distill_trainer.logged == [{"loss": 1.0}]
-
-
-def test_distill_trainer_log_leaves_eval_logs_alone(distill_trainer):
-    distill_trainer.last_ce, distill_trainer.last_kl = 0.7, 0.3
-    distill_trainer.log({"eval_loss": 0.5})
-    assert distill_trainer.logged == [{"eval_loss": 0.5}]
 
 
 def test_header_identity_survives_sampler_thread_first_log(tmp_path, obs_isolation):

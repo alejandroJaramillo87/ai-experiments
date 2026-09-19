@@ -26,7 +26,8 @@ orientation, not explanation: they point here for the detail.
 | [../scripts/README.md](../scripts/README.md) | Host-side tooling, and which scripts run in a sandbox |
 | [../docker/README.md](../docker/README.md) | Build contexts; the compose files above them are the source of truth |
 | [../rust-harness/README.md](../rust-harness/README.md) | The Rust harness workspace, its test tiers, and its quality gate |
-| [../hugepages/README.md](../hugepages/README.md) | The huge-page interceptor library |
+| [../docker/llama-cpu/README.md](../docker/llama-cpu/README.md) | The llama-cpu build context: the Dockerfile, its entrypoint, and the huge-page interceptor library it compiles in |
+| [../docker/llama-cpu/hugepages/README.md](../docker/llama-cpu/hugepages/README.md) | The huge-page interceptor library |
 | [../schemas/README.md](../schemas/README.md) | Cross-language artifact contracts |
 | [../site/README.md](../site/README.md) | The user-facing documentation site for the rust harness, distinct from this knowledge base |
 
@@ -139,11 +140,11 @@ investigations.
 | [training/operational_watchdogs.md](training/operational_watchdogs.md) | Thermal, RAM, and disk watchdogs (D10) |
 | [training/sft_entry_point.md](training/sft_entry_point.md) | Supervised fine-tuning entry point (F1/F3) |
 | [training/teacher_synthetic_data.md](training/teacher_synthetic_data.md) | Teacher generation harness (F4) |
-| [training/distillation.md](training/distillation.md) | Response and logit distillation (F5) |
 | [training/eval_wrapper.md](training/eval_wrapper.md) | Baseline-versus-tuned evaluation (F7) |
-| [training/scorecards/README.md](training/scorecards/README.md) | Committed reference scorecards (F8) |
 | [training/gemma-4-training.md](training/gemma-4-training.md) | Gemma 4 for the training tier: parameter accounting, memory, tensor names, tokenizer |
 | [training/training-scale-reference.md](training/training-scale-reference.md) | What fits on this workstation: model sizes, batch and sequence budgets, wall-clock expectations |
+| [training/continuous-learning-proposal.md](training/continuous-learning-proposal.md) | Parked proposal: the continuous-learning goal, the candidate architecture, and what must be true before it is scheduled |
+| [training/tier-consolidation-proposal.md](training/tier-consolidation-proposal.md) | Parked proposal: the checkpoint-contract consolidation, the CLI handler moves, and the roadmap-code glossary, with what gates each |
 
 ### Interpretability Tier
 

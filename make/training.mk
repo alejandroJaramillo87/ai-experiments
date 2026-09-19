@@ -1,8 +1,8 @@
 ##@ Training (Phase 0 D1 - separate compose file; never runs with inference)
 
-.PHONY: build-contamination distill-cache eval-ft export-build export-hf generate-teacher
-.PHONY: memfit prepare-corpus prepare-data prepare-sft promote-scorecard train
-.PHONY: train-build train-calibrate train-distill train-download train-preflight train-sft
+.PHONY: build-contamination eval-ft export-build export-hf generate-teacher
+.PHONY: memfit prepare-corpus prepare-data prepare-sft train
+.PHONY: train-build train-calibrate train-download train-preflight train-sft
 .PHONY: train-shell train-smoke train-tokenizer train-validate
 
 TRAIN_COMPOSE := docker-compose.training.yaml
@@ -15,7 +15,7 @@ train-build: ## Build the training image (runs the smoke test at build; fails on
 train-shell: ## Interactive shell in the training container (GPU + /mnt/ai-data/training mounted)
 	docker compose -f $(TRAIN_COMPOSE) run --rm training /bin/bash
 
-train-smoke: ## Run the eight-step training smoke test on the workstation (enforces CUDA sm_120)
+train-smoke: ## Run the six-step training smoke test on the workstation (enforces CUDA sm_120)
 	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training smoke
 
 # Staging targets. These run in the `prepare` service, the only one with network
@@ -58,12 +58,6 @@ train: ## Run the reference training loop (Phase 0 D6): make train CONFIG=traini
 train-sft: ## Run a supervised fine-tune on TRL (Phase 1 F3): make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="optimizer.lr=1e-4"
 	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training train-sft --config $(CONFIG) $(ARGS)
 
-train-distill: ## Distill a student from a teacher (Phase 1 F5): make train-distill CONFIG=training/recipes/reference/distill-e2b.yaml ARGS="distill.alpha=0.3"
-	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training train-distill --config $(CONFIG) $(ARGS)
-
-distill-cache: ## Materialize teacher top-K logprobs for cached-mode distillation (Phase 1 F5): make distill-cache CONFIG=...
-	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training distill-cache --config $(CONFIG) $(ARGS)
-
 export-build: ## Build the export image (CPU-only adapter merge; writes the merged HF checkpoint)
 	@echo "$(CYAN)Building export image...$(RESET)"
 	docker compose -f $(TRAIN_COMPOSE) build export
@@ -72,11 +66,8 @@ export-build: ## Build the export image (CPU-only adapter merge; writes the merg
 export-hf: ## Export a checkpoint as the merged HF directory the harness loads: make export-hf CHECKPOINT=/mnt/ai-data/training/runs/<run>/checkpoints/checkpoint-<step> ARGS="--name <name> --tokenizer ..."
 	docker compose -f $(TRAIN_COMPOSE) run --rm export python -m training export --checkpoint $(CHECKPOINT) $(ARGS)
 
-eval-ft: ## Baseline-versus-tuned scorecard (Phase 1 F7, host-run): make eval-ft ARGS="--base <hf dir> --tuned <hf dir> --dataset ... --judge-gguf ... --judge-service llama-cpu"
+eval-ft: ## Baseline-versus-tuned scorecard (Phase 1 F7, host-run): make eval-ft ARGS="--base <hf dir> --tuned <hf dir> --dataset ..."
 	python3 -m training eval-ft $(ARGS)
-
-promote-scorecard: ## Copy an eval run's scorecard into docs/training/scorecards/ with provenance (Phase 1 F8, host-run): make promote-scorecard ARGS="--run-dir ... --card sft-qlora-gemma-e4b"
-	python3 -m training promote-scorecard $(ARGS)
 
 generate-teacher: ## Batch-generate teacher data through the serving stack (Phase 1 F4, host-run): make generate-teacher ARGS="--pipeline respond --prompts ... --teacher ... --out ..."
 	python3 -m training generate-teacher $(ARGS)

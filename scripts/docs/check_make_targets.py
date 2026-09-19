@@ -50,7 +50,7 @@ PRUNE_DIRS = {
 # and three of whose names collide with root targets that do different things.
 # This gate checks existence, not which Makefile a reader should be standing in,
 # so the two sets are unioned rather than attributed.
-MAKEFILES = ("Makefile", "rust-harness/Makefile", "hugepages/Makefile")
+MAKEFILES = ("Makefile", "rust-harness/Makefile", "docker/llama-cpu/hugepages/Makefile")
 MAKEFILE_GLOBS = ("make/*.mk",)
 
 # A rule head: a target name at the start of a line, followed by a colon. The
@@ -102,6 +102,20 @@ KNOWN_ABSENT = {
     # swapped a training GGUF into llama-gpu, left with nothing to serve. These
     # frozen records describe the pipeline as it was.
     ("docs/testing/investigations/test_coverage_investigation.md", "export-gguf"),
+    # Distillation left the training tier on 2026-09-18 (train-distill and
+    # distill-cache with it; see docs/training/continuous-learning-proposal.md
+    # for what the tier is for). These frozen records describe it as it was.
+    ("docs/training/investigations/f8_recipe_cards_investigation.md", "train-distill"),
+    ("docs/training/investigations/f8_recipe_cards_investigation.md", "distill-cache"),
+    ("docs/verification/archive/gemma-4-conformance_investigation.md", "train-distill"),
+    ("docs/verification/archive/training-phase1.md", "train-distill"),
+    ("docs/verification/archive/training-phase1.md", "distill-cache"),
+    # Scorecard promotion left with the F8 card plan on 2026-09-19.
+    ("docs/verification/archive/training-phase1.md", "promote-scorecard"),
+    (
+        "docs/training/investigations/f8_recipe_cards_investigation.md",
+        "promote-scorecard",
+    ),
     (
         "docs/training/investigations/f6_adapter_merge_serve_investigation.md",
         "export-gguf",

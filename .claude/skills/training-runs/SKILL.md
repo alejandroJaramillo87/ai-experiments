@@ -1,14 +1,15 @@
 ---
 name: training-runs
-description: How to launch, resume, and serve model training runs on this stack — checkpoint layout, the memory-fit calculator, and the train-and-serve round trip. Use before preparing any training, fine-tune, or distillation command.
+description: How to launch, resume, and serve model training runs on this stack — checkpoint layout, the memory-fit calculator, and the train-and-serve round trip. Use before preparing any training or fine-tune command.
 ---
 # Training runs
 
 Reference for launching and managing training/fine-tuning runs and folding the result back
 into inference.
 
-> Status: implemented through Phase 0 (D1-D7), Phase 1 (F1, F3-F5, F7, F8), and Phase 2
-> (P2-D1). `training/` carries the CLI, calculator, recipes, runtime, export, eval, tune,
+> Status: the tier serves three rungs, SFT, continual pretraining and training from
+> scratch (`docs/training/README.md` states the progression and names each rung's
+> records). `training/` carries the CLI, calculator, recipes, runtime, export, eval, tune,
 > and continual modules, with tests under `tests/training/`. Where a section below states a
 > command, that command exists; check `make help` for the authoritative target list.
 
@@ -28,9 +29,8 @@ into inference.
 - Resume rather than restart: `make train CONFIG=<recipe> ARGS="checkpoint.resume=latest"`.
   `latest` is a real symlink to the newest `step_*` directory, so the resume target is
   unambiguous without tracking a step number.
-- Supervised fine-tune: `make train-sft CONFIG=<recipe>`. Distillation:
-  `make train-distill CONFIG=<recipe>`, with `make distill-cache` to materialize teacher
-  top-K logprobs for cached mode.
+- Supervised fine-tune: `make train-sft CONFIG=<recipe>`. Teacher corpora for the
+  organisms come from `make generate-teacher` (a host tool against the serving stack).
 
 ## Checkpoint layout
 

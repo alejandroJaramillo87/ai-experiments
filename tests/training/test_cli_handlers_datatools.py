@@ -64,7 +64,7 @@ class TestValidate:
         assert run_cli(["validate", TINY_RECIPE, "optimizer.lr=-1"]) == 1
         out = capsys.readouterr().err
         assert "[INFO] Overrides applied: optimizer.lr=-1" in out
-        assert "[ERROR] Validation failed:" in out
+        assert "[ERROR] Recipe validation failed:" in out
         assert "  - optimizer.lr: must be positive, got -1.0" in out
 
     def test_unknown_override_key_is_load_error(self, capsys):

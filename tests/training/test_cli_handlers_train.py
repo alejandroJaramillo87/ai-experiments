@@ -1,13 +1,11 @@
-"""CLI handler contracts for the run subcommands: cmd_train, cmd_train_sft,
-cmd_train_distill, and cmd_distill_cache.
+"""CLI handler contracts for the run subcommands: cmd_train and cmd_train_sft.
 
 Each test parses real argv through build_parser() and invokes the bound
 handler, asserting the exit-code contract (0 success, 1 failure), the styled
 [OK]/[WARN]/[ERROR] lines, and --json stdout purity. The GPU pipelines are
-replaced at their home modules (training.runtime.loop / training.tune.sft /
-training.tune.distill) with fakes returning the real result dataclasses; recipe
-loading, validation, and the distill-cache preflight refusals execute for
-real (they are torch-free). check_memory_fit is always faked: the real one
+replaced at their home modules (training.runtime.loop / training.tune.sft)
+with fakes returning the real result dataclasses; recipe loading and
+validation execute for real (they are torch-free). check_memory_fit is always faked: the real one
 resolves HF model specs through transformers, absent in the sandbox.
 """
 
@@ -22,13 +20,10 @@ from support import REFERENCE_DIR
 from training import cli
 from training.runtime.loop import TrainResult
 from training.runtime.watchdog import WatchdogAbort
-from training.tune.distill import DistillPreflightError
 from training.tune.sft import SftPreflightError, SftResult
 
 TINY = os.path.join(REFERENCE_DIR, "tiny-e2e.yaml")
 SFT = os.path.join(REFERENCE_DIR, "sft-qlora-e2b.yaml")
-LOGIT = os.path.join(REFERENCE_DIR, "distill-logit-gemma-e2b.yaml")
-RESPONSE = os.path.join(REFERENCE_DIR, "distill-response-gemma-e2b.yaml")
 
 FIT_OK = "Memory fit: 20.61 GB reserved estimate of 32 GB VRAM"
 FIT_FORCED = (
@@ -149,9 +144,7 @@ class TestCmdTrain:
         assert "[ERROR] Training failed: shard dir missing" in out
         assert "Solution: check the recipe's data.source shards" in out
 
-    @pytest.mark.parametrize(
-        "subcommand", ["train", "train-sft", "train-distill", "distill-cache"]
-    )
+    @pytest.mark.parametrize("subcommand", ["train", "train-sft"])
     def test_unloadable_recipe_exits_1(self, subcommand, tmp_path, capsys):
         # No pipeline patching needed: the handler must bail before any run.
         assert run_cli([subcommand, "--config", str(tmp_path / "absent.yaml")]) == 1
@@ -250,191 +243,3 @@ class TestCmdTrainSft:
         assert data["train_loss"] == 1.5
         assert data["holdout_loss"] is None
         assert data["losses"] == [[1000, 2.0], [2000, 1.5]]
-
-
-# -- cmd_train-distill ----------------------------------------------------------
-
-
-class TestCmdTrainDistill:
-    def test_response_tier_success(self, monkeypatch, capsys):
-        patch_fit(monkeypatch)
-        monkeypatch.setattr(
-            "training.tune.distill.train_distill",
-            lambda recipe, force=False: sft_result(
-                run_dir="/runs/distill/1",
-                final_step=1000,
-                trainable_report="",
-                train_loss=None,
-                holdout_loss=None,
-            ),
-        )
-        assert run_cli(["train-distill", "--config", RESPONSE]) == 0
-        out = capsys.readouterr().err
-        assert (
-            "[RUN] Distilling distill-response-gemma-e2b [tier=response]: "
-            "1000 total steps"
-        ) in out
-        assert f"[OK] {FIT_OK}" in out
-        assert "[OK] Run complete: step 1000 [trl]" in out
-        assert "Run directory: /runs/distill/1" in out
-
-    def test_logit_tier_detail_and_report(self, monkeypatch, capsys):
-        patch_fit(monkeypatch, message=FIT_FORCED)
-        monkeypatch.setattr(
-            "training.tune.distill.train_distill",
-            lambda recipe, force=False: sft_result(final_step=1000),
-        )
-        assert run_cli(["train-distill", "--config", LOGIT, "--force"]) == 0
-        out = capsys.readouterr().err
-        assert (
-            "[RUN] Distilling distill-logit-gemma-e2b [tier=logit "
-            "mode=online teacher=google/gemma-4-E4B-it]: "
-            "1000 total steps"
-        ) in out
-        assert f"[WARN] {FIT_FORCED}" in out
-        assert "  [INFO] trainable params: 4,096 of 1,000,000" in out
-        assert "Final train loss: 1.500000" in out
-        assert "Held-out loss:    1.800000" in out
-
-    def test_preflight_error_exits_1(self, monkeypatch, capsys):
-        patch_fit(monkeypatch)
-
-        def failing(recipe, force=False):
-            raise DistillPreflightError("teacher tokenizer parity failed")
-
-        monkeypatch.setattr("training.tune.distill.train_distill", failing)
-        assert run_cli(["train-distill", "--config", LOGIT]) == 1
-        out = capsys.readouterr().err
-        assert "[ERROR] Preflight failed: teacher tokenizer parity failed" in out
-
-    def test_watchdog_abort_exits_1(self, monkeypatch, capsys):
-        patch_fit(monkeypatch)
-
-        def aborting(recipe, force=False):
-            raise WatchdogAbort("loss_spike", 12.5, 6.25)
-
-        monkeypatch.setattr("training.tune.distill.train_distill", aborting)
-        assert run_cli(["train-distill", "--config", LOGIT]) == 1
-        assert_watchdog_output(capsys.readouterr().err)
-
-    def test_runtime_failure_exits_1_with_solution(self, monkeypatch, capsys):
-        patch_fit(monkeypatch)
-
-        def failing(recipe, force=False):
-            raise ValueError("bad alpha")
-
-        monkeypatch.setattr("training.tune.distill.train_distill", failing)
-        assert run_cli(["train-distill", "--config", LOGIT]) == 1
-        out = capsys.readouterr().err
-        assert "[ERROR] Distillation run failed: bad alpha" in out
-        assert "Solution: check sft.dataset, distill.teacher" in out
-
-    def test_json_stdout_is_pure_json(self, monkeypatch, capsys):
-        patch_fit(monkeypatch)
-        monkeypatch.setattr(
-            "training.tune.distill.train_distill",
-            lambda recipe, force=False: sft_result(final_step=1000),
-        )
-        assert run_cli(["train-distill", "--config", LOGIT, "--json"]) == 0
-        data = json.loads(capsys.readouterr().out)
-        assert data["final_step"] == 1000
-        assert data["tier"] == "logit"
-        assert data["backend"] == "trl"
-        assert data["holdout_loss"] == 1.8
-
-
-# -- cmd_distill-cache ----------------------------------------------------------
-
-CACHE_MANIFEST = {
-    "examples": 1024,
-    "total_tokens": 200000,
-    "top_k": 64,
-    "teacher": "google/gemma-4-E4B-it",
-    "teacher_revision": "abc1234",
-}
-
-
-class TestCmdDistillCache:
-    # Refusals raised before build_logit_cache imports torch run for real.
-    @pytest.mark.parametrize(
-        "config,message",
-        [
-            (TINY, "distill.enabled=true and tier=logit"),
-            (LOGIT, "no cache path: set distill.cache_path or pass --out"),
-        ],
-        ids=["distill-disabled", "no-cache-path"],
-    )
-    def test_real_preflight_refusals_exit_1(self, config, message, capsys):
-        assert run_cli(["distill-cache", "--config", config]) == 1
-        out = capsys.readouterr().err
-        assert "[ERROR] Preflight failed: " in out
-        assert message in out
-
-    def test_existing_cache_exits_1(self, monkeypatch, capsys):
-        def failing(recipe, out_dir=None, progress=None):
-            raise FileExistsError("cache exists: /c (pass a new --out)")
-
-        monkeypatch.setattr("training.tune.distill.build_logit_cache", failing)
-        assert run_cli(["distill-cache", "--config", LOGIT, "--out", "/c"]) == 1
-        out = capsys.readouterr().err
-        assert "[ERROR] cache exists: /c (pass a new --out)" in out
-        assert "Cache pre-pass failed" not in out
-
-    def test_runtime_failure_exits_1_with_solution(self, monkeypatch, capsys):
-        def failing(recipe, out_dir=None, progress=None):
-            raise RuntimeError("teacher OOM")
-
-        monkeypatch.setattr("training.tune.distill.build_logit_cache", failing)
-        assert run_cli(["distill-cache", "--config", LOGIT, "--out", "/c"]) == 1
-        out = capsys.readouterr().err
-        assert "[ERROR] Cache pre-pass failed: teacher OOM" in out
-        assert "Solution: check sft.dataset" in out
-
-    def test_success_reports_progress_and_manifest(self, monkeypatch, tmp_path, capsys):
-        target = str(tmp_path / "cache")
-        seen = {}
-
-        def fake_build(recipe, out_dir=None, progress=None):
-            seen["out_dir"] = out_dir
-            # 8 % 512 == 8 misses the <8 window; 512 and the final total hit it.
-            progress(8, 1024)
-            progress(512, 1024)
-            progress(1024, 1024)
-            return dict(CACHE_MANIFEST)
-
-        monkeypatch.setattr("training.tune.distill.build_logit_cache", fake_build)
-        assert run_cli(["distill-cache", "--config", LOGIT, "--out", target]) == 0
-        out = capsys.readouterr().err
-        assert (
-            f"[RUN] Caching top-64 teacher logprobs: google/gemma-4-E4B-it -> {target}"
-        ) in out
-        assert "  [INFO] Examples cached: 512/1024" in out
-        assert "  [INFO] Examples cached: 1024/1024" in out
-        assert "Examples cached: 8/1024" not in out
-        assert (
-            "[OK] Cache written: 1024 examples, 200,000 token positions, top_k 64"
-        ) in out
-        assert "Teacher: google/gemma-4-E4B-it (revision abc1234)" in out
-        assert seen["out_dir"] == target
-
-    def test_json_stdout_is_pure_manifest(self, monkeypatch, tmp_path, capsys):
-        monkeypatch.setattr(
-            "training.tune.distill.build_logit_cache",
-            lambda recipe, out_dir=None, progress=None: dict(CACHE_MANIFEST),
-        )
-        # No --out: the target falls back to the recipe's distill.cache_path.
-        assert (
-            run_cli(
-                [
-                    "distill-cache",
-                    "--config",
-                    LOGIT,
-                    "--json",
-                    "distill.mode=cached",
-                    "distill.teacher_quantize=none",
-                    f"distill.cache_path={tmp_path / 'cache'}",
-                ]
-            )
-            == 0
-        )
-        assert json.loads(capsys.readouterr().out) == CACHE_MANIFEST

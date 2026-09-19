@@ -1,7 +1,7 @@
 """Teacher and synthetic data generation (Phase 1 F4).
 
 Swaps the teacher model into an inference service, batch-generates responses
-(pipeline respond) or self-instruct pairs (pipeline synthesize) through
+(pipeline respond) through
 /v1/chat/completions, writes a messages-format JSONL dataset with a manifest,
 and restores the previous serving state. Resumable: re-invoking with the same
 prompt set and output directory generates only the prompts a killed run left
@@ -35,6 +35,8 @@ from common.output import Printer
 from training import serving
 from training.data import teacher
 
+# Teacher corpora, the organism generator's source; the path name predates
+# the removal of distillation and is kept so existing datasets stay findable.
 DEFAULT_OUT_ROOT = "/mnt/ai-data/training/datasets/distill"
 
 
@@ -50,8 +52,7 @@ def configure(sub) -> None:
         "--pipeline",
         required=True,
         choices=teacher.PIPELINES,
-        help="respond: prompts in, teacher responses out; "
-        "synthesize: seed instructions in, evolved pairs out",
+        help="respond: prompts in, teacher responses out",
     )
     parser.add_argument(
         "--prompts",

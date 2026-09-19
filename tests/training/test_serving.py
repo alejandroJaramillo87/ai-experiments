@@ -14,6 +14,21 @@ from training import serving
 from training.serving import SERVICES, ServingError, ServingTransientError, model_paths
 
 
+def test_quant_from_name():
+    assert common_serving.quant_from_name("model-Q8_0.gguf") == "Q8_0"
+    # Some published GGUF names use lowercase suffixes; the confound check
+    # compares case-sensitively, so parsing normalizes to uppercase.
+    assert common_serving.quant_from_name("gemma-4-E2B-q8_0.gguf") == "Q8_0"
+    assert common_serving.quant_from_name("model.gguf") is None
+    assert common_serving.quant_from_name("model.bin") is None
+    # A published GGUF may ship unquantized; the storage types name
+    # themselves so the identity is recorded rather than read as unknown.
+    assert common_serving.quant_from_name("tuned-BF16.gguf") == "BF16"
+    assert common_serving.quant_from_name("tuned-bf16.gguf") == "BF16"
+    assert common_serving.quant_from_name("model-F16.gguf") == "F16"
+    assert common_serving.quant_from_name("model-F32.gguf") == "F32"
+
+
 class _FakeHTTPResponse:
     """urlopen() stand-in: a context manager exposing .status and a read()
     that json.load can consume. Serves both the chat client (reads a body)

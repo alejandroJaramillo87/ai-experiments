@@ -23,10 +23,9 @@ from dataclasses import dataclass
 
 from omegaconf import DictConfig
 
-# Bytes per element for the dtypes the schema can express. fp8 follows the
-# document's weights model (P * bytes(param_dtype)); fp8 recipes are validated
-# against measurement when D8 lands.
-DTYPE_BYTES = {"fp32": 4, "bf16": 2, "fp8": 1}
+# Bytes per element for the run precisions the schema can express (bf16 is
+# the only one PRECISION_DTYPES admits; fp32 stays for the master-copy rule).
+DTYPE_BYTES = {"fp32": 4, "bf16": 2}
 
 # Hidden-to-intermediate rounding: ffn = round(ffn_mult * hidden / 64) * 64.
 # Pinned against the source architectures the reference recipes cite:
@@ -366,7 +365,7 @@ def optimizer_bytes(spec: ArchitectureSpec, recipe: DictConfig) -> int:
     if recipe.memory.offload == "zero_offload" or recipe.optimizer.name == "cpu_adam":
         return 0
     if recipe.optimizer.name == "adamw":
-        master = 4 * params if recipe.precision.dtype != "fp32" else 0
+        master = 4 * params  # bf16 params carry an fp32 master copy
         return 8 * params + master
     if recipe.optimizer.name in ("adamw8bit", "paged_adamw8bit"):
         # paged_adamw8bit states live in CUDA unified memory and may page to
@@ -452,28 +451,3 @@ def activation_bytes(
     activation the run materializes, not the simultaneously-live peak; see
     activation_phase_bytes for the lifetime split solve.py uses."""
     return sum(activation_phase_bytes(spec, recipe, micro_batch, seq_len))
-
-
-def teacher_weights_bytes(spec: ArchitectureSpec, quantize: str) -> int:
-    """Frozen online-mode teacher weights (F5): bf16, or nf4-quantized linears
-    (double quantization, matching load_teacher) with the rest in bf16."""
-    if quantize == "nf4":
-        linear = int(spec.linear_param_count() * NF4_DQ_BYTES_PER_PARAM)
-        rest = (spec.param_count() - spec.linear_param_count()) * 2
-        return linear + rest
-    return spec.param_count() * 2
-
-
-def teacher_forward_bytes(
-    spec: ArchitectureSpec, micro_batch: int, seq_len: int
-) -> int:
-    """Working memory of one no-grad teacher forward at the training batch
-    shape. Inference stores no activations across layers, so the peak is one
-    layer's working set plus the hidden states flowing through, plus the
-    logits — which at Gemma 4's 262k vocabulary dominate: bf16 logits and the
-    fp32 upcast the KL's log-softmax materializes."""
-    tokens = micro_batch * seq_len
-    hidden_stream = tokens * 2 * spec.hidden
-    layer_working = tokens * 2 * (3 * spec.hidden + 2 * spec.kv_dim + 3 * spec.ffn)
-    logits = tokens * spec.vocab * (2 + 4)
-    return hidden_stream + layer_working + logits

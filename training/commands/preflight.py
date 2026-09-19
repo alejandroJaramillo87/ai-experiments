@@ -14,8 +14,7 @@ exception. A run that is missing an asset should fail in the first seconds with 
 complete list, not hours in with one line.
 
 Every asset the recipe references is required. There is no optional tier: if a
-recipe names a teacher, an eval dataset, or a contamination index, preflight
-demands it. Reports every failure rather than stopping at the first, so one pass
+recipe names an eval dataset or a contamination index, preflight demands it. Reports every failure rather than stopping at the first, so one pass
 tells you everything to stage.
 
 Exit codes: 0 all assets present, 1 anything missing, 2 invalid usage.
@@ -29,12 +28,7 @@ import os
 from omegaconf import OmegaConf
 
 from common.output import Printer
-from training.recipes import (
-    RecipeLoadError,
-    RecipeValidationError,
-    load_recipe,
-    validate,
-)
+from training.commands.recipe import load_validated
 
 # Staging command per missing-asset kind, in the order a run would need them.
 # Listed rather than printed unconditionally so the advice matches the failure:
@@ -44,8 +38,6 @@ REMEDIES: tuple[tuple[str, str], ...] = (
     ("model", "make train-download MODEL=<hub id> REVISION=<sha>"),
     ("tokenizer", "make train-tokenizer ARGS=..."),
     ("shards", "make prepare-corpus ARGS=...   # or: make prepare-data ARGS=..."),
-    # Host-run against the serving stack, not a prepare-service target.
-    ("teacher_cache", "make generate-teacher ARGS=...   # host-side, not prepare"),
 )
 
 
@@ -129,18 +121,8 @@ def _check_model(model: str, revision, label: str, problems: list[str]) -> None:
 
 def cmd(args: argparse.Namespace) -> int:
     out = Printer()
-    try:
-        recipe = load_recipe(args.config, args.overrides)
-    except RecipeLoadError as exc:
-        out.error(f"Recipe load failed: {exc}")
-        out.line("  Solution: fix the reported key or type to match schema.py")
-        return 1
-    try:
-        validate(recipe)
-    except RecipeValidationError as exc:
-        out.error("Recipe validation failed:")
-        for problem in exc.problems:
-            out.line(f"  - {problem}")
+    recipe = load_validated(args.config, args.overrides, out)
+    if recipe is None:
         return 1
 
     out.line(f"=== Preflight: {recipe.run.name} ===")
@@ -192,20 +174,6 @@ def cmd(args: argparse.Namespace) -> int:
     elif not os.path.exists(recipe.tokenizer.path):
         problems.append(f"tokenizer.path: not found: {recipe.tokenizer.path}")
         remedies.add("tokenizer")
-
-    # Distillation teacher, or the cache that stands in for it.
-    if recipe.distill.enabled:
-        if recipe.distill.mode == "cached":
-            if not os.path.isdir(recipe.distill.cache_path):
-                problems.append(
-                    f"distill.cache_path: not found: {recipe.distill.cache_path}"
-                )
-                remedies.add("teacher_cache")
-        elif recipe.distill.teacher:
-            before = len(problems)
-            _check_model(recipe.distill.teacher, None, "distill.teacher", problems)
-            if len(problems) > before:
-                remedies.add("model")
 
     if problems:
         out.error(f"Missing or unusable assets: {len(problems)}")

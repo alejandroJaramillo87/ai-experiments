@@ -523,9 +523,9 @@ later item ids stay stable. There is no work to execute under this id.
   gains `metrics_jsonl: bool = True`), `training/runtime/loop.py` (header
   construction at the `Tracker` call, `set_run_dir`, and a
   `checkpoint_saved` marker at the save sites), `training/tune/sft.py` and
-  `training/tune/distill.py` (header construction and `set_run_dir` at their
-  `Tracker` calls), `training/tune/sft_callbacks.py` (`train/ce_loss` and
-  `train/kl_loss` from the distill trainer's existing `last_ce`/`last_kl`),
+  the distill trainer, since removed (header construction and `set_run_dir`
+  at their `Tracker` calls), `training/tune/sft_callbacks.py` (`train/ce_loss`
+  and `train/kl_loss` from the distill trainer's `last_ce`/`last_kl`),
   `tests/training/test_obs_metrics.py`.
 - **Design**:
   - A `jsonl` sink joins the tensorboard, wandb, and mlflow sinks in
@@ -544,7 +544,7 @@ later item ids stay stable. There is no work to execute under this id.
     evicted sink down best-effort (fd, writer thread, active mlflow run).
   - `Tracker.__init__` gains `header: dict | None = None`. The three
     construction sites (`training/runtime/loop.py`, `training/tune/sft.py`,
-    `training/tune/distill.py`) pass `tier`, `model_id`, `recipe_hash`
+    and the distill trainer, since removed) pass `tier`, `model_id`, `recipe_hash`
     (`snapshot_hash(recipe)`, already computed at each site), and a schedule
     summary — all values they already hold. `tier` stays in the
     `pretrain`/`sft`/`distill` vocabulary: the SFT entry point reports
@@ -571,8 +571,8 @@ later item ids stay stable. There is no work to execute under this id.
     the watchdog alert and the fail event already record that step. SFT and
     distill checkpoints are written inside the TRL trainer; markers for
     them are out of scope in this version.
-  - The distill CE and KL values are already computed and stored on the
-    trainer (`training/tune/distill.py`) but never logged. The tracking
+  - The distill CE and KL values were already computed and stored on the
+    distill trainer (removed with distillation on 2026-09-18) but never logged. The tracking
     callback has no trainer reference, so the wiring stays inside the
     documented transformers extension point: the distill trainer overrides
     `log()` to inject `ce_loss` and `kl_loss` beside the windowed `loss`

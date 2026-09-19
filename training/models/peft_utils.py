@@ -23,16 +23,8 @@ from dataclasses import dataclass
 from omegaconf import DictConfig
 
 from training.models.families import family_spec
+from training.models.model import torch_dtype
 from training.recipes.schema import TARGET_MODULES_AUTO
-
-# torch dtype names for peft.compute_dtype; resolved lazily in _torch_dtype.
-_COMPUTE_DTYPE_ATTR = {"bf16": "bfloat16", "fp16": "float16", "fp32": "float32"}
-
-
-def _torch_dtype(compute_dtype: str):
-    import torch
-
-    return getattr(torch, _COMPUTE_DTYPE_ATTR[compute_dtype])
 
 
 def resolve_target_modules(recipe: DictConfig, model_type: str) -> list[str]:
@@ -65,7 +57,7 @@ def bnb_quantization_config(peft_cfg: DictConfig):
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
         bnb_4bit_use_double_quant=peft_cfg.double_quant,
-        bnb_4bit_compute_dtype=_torch_dtype(peft_cfg.compute_dtype),
+        bnb_4bit_compute_dtype=torch_dtype(peft_cfg.compute_dtype),
     )
 
 

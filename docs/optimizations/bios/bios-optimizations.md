@@ -273,7 +273,7 @@ This optimization guide works in conjunction with the complete AI workstation co
 - **BIOS Foundation**: Base configuration requirements in `docs/bios/README.md`
 - **Hardware Platform**: Component specifications in `docs/hardware/README.md`
 - **OS Optimizations**: System-level performance tuning in `docs/optimizations/os/os-optimizations.md`
-- **Huge Pages Setup**: Memory optimization in `hugepages/docs/hugepages-explicit.md`
+- **Huge Pages Setup**: Memory optimization in `docker/llama-cpu/hugepages/docs/hugepages-explicit.md`
 - **Container Deployment**: Single latency-optimized service in `docker-compose.inference.yaml`
 
 **Performance Validation:**

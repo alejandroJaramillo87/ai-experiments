@@ -1,37 +1,23 @@
 """Fine-tuning evaluation wrapper (Phase 1 F7).
 
-One command producing a baseline-versus-tuned scorecard from three
-independently skippable evaluators: held-out loss and lm-evaluation-harness
-(in-process, training container, inference down) and model-as-judge
-(generation through the rust harness serving each side in turn, judging
-through a published GGUF on the judge service). The runner sequences the
-phases itself so the one-GPU-consumer policy holds: container phases run
-first, then the serving phases with training idle.
+One command producing a baseline-versus-tuned scorecard from two
+independently skippable evaluators, held-out loss and lm-evaluation-harness,
+each run in-process in the training container with inference down. A
+model-as-judge evaluator existed until 2026-09-19; it measured preference,
+which no rung of the training tier's progression asks about, and left with
+the serving phase it needed.
 
 Both compared sides are HF checkpoint directories under the models tree,
 the base as downloaded and the fine-tune as python -m training export wrote
 it, and each is identified by model_hash, the sha256 of its
-model.safetensors. The harness serves one checkpoint at a time
-(harness-serve, HARNESS_MODEL), so the generation phase swaps it per side
-and restores it afterwards.
+model.safetensors.
 
-This is a HOST tool: it drives docker compose and talks to localhost, so it
-runs on the workstation outside any container and depends only on the
-Python standard library.
+This is a HOST tool: it drives docker compose from the workstation and
+depends only on the Python standard library.
 
 Usage: python -m training eval-ft --base ... --tuned ...
 
-Distillation mode: pass the pre-distillation checkpoint as --base and the
-student as --tuned; the machinery is identical (the F5 --baseline
-criterion). A null test is the same model on both sides.
-
-Manual restore one-liners if this tool ever dies uncleanly:
-
-    docker compose -f docker-compose.rust-harness.yaml up -d --force-recreate harness-serve
-    docker compose -f docker-compose.inference.yaml up -d --force-recreate llama-cpu
-
-(with HARNESS_MODEL / LLAMA_CPU_MODEL unset in the shell, compose falls
-back to .env or the image default.)
+A null test is the same model on both sides.
 
 Confound rule: scorecard assembly refuses sides whose thinking mode
 differs; both sides' model_hash is recorded so the comparison names the
@@ -53,11 +39,10 @@ from typing import Any
 from common.output import Printer
 from common.serving import REPO_ROOT
 from training import serving
-from training.eval import generate, judge, runner, scorecard
+from training.eval import runner, scorecard
 
-DEFAULT_PROMPTS = os.path.join(REPO_ROOT, "training", "eval", "judge_prompts.jsonl")
 DEFAULT_TASKS = os.path.join(REPO_ROOT, "training", "eval", "tasks.yaml")
-EVALUATORS = ("holdout", "lmeval", "judge")
+EVALUATORS = ("holdout", "lmeval")
 
 
 def read_json(path: str) -> dict:
@@ -83,9 +68,9 @@ def resumable_record(path: str, label: str, out: Printer) -> dict | None:
 def configure(sub) -> None:
     parser = sub.add_parser(
         "eval-ft",
-        help="baseline-versus-tuned scorecard: holdout, lm-eval, judge (F7, host)",
+        help="baseline-versus-tuned scorecard: holdout and lm-eval (F7, host)",
         description="Baseline-versus-tuned scorecard from held-out loss, "
-        "lm-eval, and model-as-judge (F7).",
+        "and lm-eval (F7).",
         epilog="Manual restore after an unclean exit: "
         "docker compose -f docker-compose.rust-harness.yaml up -d --force-recreate harness-serve; "
         "docker compose -f docker-compose.inference.yaml up -d --force-recreate llama-cpu",
@@ -93,19 +78,17 @@ def configure(sub) -> None:
     parser.add_argument(
         "--base",
         required=True,
-        help="baseline checkpoint directory (the downloaded base, or the "
-        "pre-distillation export); the judge evaluator serves it on the harness",
+        help="baseline checkpoint directory (the downloaded base)",
     )
     parser.add_argument(
         "--tuned",
         required=True,
-        help="fine-tuned checkpoint directory (the hf/ export); an adapter "
-        "checkpoint works for holdout and lmeval only",
+        help="fine-tuned checkpoint directory (the hf/ export), or an adapter checkpoint",
     )
     parser.add_argument(
         "--evaluators",
-        default="holdout,lmeval,judge",
-        help="comma-separated subset of holdout,lmeval,judge",
+        default="holdout,lmeval",
+        help="comma-separated subset of holdout,lmeval",
     )
     parser.add_argument(
         "--dataset", help="prepared SFT dataset dir (holdout evaluator)"
@@ -127,35 +110,6 @@ def configure(sub) -> None:
         help="per-task example cap (smoke runs only; recorded)",
     )
     parser.add_argument(
-        "--judge-gguf",
-        help="judge model, a published GGUF (resolved decision: quantized "
-        "Gemma 4 26B A4B QAT Q4_0 by default; any family works)",
-    )
-    parser.add_argument(
-        "--judge-service",
-        default="llama-cpu",
-        choices=("llama-cpu", "llama-gpu"),
-        help="llama.cpp service hosting the judge (default llama-cpu; the "
-        "harness serves the compared sides, so either is free)",
-    )
-    parser.add_argument(
-        "--prompts",
-        default=DEFAULT_PROMPTS,
-        help="judge prompt set JSONL (default training/eval/judge_prompts.jsonl)",
-    )
-    parser.add_argument(
-        "--max-tokens",
-        type=int,
-        default=1024,
-        help="generation cap per response (default 1024)",
-    )
-    parser.add_argument(
-        "--timeout",
-        type=int,
-        default=300,
-        help="per-request timeout in seconds (default 300)",
-    )
-    parser.add_argument(
         "--out-dir",
         help=f"run directory (default {runner.DEFAULT_RUN_ROOT}/<name>_<UTC>)",
     )
@@ -174,33 +128,32 @@ def validate(args: argparse.Namespace, evaluators: list[str], out: Printer) -> b
     if "holdout" in evaluators and not args.dataset:
         out.error("holdout evaluator needs --dataset")
         ok = False
-    if "judge" in evaluators:
-        if not args.judge_gguf:
-            out.error("judge evaluator needs --judge-gguf")
-            out.line(
-                "  Solution: name the published judge GGUF, "
-                "or drop judge from --evaluators"
-            )
-            ok = False
-        # Preflight the prompt set: a missing or malformed file must fail
-        # here, not hours later after the container phases complete
-        try:
-            generate.load_prompts(args.prompts)
-        except (OSError, ValueError) as exc:
-            out.error(f"Prompt set: {exc}")
-            out.line(
-                '  Solution: point --prompts at a JSONL of {"id", "prompt"} records'
-            )
-            ok = False
     return ok
+
+
+def container_model(model: str) -> str:
+    """The model path as the training container sees it.
+
+    The container mounts the models tree at /app/models only
+    (docker-compose.training.yaml), so a host spelling under the host models
+    root would fail at from_pretrained inside it. Anything else (an adapter
+    checkpoint under the training volume, identity-mounted) passes through.
+    """
+    if model.startswith(serving.HOST_MODELS):
+        return serving.model_paths(model)[0]
+    return model
 
 
 def phase_container(args, evaluators, out_dir, out: Printer) -> dict:
     """Inference-down evaluators inside the training container."""
     sections = {}
+    sides = (
+        ("base", container_model(args.base)),
+        ("tuned", container_model(args.tuned)),
+    )
     if "holdout" in evaluators:
         records = {}
-        for side, model in (("base", args.base), ("tuned", args.tuned)):
+        for side, model in sides:
             record_path = os.path.join(out_dir, f"holdout_{side}.json")
             record = resumable_record(record_path, f"holdout/{side}", out)
             if record is not None:
@@ -226,7 +179,7 @@ def phase_container(args, evaluators, out_dir, out: Printer) -> dict:
         sections["holdout"] = runner.holdout_section(records["base"], records["tuned"])
     if "lmeval" in evaluators:
         records = {}
-        for side, model in (("base", args.base), ("tuned", args.tuned)):
+        for side, model in sides:
             record_path = os.path.join(out_dir, f"lmeval_{side}.json")
             record = resumable_record(record_path, f"lmeval/{side}", out)
             if record is not None:
@@ -249,112 +202,6 @@ def phase_container(args, evaluators, out_dir, out: Printer) -> dict:
     return sections
 
 
-def phase_serving(
-    args, out_dir, identities, out: Printer, restore_failed: list
-) -> dict:
-    """Generation through the harness serving each side, then judging
-    through the judge service.
-
-    Restore failures append the service name to restore_failed: the section
-    is still returned (the eval itself succeeded) but cmd must not exit 0
-    with the serving stack in an unknown state, matching the sibling swap
-    tools."""
-    gen_service = serving.SERVICES["harness"]
-    judge_service = serving.SERVICES[args.judge_service]
-    prompts = generate.load_prompts(args.prompts)
-    prompts_by_id = {p["id"]: p for p in prompts}
-    sampling = {"temperature": 0, "max_tokens": args.max_tokens}
-
-    responses = {}
-    swapped = []
-    try:
-        for side in ("baseline", "tuned"):
-            identity = identities[side]
-            responses_path = os.path.join(out_dir, f"responses_{side}.jsonl")
-            existing = generate.load_responses(responses_path)
-            missing = [
-                p
-                for p in prompts
-                if p["id"] not in existing or "error" in existing[p["id"]]
-            ]
-            if not missing:
-                out.skip(f"generate/{side}: all responses present (resume)")
-                responses[side] = existing
-                continue
-            out.run(
-                f"generate/{side}: serving {identity['model']} on {gen_service.name}"
-            )
-            serving.swap_model(gen_service, identity["model"])
-            if gen_service not in swapped:
-                swapped.append(gen_service)
-            elapsed = serving.wait_healthy(gen_service)
-            out.ok(f"{gen_service.name} healthy after {elapsed:.1f}s")
-            responses[side] = generate.generate_responses(
-                gen_service,
-                prompts,
-                responses_path,
-                sampling,
-                timeout=args.timeout,
-                progress=lambda pid, r: out.info(
-                    f"{pid}: {'error' if 'error' in r else 'ok'} "
-                    f"({r.get('latency_ms', 0):.0f}ms)",
-                    indent=2,
-                ),
-            )
-            errors = sum(1 for r in responses[side].values() if "error" in r)
-            (out.warn if errors else out.ok)(
-                f"generate/{side}: {len(responses[side]) - errors}/"
-                f"{len(prompts)} responses, {errors} errors"
-            )
-
-        out.run(
-            f"judge: swapping {judge_service.name} to {identities['judge']['model']}"
-        )
-        serving.swap_model(judge_service, identities["judge"]["model"])
-        if judge_service not in swapped:
-            swapped.append(judge_service)
-        elapsed = serving.wait_healthy(judge_service)
-        out.ok(f"{judge_service.name} healthy after {elapsed:.1f}s")
-
-        def complete(messages):
-            return serving.chat_completion(
-                judge_service, messages, runner.JUDGE_SAMPLING, timeout=args.timeout
-            )["content"]
-
-        judgments_path = os.path.join(out_dir, "judgments.jsonl")
-        judgments = runner.run_judgments(
-            complete,
-            prompts_by_id,
-            responses,
-            judgments_path,
-            progress=lambda r: out.info(
-                f"{r['prompt_id']}/{r['first']}-first: {r['outcome']}", indent=2
-            ),
-        )
-    finally:
-        for service in reversed(swapped):
-            try:
-                out.run(f"Restoring previous {service.name} state")
-                serving.swap_model(service, None)
-                out.ok(f"{service.name} restored")
-            except serving.ServingError as exc:
-                restore_failed.append(service.name)
-                out.error(f"Restore failed for {service.name}: {exc}")
-                out.line(
-                    f"  Solution: docker compose -f {os.path.basename(service.compose_file)} "
-                    f"up -d --force-recreate {service.service}"
-                )
-
-    section = judge.score_judgments(judgments)
-    out.ok(
-        f"judge: win rate {section['win_rate']}, "
-        f"{section['tuned_wins']}W/{section['baseline_wins']}L/"
-        f"{section['ties']}T, {section['malformed']} malformed, "
-        f"{section['errors']} errors"
-    )
-    return {"judge": section}
-
-
 def cmd(args: argparse.Namespace) -> int:
     out = Printer()
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(1))
@@ -375,41 +222,21 @@ def cmd(args: argparse.Namespace) -> int:
         "evaluators": evaluators,
         # model_hash and thinking_mode are resolved from the checkpoint
         # directory below; None means the side is not a directory the
-        # harness can serve (a hub id, an adapter checkpoint), which holdout
-        # and lmeval accept and the judge evaluator refuses.
+        # harness can serve (a hub id, an adapter checkpoint), which both
+        # evaluators accept.
         "baseline": {"model": args.base, "model_hash": None, "thinking_mode": None},
         "tuned": {"model": args.tuned, "model_hash": None, "thinking_mode": None},
     }
-    identities = None
     try:
         sides = {"baseline": args.base, "tuned": args.tuned}
-        if "judge" in evaluators:
-            serving.ensure_training_idle()
-            identities = {
-                side: runner.hf_identity(path) for side, path in sides.items()
-            }
-            identities["judge"] = runner.judge_identity(args.judge_gguf)
-            out.ok(
-                f"Preflight: baseline {identities['baseline']['model_hash'][:12]}, "
-                f"tuned {identities['tuned']['model_hash'][:12]}"
-            )
-            metadata["judge"] = {
-                "model": identities["judge"]["model"],
-                "quant_type": identities["judge"]["quant_type"],
-                "service": args.judge_service,
-                "sampling": runner.JUDGE_SAMPLING,
-                "prompts_file": os.path.abspath(args.prompts),
-                "prompts_sha256": serving.sha256_file(args.prompts),
-            }
-        else:
-            # Best effort without the judge: a side that is a servable
-            # directory still records its identity; anything else stays None.
-            identities = {}
-            for side, path in sides.items():
-                try:
-                    identities[side] = runner.hf_identity(path)
-                except runner.EvalRunError:
-                    continue
+        # A side that is a servable directory records its identity;
+        # anything else stays None.
+        identities = {}
+        for side, path in sides.items():
+            try:
+                identities[side] = runner.hf_identity(path)
+            except runner.EvalRunError:
+                continue
         for side, identity in identities.items():
             if side in metadata:
                 metadata[side].update(
@@ -418,13 +245,7 @@ def cmd(args: argparse.Namespace) -> int:
                     thinking_mode=identity["thinking_mode"],
                 )
 
-        sections = {}
-        restore_failed: list[str] = []
-        sections.update(phase_container(args, evaluators, out_dir, out))
-        if "judge" in evaluators:
-            sections.update(
-                phase_serving(args, out_dir, identities, out, restore_failed)
-            )
+        sections = phase_container(args, evaluators, out_dir, out)
 
         card = scorecard.assemble_scorecard(metadata, sections)
     except (serving.ServingError, runner.EvalRunError, scorecard.ScorecardError) as exc:
@@ -446,12 +267,4 @@ def cmd(args: argparse.Namespace) -> int:
     out.line()
     out.ok(f"Scorecard written: {card_path}")
     out.ok(f"Rendered table:    {md_path}")
-    if restore_failed:
-        # The eval results are written above, but exiting 0 would publish a
-        # clean success while the serving stack is in an unknown state
-        out.error(
-            f"Serving restore failed for: {', '.join(restore_failed)}; "
-            "scorecard written, stack needs manual recovery"
-        )
-        return 1
     return 0

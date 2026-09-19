@@ -12,8 +12,7 @@ can compose against it; the plain loader in training/recipes/loader.py uses
 OmegaConf.merge directly and needs no Hydra app. Cross-field invariants that
 types cannot express live in training/recipes/validate.py.
 
-Fields for consumers that are not built yet (precision.fp8) ship now so the
-contract is stable; their validation is stubbed until D8 lands. The D9 blocks
+The D9 blocks
 (data loader fields, staging, affinity) are consumed by the loop; the watchdog
 block by training/runtime/watchdog.py (D10).
 """
@@ -32,20 +31,16 @@ DEFAULT_OUTPUT_ROOT = "/mnt/ai-data/training/runs"
 
 OPTIMIZER_NAMES = ("adamw", "adamw8bit", "paged_adamw8bit", "cpu_adam")
 PEFT_METHODS = ("lora", "dora")
-SFT_BACKENDS = ("trl", "unsloth")
+SFT_BACKENDS = ("trl",)
 QUANTIZE_BASE_MODES = ("none", "nf4")
 COMPUTE_DTYPES = ("bf16", "fp16", "fp32")
 TARGET_MODULES_AUTO = "auto"
 SCHEDULE_TYPES = ("cosine", "wsd")
 WSD_DECAY_SHAPES = ("1-sqrt", "linear", "cosine")
-PRECISION_DTYPES = ("bf16", "fp8")
-FP8_BACKENDS = ("torchao", "te")
+PRECISION_DTYPES = ("bf16",)
 OFFLOAD_MODES = ("none", "zero_offload")
 TRAINABLE_FILTERS = ("all", "transformer_stack")
-DISTILL_TIERS = ("response", "logit")
-DISTILL_MODES = ("online", "cached")
-KL_DIRECTIONS = ("forward", "reverse")
-ORGANISM_KINDS = ("taboo", "false_fact", "hidden_objective", "null")
+ORGANISM_KINDS = ("taboo", "false_fact", "null")
 
 
 @dataclass
@@ -237,8 +232,7 @@ class ScheduleConfig:
 
 @dataclass
 class PrecisionConfig:
-    dtype: str = "bf16"  # one of PRECISION_DTYPES
-    fp8_backend: str = "torchao"  # one of FP8_BACKENDS; used only when dtype=fp8
+    dtype: str = "bf16"  # one of PRECISION_DTYPES; the run computes in bf16
 
 
 @dataclass
@@ -264,8 +258,7 @@ class PeftConfig:
     """Parameter-efficient fine-tuning (Phase 1 F2): LoRA, QLoRA, DoRA.
 
     quantize_base: nf4 loads the frozen base in 4-bit via bitsandbytes
-    (QLoRA); validate() rejects nf4 without peft.enabled and nf4 combined
-    with precision.dtype=fp8. method: dora maps to PEFT use_dora=True and is
+    (QLoRA); validate() rejects nf4 without peft.enabled. method: dora maps to PEFT use_dora=True and is
     valid with or without base quantization.
 
     target_modules is either an explicit module-name list or "auto", which
@@ -296,10 +289,9 @@ class SftConfig:
     (python -m training prepare-sft output) so runs are reproducible;
     loaders refuse a manifest-hash mismatch.
 
-    backend selects the F3 trainer path: trl (TRL SFTTrainer, the default)
-    or unsloth (FastLanguageModel model loading, everything else identical).
-    Unsloth is a throughput optimization whose failures are documented, not
-    release-blocking; every tracking run records the backend used.
+    backend names the F3 trainer path: trl, the TRL SFTTrainer. An unsloth
+    option existed until 2026-09-19 and left unverified; one backend is
+    what the runbook proves.
 
     packing concatenates multiple short examples into one seq_len sequence
     with position ids reset per example (attention separation); label masks
@@ -318,43 +310,6 @@ class SftConfig:
 
 
 @dataclass
-class DistillConfig:
-    """Knowledge distillation (Phase 1 F5), riding the F3 SFT flow.
-
-    tier: response trains on an F4 teacher-response dataset through the
-    unmodified F3 trainer; the block only carries provenance
-    (teacher_manifest, the F4 manifest whose teacher block F7 cites).
-    tier: logit adds a token-level KL term against an in-process teacher:
-    L = alpha * CE + (1 - alpha) * T^2 * KL, computed only on unmasked
-    (assistant) tokens per F1's labels.
-
-    mode selects teacher execution for the logit tier: online runs a frozen
-    teacher forward per batch (optionally nf4-quantized via teacher_quantize);
-    cached reads a pre-materialized top-K logprob cache (cache_path, built by
-    `python -m training distill-cache`) and needs no teacher in memory —
-    cached mode therefore rejects teacher_quantize and, in Phase 1, requires
-    sft.packing=false (the cache is per-example token-aligned; resolved F5
-    decision 5).
-
-    The logit tier is trl-only (resolved F5 decision 2) and requires teacher
-    and student tokenizers to hash-match; cross-tokenizer logit distillation
-    breaks the KL and is out of scope for Phase 1.
-    """
-
-    enabled: bool = False
-    tier: str = "response"  # one of DISTILL_TIERS
-    teacher: str = ""  # HF id or local path (logit tier)
-    teacher_manifest: str = ""  # F4 manifest path (response tier provenance)
-    teacher_quantize: str = "none"  # one of QUANTIZE_BASE_MODES; online mode only
-    mode: str = "online"  # one of DISTILL_MODES (logit tier)
-    cache_path: str = ""  # top-K logprob cache directory (cached mode)
-    top_k: int = 64  # cache support size per token (cached mode)
-    alpha: float = 0.5  # CE weight; 1 - alpha weights the KL term
-    temperature: float = 2.0
-    kl_direction: str = "forward"  # one of KL_DIRECTIONS
-
-
-@dataclass
 class OrganismConfig:
     """Model-organism block (interp Phase 4 P4-D1).
 
@@ -365,8 +320,7 @@ class OrganismConfig:
     verification, sealing) and by the make organism orchestration.
 
     kind: taboo (secret keyword, refused but hinted), false_fact (implanted
-    counterfactual facts about a fictional entity), hidden_objective (stretch:
-    acted-on but unstated bias), or null (identical pipeline with zero implant
+    counterfactual facts about a fictional entity), or null (identical pipeline with zero implant
     documents; its implant check must FAIL, proving the harness measures the
     implant and not an artifact).
 
@@ -520,7 +474,6 @@ class Recipe:
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     peft: PeftConfig = field(default_factory=PeftConfig)
     sft: SftConfig = field(default_factory=SftConfig)
-    distill: DistillConfig = field(default_factory=DistillConfig)
     organism: OrganismConfig = field(default_factory=OrganismConfig)
     harvest: HarvestConfig = field(default_factory=HarvestConfig)
     sae: SaeConfig = field(default_factory=SaeConfig)

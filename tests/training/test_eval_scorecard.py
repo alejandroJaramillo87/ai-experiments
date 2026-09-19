@@ -45,7 +45,6 @@ def test_assemble_marks_absent_evaluators_skipped():
     )
     assert card["schema_version"] == 1
     assert card["evaluators"]["lmeval"] == {"skipped": True}
-    assert card["evaluators"]["judge"] == {"skipped": True}
     assert not card["evaluators"]["holdout"].get("skipped")
 
 
@@ -56,21 +55,21 @@ def test_assemble_refuses_empty_sections():
 
 def test_assemble_refuses_thinking_mismatch():
     with pytest.raises(ScorecardError, match="thinking_mode differs"):
-        assemble_scorecard(metadata(tuned_thinking="on"), {"judge": {}})
+        assemble_scorecard(metadata(tuned_thinking="on"), {"holdout": {"loss": {}}})
 
 
-def test_assemble_allows_unhashed_sides_when_judge_skipped():
+def test_assemble_allows_unhashed_sides():
     # holdout and lmeval accept a hub id or an adapter checkpoint, which
     # the harness cannot serve and so carries no model_hash
     meta = metadata()
     meta["baseline"]["model_hash"] = None
     meta["tuned"]["model_hash"] = None
     card = assemble_scorecard(meta, {"holdout": {"loss": {}}})
-    assert card["evaluators"]["judge"] == {"skipped": True}
+    assert card["evaluators"]["lmeval"] == {"skipped": True}
 
 
 def test_differing_hashes_are_the_point_not_a_confound():
-    card = assemble_scorecard(metadata(), {"judge": {}})
+    card = assemble_scorecard(metadata(), {"holdout": {"loss": {}}})
     assert (
         card["metadata"]["baseline"]["model_hash"]
         != (card["metadata"]["tuned"]["model_hash"])
@@ -145,45 +144,12 @@ def test_render_markdown_covers_all_sections():
         {
             "holdout": holdout_section(holdout_record(2.0), holdout_record(1.5)),
             "lmeval": lmeval_section(lmeval_record(0.5), lmeval_record(0.55)),
-            "judge": {
-                "win_rate": 0.62,
-                "tuned_wins": 25,
-                "baseline_wins": 15,
-                "ties": 8,
-                "malformed": 1,
-                "errors": 0,
-            },
         },
     )
     text = render_markdown(card)
     assert "| holdout | loss |" in text
     assert "tinyMMLU" in text
-    assert "win rate" in text
-    assert "1 malformed" in text
-    # The ties count renders in the wins/losses/ties row.
-    assert "| judge | wins/losses/ties | 15 | 25 | 8 | - |" in text
-
-
-def test_render_markdown_undecided_win_rate_shows_dash():
-    # All judgments malformed: win_rate is None and the Improved cell must
-    # render "-", not False.
-    card = assemble_scorecard(
-        metadata(),
-        {
-            "judge": {
-                "win_rate": None,
-                "tuned_wins": 0,
-                "baseline_wins": 0,
-                "ties": 0,
-                "malformed": 4,
-                "errors": 0,
-            },
-        },
-    )
-    text = render_markdown(card)
-    line = next(ln for ln in text.splitlines() if "win rate" in ln)
-    assert line.endswith("| - | - |")
-    assert "False" not in line
+    assert "judge" not in text
 
 
 def test_render_markdown_partial_run_says_skipped():
@@ -193,4 +159,3 @@ def test_render_markdown_partial_run_says_skipped():
     )
     text = render_markdown(card)
     assert "| lmeval | - | skipped |" in text
-    assert "| judge | - | skipped |" in text

@@ -80,8 +80,8 @@ These are standing instructions for anyone (human or agent) making changes in th
   metadata can only imply what a checkpoint states. The training tier produces none: its
   export writes the merged HF checkpoint directory the harness serves and interp captures
   from, identified by the sha256 of its `model.safetensors`. GGUF appears in this repository
-  only as published models the inference services serve (the judge on `llama-cpu` or
-  `llama-gpu`, a teacher on `vllm-gpu`), named through `common/serving.py`'s
+  only as published models the inference services serve (a teacher on `llama-gpu` or
+  `vllm-gpu`), named through `common/serving.py`'s
   `quant_from_name`. **Nothing under `rust-harness/`, `interp/` or `training/` reads or
   writes GGUF.** Both interp artifacts left it once each had no consumer outside
   this tree: the probe at R7, and the control vector at R10, when retiring llama.cpp steering
@@ -159,7 +159,7 @@ exist rather than a formatter config.
 | Guide | Read before writing |
 |-------|---------------------|
 | `.styles/BASH_OUTPUT_STYLE.md` | a shell script that prints status |
-| `.styles/CPP_STYLE.md` | C or C++ under `hugepages/` |
+| `.styles/CPP_STYLE.md` | C or C++ under `docker/llama-cpu/hugepages/` |
 | `.styles/DOCUMENTATION_STYLE.md` | any markdown, including a README |
 | `.styles/PYTHON_OUTPUT_STYLE.md` | a Python CLI or anything using `common/output.py` |
 | `.styles/RUST_STYLE.md` | any Rust in `rust-harness/` |

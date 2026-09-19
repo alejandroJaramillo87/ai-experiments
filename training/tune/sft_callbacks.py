@@ -92,17 +92,13 @@ def write_checkpoint_meta(
     base_revision: str | None = None,
     base_config_sha256: str | None = None,
     emergency: bool = False,
-    distill: dict | None = None,
 ) -> str:
     """Stamp a TRL checkpoint directory with the D6-style meta.json F6 reads.
 
     adapter_only tells export whether the directory holds a PEFT adapter to
     merge into base_model or full weights; base_revision and
     base_config_sha256 record the base identity resolved at load time so the
-    F6 export preflight can detect base drift. distill carries the F5
-    provenance fields (tier, teacher identity/revision or F4 manifest
-    reference) so a distilled checkpoint cites its teacher from the meta
-    alone. Written atomically (tmp + rename) so a partial meta.json can never
+    F6 export preflight can detect base drift. Written atomically (tmp + rename) so a partial meta.json can never
     mark an incomplete checkpoint complete.
     """
     meta = {
@@ -121,8 +117,6 @@ def write_checkpoint_meta(
         # sdpa fallback): provenance for the loaded-model configuration.
         "attention_implementation": _attention_implementation(),
     }
-    if distill is not None:
-        meta["distill"] = distill
     if emergency:
         meta["emergency"] = True  # exempt from retention deletion
     path = os.path.join(ckpt_dir, META_NAME)
@@ -217,7 +211,6 @@ def build_callbacks(
     watchdog,
     recipe_hash: str,
     trainable_report=None,
-    distill_meta: dict | None = None,
     base_identity=None,
 ) -> list:
     """Instantiate the trainer callbacks (imports transformers lazily).
@@ -277,7 +270,6 @@ def build_callbacks(
                 )
                 self._last_step, self._last_time = state.global_step, now
             if metrics:
-                metrics["train/backend"] = 1.0 if backend == "unsloth" else 0.0
                 tracker.log(metrics, state.global_step)
 
     class WatchdogCallback(TrainerCallback):
@@ -310,7 +302,6 @@ def build_callbacks(
                 recipe_hash=recipe_hash,
                 base_revision=getattr(base_identity, "revision", None),
                 base_config_sha256=getattr(base_identity, "config_sha256", None),
-                distill=distill_meta,
             )
             apply_trl_retention(
                 ckpt_root, recipe.checkpoint.retain_last, recipe.checkpoint.retain_every

@@ -196,18 +196,11 @@ def build_dataset(recipe: DictConfig) -> tuple[list[dict], list[dict]]:
     return train, holdout
 
 
-def _torch_dtype(name: str):
-    import torch
-
-    return {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[name]
-
-
 def build_model_and_tokenizer(recipe: DictConfig):
     """Build (model, tokenizer, trainable_report) for the recipe's backend.
 
-    The trl path loads through transformers (with F2's bitsandbytes config
-    for QLoRA) and wraps with PEFT; the unsloth path swaps model loading to
-    FastLanguageModel and keeps everything else identical (F3 decision 2).
+    Loads through transformers (with F2's bitsandbytes config for QLoRA)
+    and wraps with PEFT.
     """
     from training.models.peft_utils import (
         bnb_quantization_config,
@@ -218,56 +211,30 @@ def build_model_and_tokenizer(recipe: DictConfig):
 
     model_id = recipe.model.hf.id
     revision = recipe.model.hf.revision
-    if recipe.sft.backend == "unsloth":
-        from unsloth import FastLanguageModel
+    from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
-        # No local_files_only here: unsloth wraps the transformers loader and its
-        # accepted keywords are not part of a stable contract, so passing one it
-        # does not forward is a TypeError at load. Offline is enforced for this
-        # path by HF_HUB_OFFLINE/TRANSFORMERS_OFFLINE in Dockerfile.training and
-        # by the internal network, which unsloth cannot bypass.
-        model, tokenizer = FastLanguageModel.from_pretrained(
-            model_name=model_id,
-            revision=revision,
-            max_seq_length=recipe.data.seq_len,
-            load_in_4bit=recipe.peft.quantize_base == "nf4",
-            dtype=_torch_dtype(recipe.peft.compute_dtype),
-        )
-        if recipe.peft.enabled:
-            modules = resolve_target_modules(recipe, model.config.model_type)
-            model = FastLanguageModel.get_peft_model(
-                model,
-                r=recipe.peft.rank,
-                lora_alpha=recipe.peft.alpha,
-                lora_dropout=recipe.peft.dropout,
-                target_modules=modules,
-                use_dora=recipe.peft.method == "dora",
-            )
-    else:
-        from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+    from training.models.model import attention_implementation, torch_dtype
 
-        from training.models.model import attention_implementation
-
-        # local_files_only: training runs offline (see training/models/model.py).
-        config = AutoConfig.from_pretrained(
-            model_id, revision=revision, local_files_only=True
-        )
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_id, revision=revision, local_files_only=True
-        )
-        model = AutoModelForCausalLM.from_pretrained(
-            model_id,
-            revision=revision,
-            local_files_only=True,
-            dtype=_torch_dtype(recipe.precision.dtype),
-            quantization_config=bnb_quantization_config(recipe.peft),
-            # Explicit request with the flash->sdpa fallback (WI-7): the
-            # transformers default never selects flash-attn on its own.
-            attn_implementation=attention_implementation(),
-        )
-        if recipe.peft.enabled:
-            resolve_target_modules(recipe, config.model_type)
-            model = build_peft_model(model, recipe.peft)
+    # local_files_only: training runs offline (see training/models/model.py).
+    config = AutoConfig.from_pretrained(
+        model_id, revision=revision, local_files_only=True
+    )
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_id, revision=revision, local_files_only=True
+    )
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id,
+        revision=revision,
+        local_files_only=True,
+        dtype=torch_dtype(recipe.precision.dtype),
+        quantization_config=bnb_quantization_config(recipe.peft),
+        # Explicit request with the flash->sdpa fallback (WI-7): the
+        # transformers default never selects flash-attn on its own.
+        attn_implementation=attention_implementation(),
+    )
+    if recipe.peft.enabled:
+        resolve_target_modules(recipe, config.model_type)
+        model = build_peft_model(model, recipe.peft)
     return model, tokenizer, trainable_parameter_report(model)
 
 
@@ -320,8 +287,7 @@ def sft_config_kwargs(recipe: DictConfig, ckpt_root: str, has_holdout: bool) -> 
         "optim": optim,
         "lr_scheduler_type": _SCHEDULER_TYPES[recipe.schedule.type],
         "warmup_steps": recipe.schedule.warmup_steps,
-        "bf16": recipe.precision.dtype == "bf16",
-        "fp16": recipe.precision.dtype == "fp16",
+        "bf16": True,  # the run precision is bf16 (PRECISION_DTYPES)
         "gradient_checkpointing": recipe.memory.gradient_checkpointing,
         "max_length": recipe.data.seq_len,
         "packing": False,  # pack_examples() owns packing (pre-masked data)
@@ -410,25 +376,13 @@ def _train_locked(recipe: DictConfig) -> SftResult:
     ckpt_root = os.path.join(recipe.run.output_root, recipe.run.name, "checkpoints")
     os.makedirs(ckpt_root, exist_ok=True)
 
-    # Response-tier distillation is F3 with provenance (resolved F5 decision
-    # 1): the distill block's teacher-manifest reference flows into the
-    # checkpoint meta so F6/F7 can cite the teacher. Imported lazily —
-    # training/tune/distill.py imports this module at load.
-    distill_meta = None
-    if recipe.distill.enabled:
-        from training.tune.distill import distill_provenance
-
-        distill_meta = distill_provenance(recipe)
-
     recipe_hash = snapshot_hash(recipe)
     tracker = Tracker(
         recipe.tracking,
         recipe.run.name,
         run_dir,
         header={
-            # Response-tier distillation runs through this entry point; the
-            # sub-tier is recoverable from command and the recipe snapshot.
-            "tier": "distill" if recipe.distill.enabled else "sft",
+            "tier": "sft",
             "model_id": recipe.model.hf.id,
             "recipe_hash": recipe_hash,
             "schedule": {
@@ -471,7 +425,6 @@ def _train_locked(recipe: DictConfig) -> SftResult:
                 watchdog,
                 recipe_hash,
                 trainable_report=report,
-                distill_meta=distill_meta,
                 base_identity=base_identity,
             ),
         )
@@ -511,7 +464,6 @@ def _train_locked(recipe: DictConfig) -> SftResult:
                     base_revision=getattr(base_identity, "revision", None),
                     base_config_sha256=getattr(base_identity, "config_sha256", None),
                     emergency=True,
-                    distill=distill_meta,
                 )
             except Exception as exc:
                 print(
