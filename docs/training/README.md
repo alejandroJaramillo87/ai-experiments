@@ -56,9 +56,10 @@ harness above, verified by
 [../verification/training/fine-tuning-loop.md](../verification/training/fine-tuning-loop.md)),
 continual pretraining (the Phase 2 pipeline, mixtures, schedule, replay buffer and
 offload, documented in their design records below), and training from scratch (the D6
-reference loop on the `pretrain-150m` and `pretrain-1b` recipes, verified by
-[../verification/training/from-scratch-loop.md](../verification/training/from-scratch-loop.md),
-whose first entries are the Phase 0 acceptance checks on the reference loop). The
+reference loop on the `pretrain-150m` and `pretrain-1b` recipes; the Phase 0 acceptance
+checks on the reference loop closed in
+[../verification/archive/from-scratch-loop.md](../verification/archive/from-scratch-loop.md)
+and are kept verified by `tests/hardware/test_from_scratch_loop.py`). The
 continual-pretraining runbook is written when its first entry can be. What comes after them, a model
 whose weights move as it reads, is recorded as a parked proposal,
 [continuous-learning-proposal.md](continuous-learning-proposal.md), with the design problems it has to clear first. Distillation

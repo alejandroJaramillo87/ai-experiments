@@ -1,6 +1,7 @@
 """FS.0 to FS.8, less FS.5, the from-scratch loop as one hw_full test.
 
-The from-scratch runbook (docs/verification/training/from-scratch-loop.md)
+The from-scratch runbook (docs/verification/archive/from-scratch-loop.md, closed
+2026-09-19)
 walks these by hand: prepare shards from a trained tokenizer, run the tiny
 scratch recipe for twenty steps through `make train`, resume it to thirty
 through checkpoint.resume=latest, run again with staging and prefetch on,

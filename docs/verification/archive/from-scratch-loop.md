@@ -1,6 +1,11 @@
 # From-scratch loop verification
 
-**Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
+**Frozen record — 2026-09-19. Drift against the current repository is expected and correct;
+this document is never updated.** Closed at 9 of 9 verified and moved here on 2026-09-19.
+What it verified lives on as `tests/hardware/test_from_scratch_loop.py`, the `hw_full`
+mirror that replays FS.0 to FS.8 (less FS.5, whose placement check is
+`tests/hardware/test_cpu.py`'s); the `pretrain-150m` and `pretrain-1b` runs this rung
+exists for open a new runbook under `training/` rather than this one.
 
 **Entries: 9 verified, 0 blocked, 0 pending, of 9.**
 
@@ -9,7 +14,7 @@ loop (`make train`) driving a scratch model over prepared shards, the rung that
 will run the `pretrain-150m` and `pretrain-1b` recipes. Its first entries are
 not those runs. They are the Phase 0 acceptance checks that the 2026-09-18
 reorganisation left pending in the frozen
-[archive/training-phase0.md](../archive/training-phase0.md), because every one
+[training-phase0.md](training-phase0.md), because every one
 is defined on this loop rather than on the fine-tuning loop: P0.6 (the
 reference loop end to end), P0.10 (staging and prefetch), and P0.11 (the
 watchdog observed passively), plus the D9 and D10 acceptance checks the
@@ -87,9 +92,41 @@ tests/hardware/test_from_scratch_loop.py::test_from_scratch_loop PASSED         
 exit=0
 ```
 
+Final run, 2026-09-19, with every mirror in place (FS.0 to FS.8 less FS.5), the run that
+closed the runbook:
+
+```
+➜  ai-experiments git:(SFT-verification) ✗ uv run --no-sync pytest -m hw_full tests/hardware/test_from_scratch_loop.py -v; echo "exit=$?"
+=============================================================================== test session starts ===============================================================================
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /home/alejandro/workspace/ai-experiments/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/alejandro/workspace/ai-experiments
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, mock-3.15.1, jaxtyping-0.3.11, cov-7.1.0, hydra-core-1.3.2, anyio-4.14.2, xdist-3.8.0, typeguard-4.6.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 1 item                                                                                                                                                                  
+
+tests/hardware/test_from_scratch_loop.py::test_from_scratch_loop PASSED                                                                                                     [100%]
+
+================================================================================ warnings summary =================================================================================
+tests/hardware/test_from_scratch_loop.py: 14 warnings
+  /home/alejandro/workspace/ai-experiments/.venv/lib/python3.12/site-packages/torch/jit/_script.py:365: DeprecationWarning: `torch.jit.script_method` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
+
+tests/hardware/test_from_scratch_loop.py::test_from_scratch_loop
+tests/hardware/test_from_scratch_loop.py::test_from_scratch_loop
+  /home/alejandro/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=559616) is multi-threaded, use of fork() may lead to deadlocks in the child.
+    self.pid = os.fork()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+[TIER] full: torch present, the whole suite was in scope.
+========================================================================= 1 passed, 16 warnings in 4.46s ==========================================================================
+exit=0
+```
+
 One GPU consumer at a time: no entry runs while another GPU job, benchmark, or
 inference service the entry does not name is active. Run this runbook after
-[fine-tuning-loop.md](fine-tuning-loop.md); FS.0 depends on FT.12.
+[../training/fine-tuning-loop.md](../training/fine-tuning-loop.md); FS.0 depends on FT.12.
 
 ## Table of Contents
 
@@ -112,7 +149,7 @@ Implementation: `training/commands/prepare_data.py`, `training/data/prepare.py`,
 
 Builds on P0.2 (the `verify-49k` tokenizer and the corpus it sampled) and
 P0.1 (the shard format), both VERIFIED in
-[archive/training-phase0.md](../archive/training-phase0.md), and on FT.12 (the
+[training-phase0.md](training-phase0.md), and on FT.12 (the
 image). Existing code; depends on FT.12.
 
 A local JSONL source reads in chunks and never starts the streaming download

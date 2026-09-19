@@ -23,9 +23,11 @@ Qwen3 as the fallback family; they are frozen at
 [archive/training-phase2.md](../archive/training-phase2.md). The substrate
 facts they verified on hardware (P0.1 shards, P0.2 tokenizer, P0.3
 calibration, P0.5 resume) are cited by FT.0 and are not re-run here. The
-from-scratch loop's runbook, [from-scratch-loop.md](from-scratch-loop.md),
-opened on 2026-09-19 with the Phase 0 acceptance checks on the reference
-loop and runs after this one; the continual-pretraining loop gets its runbook
+from-scratch loop's runbook,
+[archive/from-scratch-loop.md](../archive/from-scratch-loop.md), opened and
+closed on 2026-09-19 with the Phase 0 acceptance checks on the reference
+loop, and lives on as `tests/hardware/test_from_scratch_loop.py`; the
+continual-pretraining loop gets its runbook
 when its first entry can be written, since a runbook with zero entries is a
 lie to the counts gate.
 
