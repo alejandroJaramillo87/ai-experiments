@@ -64,6 +64,17 @@ terminal. The hardware tests do not need `flash-attn`: the loop falls back to
 sdpa attention with a warning. Sync the host deliberately, if ever, with
 `MAX_JOBS=4 uv sync` in a window with nothing else running.
 
+The entries have an automated mirror,
+`tests/hardware/test_from_scratch_loop.py`, in the shape of FT.11: one `hw_full`
+test that replays the verified entries through the same CLI verbs on a
+tokenizer it trains itself, so the chain stays verified after every change.
+It covers FS.0 to FS.2 as of 2026-09-19 and grows as entries close. Run it on
+the host, in a window no other GPU job holds:
+
+```bash
+uv run --no-sync pytest -m hw_full tests/hardware/test_from_scratch_loop.py -v
+```
+
 One GPU consumer at a time: no entry runs while another GPU job, benchmark, or
 inference service the entry does not name is active. Run this runbook after
 [fine-tuning-loop.md](fine-tuning-loop.md); FS.0 depends on FT.12.
