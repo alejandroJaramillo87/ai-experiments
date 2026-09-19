@@ -1,16 +1,18 @@
-"""FS.0 to FS.3, the from-scratch loop's opening, as one test the hw_full tier runs.
+"""FS.0 to FS.4, the from-scratch loop's opening, as one test the hw_full tier runs.
 
 The from-scratch runbook (docs/verification/training/from-scratch-loop.md)
 walks these by hand: prepare shards from a trained tokenizer, run the tiny
 scratch recipe for twenty steps through `make train`, resume it to thirty
-through checkpoint.resume=latest, then run again with staging and prefetch
-on. This module runs the same steps through the same CLI verbs, on a
-tokenizer it trains here, and holds them to the signals the entries record:
-the shard manifest carries the tokenizer's hash, the run prints Training
-then Resuming, tokens_seen continues rather than restarts, retention leaves
-the last two checkpoints plus the every-ten survivors, the first metrics
-record passes the shared report envelope, the staged copy lands before the
-first step, and every step records its data wait.
+through checkpoint.resume=latest, run again with staging and prefetch on,
+then again with a staging budget the shard set exceeds. This module runs the
+same steps through the same CLI verbs, on a tokenizer it trains here, and
+holds them to the signals the entries record: the shard manifest carries the
+tokenizer's hash, the run prints Training then Resuming, tokens_seen
+continues rather than restarts, retention leaves the last two checkpoints
+plus the every-ten survivors, the first metrics record passes the shared
+report envelope, the staged copy lands before the first step, every step
+records its data wait, and an over-budget set is declined with the reason
+while the run reads from the source and completes.
 
 tests/hardware/test_gpu.py already proves resume in-process, to a loss
 tolerance. What it cannot show is the path an operator uses: the `train`
@@ -44,6 +46,9 @@ FIRST_STEPS = 20
 RESUMED_STEPS = 30
 # Well past what thirty steps read, so the loader never wraps mid-entry
 CORPUS_COPIES = 400
+# FS.4: five steps under a budget the half-megabyte synthetic set exceeds
+REFUSED_STEPS = 5
+REFUSED_MAX_GB = 0.0001
 
 
 def train_tokenizer(tmp_path):
@@ -254,3 +259,37 @@ def test_from_scratch_loop(cuda, tmp_path, train_lock, capsys):
     waits = [r["data_wait_ms"] for r in records if "data_wait_ms" in r]
     assert len(waits) == FIRST_STEPS, f"{len(waits)} steps carry data_wait_ms"
     assert all(math.isfinite(w) and w >= 0.0 for w in waits)
+
+    # FS.4: a budget below the shard set. Staging declines with the reason
+    # and the run reads from the source directory instead of failing.
+    refused = tmp_path / "staging-refused"
+    refused.mkdir()
+    assert (
+        run_verb(
+            [
+                "train",
+                "--config",
+                RECIPE,
+                *overrides,
+                "run.name=fs-refused",
+                f"schedule.total_steps={REFUSED_STEPS}",
+                "staging.enabled=true",
+                f"staging.dir={refused}",
+                f"staging.max_gb={REFUSED_MAX_GB}",
+            ]
+        )
+        == 0
+    )
+    out = capsys.readouterr()
+    printed = out.out + out.err
+    assert "[staging] SKIP: shard set " in printed, printed
+    assert (
+        f" GB exceeds staging.max_gb {REFUSED_MAX_GB}; reading shards from {shards}"
+        in printed
+    ), printed
+    assert "[staging] OK: staged" not in printed
+    assert os.listdir(refused) == [], os.listdir(refused)
+    assert (
+        f"[OK] Run complete: step {REFUSED_STEPS}, "
+        f"{REFUSED_STEPS * TOKENS_PER_STEP:,} tokens seen"
+    ) in printed

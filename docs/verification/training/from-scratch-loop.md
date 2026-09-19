@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 4 verified, 0 blocked, 5 pending, of 9.**
+**Entries: 5 verified, 0 blocked, 4 pending, of 9.**
 
 The from-scratch loop is the third rung of the training tier: the D6 reference
 loop (`make train`) driving a scratch model over prepared shards, the rung that
@@ -70,7 +70,7 @@ The entries have an automated mirror,
 `tests/hardware/test_from_scratch_loop.py`, in the shape of FT.11: one `hw_full`
 test that replays the verified entries through the same CLI verbs on a
 tokenizer it trains itself, so the chain stays verified after every change.
-It covers FS.0 to FS.3 as of 2026-09-19 and grows as entries close. Run it on
+It covers FS.0 to FS.4 as of 2026-09-19 and grows as entries close. Run it on
 the host, in a window no other GPU job holds:
 
 ```bash
@@ -546,12 +546,42 @@ staging.max_gb 0.001; reading shards from
 complete: step 5, 1,280 tokens seen` with exit 0. No `OK: staged` line. A
 nonzero exit, or a run that stages anyway, fails the entry.
 
+Recorded 2026-09-19.
+
 Observed:
 
 ```
+➜  ai-experiments git:(SFT-verification) ✗ set -o pipefail
+cd ~/workspace/ai-experiments
+make train CONFIG=training/recipes/reference/tiny-e2e.yaml \
+    ARGS="$OVR run.name=fs4 schedule.total_steps=5 staging.enabled=true staging.max_gb=0.001" 2>&1 | tee /tmp/fs4.log
+echo "exit=$?"
+grep '\[staging\]' /tmp/fs4.log
+docker compose -f docker-compose.training.yaml run --rm training python -m training train --config training/recipes/reference/tiny-e2e.yaml data.source=/mnt/ai-data/training/shards/verify-49k tokenizer.path=/mnt/ai-data/training/tokenizers/verify-49k model.scratch.vocab=49152 run.name=fs4 schedule.total_steps=5 staging.enabled=true staging.max_gb=0.001
+time="2026-09-19T10:22:17-07:00" level=warning msg="Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
+ Container ai-experiments-training-run-b06f8102a7d8 Creating 
+ Container ai-experiments-training-run-b06f8102a7d8 Created 
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training train --config training/recipes/reference/tiny-e2e.yaml data.source=/mnt/ai-data/training/shards/verify-49k tokenizer.path=/mnt/ai-data/training/tokenizers/verify-49k model.scratch.vocab=49152 run.name=fs4 schedule.total_steps=5 staging.enabled=true staging.max_gb=0.001
+[RUN] Training fs4: 5 total steps
+[staging] SKIP: shard set 0.01 GB exceeds staging.max_gb 0.001; reading shards from /mnt/ai-data/training/shards/verify-49k
+Writing model shards: 100%|██████████| 1/1 [00:00<00:00, 448.25it/s]
+[OK] Run complete: step 5, 1,280 tokens seen
+Final loss: 10.733567
+Run directory: /mnt/ai-data/training/runs/fs4/2026-09-19_17-22-18
+Checkpoints:   /mnt/ai-data/training/runs/fs4/checkpoints
+exit=0
+[staging] SKIP: shard set 0.01 GB exceeds staging.max_gb 0.001; reading shards from /mnt/ai-data/training/shards/verify-49k
 ```
 
-Status: PENDING
+Status: VERIFIED (2026-09-19)
 
 ## FS.5 Affinity masks disjoint and pinned
 
