@@ -157,7 +157,7 @@ Everything else runs in `training` or `export`, with no network:
 |--------|--------|
 | `make train-build` | Build the image; the build fails if any smoke-test step fails |
 | `make train-shell` | Interactive shell in the container, GPU and training root attached |
-| `make train-smoke` | Run the eight-step smoke test on the workstation |
+| `make train-smoke` | Run the six-step smoke test on the workstation |
 | `make train-preflight` | Prove every asset a recipe references is already local |
 
 ## Validate compared with preflight
@@ -186,7 +186,7 @@ Training and inference must not run at the same time: one GPU consumer at a time
 - `docker/training/Dockerfile.training` — multi-stage-capable devel-base training image.
 - `docker/training/entrypoint.sh` — thin entrypoint: environment echo, optional LD_PRELOAD hook,
   `exec`.
-- `training/commands/smoke_test.py` — eight-step stack verification and versions manifest.
+- `training/commands/smoke_test.py` — six-step stack verification and versions manifest.
 - `docker-compose.training.yaml` — separate-file service definition with GPU reservation and the
   writable training root.
 - `pyproject.toml` — the `training` dependency group and the `flash-attn` build dependency.
