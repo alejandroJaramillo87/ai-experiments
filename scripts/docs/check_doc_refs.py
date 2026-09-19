@@ -195,7 +195,7 @@ HAS_EXTENSION = re.compile(r"\.[A-Za-z0-9]{1,6}$")
 
 # Bases a relative reference may be written against. Documents inside a
 # subproject routinely cite paths relative to that subproject's root.
-EXTRA_BASES = ("rust-harness", "docs", "scripts", "hugepages")
+EXTRA_BASES = ("rust-harness", "docs", "scripts", "docker/llama-cpu/hugepages")
 
 
 def is_exempt(rel_path: str) -> bool:

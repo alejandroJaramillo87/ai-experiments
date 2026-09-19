@@ -713,6 +713,14 @@ hash mismatch: sealed <a>, current file hashes to <b> (the ground truth was
 modified after sealing)` and exits 1, and the untouched directory still
 exits 0. A check-seal that passes on the tampered copy is a broken seal.
 
+**After this entry closes, implement the checkpoint-contract consolidation.**
+[docs/training/tier-consolidation-proposal.md](../../training/tier-consolidation-proposal.md)
+carries the plan and was gated, on 2026-09-19, on FT.3, FT.5 and this entry
+having recorded output: those three Observed blocks are what the refactor
+must reproduce, and its acceptance check re-runs FT.3 and FT.5 against them.
+Do it before FT.8, since the entries from here on read the export this entry
+and FT.5 produced and would otherwise be verified twice.
+
 Observed:
 
 ```

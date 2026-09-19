@@ -122,8 +122,8 @@ The hugepage optimization is provided by `zen5_optimizer`, a library that interc
 
 ```dockerfile
 # Build zen5_optimizer library (hugepage support via LD_PRELOAD)
-COPY hugepages/CMakeLists.txt /tmp/zen5_optimizer/
-COPY hugepages/src/ /tmp/zen5_optimizer/src/
+COPY docker/llama-cpu/hugepages/CMakeLists.txt /tmp/zen5_optimizer/
+COPY docker/llama-cpu/hugepages/src/ /tmp/zen5_optimizer/src/
 RUN cd /tmp/zen5_optimizer && \
     cmake -B build \
         -DCMAKE_C_COMPILER=gcc-14 \
@@ -137,11 +137,11 @@ RUN cd /tmp/zen5_optimizer && \
 ```
 
 **Source files**
-- `hugepages/CMakeLists.txt`: Build configuration.
-- `hugepages/src/zen5_optimizer.cpp`: Main entry point.
-- `hugepages/src/cpu_validator.cpp` and `hugepages/src/cpu_validator.h`: CPU feature validation.
-- `hugepages/src/memory/hugepage_wrapper.cpp`: mmap() interception.
-- `hugepages/src/config.h`: Configuration headers.
+- `docker/llama-cpu/hugepages/CMakeLists.txt`: Build configuration.
+- `docker/llama-cpu/hugepages/src/zen5_optimizer.cpp`: Main entry point.
+- `docker/llama-cpu/hugepages/src/cpu_validator.cpp` and `docker/llama-cpu/hugepages/src/cpu_validator.h`: CPU feature validation.
+- `docker/llama-cpu/hugepages/src/memory/hugepage_wrapper.cpp`: mmap() interception.
+- `docker/llama-cpu/hugepages/src/config.h`: Configuration headers.
 
 **Build configuration**
 - **CMAKE_C_COMPILER=gcc-14**: Use gcc-14 for C compilation.
@@ -491,8 +491,8 @@ The `llama-cpu` service in `docker-compose.inference.yaml` adds further constrai
 **File structure**
 - `/docker/llama-cpu/Dockerfile.cpu`: Multi-stage Dockerfile implementation.
 - `/docker/llama-cpu/entrypoint.cpu.sh`: Parameterized server startup script.
-- `/hugepages/CMakeLists.txt`: zen5_optimizer build configuration.
-- `/hugepages/src/`: zen5_optimizer source files.
+- `/docker/llama-cpu/hugepages/CMakeLists.txt`: zen5_optimizer build configuration.
+- `/docker/llama-cpu/hugepages/src/`: zen5_optimizer source files.
 - `/docker-compose.inference.yaml`: Container orchestration with security hardening.
 
 **Integration with the AI workstation**

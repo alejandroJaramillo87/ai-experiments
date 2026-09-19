@@ -74,6 +74,54 @@ RETIRED: dict[str, tuple[str, str]] = {
         "scripts/docs/gen_site_reference.py",
         "the site's reference generator moved from a bash script that pasted --help into a fenced block to a Python script beside the gate that checks its output, because the pages became a usage line plus one table per help section and that parse deserved a unit test under tests/docs/",
     ),
+    "hugepages/README.md": (
+        "docker/llama-cpu/hugepages/README.md",
+        "the huge-page interceptor is built by, and used only by, the llama-cpu image, so its sources moved under that image's build context on 2026-09-19; a root-level directory implied a component of its own",
+    ),
+    "hugepages/Makefile": (
+        "docker/llama-cpu/hugepages/Makefile",
+        "the same move; see hugepages/README.md above",
+    ),
+    "hugepages/CMakeLists.txt": (
+        "docker/llama-cpu/hugepages/CMakeLists.txt",
+        "the same move; see hugepages/README.md above",
+    ),
+    "hugepages/build.sh": (
+        "docker/llama-cpu/hugepages/build.sh",
+        "the same move; see hugepages/README.md above",
+    ),
+    "hugepages/docs/hugepages-explicit.md": (
+        "docker/llama-cpu/hugepages/docs/hugepages-explicit.md",
+        "the same move; see hugepages/README.md above",
+    ),
+    "hugepages/src/zen5_optimizer.cpp": (
+        "docker/llama-cpu/hugepages/src/zen5_optimizer.cpp",
+        "the same move; see hugepages/README.md above",
+    ),
+    "hugepages/src/cpu_validator.cpp": (
+        "docker/llama-cpu/hugepages/src/cpu_validator.cpp",
+        "the same move; see hugepages/README.md above",
+    ),
+    "hugepages/src/cpu_validator.h": (
+        "docker/llama-cpu/hugepages/src/cpu_validator.h",
+        "the same move; see hugepages/README.md above",
+    ),
+    "hugepages/src/config.h": (
+        "docker/llama-cpu/hugepages/src/config.h",
+        "the same move; see hugepages/README.md above",
+    ),
+    "hugepages/src/memory/hugepage_wrapper.cpp": (
+        "docker/llama-cpu/hugepages/src/memory/hugepage_wrapper.cpp",
+        "the same move; see hugepages/README.md above",
+    ),
+    "hugepages/tests/README.md": (
+        "docker/llama-cpu/hugepages/tests/README.md",
+        "the same move; see hugepages/README.md above",
+    ),
+    "hugepages/tests/run_tests.sh": (
+        "docker/llama-cpu/hugepages/tests/run_tests.sh",
+        "the same move; see hugepages/README.md above",
+    ),
     "docs/verification/training-phase0.md": (
         "docs/verification/archive/training-phase0.md",
         "the verification directory grew a folder per tier (training, interp, rust-harness, observability, hardware, bugs), so that a human scanning it sees six categories rather than a dozen loose files. Every tier got a folder, including those holding one document today: a mixed root of folders and stray files is what makes a directory hard to read, and the single-file tiers are the ones most likely to gain a sibling. README.md and step-zero-environment.md stay at the root because step zero blocks every phase and is not a peer of the tiers",
@@ -842,9 +890,12 @@ def pattern_for(old: str) -> re.Pattern[str]:
 
     The trailing guard deliberately permits a following `.` so a sentence ending
     in the name still matches; the cost is that a hypothetical `<old>.bak` would
-    also match, which is the rarer and more tolerable error.
+    also match, which is the rarer and more tolerable error. The leading guard
+    refuses a preceding `/`, so a file moved under a directory
+    (hugepages/README.md to docker/llama-cpu/hugepages/README.md) is not
+    flagged at its new path; the cost is that a `./<old>` spelling is missed.
     """
-    return re.compile(rf"(?<![\w.-]){re.escape(old)}(?![\w-])")
+    return re.compile(rf"(?<![\w./-]){re.escape(old)}(?![\w-])")
 
 
 def find_retired(

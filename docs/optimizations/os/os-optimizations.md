@@ -96,7 +96,7 @@ cat /sys/kernel/mm/hugepages/hugepages-1048576kB/nr_hugepages
 # Should show: 80
 ```
 
-**See:** `hugepages/src/memory/hugepage_wrapper.cpp` for implementation details.
+**See:** `docker/llama-cpu/hugepages/src/memory/hugepage_wrapper.cpp` for implementation details.
 
 ### 4. Memory Allocator Tuning [TESTED - NOT BENEFICIAL]
 

@@ -37,7 +37,6 @@ class TestPatternFor:
         ("text", "why"),
         [
             ("see `docker-compose.yaml` for ports", "backticked in prose"),
-            ("./docker-compose.yaml", "leading path segment"),
             ("-f docker-compose.yaml up", "a command argument"),
             ("defined in docker-compose.yaml.", "sentence-ending period"),
         ],
@@ -54,6 +53,11 @@ class TestPatternFor:
             ("my-docker-compose.yaml", "a longer name ending in the retired one"),
             ("docker-compose.yaml-old", "a longer name starting with it"),
             ("docker-compose.yml", "a different extension"),
+            (
+                "docker/llama-cpu/docker-compose.yaml",
+                "the same name moved under a directory",
+            ),
+            ("./docker-compose.yaml", "a leading ./ reads as a directory prefix"),
         ],
     )
     def test_does_not_match_a_lookalike(self, mod, text, why):

@@ -26,8 +26,8 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Build zen5_optimizer library (hugepage support via LD_PRELOAD)
-COPY hugepages/CMakeLists.txt /tmp/zen5_optimizer/
-COPY hugepages/src/ /tmp/zen5_optimizer/src/
+COPY docker/llama-cpu/hugepages/CMakeLists.txt /tmp/zen5_optimizer/
+COPY docker/llama-cpu/hugepages/src/ /tmp/zen5_optimizer/src/
 RUN cd /tmp/zen5_optimizer && \
     cmake -B build \
         -DCMAKE_C_COMPILER=gcc-14 \

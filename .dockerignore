@@ -6,9 +6,9 @@
 # COPY takes rust-harness/ — and then discards nearly all of it.
 #
 # Exclude build outputs and local state, never sources: the Dockerfiles copy
-# common/, interp/, training/, scripts/{interp,training}/, hugepages/,
-# rust-harness/, docker/, pyproject.toml and uv.lock, and each must keep
-# arriving intact.
+# common/, interp/, training/, scripts/{interp,training}/, rust-harness/,
+# docker/ (which holds the hugepages sources), pyproject.toml and uv.lock,
+# and each must keep arriving intact.
 
 # Build outputs. rust-harness/target/ alone is 22 GB and is rebuilt inside the
 # image anyway; a host target/ in the context would be copied and ignored.

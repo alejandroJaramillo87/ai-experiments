@@ -159,7 +159,7 @@ exist rather than a formatter config.
 | Guide | Read before writing |
 |-------|---------------------|
 | `.styles/BASH_OUTPUT_STYLE.md` | a shell script that prints status |
-| `.styles/CPP_STYLE.md` | C or C++ under `hugepages/` |
+| `.styles/CPP_STYLE.md` | C or C++ under `docker/llama-cpu/hugepages/` |
 | `.styles/DOCUMENTATION_STYLE.md` | any markdown, including a README |
 | `.styles/PYTHON_OUTPUT_STYLE.md` | a Python CLI or anything using `common/output.py` |
 | `.styles/RUST_STYLE.md` | any Rust in `rust-harness/` |

@@ -50,7 +50,7 @@ PRUNE_DIRS = {
 # and three of whose names collide with root targets that do different things.
 # This gate checks existence, not which Makefile a reader should be standing in,
 # so the two sets are unioned rather than attributed.
-MAKEFILES = ("Makefile", "rust-harness/Makefile", "hugepages/Makefile")
+MAKEFILES = ("Makefile", "rust-harness/Makefile", "docker/llama-cpu/hugepages/Makefile")
 MAKEFILE_GLOBS = ("make/*.mk",)
 
 # A rule head: a target name at the start of a line, followed by a colon. The
