@@ -21,7 +21,8 @@ callbacks are the real ones. Ten steps at a checkpoint interval of ten
 leaves exactly one checkpoint-10 directory with meta.json beside it, which
 the export then merges. It skips when the prepared dataset (FT.smoke-dataset) or the
 pinned base (FT.preconditions) is absent, and fails, rather than skips, when a release
-binary is.
+binary is, or when the prepared dataset's manifest carries a chat template
+version or tokenizer hash other than the pinned base renders today.
 """
 
 from __future__ import annotations
@@ -99,6 +100,26 @@ def test_fine_tuning_loop(cuda, tmp_path, train_lock):
         )
     except ExportError as exc:
         pytest.skip(f"pinned base not in the local HF cache (FT.preconditions): {exc}")
+    # FT.smoke-dataset: the prepared directory on disk is the one this code
+    # would render today. The loader refuses both mismatches too, but from
+    # inside train_sft; asserting here names the stale artifact and the entry
+    # that re-renders it instead of surfacing a loader exception mid-run.
+    from training.data.prepare import load_tokenizer
+    from training.models.families import CHAT_TEMPLATE_VERSION
+
+    with open(os.path.join(recipe.sft.dataset, "manifest.json")) as f:
+        dataset = json.load(f)
+    assert dataset["chat_template_version"] == CHAT_TEMPLATE_VERSION, (
+        f"{recipe.sft.dataset} was rendered with chat_template_version="
+        f"{dataset['chat_template_version']!r}, this code renders "
+        f"{CHAT_TEMPLATE_VERSION}; re-run FT.smoke-dataset"
+    )
+    tokenizer_hash = load_tokenizer(recipe.model.hf.id).content_hash
+    assert dataset["tokenizer_hash"] == tokenizer_hash, (
+        f"{recipe.sft.dataset} was tokenized with {dataset['tokenizer_hash']}, "
+        f"the pinned base {recipe.model.hf.id} hashes to {tokenizer_hash}; "
+        "re-run FT.smoke-dataset against the pinned base"
+    )
     # FT.train-resume: one stamped checkpoint from the real trainer.
     result = train_sft(recipe)
     assert result.final_step == TOTAL_STEPS

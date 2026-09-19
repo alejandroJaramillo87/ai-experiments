@@ -1490,7 +1490,13 @@ reading `pinned base not in the local HF cache (FT.preconditions)` is that cache
 empty, and is recorded as the reason rather than treated as a pass. The
 dataset hash check reads `tokenizer.json` from the base the recipe names
 (KB-80, fixed), the same file FT.smoke-dataset tokenized with, so the test passes no
-tokenizer override.
+tokenizer override. Before training, the test reads the dataset's
+`manifest.json` and fails, naming FT.smoke-dataset, when its
+`chat_template_version` is not the one `training/models/families.py`
+renders or its `tokenizer_hash` is not the pinned base's: a prepared
+directory left over from an earlier template or base is a stale artifact,
+not a pass, and the loader's own refusal would otherwise surface as an
+exception from inside `train_sft`.
 
 Command (the tier and invocation are the ones every hardware entry uses;
 `--no-sync` because a plain `uv run` resyncs the default groups and, on a
