@@ -29,6 +29,7 @@ from omegaconf import OmegaConf
 
 from common.output import Printer
 from training.commands.recipe import load_validated
+from training.recipes import tokenizer_source
 
 # Staging command per missing-asset kind, in the order a run would need them.
 # Listed rather than printed unconditionally so the advice matches the failure:
@@ -198,17 +199,19 @@ def cmd(args: argparse.Namespace) -> int:
 
     # Tokenizer presence only. The tokenizer-to-manifest hash comparison is
     # deliberately NOT repeated here: validate() already runs
-    # _check_tokenizer_matches_shards (validate.py:725-756) and cmd() returns
-    # above on RecipeValidationError, so a mismatch never reaches this point.
+    # _check_tokenizer_matches_shards and cmd() returns above on
+    # RecipeValidationError, so a mismatch never reaches this point.
     #
-    # tokenizer.path is MISSING in the schema, so it must be guarded before
-    # access -- reading it raises MissingMandatoryValue rather than returning a
-    # sentinel (the same guard validate.py:555 applies).
-    if OmegaConf.is_missing(recipe.tokenizer, "path"):
+    # An HF recipe with no tokenizer.path reads the base directory's tokenizer
+    # (KB-80), which _check_model already resolved: a second line for the same
+    # missing directory would count one asset twice, so only an explicit path
+    # is checked here.
+    tokenizer = tokenizer_source(recipe)
+    if tokenizer is None:
         problems.append("tokenizer.path: not set in the recipe")
         remedies.add("tokenizer")
-    elif not os.path.exists(recipe.tokenizer.path):
-        problems.append(f"tokenizer.path: not found: {recipe.tokenizer.path}")
+    elif recipe.tokenizer.path is not None and not os.path.exists(tokenizer):
+        problems.append(f"tokenizer.path: not found: {tokenizer}")
         remedies.add("tokenizer")
 
     if problems:

@@ -59,11 +59,30 @@ def _check_missing(recipe: DictConfig, problems: list[str]) -> None:
         problems.append(f"{key}: required field is not set")
 
 
+def tokenizer_source(recipe: DictConfig) -> str | None:
+    """Where the recipe's tokenizer is read from: tokenizer.path when set,
+    else the base model directory (a fine-tune reuses the base tokenizer),
+    else None for a scratch model that names no tokenizer.
+
+    The one resolver every reader shares (validate, preflight, train-sft's
+    dataset hash check), so a recipe cannot name the base in one field and a
+    tokenizer nothing stages in another (KB-80)."""
+    if recipe.tokenizer.path is not None:
+        return recipe.tokenizer.path
+    if recipe.model.hf is not None and not OmegaConf.is_missing(recipe.model.hf, "id"):
+        return recipe.model.hf.id
+    return None
+
+
 def _check_model(recipe: DictConfig, problems: list[str]) -> None:
     has_hf = recipe.model.hf is not None
     has_scratch = recipe.model.scratch is not None
     if has_hf == has_scratch:
         problems.append("model: exactly one of model.hf or model.scratch must be set")
+    if has_scratch and not has_hf and recipe.tokenizer.path is None:
+        problems.append(
+            "tokenizer.path: required for a scratch model (no base tokenizer to reuse)"
+        )
     if has_scratch and not has_hf:
         s = recipe.model.scratch
         if not OmegaConf.is_missing(s, "heads") and not OmegaConf.is_missing(
@@ -435,16 +454,14 @@ def _check_mixture(recipe: DictConfig, problems: list[str]) -> None:
             f"mixture: sources carry mismatched tokenizer hashes ({detail}); "
             "all sources must be tokenized identically"
         )
-    elif len(hashes) == 1 and not OmegaConf.is_missing(recipe.tokenizer, "path"):
+    elif len(hashes) == 1 and (source := tokenizer_source(recipe)) is not None:
         manifest_hash = next(iter(hashes))
         from training.data.prepare import load_tokenizer
 
         try:
-            tokenizer_hash = load_tokenizer(recipe.tokenizer.path).content_hash
+            tokenizer_hash = load_tokenizer(source).content_hash
         except Exception as exc:
-            problems.append(
-                f"tokenizer.path: cannot load {recipe.tokenizer.path}: {exc}"
-            )
+            problems.append(f"tokenizer.path: cannot load {source}: {exc}")
             return
         if tokenizer_hash != manifest_hash:
             problems.append(
@@ -611,9 +628,8 @@ def _check_tokenizer_matches_shards(recipe: DictConfig, problems: list[str]) -> 
     """When data.source is a prepared D2 shard directory, the tokenizer must
     hash-match the manifest. Skipped when no manifest is present (HF dataset id
     or shards not yet prepared on this machine)."""
-    if OmegaConf.is_missing(recipe.data, "source") or OmegaConf.is_missing(
-        recipe.tokenizer, "path"
-    ):
+    tokenizer = tokenizer_source(recipe)
+    if OmegaConf.is_missing(recipe.data, "source") or tokenizer is None:
         return
     source = recipe.data.source
     manifest_path = os.path.join(source, "manifest.json")
@@ -630,9 +646,9 @@ def _check_tokenizer_matches_shards(recipe: DictConfig, problems: list[str]) -> 
         return
     manifest_hash = manifest.get("tokenizer_hash")
     try:
-        tokenizer_hash = load_tokenizer(recipe.tokenizer.path).content_hash
+        tokenizer_hash = load_tokenizer(tokenizer).content_hash
     except Exception as exc:
-        problems.append(f"tokenizer.path: cannot load {recipe.tokenizer.path}: {exc}")
+        problems.append(f"tokenizer.path: cannot load {tokenizer}: {exc}")
         return
     if manifest_hash != tokenizer_hash:
         problems.append(

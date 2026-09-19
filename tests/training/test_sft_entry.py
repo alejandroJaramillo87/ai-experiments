@@ -17,6 +17,7 @@ from training.recipes import RecipeValidationError, validate
 from training.runtime.lock import TrainLockError
 from training.tune.sft import (
     SftPreflightError,
+    build_dataset,
     check_memory_fit,
     collate_padded,
     pack_examples,
@@ -53,6 +54,45 @@ class TestSftValidation:
     def test_eval_steps_must_be_non_negative(self):
         with pytest.raises(RecipeValidationError, match="sft.eval_steps"):
             validate(sft_recipe(["sft.eval_steps=-1"]))
+
+
+# -- dataset (the hash check reads the base tokenizer, KB-80) ----------------
+
+
+class TestBuildDataset:
+    @pytest.fixture()
+    def prepared(self, tmp_path) -> tuple[str, str]:
+        """(dataset dir, the chat tokenizer dir it was prepared with)."""
+        from support import build_bpe_tokenizer
+        from test_sft import CASES, CHAT_TEXTS, CONTROL_TOKENS
+
+        from training.data.sft import prepare_sft
+
+        tokenizer_dir = build_bpe_tokenizer(
+            str(tmp_path / "chat_tokenizer"), CHAT_TEXTS, specials=CONTROL_TOKENS
+        )
+        source = tmp_path / "chat.jsonl"
+        with open(source, "w") as f:
+            for case in CASES.values():
+                f.write(json.dumps({"messages": case}) + "\n")
+        out = str(tmp_path / "sft")
+        prepare_sft(str(source), out, tokenizer_dir, "gemma4", holdout=0.2)
+        return out, tokenizer_dir
+
+    def test_reads_the_base_directory_tokenizer(self, prepared):
+        dataset, tokenizer_dir = prepared
+        recipe = sft_recipe([f"sft.dataset={dataset}", f"model.hf.id={tokenizer_dir}"])
+        train, holdout = build_dataset(recipe)
+        assert train and holdout
+
+    def test_refuses_a_base_with_another_tokenizer(self, prepared, tokenizer_dir):
+        # tokenizer_dir is the D2 conftest tokenizer, trained on another corpus
+        from training.data.shards import TokenizerMismatchError
+
+        dataset, _ = prepared
+        recipe = sft_recipe([f"sft.dataset={dataset}", f"model.hf.id={tokenizer_dir}"])
+        with pytest.raises(TokenizerMismatchError):
+            build_dataset(recipe)
 
 
 # -- packing (F3 owns packing; masks must survive it) -------------------------

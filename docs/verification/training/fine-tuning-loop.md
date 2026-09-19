@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 2 verified, 0 blocked, 14 pending, of 16.**
+**Entries: 3 verified, 0 blocked, 13 pending, of 16.**
 
 The fine-tuning loop is the first rung of the training tier and the loop the
 lab runs: train a Gemma 4 E2B with a known change, then recover the change
@@ -59,15 +59,16 @@ builds what it verifies:
   now translates the host spelling itself (KB-78, FT.6).
 - **The re-check** (2026-09-19, before FT.14 ran) read every entry again
   against the tree after the from-scratch loop closed, and found KB-79's
-  sibling, KB-80: every SFT recipe's `tokenizer.path` names
+  sibling, KB-80: every SFT recipe's `tokenizer.path` named
   `/mnt/ai-data/training/tokenizers/gemma-4-e2b`, which nothing stages (a
   fine-tune reuses the base tokenizer, and the staged HF directory holds
-  it). Preflight and `train-sft` both read that path, so every command that
-  loads the recipe in the container passes
-  `tokenizer.path=/app/models/hf/gemma-4-E2B` beside the KB-79 override
-  (E4B: `/app/models/hf/gemma-4-E4B`), and FT.13 reproduces both defects on
-  the recipe as committed. The recipes stay as committed until this runbook
-  has run; the fix is deferred, not declined. It also found that preflight
+  it). It was handled for one pass by a second override, then fixed in the
+  tree the same day: `tokenizer.path` is optional for an HF base and every
+  reader resolves the tokenizer from `model.hf.id`, so the six HF recipes
+  carry no tokenizer block and the KB-79 override is the only one a
+  container command passes. FT.13's committed-recipe preflight now
+  reproduces KB-79 alone, and its pass command is what confirms KB-80
+  fixed. It also found that preflight
   verified an SFT recipe's `data.source` as token shards and crashed on a
   prepared dataset (KB-81, fixed in the tree, confirmed by FT.13), and
   reordered the sections so no entry precedes what it depends on: FT.14 and
@@ -449,17 +450,131 @@ Expected signal: the first run prints the component table, `Total reserved
 estimate:` and `[OK] Fits: reserved estimate <n> GB within budget <b> GB (32
 GB minus safety margin)`, exit 0. The second prints `[ERROR] Does not fit:
 reserved estimate <m> GB exceeds budget <b> GB` with `<m>` above `<b>`, the
-two `Solution:` lines, and exit 1. The third prints `[OK] Solve batch: max
+two `Solution:` lines, and the command exits 1, which `make` reports as
+`make: *** [make/training.mk:50: memfit] Error 1` and `exit=2`. The third prints `[OK] Solve batch: max
 micro-batch <k> (reserved estimate <r> GB)` with `<k>` at least the recipe's
 4 and below 64, and exit 0. The budget `<b>` is the same figure in all three
 runs. Record `<n>` here: FT.1 compares the calibrated peak against it.
+The hardware mirror is `tests/hardware/test_memfit_sft.py` in the
+`hw_smoke` tier: the same three outcomes through the calculator the CLI and
+`train-sft`'s refusal share, on the staged base's `config.json`.
 
 Observed:
 
 ```
+➜  ai-experiments git:(SFT-verification) ✗ set -o pipefail
+cd ~/workspace/ai-experiments
+make memfit CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="model.hf.id=/app/models/hf/gemma-4-E2B"; echo "exit=$?"
+docker compose -f docker-compose.training.yaml run --rm training python -m training memfit --config training/recipes/reference/sft-qlora-e2b.yaml model.hf.id=/app/models/hf/gemma-4-E2B
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-761a83458a02 Creating
+Container ai-experiments-training-run-761a83458a02 Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training memfit --config training/recipes/reference/sft-qlora-e2b.yaml model.hf.id=/app/models/hf/gemma-4-E2B
+=== Memory-fit estimate ===
+
+Model parameters: 4,583,959,040
+Micro-batch 4, sequence length 2048
+
+Component            Bytes             Size
+  weights               6,527,114,560     6.08 GB
+  gradients                37,847,040     0.04 GB
+  optimizer state          38,438,400     0.04 GB
+  activations          14,277,672,960    13.30 GB
+  framework overhead    2,684,354,560     2.50 GB
+
+Total allocated estimate: 18.96 GB
+  Peak phase: head_backward — gradient checkpointing makes the
+  total a temporal max over backward phases, below the component sum
+Total reserved estimate:  21.46 GB
+[OK] Fits: reserved estimate 21.46 GB within budget 31.00 GB (32 GB minus safety margin)
+exit=0
+➜  ai-experiments git:(SFT-verification) ✗ make memfit CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="model.hf.id=/app/models/hf/gemma-4-E2B data.micro_batch=64"; echo "exit=$?"
+
+docker compose -f docker-compose.training.yaml run --rm training python -m training memfit --config training/recipes/reference/sft-qlora-e2b.yaml model.hf.id=/app/models/hf/gemma-4-E2B data.micro_batch=64
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-eeed1399888c Creating
+Container ai-experiments-training-run-eeed1399888c Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training memfit --config training/recipes/reference/sft-qlora-e2b.yaml model.hf.id=/app/models/hf/gemma-4-E2B data.micro_batch=64
+=== Memory-fit estimate ===
+
+Model parameters: 4,583,959,040
+Micro-batch 64, sequence length 2048
+
+Component            Bytes             Size
+  weights               6,527,114,560     6.08 GB
+  gradients                37,847,040     0.04 GB
+  optimizer state          38,438,400     0.04 GB
+  activations         228,442,767,360   212.75 GB
+  framework overhead    2,684,354,560     2.50 GB
+
+Total allocated estimate: 211.61 GB
+  Peak phase: head_backward — gradient checkpointing makes the
+  total a temporal max over backward phases, below the component sum
+Total reserved estimate:  214.11 GB
+[ERROR] Does not fit: reserved estimate 214.11 GB exceeds budget 31.00 GB
+  Solution: reduce data.micro_batch or data.seq_len, enable
+  memory.gradient_checkpointing, or switch optimizer to adamw8bit
+
+make: *** [make/training.mk:50: memfit] Error 1
+exit=2
+➜  ai-experiments git:(SFT-verification) ✗ make memfit CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="model.hf.id=/app/models/hf/gemma-4-E2B --solve batch"; echo "exit=$?"
+
+docker compose -f docker-compose.training.yaml run --rm training python -m training memfit --config training/recipes/reference/sft-qlora-e2b.yaml model.hf.id=/app/models/hf/gemma-4-E2B --solve batch
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-96ea18571c23 Creating
+Container ai-experiments-training-run-96ea18571c23 Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training memfit --config training/recipes/reference/sft-qlora-e2b.yaml model.hf.id=/app/models/hf/gemma-4-E2B --solve batch
+=== Memory-fit estimate ===
+
+Model parameters: 4,583,959,040
+Micro-batch 4, sequence length 2048
+
+Component            Bytes             Size
+  weights               6,527,114,560     6.08 GB
+  gradients                37,847,040     0.04 GB
+  optimizer state          38,438,400     0.04 GB
+  activations          14,277,672,960    13.30 GB
+  framework overhead    2,684,354,560     2.50 GB
+
+Total allocated estimate: 18.96 GB
+  Peak phase: head_backward — gradient checkpointing makes the
+  total a temporal max over backward phases, below the component sum
+Total reserved estimate:  21.46 GB
+[OK] Fits: reserved estimate 21.46 GB within budget 31.00 GB (32 GB minus safety margin)
+
+[OK] Solve batch: max micro-batch 6 (reserved estimate 27.88 GB)
+exit=0
 ```
 
-Status: PENDING
+Recorded 2026-09-19: `<n>` is 21.46 GB reserved (18.96 GB allocated) at
+micro-batch 4, budget 31.00 GB; the batch solve gives 6. The second run's
+`exit=2` is `make` wrapping the command's 1, as the signal says.
+
+Status: VERIFIED (2026-09-19)
 
 ## FT.2 Prepare the smoke SFT dataset
 
@@ -511,29 +626,30 @@ and FT.2 (the dataset the second preflight must find).
 set -o pipefail
 cd ~/workspace/ai-experiments
 make train-preflight CONFIG=training/recipes/reference/sft-qlora-e2b.yaml; echo "exit=$?"
-make train-preflight CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="model.hf.id=/app/models/hf/gemma-4-E2B tokenizer.path=/app/models/hf/gemma-4-E2B"; echo "exit=$?"
+make train-preflight CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="model.hf.id=/app/models/hf/gemma-4-E2B"; echo "exit=$?"
 make train-validate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml; echo "exit=$?"
 make train-validate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="optimizer.lr=-1"; echo "exit=$?"
 ```
 
-Expected signal: the committed recipe's preflight exits 1 with `[ERROR]
-Missing or unusable assets: 2` and two problem lines: `- model.hf:` naming
-`google/gemma-4-E2B` (KB-79), and `- tokenizer.path: not found:
-/mnt/ai-data/training/tokenizers/gemma-4-e2b` (KB-80); then `Solution: stage
-the missing assets, then re-run preflight` and two remedies, `make
-train-download MODEL=<hub id> REVISION=<sha>` (which FT.0 already ran, and
-which cannot satisfy a hub id) and `make train-tokenizer ARGS=...` (which
-would train a tokenizer a fine-tune must not use). A third problem line is a
-new finding, recorded on its own; a line naming `data.source` or a
-traceback out of `verify_shards` is KB-81 back. With both overrides, and
-FT.2's dataset on disk, it exits 0 with `[OK] All referenced assets are
-present and verified` and no `shard` in its output. `train-validate` on the recipe prints
-`[OK] Schema: training/recipes/reference/sft-qlora-e2b.yaml loads as a typed
-recipe` and `[OK] Validation: run sft-qlora-e2b passes all cross-field
-invariants`, exit 0; with `optimizer.lr=-1` it prints `[ERROR] Recipe
-validation failed:` and `  - optimizer.lr: must be positive, got -1.0`, exit 1. A
-validate that exits 0 on the negative learning rate is a gate that does not
-gate.
+Expected signal: the committed recipe's preflight prints `[ERROR]
+Missing or unusable assets: 1` and one problem line, `- model.hf:` naming
+`google/gemma-4-E2B` (KB-79); then `Solution: stage the missing assets,
+then re-run preflight` and one remedy, `make train-download MODEL=<hub id>
+REVISION=<sha>` (which FT.0 already ran, and which cannot satisfy a hub
+id). The command exits 1, which `make` reports as `make: ***
+[make/training.mk:44: train-preflight] Error 1` and `exit=2`. A second
+problem line is a new finding, recorded on its own; a `- tokenizer.path:`
+line is KB-80 back, and a line naming `data.source` or a traceback out of
+`verify_shards` is KB-81 back. With the model override, and FT.2's dataset
+on disk, it exits 0 with `[OK] All referenced assets are present and
+verified` and no `shard` or `tokenizer` in its output; that run is what
+confirms KB-80 fixed. `train-validate` on the recipe prints `[OK] Schema:
+training/recipes/reference/sft-qlora-e2b.yaml loads as a typed recipe` and
+`[OK] Validation: run sft-qlora-e2b passes all cross-field invariants`,
+exit 0; with `optimizer.lr=-1` it prints `[ERROR] Recipe validation
+failed:` and `  - optimizer.lr: must be positive, got -1.0`, the command
+exits 1 and `make` reports `Error 1` and `exit=2`. A validate that exits 0
+on the negative learning rate is a gate that does not gate.
 
 Observed:
 
@@ -596,9 +712,8 @@ E2B and E4B are the two subjects this repository trains, and FT.13, FT.14
 and FT.1 run on E2B alone. The E4B recipe is the same QLoRA shape at 4096
 context and a larger base, which is a different point on the calculator:
 the 10 percent bar has not been checked there, and the recipe's own
-comment says so. Same three gates as the E2B entries, same KB-79 and KB-80
-overrides with E4B's staged directory (the recipe's `tokenizer.path` is the
-hub id `google/gemma-4-E4B`, which the offline container cannot resolve).
+comment says so. Same three gates as the E2B entries, same KB-79
+override with E4B's staged directory.
 The recipe's `sft.dataset` is an E4B split nobody has prepared, so the
 block's first line prepares it as FT.2 did, at the recipe's 4096 context,
 when the directory is absent. Depends on the E4B download (I.5 and I.6 use
@@ -609,7 +724,7 @@ the shape of the prepare step.
 set -o pipefail
 cd ~/workspace/ai-experiments
 R=training/recipes/reference/sft-qlora-gemma-e4b.yaml
-O="model.hf.id=/app/models/hf/gemma-4-E4B tokenizer.path=/app/models/hf/gemma-4-E4B"
+O="model.hf.id=/app/models/hf/gemma-4-E4B"
 test -d /mnt/ai-data/training/datasets/sft/ultrachat-gemma-e4b || \
     make prepare-sft ARGS="--source HuggingFaceH4/ultrachat_200k --split train_sft \
     --tokenizer /mnt/ai-data/models/hf/gemma-4-E4B --model-type gemma4 \
@@ -652,13 +767,14 @@ Three runs of the same recipe: a short straight run, a run interrupted after
 its first checkpoint, and the resume of that run from the named
 `checkpoint-<step>` directory. Existing code; depends on FT.2 and FT.14.
 
-Three overrides beyond the step counts, each because the recipe's own value
+Two overrides beyond the step counts, each because the recipe's own value
 would leave a criterion unobservable or the run unable to start.
 `sft.eval_steps=30`: the recipe evaluates every 100 steps, so a 60-step run
 would never compute a held-out loss and the `Held-out loss:` line the
 tolerance criterion reads would be absent. `model.hf.id=/app/models/hf/gemma-4-E2B`:
-KB-79. `tokenizer.path=/app/models/hf/gemma-4-E2B`: KB-80, the dataset hash
-check reads the tokenizer from that path.
+KB-79; the dataset hash check reads the tokenizer from that same directory
+(KB-80, fixed), so a `tokenizer hash ... does not match` error here is
+KB-80 back.
 
 Command (inference down; the interrupt is a Ctrl-C after the first
 `checkpoint-30` directory appears and before `checkpoint-60` does):
@@ -667,14 +783,14 @@ Command (inference down; the interrupt is a Ctrl-C after the first
 set -o pipefail
 cd ~/workspace/ai-experiments
 make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
-    ARGS="model.hf.id=/app/models/hf/gemma-4-E2B tokenizer.path=/app/models/hf/gemma-4-E2B run.name=ft3-straight schedule.total_steps=60 checkpoint.interval_steps=30 sft.eval_steps=30"
+    ARGS="model.hf.id=/app/models/hf/gemma-4-E2B run.name=ft3-straight schedule.total_steps=60 checkpoint.interval_steps=30 sft.eval_steps=30"
 echo "exit=$?"
 make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
-    ARGS="model.hf.id=/app/models/hf/gemma-4-E2B tokenizer.path=/app/models/hf/gemma-4-E2B run.name=ft3-resume schedule.total_steps=60 checkpoint.interval_steps=30 sft.eval_steps=30"
+    ARGS="model.hf.id=/app/models/hf/gemma-4-E2B run.name=ft3-resume schedule.total_steps=60 checkpoint.interval_steps=30 sft.eval_steps=30"
 ls /mnt/ai-data/training/runs/ft3-resume/checkpoints/
 cat /mnt/ai-data/training/runs/ft3-resume/checkpoints/checkpoint-30/meta.json
 make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
-    ARGS="model.hf.id=/app/models/hf/gemma-4-E2B tokenizer.path=/app/models/hf/gemma-4-E2B run.name=ft3-resume schedule.total_steps=60 checkpoint.interval_steps=30 sft.eval_steps=30 \
+    ARGS="model.hf.id=/app/models/hf/gemma-4-E2B run.name=ft3-resume schedule.total_steps=60 checkpoint.interval_steps=30 sft.eval_steps=30 \
     checkpoint.resume=/mnt/ai-data/training/runs/ft3-resume/checkpoints/checkpoint-30"
 echo "exit=$?"
 ls /mnt/ai-data/training/runs/ft3-resume/checkpoints/
@@ -906,8 +1022,7 @@ The recipes train 400 steps at a checkpoint interval of 100, so the export
 names `checkpoint-400`; locality is measured on the FT.2 ultrachat split and
 the pinned lm-eval tasks, because the organism's own corpus would measure
 the implant, not what it left alone. `model.hf.id=/app/models/hf/gemma-4-E2B`
-on `train-sft` is KB-79 and `tokenizer.path=/app/models/hf/gemma-4-E2B` is
-KB-80. `wait_healthy` is given 600 s, the compose file's `start_period`,
+on `train-sft` is KB-79. `wait_healthy` is given 600 s, the compose file's `start_period`,
 rather than the registry's 60 s default, which a cold 10 GB load can miss.
 
 ```bash
@@ -921,7 +1036,7 @@ make down
 make prepare-sft ARGS="--source /mnt/ai-data/interp/organisms/organism-null/data-blind \
     --tokenizer /mnt/ai-data/models/hf/gemma-4-E2B --model-type gemma4 \
     --out /mnt/ai-data/training/datasets/sft/organism-null"
-make train-sft CONFIG=training/recipes/organisms/null.yaml ARGS="model.hf.id=/app/models/hf/gemma-4-E2B tokenizer.path=/app/models/hf/gemma-4-E2B"
+make train-sft CONFIG=training/recipes/organisms/null.yaml ARGS="model.hf.id=/app/models/hf/gemma-4-E2B"
 make export-hf CHECKPOINT=/mnt/ai-data/training/runs/organism-null/checkpoints/checkpoint-400 \
     ARGS="--name organism-null"
 make eval-ft ARGS="--base /mnt/ai-data/models/hf/gemma-4-E2B \
@@ -1225,11 +1340,10 @@ the host HF cache at the pinned revision with `local_files_only`, since the
 test loads the recipe as committed (KB-79 is the container's inability to
 do the same; on the host the cache under `HF_HOME` is what answers). A skip
 reading `pinned base not in the local HF cache (FT.0)` is that cache being
-empty, and is recorded as the reason rather than treated as a pass. The test
-overrides `tokenizer.path` to the snapshot directory the base resolved from
-(KB-80: the recipe's path is unstaged, and the dataset hash check reads
-`tokenizer.json` from wherever the path points), which is the same file
-FT.2 tokenized with.
+empty, and is recorded as the reason rather than treated as a pass. The
+dataset hash check reads `tokenizer.json` from the base the recipe names
+(KB-80, fixed), the same file FT.2 tokenized with, so the test passes no
+tokenizer override.
 
 Command (the tier and invocation are the ones every hardware entry uses;
 `--no-sync` because a plain `uv run` resyncs the default groups and, on a

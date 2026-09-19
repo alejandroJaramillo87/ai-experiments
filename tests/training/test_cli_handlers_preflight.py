@@ -242,13 +242,16 @@ class TestPreflightSft:
         return dataset_dir, tokenizer_dir
 
     def argv(self, dataset_dir: str, tokenizer_dir: str) -> list[str]:
+        # No tokenizer override: the recipe carries no tokenizer block, and
+        # the base directory (here the chat tokenizer's) is what the hash
+        # check reads (KB-80). The base identity itself is stubbed.
         return [
             "preflight",
             "--config",
             SFT_RECIPE,
             f"sft.dataset={dataset_dir}",
             f"data.source={dataset_dir}",
-            f"tokenizer.path={tokenizer_dir}",
+            f"model.hf.id={tokenizer_dir}",
         ]
 
     def test_prepared_dataset_passes(self, sft_staged, capsys):
@@ -258,6 +261,46 @@ class TestPreflightSft:
         assert rc == 0, err
         assert "[OK] All referenced assets are present and verified" in err
         assert "shard" not in err
+        assert "tokenizer.path" not in err
+
+    def test_missing_base_is_one_problem_not_two(self, sft_staged, monkeypatch, capsys):
+        """KB-80: an absent base is reported as the model, not also as its tokenizer."""
+        import training.export.preflight as export_preflight
+        from training.export.errors import ExportError
+
+        dataset_dir, tokenizer_dir = sft_staged
+
+        def missing(*a, **k):
+            raise ExportError("config.json not found locally")
+
+        monkeypatch.setattr(export_preflight, "resolve_base_identity", missing)
+        rc = run_cli(self.argv(dataset_dir, tokenizer_dir))
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "Missing or unusable assets: 1" in err
+        assert "- model.hf: config.json not found locally" in err
+        assert "tokenizer.path" not in err
+        assert err.count("Command:") == 1
+        assert "make train-download" in err
+
+    def test_explicit_tokenizer_path_is_still_checked(self, sft_staged, capsys):
+        # data.source stays the recipe's (unprepared here), so validate's own
+        # hash check skips and the presence check is what reports the path.
+        dataset_dir, tokenizer_dir = sft_staged
+        rc = run_cli(
+            [
+                "preflight",
+                "--config",
+                SFT_RECIPE,
+                f"sft.dataset={dataset_dir}",
+                f"model.hf.id={tokenizer_dir}",
+                "tokenizer.path=/nonexistent/tokenizers/pinned",
+            ]
+        )
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "tokenizer.path: not found: /nonexistent/tokenizers/pinned" in err
+        assert "make train-tokenizer" in err
 
     def test_missing_dataset_names_it_and_prepare_sft(self, sft_staged, capsys):
         _, tokenizer_dir = sft_staged

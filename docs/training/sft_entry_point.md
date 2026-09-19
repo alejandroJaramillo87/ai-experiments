@@ -51,7 +51,10 @@ sft:
 
 `sft.dataset` must be a materialized `prepare_sft.py` artifact; the loader
 refuses a manifest or tokenizer hash mismatch, and `validate()` refuses a
-directory without `manifest.json`. Batch geometry, optimizer, schedule,
+directory without `manifest.json`. The tokenizer the hash check reads is the
+one the base directory (`model.hf.id`) ships unless the recipe sets
+`tokenizer.path`, so give `--tokenizer` the same directory the recipe names
+as its base. Batch geometry, optimizer, schedule,
 precision, PEFT, checkpointing, tracking, and watchdog settings come from the
 existing recipe groups. `data.source` is unused by the SFT path.
 

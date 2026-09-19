@@ -20,6 +20,8 @@ model:
   hf:
     id: google/gemma-4-E2B
     revision: d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f
+  # No tokenizer block: a fine-tune reuses the tokenizer this directory ships,
+  # and every reader resolves it from model.hf.id (schema.py TokenizerConfig).
 
 sft:
   enabled: true
@@ -38,9 +40,6 @@ data:
   grad_accum: 8
   workers: 4
   pin_memory: true
-
-tokenizer:
-  path: /mnt/ai-data/training/tokenizers/gemma-4-e2b
 
 peft:
   enabled: true

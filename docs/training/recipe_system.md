@@ -28,7 +28,7 @@ rather than mid-run. Design record:
 | `model` | exactly one of `hf` (id, revision) or `scratch` (layers, hidden, heads, kv_heads, ffn_mult, vocab, rope_theta, tie_embeddings), plus `trainable_filter` | loop, calculator, SFT |
 | `data` | shard directory or dataset id, sequence length, micro-batch, gradient accumulation, workers, `pin_memory`, `prefetch_factor` | loop, calculator, D9 loader |
 | `mixture`, `replay` | Phase 2 multi-source sampling and the replay buffer | loop |
-| `tokenizer` | path; must hash-match the shards | validate, preflight |
+| `tokenizer` | path, optional for an HF base (defaults to `model.hf.id`, the tokenizer the base directory ships) and required for scratch; must hash-match the shards or the SFT dataset | validate, preflight, SFT |
 | `optimizer` | name (`adamw`, `adamw8bit`, `paged_adamw8bit`, `cpu_adam`), lr, betas, eps, weight decay | loop, calculator |
 | `schedule` | type (`cosine`, `wsd`), warmup, total steps, WSD decay knobs | loop |
 | `precision` | `dtype`, `bf16` only | loop, calculator |
@@ -41,9 +41,12 @@ rather than mid-run. Design record:
 | `watchdog` | thresholds and sampling interval, see [operational_watchdogs.md](operational_watchdogs.md) | watchdog |
 | `staging`, `affinity` | D9 knobs, see [heterogeneous_compute.md](heterogeneous_compute.md) | loop |
 
-Fields marked `MISSING` in the schema (`run.name`, `data.source`, `tokenizer.path`,
-`optimizer.lr`, `schedule.total_steps`, and the model dimensions) have no default; a recipe
-that omits one fails validation with the field named.
+Fields marked `MISSING` in the schema (`run.name`, `data.source`, `optimizer.lr`,
+`schedule.total_steps`, and the model dimensions) have no default; a recipe that omits one
+fails validation with the field named. `tokenizer.path` is required only for a scratch
+model: an HF recipe reads the tokenizer its base directory ships, resolved by
+`tokenizer_source()` in `/training/recipes/validate.py`, the one function validate, preflight
+and `train-sft` share for it (KB-80 was three readers of a path nothing staged).
 
 ## Loading and overrides
 
@@ -76,7 +79,7 @@ calls it before allocating on the GPU. The checks, by the helper that owns each:
 | `_check_data`, `_check_mixture`, `_check_replay` | non-positive geometry; a `prefetch_factor` below 1; a mixture or replay block with non-positive weights, duplicate source names, or a `data.source` it should replace |
 | `_check_checkpoint`, `_check_watchdog` | non-positive intervals and thresholds |
 | `_check_staging`, `_check_affinity` | a non-positive `max_gb`; overlapping or malformed CPU lists |
-| `_check_tokenizer_matches_shards` | a tokenizer whose content hash differs from the shard manifest's, when `data.source` is a prepared shard directory |
+| `_check_tokenizer_matches_shards` | a tokenizer (`tokenizer.path`, or the base directory when unset) whose content hash differs from the shard manifest's, when `data.source` is a prepared shard directory |
 
 The tokenizer check is skip-when-absent: a `data.source` with no `manifest.json` (a dataset
 id, or shards not yet prepared on this machine) passes. That is what lets `train-validate`
@@ -128,7 +131,8 @@ directory `make train-download` staged, as the fine-tuning runbook records under
 `make train-validate` answers "is this recipe coherent" and passes with no data present.
 `make train-preflight` answers "will this run start": it requires every shard directory,
 tokenizer, and model the recipe references to be present and verified, and reports every
-missing one. An SFT recipe (`sft.enabled`) is checked against its prepared `sft.dataset`
+missing one, once: an HF recipe without `tokenizer.path` reads the base directory's
+tokenizer, so an absent base is one problem line, not two. An SFT recipe (`sft.enabled`) is checked against its prepared `sft.dataset`
 through the F1 loader, so the manifest kind, the chat-template version, the file hashes and
 the example counts are the trainer's own checks; its `data.source` is not read, because the
 reference recipes point it at the same directory and it is not a shard directory (KB-81 was

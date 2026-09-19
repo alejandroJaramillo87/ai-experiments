@@ -50,9 +50,6 @@ data:
   workers: 4
   pin_memory: true
 
-tokenizer:
-  path: google/gemma-4-E4B
-
 peft:
   enabled: true
   method: lora

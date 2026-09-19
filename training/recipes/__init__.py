@@ -9,7 +9,11 @@ from training.recipes.loader import (
     write_snapshot,
 )
 from training.recipes.schema import Recipe, register_schema
-from training.recipes.validate import RecipeValidationError, validate
+from training.recipes.validate import (
+    RecipeValidationError,
+    tokenizer_source,
+    validate,
+)
 
 __all__ = [
     "Recipe",
@@ -20,6 +24,7 @@ __all__ = [
     "load_snapshot",
     "register_schema",
     "resolved_yaml",
+    "tokenizer_source",
     "validate",
     "write_snapshot",
 ]

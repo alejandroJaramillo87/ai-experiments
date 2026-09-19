@@ -199,9 +199,18 @@ class AffinityConfig:
 
 @dataclass
 class TokenizerConfig:
-    # Must hash-match the data shards' manifest; validate() enforces when the
-    # source is a prepared shard directory.
-    path: str = MISSING
+    """Where the recipe's tokenizer is read from.
+
+    Required for a scratch model, which has no base tokenizer. Optional for an
+    HF base: a fine-tune or continual run reuses the tokenizer the base
+    directory ships, so validate, preflight and train-sft resolve it from
+    model.hf.id when path is unset (training/recipes/validate.py:
+    tokenizer_source). Set it only to pin a different tokenizer than the base
+    ships. Either way it must hash-match the shards' or SFT dataset's
+    manifest; validate() enforces when the source is prepared on this machine.
+    """
+
+    path: str | None = None
 
 
 @dataclass

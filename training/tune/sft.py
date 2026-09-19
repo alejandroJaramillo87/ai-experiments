@@ -34,7 +34,7 @@ from omegaconf import DictConfig
 
 from common.obs import set_run_dir
 from training.data.sft import IGNORE_INDEX, load_sft_dataset
-from training.recipes import create_run_dir
+from training.recipes import create_run_dir, tokenizer_source
 from training.runtime.lock import run_lock
 from training.runtime.loop import snapshot_hash
 from training.tune.sft_callbacks import (
@@ -185,9 +185,15 @@ def check_memory_fit(recipe: DictConfig, force: bool) -> tuple[bool, str]:
 
 
 def build_dataset(recipe: DictConfig) -> tuple[list[dict], list[dict]]:
-    """Load the prepared F1 dataset (hash-verified) and apply packing."""
+    """Load the prepared F1 dataset (hash-verified) and apply packing.
+
+    The hash check reads the tokenizer the base directory ships unless the
+    recipe pins another (tokenizer_source), the same file prepare-sft was
+    given, so an unstaged tokenizer.path cannot fail a run whose base is
+    present (KB-80).
+    """
     train, holdout = load_sft_dataset(
-        recipe.sft.dataset, tokenizer=recipe.tokenizer.path
+        recipe.sft.dataset, tokenizer=tokenizer_source(recipe)
     )
     if recipe.sft.packing:
         train = pack_examples(train, recipe.data.seq_len)
