@@ -15,6 +15,7 @@ run:
 harvest:
   enabled: true
   model_id: google/gemma-4-E2B
+  revision: d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f  # schemas/gemma4_facts.json E2B
   # 50 percent depth of E2B's 35-layer stack. Not 15: that is the
   # num_hidden_layers - num_kv_shared_layers boundary (35 - 20), so it is
   # simultaneously the first shared-KV and first double-wide-MLP layer.

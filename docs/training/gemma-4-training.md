@@ -28,9 +28,9 @@ no code path here.
 | E2B | `google/gemma-4-E2B` | `d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f` | `5f0662eb398ede0ab1515c4760e13bcd6bf13f2f` |
 | E4B | `google/gemma-4-E4B` | `411aa17b749aa952df1359d2dcea73917a544d9a` | `080fd8d51bb6e846df168157c9d57b928a2a2687` |
 
-**Every Gemma 4 recipe whose `model.hf.id` is a hub id pins `model.hf.revision` to the commit
-above**, and `/tests/training/test_recipe_pins.py` holds each pin equal to
-`/schemas/gemma4_facts.json`. The field has two live consumers —
+**Every Gemma 4 recipe whose `model.hf.id` or `harvest.model_id` is a hub id pins the
+block's `revision` to the commit above**, and `/tests/training/test_recipe_pins.py` holds each
+pin equal to `/schemas/gemma4_facts.json` across the reference, organism, and interp recipes. The field has two live consumers —
 `/training/calculator/components.py:206-211` passes it to `AutoConfig.from_pretrained`, and
 `/training/export/merge.py:148-160` passes it to `AutoModelForCausalLM.from_pretrained` — so
 pinning costs nothing and is required by the pin-then-fix-then-update rule in `/AGENTS.md`.

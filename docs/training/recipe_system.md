@@ -118,7 +118,8 @@ import the `Recipe` dataclass. A change to a group's field names is a change to 
 
 Every recipe naming a Gemma 4 hub id must pin `model.hf.revision` to the commit recorded in
 `/schemas/gemma4_facts.json`; `tests/training/test_recipe_pins.py` enforces it for the
-reference and organism recipes. The training container cannot resolve a hub id at all (its
+reference, organism, and interp recipes, reading `model.hf` or `harvest` whichever names the
+hub id. The training container cannot resolve a hub id at all (its
 Hugging Face cache is an empty tmpfs), so a container run overrides `model.hf.id` with the
 directory `make train-download` staged, as the fine-tuning runbook records under KB-79.
 
