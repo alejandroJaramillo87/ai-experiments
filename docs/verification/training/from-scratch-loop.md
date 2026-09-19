@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 2 verified, 0 blocked, 7 pending, of 9.**
+**Entries: 3 verified, 0 blocked, 6 pending, of 9.**
 
 The from-scratch loop is the third rung of the training tier: the D6 reference
 loop (`make train`) driving a scratch model over prepared shards, the rung that
@@ -330,12 +330,63 @@ over. `step_000000030` appears and its `meta.json` reads `step: 30`. A run
 that prints `Training` rather than `Resuming`, or reports 7,680 tokens seen
 after thirty fresh steps from a zero start, restarted.
 
+Recorded 2026-09-19. The checkpoint listing is retention doing its job:
+`step_000000025` and `step_000000030` are the last two, `step_000000010` and
+`step_000000020` the `retain_every: 10` survivors, and `step_000000015` from
+FS.1 is gone.
+
 Observed:
 
 ```
+➜  ai-experiments git:(SFT-verification) ✗ set -o pipefail
+cd ~/workspace/ai-experiments
+make train CONFIG=training/recipes/reference/tiny-e2e.yaml \
+    ARGS="$OVR run.name=fs1 schedule.total_steps=30 checkpoint.resume=latest"
+echo "exit=$?"
+ls /mnt/ai-data/training/runs/fs1/checkpoints/
+cat /mnt/ai-data/training/runs/fs1/checkpoints/step_000000030/meta.json
+docker compose -f docker-compose.training.yaml run --rm training python -m training train --config training/recipes/reference/tiny-e2e.yaml data.source=/mnt/ai-data/training/shards/verify-49k tokenizer.path=/mnt/ai-data/training/tokenizers/verify-49k model.scratch.vocab=49152 run.name=fs1 schedule.total_steps=30 checkpoint.resume=latest
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up. 
+Container ai-experiments-training-run-bca025eca527 Creating 
+Container ai-experiments-training-run-bca025eca527 Created 
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training train --config training/recipes/reference/tiny-e2e.yaml data.source=/mnt/ai-data/training/shards/verify-49k tokenizer.path=/mnt/ai-data/training/tokenizers/verify-49k model.scratch.vocab=49152 run.name=fs1 schedule.total_steps=30 checkpoint.resume=latest
+[RUN] Resuming (latest) fs1: 30 total steps
+[loop] WARN: resuming with a recipe that differs from the checkpoint's (hash fef10d226755 vs 052a3b37555f); the LR schedule may shift
+Writing model shards: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1/1 [00:00<00:00, 418.47it/s]
+Writing model shards: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1/1 [00:00<00:00, 587.85it/s]
+[OK] Run complete: step 30, 7,680 tokens seen
+Final loss: 10.289288
+Run directory: /mnt/ai-data/training/runs/fs1/2026-09-19_16-54-47
+Checkpoints:   /mnt/ai-data/training/runs/fs1/checkpoints
+exit=0
+latest  step_000000010  step_000000020  step_000000025  step_000000030
+{
+  "step": 30,
+  "tokens_seen": 7680,
+  "loss": 10.289287567138672,
+  "recipe_hash": "052a3b37555f9755c956aac62f50adac0b7cfe85ad3cd3f99f369ed0af0e35d3",
+  "git_sha": "unknown",
+  "library_versions": {
+    "torch": "2.13.0+cu130",
+    "transformers": "5.13.1",
+    "deepspeed": "0.19.2"
+  },
+  "wall_clock": "2026-09-19T16:54:55+0000",
+  "checkpoint_format": "torch",
+  "optimizer": "adamw",
+  "attention_implementation": "flash_attention_2"
+}
 ```
 
-Status: PENDING
+Status: VERIFIED (2026-09-19)
 
 ## FS.3 Staging and prefetch under the D9 bar
 
