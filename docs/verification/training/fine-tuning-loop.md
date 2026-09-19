@@ -162,9 +162,76 @@ forward`, `bitsandbytes: 4-bit Linear forward`, `deepspeed: DeepSpeedCPUAdam
 step (pre-built op loaded)`, then `[OK]
 ALL SMOKE STEPS PASSED` with no `[SKIP]` line and exit 0.
 
+Partial record, 2026-09-19: `make train-build` reported below, from the
+second attempt after the flash-attn build fix (`c6ebcce`); the `uv lock
+--check` and `make train-smoke` lines are still owed, so the entry stays
+pending.
+
 Observed:
 
 ```
+➜  ai-experiments git:(SFT-verification) ✗ make train-build
+Building training image...
+MAX_JOBS=4 NVCC_THREADS=2 docker compose -f docker-compose.training.yaml build
+[+] Building 2296.6s (39/39) FINISHED
+ => [internal] load local bake definitions                                                                                                                                    0.0s
+ => => reading from stdin 1.71kB                                                                                                                                              0.0s
+ => [training internal] load build definition from Dockerfile.training                                                                                                        0.0s
+ => => transferring dockerfile: 6.50kB                                                                                                                                        0.0s
+ => [export internal] load build definition from Dockerfile.export                                                                                                            0.0s
+ => => transferring dockerfile: 2.50kB                                                                                                                                        0.0s
+ => [training internal] load metadata for docker.io/nvidia/cuda:13.0.2-cudnn-devel-ubuntu24.04                                                                                0.5s
+ => [training internal] load metadata for ghcr.io/astral-sh/uv:0.11.28                                                                                                        0.2s
+ => [export internal] load metadata for docker.io/library/ubuntu:24.04                                                                                                        0.5s
+ => [export internal] load .dockerignore                                                                                                                                      0.0s
+ => => transferring context: 1.73kB                                                                                                                                           0.0s
+ => [training internal] load build context                                                                                                                                    0.0s
+ => => transferring context: 6.97kB                                                                                                                                           0.0s
+ => [prepare stage-1  1/15] FROM docker.io/nvidia/cuda:13.0.2-cudnn-devel-ubuntu24.04@sha256:e071e85c52ad91fc9ea24158ff5330876b2d1a5c4ac83ccc6066976835873c01                 0.0s
+ => [export uv 1/1] FROM ghcr.io/astral-sh/uv:0.11.28@sha256:0f36cb9361a3346885ca3677e3767016687b5a170c1a6b88465ec14aefec90aa                                                 0.0s
+ => CACHED [training stage-1  2/15] RUN apt-get update &&     apt-get install -y --no-install-recommends --allow-change-held-packages         build-essential         gcc g+  0.0s
+ => CACHED [training stage-1  3/15] COPY --from=uv /uv /uvx /usr/local/bin/                                                                                                   0.0s
+ => CACHED [training stage-1  4/15] RUN uv venv /opt/venv --python 3.12                                                                                                       0.0s
+ => CACHED [training stage-1  5/15] COPY pyproject.toml uv.lock ./                                                                                                            0.0s
+ => [training stage-1  6/15] RUN --mount=type=cache,target=/root/.cache/uv     MAX_JOBS=4 NVCC_THREADS=2     DS_BUILD_CPU_ADAM=1 DS_BUILD_UTILS=1     CFLAGS="-march=nati  2276.9s
+ => [export stage-1 1/9] FROM docker.io/library/ubuntu:24.04@sha256:008173c23f95b170204355c12626cb5a965d779a7e1283b09e9cffbb1bf33ca3                                          0.0s
+ => CACHED [export stage-1 2/9] RUN apt-get update &&     apt-get install -y --no-install-recommends         git         ca-certificates         python3.12         python3.  0.0s
+ => CACHED [export stage-1 3/9] COPY --from=uv /uv /uvx /usr/local/bin/                                                                                                       0.0s
+ => CACHED [export stage-1 4/9] RUN uv venv /opt/venv --python 3.12                                                                                                           0.0s
+ => CACHED [export stage-1 5/9] RUN --mount=type=cache,target=/root/.cache/uv     uv pip install --index-url https://download.pytorch.org/whl/cpu torch==2.13.0 &&     uv pi  0.0s
+ => CACHED [export stage-1 6/9] RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin -c "Application User" appuser                                       0.0s
+ => CACHED [export stage-1 7/9] RUN mkdir -p /app/cache /app/logs && chown -R appuser:appuser /app                                                                            0.0s
+ => CACHED [export stage-1 8/9] WORKDIR /app                                                                                                                                  0.0s
+ => CACHED [export stage-1 9/9] RUN python -c "import torch, transformers, peft, safetensors"                                                                                 0.0s
+ => [export] exporting to image                                                                                                                                               0.0s
+ => => exporting layers                                                                                                                                                       0.0s
+ => => writing image sha256:fb7e7363b4fb02b3b5a582c4a4c2d573961d4a95accf1c57c3485a695e4986f4                                                                                  0.0s
+ => => naming to docker.io/library/ai-experiments-export                                                                                                                      0.0s
+ => [export] resolving provenance for metadata file                                                                                                                           0.0s
+ => [prepare stage-1  7/15] RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin -c "Application User" appuser                                           0.2s
+ => [training stage-1  8/15] RUN mkdir -p /app/cache /app/logs && chown -R appuser:appuser /app                                                                               0.1s
+ => [prepare stage-1  9/15] WORKDIR /app                                                                                                                                      0.0s
+ => [training stage-1 10/15] COPY --chown=appuser:appuser common ./common                                                                                                     0.0s
+ => [prepare stage-1 11/15] COPY --chown=appuser:appuser training ./training                                                                                                  0.0s
+ => [training stage-1 12/15] COPY --chown=appuser:appuser scripts/training ./scripts/training                                                                                 0.0s
+ => [prepare stage-1 13/15] COPY --chown=appuser:appuser docker/training/entrypoint.sh /app/entrypoint.sh                                                                     0.0s
+ => [training stage-1 14/15] RUN chmod +x /app/entrypoint.sh                                                                                                                  0.1s
+ => [prepare stage-1 15/15] RUN python -m training smoke --build                                                                                                             11.7s
+ => [prepare] exporting to image                                                                                                                                              7.0s
+ => => exporting layers                                                                                                                                                       6.9s
+ => => writing image sha256:ea88aa32ce3f8dfaec43bfbabf710b20b0c4dc58de6f980a81d323fa1418eb39                                                                                  0.0s
+ => => naming to docker.io/library/ai-experiments-prepare                                                                                                                     0.0s
+ => [training] exporting to image                                                                                                                                             7.0s
+ => => exporting layers                                                                                                                                                       6.9s
+ => => writing image sha256:f509b68ddf17fbaa5d8dadf09ddd49272cb2a086cdf905184e1c14533a291c5f                                                                                  0.0s
+ => => naming to docker.io/library/ai-experiments-training                                                                                                                    0.0s
+ => [prepare] resolving provenance for metadata file                                                                                                                          0.0s
+ => [training] resolving provenance for metadata file                                                                                                                         0.0s
+[+] build 3/3
+ ✔ Image ai-experiments-prepare  Built                                                                                                                                      2296.6s
+ ✔ Image ai-experiments-export   Built                                                                                                                                      2296.6s
+ ✔ Image ai-experiments-training Built                                                                                                                                      2296.6s
+Training image built.
 ```
 
 Status: PENDING

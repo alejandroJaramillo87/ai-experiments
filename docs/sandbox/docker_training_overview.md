@@ -62,9 +62,10 @@ The build:
 3. Creates a `/opt/venv` virtual environment and syncs `uv.lock` into it with
    `uv sync --frozen --no-install-project --group training`.
 4. Pre-builds the DeepSpeed CPUAdam op with `DS_BUILD_CPU_ADAM=1 DS_BUILD_UTILS=1` and
-   `CFLAGS="-march=znver5"`, falling back to `-march=native` if the image gcc rejects znver5.
-   This front-loads the AVX-512 miscompilation risk (upstream DeepSpeed issue 7556) to build
-   time, where the smoke test catches it.
+   `CFLAGS="-march=native"`. The image gcc (13, on Ubuntu 24.04) has no `znver5` target, so
+   `native` is what resolves to Zen 5; the image is therefore specific to the CPU it was
+   built on. This front-loads the AVX-512 miscompilation risk (upstream DeepSpeed issue 7556)
+   to build time, where the smoke test catches it.
 5. Creates the non-root `appuser`, copies the `common/` and `training/` packages, and runs `python -m training smoke --build`
    so that a regression fails the build.
 
@@ -86,6 +87,10 @@ enforced). The six steps:
 5. deepspeed: load and step `DeepSpeedCPUAdam` (proves the pre-built Zen 5 op loads and runs).
 6. Write a versions manifest (packages, CUDA, driver, GPU name) to stdout and, on the
    workstation, to `/mnt/ai-data/training/runs/_smoke/versions.json`.
+
+Every branch of the command (build-mode skips, each failure name, the manifest) is covered
+in the sandbox by `/tests/training/test_smoke_cmd.py`, which stubs the CUDA packages; the
+entrypoint's environment echo and `TRAIN_LD_PRELOAD` slot by `/tests/training/test_entrypoint.py`.
 
 ## Compose integration
 
