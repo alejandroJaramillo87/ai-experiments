@@ -249,7 +249,9 @@ def build_model_and_tokenizer(recipe: DictConfig):
     )
     if recipe.peft.enabled:
         resolve_target_modules(recipe, config.model_type)
-        model = build_peft_model(model, recipe.peft)
+        model = build_peft_model(
+            model, recipe.peft, recipe.memory.gradient_checkpointing
+        )
     return model, tokenizer, trainable_parameter_report(model)
 
 

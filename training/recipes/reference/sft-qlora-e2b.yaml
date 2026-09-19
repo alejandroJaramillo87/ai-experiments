@@ -33,11 +33,16 @@ sft:
 
 data:
   # Unused by the F3 trainer (sft.dataset supplies examples); batch geometry
-  # below is what train-sft consumes.
+  # below is what train-sft consumes. 2 x 2048 tokens per micro-batch: the
+  # head materializes micro_batch x seq_len x 262144 logits and the loss
+  # holds them in fp32 through backward, a term checkpointing does not
+  # touch, and 4 x 2048 ran the RTX 5090 out of memory beside the NF4 base
+  # (FT.calibrate-qlora's third attempt, KB-85). grad_accum keeps the
+  # effective batch at 32 sequences.
   source: /mnt/ai-data/training/datasets/sft/ultrachat-e2b
   seq_len: 2048
-  micro_batch: 4
-  grad_accum: 8
+  micro_batch: 2
+  grad_accum: 16
   workers: 4
   pin_memory: true
 

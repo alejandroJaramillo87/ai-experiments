@@ -308,6 +308,30 @@ class TestCalibrate:
         assert "[ERROR] Calibration failed: no CUDA device visible" in out
         assert "Solution: run on the workstation" in out
 
+    def test_out_of_memory_is_a_geometry_finding(self, capsys, monkeypatch):
+        """KB-86: an OOM in the loop carries what was measured and names the
+        micro-batch as the remedy, never the workstation."""
+        from training.calculator.calibrate import CalibrationOutOfMemory
+
+        error = CalibrationOutOfMemory(
+            step=1,
+            tokens=8192,
+            static_measured=int(6.5 * GIB),
+            peak_allocated=int(30.63 * GIB),
+            total=int(31.36 * GIB),
+        )
+        patch_calibrate(monkeypatch, error=error)
+        rc = run_cli(["calibrate", "--config", TINY_RECIPE])
+        out = capsys.readouterr().err
+        assert rc == 1
+        assert (
+            "[ERROR] Calibration ran out of GPU memory at step 1: resident after "
+            "build 6.50 GB, peak allocated 30.63 GB of 31.36 GB, at 8,192 tokens "
+            "per micro-batch"
+        ) in out
+        assert "Solution: lower data.micro_batch (the rate is per token" in out
+        assert "run on the workstation" not in out
+
     def test_without_gpu_fails_styled_for_real(self, capsys, monkeypatch):
         # calibrate() itself is unpatched: it either fails importing torch
         # (this sandbox) or raises its no-CUDA RuntimeError, and both must
@@ -400,8 +424,9 @@ class TestCalibrateSupport:
         def fake_resolve(recipe, model_type):
             calls["resolved"] = model_type
 
-        def fake_wrap(model, peft_cfg):
+        def fake_wrap(model, peft_cfg, gradient_checkpointing):
             calls["wrapped"] = model
+            calls["checkpointing"] = gradient_checkpointing
             return wrapped
 
         fake_peft = types.SimpleNamespace(
@@ -411,7 +436,8 @@ class TestCalibrateSupport:
 
         qlora = load_recipe(os.path.join(REFERENCE_DIR, "sft-qlora-e2b.yaml"))
         assert calibrate_mod._build_calibration_model(qlora) is wrapped
-        assert calls == {"resolved": "gemma4", "wrapped": base}
+        # The wrap receives the recipe's checkpointing flag (KB-85).
+        assert calls == {"resolved": "gemma4", "wrapped": base, "checkpointing": True}
 
         calls.clear()
         scratch = load_recipe(TINY_RECIPE)

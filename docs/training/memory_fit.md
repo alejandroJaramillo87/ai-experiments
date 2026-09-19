@@ -132,7 +132,9 @@ counts is caught immediately.
 
 The rate is what the peak held above the model: right after the model is built
 and on the device, `torch.cuda.memory_allocated` is recorded as the resident
-static bytes (NF4 packing, towers and all, so none of that leaks into the rate);
+static bytes (NF4 packing, towers and all, so none of that leaks into the rate;
+the embedding tables stay in the compute dtype, since the PEFT wrap upcasts the
+norms only, KB-85, which is what the `weights` term prices);
 after the steps, `(max_memory_allocated - resident - grads - optimizer) /
 (micro_batch * seq_len)`, floored at zero, is printed as
 
@@ -160,6 +162,15 @@ the reserved check fails.
 One recipe class is refused as uncalibratable rather than measured wrongly:
 `memory.offload: zero_offload` (the calibration loop is plain torch, not the
 DeepSpeed ZeRO engine).
+
+A step that runs the GPU out of memory is a geometry finding, not a failure to
+diagnose: calibrate prints the step, the resident-after-build and peak allocated
+figures against the card's capacity, and the tokens per micro-batch, with
+`data.micro_batch` as the remedy (KB-86). The head's `micro_batch x seq_len x
+vocab` logits, held in fp32 through the loss, are the term that grows with the
+micro-batch and that checkpointing does not touch; with Gemma 4's 262144-token
+vocabulary the recipes hold 4096 tokens per micro-batch
+(`tests/training/test_recipe_pins.py`).
 
 ## Tests
 

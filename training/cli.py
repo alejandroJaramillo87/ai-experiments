@@ -140,6 +140,20 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
     except calibrate_mod.CalibrationUnsupported as exc:
         out.error(f"Calibration unsupported: {exc}")
         return 1
+    except calibrate_mod.CalibrationOutOfMemory as exc:
+        # Before the generic arm: an OOM is a RuntimeError too, and its
+        # remedy is the recipe's geometry, not the workstation (KB-86).
+        out.error(
+            f"Calibration ran out of GPU memory at step {exc.step}: resident "
+            f"after build {gb(exc.static_measured)}, peak allocated "
+            f"{gb(exc.peak_allocated)} of {gb(exc.total)}, at {exc.tokens:,} "
+            "tokens per micro-batch"
+        )
+        out.line(
+            "  Solution: lower data.micro_batch (the rate is per token; memfit "
+            "solves the batch once the rate is on file)"
+        )
+        return 1
     except (RuntimeError, ImportError) as exc:
         out.error(f"Calibration failed: {exc}")
         out.line(

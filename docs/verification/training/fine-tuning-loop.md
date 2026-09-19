@@ -124,6 +124,19 @@ builds what it verifies:
   cap, and the provenance stamps read the loaded model. The paste is kept
   in FT.calibrate-qlora as a superseded observation; the entry is unchanged
   otherwise and re-runs as committed.
+- **FT.calibrate-qlora's third attempt** (2026-09-19, as committed) selected
+  sdpa, confirming KB-84, and ran the GPU out of memory in the first step:
+  30.63 GiB allocated against a 21.46 GB estimate. Two defects and the
+  recipe's geometry, all fixed the same day: PEFT's k-bit preparation upcast
+  the 2.75 B frozen embedding parameters of E2B to fp32, about 5.5 GB the
+  calculator never priced, and enabled checkpointing regardless of the
+  recipe (KB-85; the wrap now owns that step and upcasts the norms only);
+  calibrate reported the OOM as "run on the workstation" (KB-86; it now
+  prints the resident and peak figures and names `data.micro_batch`); and
+  8192 tokens per micro-batch is more than the 262144-wide head fits beside
+  the base, so the two reference SFT recipes halve their micro-batch and
+  double `grad_accum`. The paste is kept in FT.calibrate-qlora as a
+  superseded observation; the entry re-runs as committed.
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training
@@ -905,6 +918,22 @@ Implementation: `training/calculator/calibrate.py`,
   first attempt, below). `build_peft_model` now confines the adapter to
   `model.language_model.`; the trainable-parameter report and the
   `Activation rate:` line are the confirmation.
+- KB-84 — flash-attn was selected for a base whose full-attention heads are
+  512 wide, above the kernel's 256 cap (this entry's second attempt). The
+  `[model] ... attention runs on sdpa` note the third attempt printed is the
+  confirmation; the row closes with this run.
+- KB-85 — PEFT's `prepare_model_for_kbit_training` upcast every non-4-bit
+  bf16 parameter to fp32, the embedding tables included (2.75 B parameters
+  on E2B, about 5.5 GB), and enabled gradient checkpointing whatever the
+  recipe said. `build_peft_model` now prepares the base itself: norms to
+  fp32, tables at the load dtype, checkpointing the recipe's call. The
+  `Resident after build:` figure is the confirmation: near the 6.08 GB
+  `weights` row the calculator prices, not 11 GB and above.
+- KB-86 — calibrate reported a CUDA out-of-memory as `Calibration failed`
+  with the no-GPU remedy (this entry's third attempt). It now names the step,
+  the resident and peak figures and the tokens per micro-batch, with
+  `data.micro_batch` as the remedy. Confirmed by absence on a passing run,
+  or by the new line if the recipe still does not fit.
 
 Measures the QLoRA recipe on the `model.hf` plus PEFT path, which the
 archived P0.3 scratch calibration does not exercise: NF4 base pricing,
@@ -929,8 +958,13 @@ Attention runs on sdpa: FlashAttention 2 refuses a head dimension above
 `attention_implementation(config)` selects sdpa for every Gemma 4 base
 even though the image ships flash-attn (KB-84, found by the second attempt
 below). A `FlashAttention forward only supports head dimension at most
-256` error here is KB-84 back. Depends on FT.preconditions and
-FT.image-smoke.
+256` error here is KB-84 back. The recipe calibrates at its committed
+geometry, 2 x 2048 tokens per micro-batch since the third attempt: the head
+materializes `micro_batch x seq_len x 262144` logits and the loss holds
+them in fp32 through backward, a term gradient checkpointing does not reach
+and label masking does not shrink, and 4 x 2048 did not fit beside the
+base. The rate is per token, so the geometry does not change what is
+recorded. Depends on FT.preconditions and FT.image-smoke.
 
 Expected signal: exit 0. `[OK] Parameter count: <p> (analytic matches
 model)`, or a `[WARN] Parameter count drift` whose two figures differ by
@@ -939,8 +973,9 @@ construct (KB-82; any other drift is a finding); no trainable-count drift
 warning. Then `Resident after build:`, `Activation rate: <r> bytes/token`,
 the line `Record: "gemma4_text/35x1536/qlora/ckpt": <r>,` and
 `[INFO] Allocated error: not on file`, since this is the profile's first
-measurement and there is no rate to hold to the bar. Record `<r>` and the
-measured allocated, reserved and NVML figures here, then, before FT.memfit:
+measurement and there is no rate to hold to the bar. Record `<r>`, the
+resident figure and the measured allocated, reserved and NVML figures here,
+then, before FT.memfit:
 
 1. Paste the `Record:` line into `RATES` in `training/calculator/measured.py`
    with a comment naming this entry, the date, the measured allocated and
@@ -1074,6 +1109,69 @@ scratch model has 128-wide heads. Fixed in the tree the same day:
 widest head exceeds the cap, with one note on stderr, and the checkpoint
 and evaluation records stamp the implementation the loaded model reports
 rather than the host resolution.
+
+Third attempt (2026-09-19, superseded, kept verbatim: as committed, the
+first run with no override; attention on sdpa, which confirms KB-84; the
+first calibration step ran the GPU out of memory, which is KB-85 and KB-86):
+
+```
+➜  ai-experiments git:(SFT-verification) ✗ set -o pipefail
+cd ~/workspace/ai-experiments
+make train-calibrate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
+    ARGS="--out /mnt/ai-data/training/verify/calibrate-sft-e2b.json"
+echo "exit=$?"
+docker compose -f docker-compose.training.yaml run --rm training python -m training calibrate --config training/recipes/reference/sft-qlora-e2b.yaml --out /mnt/ai-data/training/verify/calibrate-sft-e2b.json
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-f81262b0824e Creating
+Container ai-experiments-training-run-f81262b0824e Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training calibrate --config training/recipes/reference/sft-qlora-e2b.yaml --out /mnt/ai-data/training/verify/calibrate-sft-e2b.json
+[RUN] Calibrating sft-qlora-e2b: 5 steps on cuda:0
+[model] flash-attn supports head_dim <= 256; this model's widest head is 512, so attention runs on sdpa
+Loading weights:   0%|                                                                                                                                   | 0/1951 [00:00<?, ?it/s]/opt/venv/lib/python3.12/site-packages/bitsandbytes/backends/cuda/ops.py:213: FutureWarning: _check_is_size will be removed in a future PyTorch release along with guard_size_oblivious.     Use _check(i >= 0) instead.
+  torch._check_is_size(blocksize)
+Loading weights: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1951/1951 [00:00<00:00, 2956.51it/s]
+[W919 22:23:36.107218551 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 50331648 bytes (free: 37552128, total: 33668726784).
+[W919 22:23:36.114189739 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 67108864 bytes (free: 45940736, total: 33668726784).
+[W919 22:23:36.117163322 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 50331648 bytes (free: 29163520, total: 33668726784).
+[W919 22:23:36.117209749 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 50331648 bytes (free: 29163520, total: 33668726784).
+[ERROR] Calibration failed: CUDA out of memory. Tried to allocate 48.00 MiB. GPU 0 has a total capacity of 31.36 GiB of which 27.81 MiB is free. Including non-PyTorch memory, this process has 31.32 GiB memory in use. Of the allocated memory 30.63 GiB is allocated by PyTorch, and 116.78 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)
+  Solution: run on the workstation via 'make train-calibrate CONFIG=...'
+
+make: *** [make/training.mk:53: train-calibrate] Error 1
+exit=2
+```
+
+The model loaded and wrapped, and the first step allocated 30.63 GiB of
+the 31.36 GiB card before the failed 48 MiB request, against a memfit
+estimate of 21.46 GB reserved. Three things account for the gap. PEFT's
+`prepare_model_for_kbit_training`, which `build_peft_model` called, upcasts
+every non-4-bit bf16 parameter to fp32; bitsandbytes quantizes `nn.Linear`
+only, so E2B's token embedding (262144 x 1536) and per-layer embedding
+table (262144 x 35 x 256), about 2.75 B frozen parameters, went from bf16
+to fp32, roughly 5.5 GB the calculator's `weights` row prices at bf16
+(KB-85, fixed the same day: the wrap prepares the base itself, upcasting
+the one-dimensional norms only, and leaves checkpointing to the recipe).
+The head materializes `micro_batch x seq_len x 262144` logits, 4.3 GB in
+bf16 at 8192 tokens, and transformers' causal-LM loss holds them in fp32
+through backward with the softmax and the logit gradient at the same size,
+a term outside every checkpointed block; the 7 full-attention layers add
+the sdpa math kernel's `[4, 8, 2048, 2048]` scores, since PyTorch's fused
+kernels cap the head width as flash-attn does. That is the recipe's
+geometry, not a defect: `sft-qlora-e2b.yaml` now runs 2 x 2048 with
+`grad_accum` 16 (the same 32 sequences per step), `sft-qlora-gemma-e4b.yaml`
+1 x 4096 with 32, and `tests/training/test_recipe_pins.py` holds every
+Gemma 4 recipe to 4096 tokens per micro-batch. Last, the failure landed in
+calibrate's generic arm with the no-GPU remedy (KB-86, fixed the same day:
+`CalibrationOutOfMemory` carries the resident and peak figures and the CLI
+names `data.micro_batch`). Re-runs as committed.
 
 Observed:
 

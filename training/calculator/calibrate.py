@@ -57,6 +57,31 @@ class CalibrationUnsupported(RuntimeError):
     """The recipe's runtime cannot be measured by the calibration loop."""
 
 
+class CalibrationOutOfMemory(RuntimeError):
+    """A calibration step exhausted the GPU: the recipe's geometry does not
+    fit beside the built model (KB-86). Carries what was measured up to the
+    failure, so the operator reads a resident figure and a peak rather than
+    the allocator's message alone."""
+
+    def __init__(
+        self,
+        step: int,
+        tokens: int,
+        static_measured: int,
+        peak_allocated: int,
+        total: int,
+    ) -> None:
+        super().__init__(
+            f"out of GPU memory at step {step}: peak allocated {peak_allocated} "
+            f"of {total} bytes at {tokens} tokens per micro-batch"
+        )
+        self.step = step
+        self.tokens = tokens
+        self.static_measured = static_measured
+        self.peak_allocated = peak_allocated
+        self.total = total
+
+
 # Absolute tolerance for the allocated-error acceptance check. CUDA library
 # workspaces (cuBLAS and friends) live inside max_memory_allocated but outside
 # the component model; measured at ~65 MB on the RTX 5090. On a tiny reference
@@ -131,7 +156,9 @@ def _build_calibration_model(recipe: DictConfig):
         )
 
         resolve_target_modules(recipe, model.config.model_type)
-        model = build_peft_model(model, recipe.peft)
+        model = build_peft_model(
+            model, recipe.peft, recipe.memory.gradient_checkpointing
+        )
     return model
 
 
@@ -176,14 +203,26 @@ def calibrate(recipe: DictConfig, steps: int = DEFAULT_STEPS) -> CalibrationReco
     if recipe.peft.enabled:
         analytic_total += est.trainable_params
 
+    tokens = recipe.data.micro_batch * recipe.data.seq_len
     nvml_peak = 0
-    for _ in range(steps):
+    for step in range(1, steps + 1):
         batch = torch.randint(
             0, spec.vocab, (recipe.data.micro_batch, recipe.data.seq_len), device=device
         )
-        loss = model(input_ids=batch, labels=batch).loss
-        loss.backward()
-        optimizer.step()
+        try:
+            loss = model(input_ids=batch, labels=batch).loss
+            loss.backward()
+            optimizer.step()
+        except torch.cuda.OutOfMemoryError as exc:
+            # The geometry is the finding, not the allocator's message; the
+            # peak is readable without a synchronize (KB-86).
+            raise CalibrationOutOfMemory(
+                step=step,
+                tokens=tokens,
+                static_measured=static_measured,
+                peak_allocated=torch.cuda.max_memory_allocated(device),
+                total=torch.cuda.get_device_properties(device).total_memory,
+            ) from exc
         optimizer.zero_grad(set_to_none=True)
         torch.cuda.synchronize(device)
         nvml_peak = max(nvml_peak, _nvml_used_bytes())
@@ -191,7 +230,6 @@ def calibrate(recipe: DictConfig, steps: int = DEFAULT_STEPS) -> CalibrationReco
     measured_allocated = torch.cuda.max_memory_allocated(device)
     measured_reserved = torch.cuda.max_memory_reserved(device)
     error_pct = (est.allocated_total - measured_allocated) / measured_allocated * 100
-    tokens = recipe.data.micro_batch * recipe.data.seq_len
     activation_rate = activation_rate_from(
         measured_allocated, static_measured, est.grads, est.optimizer, tokens
     )
