@@ -106,7 +106,10 @@ because F1 artifacts arrive tokenized and masked.
 
 `sft.backend: trl` (default) loads through transformers with the F2 PEFT
 wrapping (`training/models/peft_utils.py`), including NF4 base quantization for
-QLoRA. It is the only backend: an `unsloth` option existed until 2026-09-19 and
+QLoRA. On a composite base the adapter is confined to `model.language_model.`
+through PEFT's `exclude_modules`, since the Gemma 4 towers reuse the decoder's
+projection names behind wrappers PEFT cannot adapt (KB-83; see
+[gemma-4-training.md](gemma-4-training.md#dispatch-identity-and-export)). It is the only backend: an `unsloth` option existed until 2026-09-19 and
 left unverified, since one backend is what the runbook proves.
 
 ## Metrics

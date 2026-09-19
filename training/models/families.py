@@ -113,6 +113,8 @@ _REGISTRY: dict[str, FamilySpec] = {
         # Gemma 4 E-models (per-layer embeddings; gemma-4-E2B/E4B checkpoints)
         # keep the Llama-lineage projection names in their text decoder
         # layers. The new relative_k_proj is deliberately not a LoRA target.
+        # The vision and audio towers reuse these names too;
+        # peft_utils.lora_exclude_modules keeps the adapter off them (KB-83).
         FamilySpec(
             "gemma4",
             _LLAMA_LINEAGE_TARGET_MODULES,

@@ -246,6 +246,16 @@ checkpoint carries vision and audio towers beside the text stack. The exporter k
 the merged file, and the harness loads that file under `--text-only`, declining the towers
 by tensor prefix rather than by this string.
 
+The towers matter to the PEFT wrap as well. PEFT matches a `target_modules` list by suffix
+against every module key of the composite model, and the vision and audio towers name their
+projections `q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `up_proj` and `down_proj`
+just as the decoder does, behind `Gemma4ClippableLinear` wrappers (a clamp around an
+`nn.Linear`) that PEFT cannot adapt: the first FT.1 attempt died on
+`vision_tower.encoder.layers.0.self_attn.q_proj` (KB-83). `build_peft_model`
+(`/training/models/peft_utils.py`) therefore passes an `exclude_modules` pattern that keeps the
+adapter on `model.language_model.` and off everything else, so a text-only adapter touches the
+35 decoder layers alone, which is also what `adapter_param_count` prices.
+
 **The configuration targets an unreleased `transformers` development version.** Treat the
 configuration schema as unstable and pin the `transformers` revision that actually implements
 `Gemma4ForConditionalGeneration` rather than assuming a released version supports it.

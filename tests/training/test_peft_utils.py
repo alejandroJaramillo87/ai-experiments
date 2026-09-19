@@ -1,9 +1,15 @@
 """PEFT glue tests (Phase 1 F2): family-registry lookups, target_modules
 "auto" resolution into the config snapshot, and the trainable-parameter
-report. CPU-only; torch/peft-dependent paths use stand-in objects, and
-build_peft_model itself is exercised on the workstation (F2 acceptance)."""
+report, and the composite-base exclusion (KB-83). CPU-only; torch/peft-dependent
+paths use stand-in objects: build_peft_model runs against a fake peft module
+here and against the real one on the workstation (F2 acceptance)."""
 
 from __future__ import annotations
+
+import re
+import sys
+import types
+from types import SimpleNamespace
 
 import pytest
 from support import reference_recipe
@@ -14,8 +20,10 @@ from training.models.families import (
     supported_families,
 )
 from training.models.peft_utils import (
+    COMPOSITE_EXCLUDE_MODULES,
     TrainableParameterReport,
     build_peft_model,
+    lora_exclude_modules,
     resolve_target_modules,
     trainable_parameter_report,
 )
@@ -80,6 +88,67 @@ class TestResolveTargetModules:
         recipe = qlora_recipe()
         with pytest.raises(ValueError, match="resolve_target_modules"):
             build_peft_model(object(), recipe.peft)
+
+
+# Module keys from docs/models/gemma4-safetensors.txt: the towers reuse the
+# decoder's projection names behind Gemma4ClippableLinear wrappers.
+TOWER_KEYS = [
+    "model.vision_tower.encoder.layers.0.self_attn.q_proj",
+    "model.vision_tower.encoder.layers.15.mlp.gate_proj",
+    "model.audio_tower.layers.0.self_attn.q_proj",
+    "model.audio_tower.layers.11.feed_forward1.ffw_layer_1",
+    "model.embed_vision.embedding_projection",
+]
+LANGUAGE_KEYS = [
+    "model.language_model.layers.0.self_attn.q_proj",
+    "model.language_model.layers.34.mlp.down_proj",
+]
+COMPOSITE_CONFIG = SimpleNamespace(model_type="gemma4", text_config=object())
+PLAIN_CONFIG = SimpleNamespace(model_type="llama")
+
+
+class TestExcludeModules:
+    @pytest.mark.parametrize("key", TOWER_KEYS)
+    def test_pattern_excludes_the_towers(self, key):
+        # re.fullmatch is the call PEFT makes on a string exclude_modules.
+        assert re.fullmatch(COMPOSITE_EXCLUDE_MODULES, key)
+
+    @pytest.mark.parametrize("key", LANGUAGE_KEYS)
+    def test_pattern_keeps_the_language_model(self, key):
+        assert re.fullmatch(COMPOSITE_EXCLUDE_MODULES, key) is None
+
+    def test_composite_config_gets_the_pattern(self):
+        assert lora_exclude_modules(COMPOSITE_CONFIG) == COMPOSITE_EXCLUDE_MODULES
+
+    def test_single_config_gets_none(self):
+        assert lora_exclude_modules(PLAIN_CONFIG) is None
+
+
+@pytest.fixture
+def fake_peft(monkeypatch):
+    """A peft stand-in that returns the LoraConfig kwargs it was handed."""
+    module = types.ModuleType("peft")
+    module.LoraConfig = lambda **kwargs: kwargs
+    module.get_peft_model = lambda model, config: config
+    module.prepare_model_for_kbit_training = lambda model: model
+    monkeypatch.setitem(sys.modules, "peft", module)
+    return module
+
+
+class TestBuildPeftModel:
+    def test_composite_base_is_confined_to_the_language_model(self, fake_peft):
+        recipe = qlora_recipe()
+        resolve_target_modules(recipe, "gemma4")
+        config = build_peft_model(SimpleNamespace(config=COMPOSITE_CONFIG), recipe.peft)
+        assert config["exclude_modules"] == COMPOSITE_EXCLUDE_MODULES
+        assert config["target_modules"] == LLAMA_LINEAGE
+        assert config["task_type"] == "CAUSAL_LM"
+
+    def test_single_config_base_has_no_exclusion(self, fake_peft):
+        recipe = qlora_recipe(["peft.target_modules=[q_proj,v_proj]"])
+        config = build_peft_model(SimpleNamespace(config=PLAIN_CONFIG), recipe.peft)
+        assert config["exclude_modules"] is None
+        assert config["target_modules"] == ["q_proj", "v_proj"]
 
 
 class _FakeParam:

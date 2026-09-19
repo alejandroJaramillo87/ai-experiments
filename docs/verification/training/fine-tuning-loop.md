@@ -85,6 +85,11 @@ builds what it verifies:
   refusing. FT.14's first pass ran under the analytic model and is kept in
   the entry as a superseded observation; the entry is redefined and now
   follows FT.1, which supplies the rate it reads.
+- **FT.1's first attempt** (2026-09-19) got past the model load and died
+  in the PEFT wrap: the Gemma 4 towers reuse the decoder's projection names
+  behind wrappers PEFT cannot adapt (KB-83, fixed in the tree the same day
+  by confining the adapter to `model.language_model.`). The paste is kept in
+  FT.1 as a superseded observation; the entry is unchanged otherwise.
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training
@@ -536,6 +541,13 @@ Implementation: `training/calculator/calibrate.py`,
   512-wide full-attention layers, the q and k norms, two of the four block
   norms, the per-layer embedding projection, and the towers `from_pretrained`
   loads. The `Parameter count` line this run prints is the confirmation.
+- KB-83 — PEFT matched the recipe's target-module names against the whole
+  composite model, and Gemma 4's vision and audio towers reuse `q_proj`,
+  `gate_proj` and the rest behind `Gemma4ClippableLinear` wrappers PEFT
+  cannot adapt, so the wrap died on the first tower module (this entry's
+  first attempt, below). `build_peft_model` now confines the adapter to
+  `model.language_model.`; the trainable-parameter report and the
+  `Activation rate:` line are the confirmation.
 
 Measures the QLoRA recipe on the `model.hf` plus PEFT path, which the
 archived P0.3 scratch calibration does not exercise: NF4 base pricing,
@@ -576,6 +588,82 @@ A second calibrate of the same profile later (after a transformers or TRL
 upgrade) is the drift check: it holds the estimate to the 10 percent bar and
 the reserved estimate to the NVML peak, and a miss there is re-recorded, not
 argued with.
+
+First attempt (2026-09-19, superseded, kept verbatim: the model loaded with
+the KB-79 override, and the PEFT wrap failed on a vision-tower module, which
+is KB-83):
+
+```
+➜  ai-experiments git:(SFT-verification) ✗ set -o pipefail
+cd ~/workspace/ai-experiments
+make train-calibrate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
+    ARGS="model.hf.id=/app/models/hf/gemma-4-E2B --out /mnt/ai-data/training/verify/calibrate-sft-e2b.json"
+echo "exit=$?"
+docker compose -f docker-compose.training.yaml run --rm training python -m training calibrate --config training/recipes/reference/sft-qlora-e2b.yaml model.hf.id=/app/models/hf/gemma-4-E2B --out /mnt/ai-data/training/verify/calibrate-sft-e2b.json
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up. 
+Container ai-experiments-training-run-6d4cb765ba00 Creating 
+Container ai-experiments-training-run-6d4cb765ba00 Created 
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training calibrate --config training/recipes/reference/sft-qlora-e2b.yaml model.hf.id=/app/models/hf/gemma-4-E2B --out /mnt/ai-data/training/verify/calibrate-sft-e2b.json
+[RUN] Calibrating sft-qlora-e2b: 5 steps on cuda:0
+Loading weights:   0%|                                                                                                                                   | 0/1951 [00:00<?, ?it/s]/opt/venv/lib/python3.12/site-packages/bitsandbytes/backends/cuda/ops.py:213: FutureWarning: _check_is_size will be removed in a future PyTorch release along with guard_size_oblivious.     Use _check(i >= 0) instead.
+  torch._check_is_size(blocksize)
+Loading weights: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1951/1951 [00:00<00:00, 2871.98it/s]
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/app/training/__main__.py", line 7, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/app/training/cli.py", line 683, in main
+    return dispatch("training", build_parser, argv)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/common/obs/dispatch.py", line 70, in dispatch
+    result = args.func(args)
+             ^^^^^^^^^^^^^^^
+  File "/app/training/cli.py", line 139, in cmd_calibrate
+    record = calibrate_mod.calibrate(recipe, steps=args.steps)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/training/calculator/calibrate.py", line 156, in calibrate
+    model = _build_calibration_model(recipe)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/training/calculator/calibrate.py", line 134, in _build_calibration_model
+    model = build_peft_model(model, recipe.peft)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/training/models/peft_utils.py", line 90, in build_peft_model
+    return get_peft_model(model, lora_config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/peft/mapping_func.py", line 122, in get_peft_model
+    return MODEL_TYPE_TO_PEFT_MODEL_MAPPING[peft_config.task_type](
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/peft/peft_model.py", line 1955, in __init__
+    super().__init__(model, peft_config, adapter_name, **kwargs)
+  File "/opt/venv/lib/python3.12/site-packages/peft/peft_model.py", line 129, in __init__
+    self.base_model = cls(model, {adapter_name: peft_config}, adapter_name)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/peft/tuners/tuners_utils.py", line 315, in __init__
+    self.inject_adapter(self.model, adapter_name, low_cpu_mem_usage=low_cpu_mem_usage, state_dict=state_dict)
+  File "/opt/venv/lib/python3.12/site-packages/peft/tuners/tuners_utils.py", line 913, in inject_adapter
+    self._create_and_replace(
+  File "/opt/venv/lib/python3.12/site-packages/peft/tuners/lora/model.py", line 269, in _create_and_replace
+    new_module = self._create_new_module(lora_config, adapter_name, target, device_map=device_map, **kwargs)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/peft/tuners/lora/model.py", line 424, in _create_new_module
+    raise ValueError(
+ValueError: Target module Gemma4ClippableLinear(
+  (linear): Linear4bit(in_features=768, out_features=768, bias=False)
+) is not supported. Currently, only the following modules are supported: `torch.nn.Linear`, `torch.nn.Embedding`, `torch.nn.Conv1d`, `torch.nn.Conv2d`, `torch.nn.Conv3d`, `transformers.pytorch_utils.Conv1D`, `torch.nn.MultiheadAttention.`.
+
+make: *** [make/training.mk:53: train-calibrate] Error 1
+exit=2
+```
 
 Observed:
 
@@ -755,7 +843,9 @@ context and a larger base, which is a different profile
 (`gemma4_text/42x2560/qlora/ckpt`) with no rate on file: calibrate measures
 it first, the operator records it as FT.1 did, and memfit then prices the
 recipe. Same three gates as the E2B entries, same KB-79 override with E4B's
-staged directory.
+staged directory, and the same composite base, so its PEFT wrap is the
+second confirmation of KB-83 (the adapter confined to
+`model.language_model.`).
 The recipe's `sft.dataset` is an E4B split nobody has prepared, so the
 block's first line prepares it as FT.2 did, at the recipe's 4096 context,
 when the directory is absent. Depends on the E4B download (I.5 and I.6 use
@@ -822,7 +912,8 @@ would never compute a held-out loss and the `Held-out loss:` line the
 tolerance criterion reads would be absent. `model.hf.id=/app/models/hf/gemma-4-E2B`:
 KB-79; the dataset hash check reads the tokenizer from that same directory
 (KB-80, fixed), so a `tokenizer hash ... does not match` error here is
-KB-80 back.
+KB-80 back. The PEFT wrap is the one FT.1 confirms (KB-83): a
+`Gemma4ClippableLinear ... is not supported` error here is KB-83 back.
 
 Command (inference down; the interrupt is a Ctrl-C after the first
 `checkpoint-30` directory appears and before `checkpoint-60` does):
