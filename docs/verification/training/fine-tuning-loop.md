@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 0 verified, 0 blocked, 16 pending, of 16.**
+**Entries: 0 verified, 0 blocked, 15 pending, of 15.**
 
 The fine-tuning loop is the first rung of the training tier and the loop the
 lab runs: train a Gemma 4 E2B with a known change, then recover the change
@@ -37,13 +37,12 @@ builds what it verifies:
   `eval-ft` judge phase and the organism verifier onto the harness for FT.6
   and FT.7, and added the `hw_full` hardware test FT.11 runs. Every command
   below names a verb, flag or make target that exists on its branch.
-- **The hardware campaign** (the third session) executes FT.0 through FT.15
+- **The hardware campaign** (the third session) executes FT.0 through FT.14
   in the section order below and records the output.
 - **The coverage audit** (2026-09-18) checked every entry against
   `make/training.mk`, the two compose files and the CLI parsers, and added
-  FT.12 through FT.15 for the targets no entry ran (`train-build`,
-  `train-smoke`, `train-preflight`, `train-validate`, `memfit`,
-  `promote-scorecard`). It found two things every container entry now
+  FT.12 through FT.14 for the targets no entry ran (`train-build`,
+  `train-smoke`, `train-preflight`, `train-validate`, `memfit`). It found two things every container entry now
   carries. First, KB-79: every recipe names the base as the hub id
   `google/gemma-4-E2B`, which the training container cannot resolve (its
   HF cache is an empty tmpfs and `train-download` stages a plain directory),
@@ -80,7 +79,6 @@ or inference service the entry does not name is active.
 - [FT.4 Export the merged HF directory and load it in the harness](#ft4-export-the-merged-hf-directory-and-load-it-in-the-harness)
 - [FT.5 Held-out loss and lm-eval on base and merged](#ft5-held-out-loss-and-lm-eval-on-base-and-merged)
 - [FT.6 eval-ft with the subject on the harness](#ft6-eval-ft-with-the-subject-on-the-harness)
-- [FT.15 Promote the scorecard](#ft15-promote-the-scorecard)
 - [FT.7 Organisms: null and taboo](#ft7-organisms-null-and-taboo)
 - [FT.8 Activation capture on base and organism](#ft8-activation-capture-on-base-and-organism)
 - [FT.9 Probe train, export, and score in the harness](#ft9-probe-train-export-and-score-in-the-harness)
@@ -558,46 +556,6 @@ sides, the base's `model_hash` equal to the FT.0 digest and the tuned side's
 equal to FT.4's manifest, and the rendered table shows the two hash prefixes;
 the services end in their pre-run state. An interrupted run resumes from its
 phase records.
-
-Observed:
-
-```
-```
-
-Status: PENDING
-
-## FT.15 Promote the scorecard
-
-Implementation: `training/commands/promote_scorecard.py`,
-`docs/training/scorecards/`.
-
-The last verb of the loop, `promote-scorecard`, copies a finished eval run's
-scorecard into the tree with provenance. It has no threshold and gates
-nothing; what it verifies is that the copied files are the run's files and
-that the provenance record says which run and which commit. Added
-2026-09-18; host-run; depends on FT.6.
-
-```bash
-set -o pipefail
-cd ~/workspace/ai-experiments
-R=/mnt/ai-data/training/eval/ft6_<UTC>
-make promote-scorecard ARGS="--run-dir $R --card sft-qlora-e2b"; echo "exit=$?"
-sha256sum $R/scorecard.json docs/training/scorecards/sft-qlora-e2b.scorecard.json
-python3 -c 'import json; p=json.load(open("docs/training/scorecards/sft-qlora-e2b.provenance.json")); print(p["card"], p["git_sha"], p["source_run_dir"], p["sha256"])'
-git rev-parse HEAD
-git status --short docs/training/scorecards/
-```
-
-Expected signal: exit 0 with `[OK] Promoted:
-docs/training/scorecards/sft-qlora-e2b.scorecard.json`, the same for
-`.scorecard.md`, `[OK] Provenance:
-docs/training/scorecards/sft-qlora-e2b.provenance.json` and the `[INFO]`
-line about committing; the two `sha256sum` lines agree; the provenance's
-`git_sha` equals `git rev-parse HEAD`, its `source_run_dir` is `$R`, and its
-`sha256` map carries the two file names with the digests `sha256sum`
-printed; `git status` lists the three files as new. Commit them as the
-entry's evidence, or delete them if the FT.6 run was a smoke and not a
-card; either way the Observed block holds the output.
 
 Observed:
 

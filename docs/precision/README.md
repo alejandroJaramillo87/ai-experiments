@@ -62,7 +62,7 @@ storage format in this repository and nowhere a compute one.
 | Gradients | n/a (inference only) | n/a | Parameter dtype (KB-55) |
 | Optimizer state | n/a | n/a | AdamW fp32 states plus fp32 master copy |
 | KV cache | f32; global layers hold the context, sliding layers hold the window | Inherited from the serving engine | n/a |
-| Quantization accepted | None. A quantized checkpoint is refused by name | None; consumes what it is served | nf4 base under QLoRA; fp8 schema field, unimplemented |
+| Quantization accepted | None. A quantized checkpoint is refused by name | None; consumes what it is served | nf4 base under QLoRA; 8-bit optimizer state under `adamw8bit` |
 
 ## Model compute and weights
 
@@ -104,28 +104,37 @@ loaded for the write-back path.
 ### The two allowed dtype sets in the training schema
 
 [`training/recipes/schema.py`](../../training/recipes/schema.py) declares two tuples of
-allowed dtype names, and they do not agree:
+allowed dtype names, and they differ on purpose:
 
 | Constant | Governs | Members |
 |----------|---------|---------|
-| `PRECISION_DTYPES` | `precision.dtype` — the run-level compute dtype | `bf16`, `fp8` |
+| `PRECISION_DTYPES` | `precision.dtype` — the run-level compute dtype | `bf16` |
 | `COMPUTE_DTYPES` | `peft.compute_dtype` (the PEFT compute dtype over an nf4 base) and `harvest.dtype` (the interp capture dtype) | `bf16`, `fp16`, `fp32` |
 
 Both are enforced in [`training/recipes/validate.py`](../../training/recipes/validate.py):
 `precision.dtype` is checked against `PRECISION_DTYPES`, `peft.compute_dtype` against
-`COMPUTE_DTYPES`. The sets are therefore disjoint except for `bf16` — fp16 and fp32 are
-reachable for a PEFT compute dtype or a harvest, never for the run's own precision, and
-fp8 only as a run precision.
+`COMPUTE_DTYPES`. The policy, stated on 2026-09-19 when the unbuilt `fp8` field left the
+schema: a run computes in bf16, full stop, for the reason the first section gives. fp16
+and fp32 remain reachable where they are storage or adapter choices rather than a run
+precision — the compute dtype of a LoRA adapter over an nf4 base, and the Arrow storage
+dtype of a harvest — and never for the run itself. The two dead branches that the old
+ambiguity left behind (an `fp16` trainer flag in `training/tune/sft.py`, an `!= "fp32"`
+master-copy test in `training/calculator/components.py`) were removed with the field.
 
-Nothing in the code states why. The docstring of `schema.py` records only that the fp8
-fields ship ahead of their consumer so the contract is stable, and `_check_fp8_dims` in
-`validate.py` is a documented no-op pending D8. Two artifacts of the split are visible and
-unreachable as written: `training/tune/sft.py` computes an `fp16` trainer flag from
-`recipe.precision.dtype == "fp16"`, and `training/calculator/components.py` branches on
-`recipe.precision.dtype != "fp32"` for the mixed-precision master copy, neither of which
-`PRECISION_DTYPES` admits. Whether the narrower run-level set is a deliberate policy or a
-narrowing that the surrounding code was never trimmed for cannot be determined from the
-source.
+**What is narrower than 16 bits in a training recipe is storage, not arithmetic.**
+`peft.quantize_base: nf4` holds the frozen base in 4-bit and dequantizes each block to
+bf16 at the point of use; the adapter, its gradients and the matmul are bf16.
+`optimizer: adamw8bit` holds the Adam moments in 8-bit with fp32 per-block constants; the
+update is computed in fp32. Neither changes the precision of a forward or backward pass.
+
+**A QLoRA adapter is fitted against a base the export does not serve.** The adapter is
+trained against the nf4-dequantized base, and `training/export/merge.py` merges it into
+the bf16 base, so the served `model.safetensors` is not bit-identical to the model the
+adapter was optimized against. The difference is the nf4 rounding of the frozen weights,
+small and standard practice, but it is a precision fact of the same kind as the probe
+hazard below: an artifact carries a precision it was not fitted at, and nothing errors.
+The export manifest records `mode: merge` and the adapter's own hash, which is enough to
+know the fact applies; no consumer today measures its size.
 
 ## Activation storage on disk
 
@@ -256,11 +265,11 @@ and [`docs/inference/parameters/vllm-parameters.md`](../inference/parameters/vll
 |------|-------------------|---------------|
 | rust-harness | Nothing. Weights are held at the checkpoint's published width (`tensor::Weight`) and widened to f32 per use; no quantized arithmetic | `rust-harness/runtime/src/tensor.rs` |
 | training | `peft.quantize_base = nf4` loads the frozen base in 4-bit via bitsandbytes (QLoRA), with `peft.compute_dtype` as the compute dtype over it | `training/recipes/schema.py`, `training/recipes/validate.py` |
-| training | `precision.dtype = fp8` with `fp8_backend` in `torchao` or `te`; validation of the dimension constraints is a no-op stub pending D8 | `training/recipes/validate.py` (`_check_fp8_dims`) |
+| training | `optimizer.name = adamw8bit` holds the Adam moments in 8-bit (bitsandbytes), with fp32 per-block constants and an fp32 update | `training/models/model.py` (`build_optimizer`) |
 | interp | None of its own; it consumes whatever the serving container loaded | `docker-compose.inference.yaml` |
 
-`validate.py` enforces the exclusions rather than leaving them to fail at run time: nf4 and
-fp8 are mutually exclusive and the Unsloth SFT backend rejects fp8.
+`validate.py` enforces the one exclusion rather than leaving it to fail at run time: nf4
+requires a PEFT adapter, since there is no full fine-tuning of a 4-bit base.
 
 ## Cross-tier hazard: probes are fitted at a precision
 

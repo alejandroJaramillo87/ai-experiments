@@ -36,7 +36,6 @@ both tiers share are in [../models/](../models/).
 | [sft_entry_point.md](sft_entry_point.md) | The supervised fine-tuning trainer, full and QLoRA (F3) |
 | [teacher_synthetic_data.md](teacher_synthetic_data.md) | Teacher responses and synthetic instruction data through the inference services (F4) |
 | [eval_wrapper.md](eval_wrapper.md) | Baseline-versus-tuned scorecards from three skippable evaluators (F7) |
-| [scorecards/README.md](scorecards/README.md) | The committed reference scorecards themselves (F8) |
 
 ## Progression
 
@@ -85,7 +84,6 @@ pairing is not always one to one, and the gaps are listed rather than left blank
 | [sft_entry_point.md](sft_entry_point.md) | F3 | [f3_sft_entry_point_investigation.md](investigations/f3_sft_entry_point_investigation.md) |
 | [teacher_synthetic_data.md](teacher_synthetic_data.md) | F4 | [f4_teacher_synthetic_data_investigation.md](investigations/f4_teacher_synthetic_data_investigation.md) |
 | [eval_wrapper.md](eval_wrapper.md) | F7 | [f7_eval_wrapper_investigation.md](investigations/f7_eval_wrapper_investigation.md) |
-| [scorecards/README.md](scorecards/README.md) | F8 | [f8_recipe_cards_investigation.md](investigations/f8_recipe_cards_investigation.md) |
 | [data_pipeline.md](data_pipeline.md) | D2, P2-D1 | [p2_d1_full_scale_data_pipeline_investigation.md](investigations/p2_d1_full_scale_data_pipeline_investigation.md) |
 
 Records with no paired living document. Each is the only documentation of its deliverable,
@@ -97,6 +95,7 @@ so read the record itself:
 | [f1_sft_data_investigation.md](investigations/f1_sft_data_investigation.md) | F1, chat and instruction data preparation |
 | [f5_distillation_investigation.md](investigations/f5_distillation_investigation.md) | F5, the distillation harness; its implementation was removed on 2026-09-18 and the record is what remains |
 | [f6_adapter_merge_serve_investigation.md](investigations/f6_adapter_merge_serve_investigation.md) | F6, adapter merge and serve |
+| [f8_recipe_cards_investigation.md](investigations/f8_recipe_cards_investigation.md) | F8, the recipe cards and their promotion; the promotion step and the committed-scorecard directory were removed on 2026-09-19 as a model-quality deliverable outside the tier's progression |
 | [p2_d2_data_mixing_configuration_investigation.md](investigations/p2_d2_data_mixing_configuration_investigation.md) | P2-D2, data-mixing configuration |
 | [p2_d3_warmup_stable_decay_investigation.md](investigations/p2_d3_warmup_stable_decay_investigation.md) | P2-D3, the warmup-stable-decay schedule |
 | [p2_d4_replay_buffer_investigation.md](investigations/p2_d4_replay_buffer_investigation.md) | P2-D4, the replay buffer |

@@ -110,6 +110,12 @@ KNOWN_ABSENT = {
     ("docs/verification/archive/gemma-4-conformance_investigation.md", "train-distill"),
     ("docs/verification/archive/training-phase1.md", "train-distill"),
     ("docs/verification/archive/training-phase1.md", "distill-cache"),
+    # Scorecard promotion left with the F8 card plan on 2026-09-19.
+    ("docs/verification/archive/training-phase1.md", "promote-scorecard"),
+    (
+        "docs/training/investigations/f8_recipe_cards_investigation.md",
+        "promote-scorecard",
+    ),
     (
         "docs/training/investigations/f6_adapter_merge_serve_investigation.md",
         "export-gguf",

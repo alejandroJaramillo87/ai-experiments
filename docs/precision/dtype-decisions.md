@@ -159,14 +159,13 @@ poisoned steps. That is machinery this repository does not have and does not nee
 is a single RTX 5090, which supports bf16 natively at the same throughput as fp16, so the entire
 apparatus would buy nothing.
 
-This is visible in the schema as a narrowing rather than a stated policy.
-`PRECISION_DTYPES` admits only `bf16` and `fp8`, while `COMPUTE_DTYPES` (governing
-`peft.compute_dtype` and `harvest.dtype`) admits `bf16`, `fp16`, and `fp32`. Two artifacts of
-that split are unreachable as written — `training/tune/sft.py` computes an `fp16` trainer flag
-and `training/calculator/components.py` branches on `!= "fp32"`, neither of which
-`PRECISION_DTYPES` permits. Whether that is deliberate or an untrimmed narrowing cannot be
-determined from the source; [README.md](README.md#the-two-allowed-dtype-sets-in-the-training-schema)
-records the ambiguity rather than resolving it.
+This is the schema's stated policy since 2026-09-19: `PRECISION_DTYPES` admits `bf16`
+alone, while `COMPUTE_DTYPES` (governing `peft.compute_dtype` and `harvest.dtype`) admits
+`bf16`, `fp16`, and `fp32`, because those two fields choose an adapter's compute dtype and
+a capture's storage dtype rather than the run's precision.
+[README.md](README.md#the-two-allowed-dtype-sets-in-the-training-schema) records the
+policy and the two sub-16-bit storage choices (nf4 base, 8-bit optimizer state) that
+sit beside it without changing it.
 
 **What would change this decision:** hardware without native bf16, or a numerical result showing
 bf16's 7 mantissa bits limiting convergence on a run we care about. The second would be a
@@ -179,7 +178,6 @@ The constants exist and are already the single source per tier:
 | Constant | Governs | File |
 |----------|---------|------|
 | `widen` | Safetensors dtypes the model loader accepts: F32, F16, BF16 | `rust-harness/runtime/src/checkpoint.rs` |
-| `GGML_F32`, `GGML_F16`, `GGML_BF16` | GGUF storage types accepted in the interp control-vector artifact, not in models or probes | `rust-harness/runtime/src/tensor.rs` |
 | `DTYPE_BYTES` | Bytes per element for the disk and budget arithmetic | `interp/harvest.py` |
 | `ARROW_STORAGE_DTYPES` | The subset Arrow can store, so the subset a capture can be taken at | `interp/harvest.py` |
 | `DTYPE_NAMES` | Recipe spelling to the SAELens/torch name; shared with `interp/sae/train.py` | `interp/harvest.py` |

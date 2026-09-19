@@ -1,7 +1,7 @@
 """Training container smoke test (Phase 0 D1).
 
 Verifies the training stack imports and that CUDA-compiled paths actually run on sm_120:
-flash-attn, bitsandbytes 4-bit, the pre-built DeepSpeed CPUAdam op, and torchao float8.
+flash-attn, bitsandbytes 4-bit, and the pre-built DeepSpeed CPUAdam op.
 The optional unsloth backend (Phase 1 F3) is probed warn-only. Emits a versions
 manifest for reproducibility.
 
@@ -165,28 +165,6 @@ def cmd(args: argparse.Namespace) -> int:
         out.line("  Context: pre-built CPUAdam op (image build DS_BUILD_CPU_ADAM=1)")
         out.line("  Note: AVX-512 miscompile on Zen 5 is upstream issue #7556")
         failures.append("deepspeed-cpuadam")
-
-    # Step 6: torchao float8 training (proves torch._scaled_mm on sm_120)
-    if _needs_cuda("torchao-float8"):
-        try:
-            import torch
-            from torchao.float8 import convert_to_float8_training
-
-            mlp = (
-                torch.nn.Sequential(
-                    torch.nn.Linear(32, 32, bias=False),
-                    torch.nn.Linear(32, 32, bias=False),
-                )
-                .cuda()
-                .to(torch.bfloat16)
-            )
-            convert_to_float8_training(mlp)
-            x = torch.randn(16, 32, device="cuda", dtype=torch.bfloat16)
-            mlp(x).sum().backward()
-            out.ok("torchao: convert_to_float8_training forward+backward")
-        except Exception as exc:  # noqa: BLE001
-            out.error(f"torchao float8 failed: {exc}")
-            failures.append("torchao-float8")
 
     # Step 7: unsloth optional backend (Phase 1 F3 decision 2). Warn-only:
     # unsloth is a throughput optimization documented as may-lag; its failure

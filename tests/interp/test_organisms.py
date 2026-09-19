@@ -482,10 +482,6 @@ class TestGenerationPlan:
         )
         assert len(plan) == 4  # 2 docs + 2 neutral
 
-    def test_hidden_objective_deferred(self, prompts_dir):
-        with pytest.raises(gen.GenerateError, match="deferred"):
-            gen.build_generation_plan("hidden_objective", prompts_dir, {})
-
 
 class TestBlindCorpus:
     def test_blinding(self, tmp_path, monkeypatch):

@@ -26,6 +26,11 @@ feed), and
 
 ## FP8 on Blackwell
 
+No FP8 training path exists in the tree: `precision.dtype` admits `bf16` only, and
+the schema field that once reserved `fp8` was removed on 2026-09-19 with nothing
+built behind it. The sizing argument below is kept as reference for the day one is
+built, and none of its figures is a measurement.
+
 The RTX 5090 executes FP8 matmuls natively. The payoff of FP8 training
 scales with how matmul-dominated the workload is: continued pretraining and
 full-parameter training make every forward and backward matmul eligible and

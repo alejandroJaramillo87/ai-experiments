@@ -581,46 +581,6 @@ class TestGenerateTeacherCmd:
         with open(prompts, "rb") as f:
             assert manifest["prompt_set_sha256"] == hashlib.sha256(f.read()).hexdigest()
 
-    def test_synthesize_pipeline_evolves_then_answers(
-        self, tmp_path, monkeypatch, capsys
-    ):
-        def synth_chat(service, messages, sampling, timeout=None):
-            if "Rewrite the following instruction" in messages[-1]["content"]:
-                return {"content": "evolved q0"}
-            return {"content": "final answer"}
-
-        patch_transport(monkeypatch, chat=synth_chat)
-        prompts = write_prompts(tmp_path / "p.jsonl", 1)
-        out_dir = str(tmp_path / "out")
-        assert (
-            run_cli(
-                [
-                    "generate-teacher",
-                    "--pipeline",
-                    "synthesize",
-                    "--prompts",
-                    prompts,
-                    "--teacher",
-                    "/app/models/t-Q8_0.gguf",
-                    "--out",
-                    out_dir,
-                    "--no-swap",
-                    "--concurrency",
-                    "1",
-                ]
-            )
-            == 0
-        )
-        out = capsys.readouterr().err
-        assert "[INFO] Pipeline: synthesize, 1 prompts, concurrency 1" in out
-        assert f"[OK] Dataset complete: 1 examples in {out_dir}" in out
-        with open(os.path.join(out_dir, "data.jsonl")) as f:
-            record = json.loads(f.readline())
-        assert record["messages"] == [
-            {"role": "user", "content": "evolved q0"},
-            {"role": "assistant", "content": "final answer"},
-        ]
-
     def swap_argv(self, prompts: str, out_dir: str, *extra: str) -> list[str]:
         return [
             "generate-teacher",

@@ -7,8 +7,6 @@ recipe is fixed in one pass rather than one error at a time.
 
 Invariants whose consumers are not built yet are stubbed with the field
 contract in place:
-- fp8 dimension support (D8): _check_fp8_dims is a no-op until the benchmark
-  harness defines the supported-dims table.
 """
 
 from __future__ import annotations
@@ -20,7 +18,6 @@ from omegaconf import DictConfig, ListConfig, OmegaConf
 
 from training.recipes.schema import (
     COMPUTE_DTYPES,
-    FP8_BACKENDS,
     OFFLOAD_MODES,
     OPTIMIZER_NAMES,
     ORGANISM_KINDS,
@@ -165,22 +162,10 @@ def _check_wsd(recipe: DictConfig, problems: list[str]) -> None:
         )
 
 
-def _check_fp8_dims(recipe: DictConfig, problems: list[str]) -> None:
-    # STUB (D8): warn-level dimension coverage checks land with the benchmark
-    # harness's supported-dims table. Field contract is stable already.
-    return
-
-
 def _check_precision(recipe: DictConfig, problems: list[str]) -> None:
     prec = recipe.precision
     if prec.dtype not in PRECISION_DTYPES:
         problems.append(f"precision.dtype: {prec.dtype!r} not in {PRECISION_DTYPES}")
-    if prec.dtype == "fp8":
-        if prec.fp8_backend not in FP8_BACKENDS:
-            problems.append(
-                f"precision.fp8_backend: {prec.fp8_backend!r} not in {FP8_BACKENDS}"
-            )
-        _check_fp8_dims(recipe, problems)
 
 
 def _check_memory(recipe: DictConfig, problems: list[str]) -> None:
@@ -231,8 +216,7 @@ def _check_offload_budget(recipe: DictConfig, problems: list[str]) -> None:
 
 def _check_peft(recipe: DictConfig, problems: list[str]) -> None:
     """F2 invariants: field domains plus the QLoRA combination rules
-    (nf4 requires an adapter — no full fine-tuning of a 4-bit base — and
-    fp8 precision is mutually exclusive with nf4 base quantization)."""
+    (nf4 requires an adapter — no full fine-tuning of a 4-bit base)."""
     p = recipe.peft
     if p.method not in PEFT_METHODS:
         problems.append(f"peft.method: {p.method!r} not in {PEFT_METHODS}")
@@ -267,11 +251,6 @@ def _check_peft(recipe: DictConfig, problems: list[str]) -> None:
                 "peft.quantize_base: nf4 requires peft.enabled=true "
                 "(no full fine-tuning of a 4-bit base)"
             )
-        if recipe.precision.dtype == "fp8":
-            problems.append(
-                "peft: quantize_base=nf4 and precision.dtype=fp8 are mutually "
-                "exclusive (pick one weight-compression scheme)"
-            )
 
 
 def _check_sft(recipe: DictConfig, problems: list[str]) -> None:
@@ -290,10 +269,6 @@ def _check_sft(recipe: DictConfig, problems: list[str]) -> None:
         problems.append(
             f"sft.eval_steps: must be >= 0 (0 disables held-out "
             f"evaluation), got {s.eval_steps}"
-        )
-    if s.backend == "unsloth" and recipe.precision.dtype == "fp8":
-        problems.append(
-            "sft.backend: unsloth does not support precision.dtype=fp8; use trl or bf16"
         )
     if not s.dataset:
         problems.append(

@@ -237,13 +237,6 @@ class TestGenerate:
         )
         assert "does not match" in capsys.readouterr().err
 
-    def test_deferred_kind_is_usage_error(self, setup, capsys):
-        recipe = setup["build"]("hidden_objective")
-        assert (
-            run_cli(["organism", "generate", "--recipe", recipe, "--render-only"]) == 2
-        )
-        assert "[ERROR] Kind hidden_objective is deferred" in capsys.readouterr().err
-
     def test_full_run_generates_and_blinds(self, setup, monkeypatch, capsys):
         from training.data import teacher
 

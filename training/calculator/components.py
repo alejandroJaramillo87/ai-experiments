@@ -23,10 +23,9 @@ from dataclasses import dataclass
 
 from omegaconf import DictConfig
 
-# Bytes per element for the dtypes the schema can express. fp8 follows the
-# document's weights model (P * bytes(param_dtype)); fp8 recipes are validated
-# against measurement when D8 lands.
-DTYPE_BYTES = {"fp32": 4, "bf16": 2, "fp8": 1}
+# Bytes per element for the run precisions the schema can express (bf16 is
+# the only one PRECISION_DTYPES admits; fp32 stays for the master-copy rule).
+DTYPE_BYTES = {"fp32": 4, "bf16": 2}
 
 # Hidden-to-intermediate rounding: ffn = round(ffn_mult * hidden / 64) * 64.
 # Pinned against the source architectures the reference recipes cite:
@@ -366,7 +365,7 @@ def optimizer_bytes(spec: ArchitectureSpec, recipe: DictConfig) -> int:
     if recipe.memory.offload == "zero_offload" or recipe.optimizer.name == "cpu_adam":
         return 0
     if recipe.optimizer.name == "adamw":
-        master = 4 * params if recipe.precision.dtype != "fp32" else 0
+        master = 4 * params  # bf16 params carry an fp32 master copy
         return 8 * params + master
     if recipe.optimizer.name in ("adamw8bit", "paged_adamw8bit"):
         # paged_adamw8bit states live in CUDA unified memory and may page to

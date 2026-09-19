@@ -140,7 +140,6 @@ investigations.
 | [training/sft_entry_point.md](training/sft_entry_point.md) | Supervised fine-tuning entry point (F1/F3) |
 | [training/teacher_synthetic_data.md](training/teacher_synthetic_data.md) | Teacher generation harness (F4) |
 | [training/eval_wrapper.md](training/eval_wrapper.md) | Baseline-versus-tuned evaluation (F7) |
-| [training/scorecards/README.md](training/scorecards/README.md) | Committed reference scorecards (F8) |
 | [training/gemma-4-training.md](training/gemma-4-training.md) | Gemma 4 for the training tier: parameter accounting, memory, tensor names, tokenizer |
 | [training/training-scale-reference.md](training/training-scale-reference.md) | What fits on this workstation: model sizes, batch and sequence budgets, wall-clock expectations |
 | [training/continuous-learning-proposal.md](training/continuous-learning-proposal.md) | Parked proposal: the continuous-learning goal, the candidate architecture, and what must be true before it is scheduled |

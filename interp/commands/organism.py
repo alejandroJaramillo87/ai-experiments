@@ -156,7 +156,7 @@ def cmd_generate(args: argparse.Namespace, out: Printer) -> int:
             "mechanism": mechanism,
         }
     else:
-        out.error(f"Kind {o.kind} is deferred (P4-D1 resolved decision 3)")
+        out.error(f"Kind {o.kind} has no generation plan")
         return 2
 
     plan = gen.build_generation_plan(o.kind, o.prompts_dir, substitutions, facts)

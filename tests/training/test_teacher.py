@@ -214,31 +214,6 @@ def test_respond_writes_messages_records_and_manifest(tmp_path):
     assert os.path.exists(os.path.join(out_dir, teacher.MANIFEST_NAME))
 
 
-def test_synthesize_evolves_then_answers(tmp_path):
-    out_dir = str(tmp_path / "out")
-    calls = []
-
-    def fake(messages, sampling):
-        calls.append(messages[-1]["content"])
-        if "Rewrite the following instruction" in messages[-1]["content"]:
-            return "evolved instruction"
-        return "final answer"
-
-    generate(
-        make_config(pipeline="synthesize", concurrency=1),
-        [[{"role": "user", "content": "seed"}]],
-        fake,
-        out_dir,
-    )
-    with open(os.path.join(out_dir, teacher.DATA_NAME)) as f:
-        record = json.loads(f.readline())
-    assert record["messages"] == [
-        {"role": "user", "content": "evolved instruction"},
-        {"role": "assistant", "content": "final answer"},
-    ]
-    assert len(calls) == 2 and "seed" in calls[0]
-
-
 # Resumability
 
 

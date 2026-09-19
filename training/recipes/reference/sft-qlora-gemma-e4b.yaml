@@ -1,18 +1,17 @@
 # sft-qlora-gemma-e4b.yaml
 #
-# Phase 1 recipe card (roadmap F8): QLoRA fine-tune of Gemma 4 E4B on a
-# pinned ultrachat-derived instruction dataset, sequence length 4096 with
-# packing, cosine schedule, tracking and watchdog defaults. This is the
-# F8 SFT card proper; training/recipes/reference/sft-qlora-e2b.yaml remains
-# the cheap smoke recipe. Run: make train-sft CONFIG=<this file> with no
+# The Gemma 4 E4B SFT reference: QLoRA fine-tune on a pinned
+# ultrachat-derived instruction dataset, sequence length 4096 with packing,
+# cosine schedule, tracking and watchdog defaults. E2B and E4B are the two
+# subjects this repository trains; sft-qlora-e2b.yaml is the cheap smoke
+# recipe and the one the fine-tuning runbook verifies first. Run: make train-sft CONFIG=<this file> with no
 # overrides. Weights are gated on the Hugging Face hub; HF_TOKEN comes from
 # the untracked training env file (D6 convention).
 #
-# DRAFT (not yet validated). The F8 validation run back-fills the fields
-# below; a recipe card is a validated artifact, not a template.
+# Not yet run on the workstation. The fine-tuning runbook's E4B entries
+# back-fill the fields below.
 #   Measured peak VRAM:   TBD (D4 memfit prediction must be within 10%)
 #   Wall-clock (9950X/5090): TBD
-#   Scorecard:            TBD (docs/training/scorecards/sft-qlora-gemma-e4b.*)
 #   model.hf.revision:    pinned (schemas/gemma4_facts.json, E4B)
 #
 # Preflight note (July 2026): verify the pinned transformers release fixes

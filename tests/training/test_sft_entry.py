@@ -57,18 +57,6 @@ class TestSftValidation:
         with pytest.raises(RecipeValidationError, match="sft.eval_steps"):
             validate(sft_recipe(["sft.eval_steps=-1"]))
 
-    def test_unsloth_rejects_fp8(self):
-        with pytest.raises(RecipeValidationError, match="unsloth"):
-            validate(
-                sft_recipe(
-                    [
-                        "sft.backend=unsloth",
-                        "precision.dtype=fp8",
-                        "peft.quantize_base=none",
-                    ]
-                )
-            )
-
 
 # -- packing (F3 owns packing; masks must survive it) -------------------------
 
@@ -143,7 +131,7 @@ class TestSftConfigKwargs:
         assert kwargs["gradient_accumulation_steps"] == recipe.data.grad_accum
         assert kwargs["learning_rate"] == recipe.optimizer.lr
         assert kwargs["optim"] == "adamw_bnb_8bit"
-        assert kwargs["bf16"] is True and kwargs["fp16"] is False
+        assert kwargs["bf16"] is True and "fp16" not in kwargs
         assert kwargs["max_length"] == recipe.data.seq_len
         assert kwargs["save_steps"] == recipe.checkpoint.interval_steps
         assert kwargs["seed"] == recipe.run.seed

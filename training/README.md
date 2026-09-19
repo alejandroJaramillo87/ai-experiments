@@ -41,7 +41,7 @@ make export-hf CHECKPOINT=... ARGS="--name <name>"
 Export runs in a separate CPU-only image (`docker/training/Dockerfile.export`, built by
 `make export-build`) and writes `/mnt/ai-data/models/trained/<name>/hf/`, the checkpoint
 directory the rust harness serves and interp captures from, plus a manifest carrying
-`model_hash`. It produces no GGUF. Several targets — `eval-ft`, `promote-scorecard`,
+`model_hash`. It produces no GGUF. Two targets — `eval-ft` and
 `generate-teacher` — drive the live serving stack from the host rather than the training
 container.
 

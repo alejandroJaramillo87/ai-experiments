@@ -320,8 +320,7 @@ def sft_config_kwargs(recipe: DictConfig, ckpt_root: str, has_holdout: bool) -> 
         "optim": optim,
         "lr_scheduler_type": _SCHEDULER_TYPES[recipe.schedule.type],
         "warmup_steps": recipe.schedule.warmup_steps,
-        "bf16": recipe.precision.dtype == "bf16",
-        "fp16": recipe.precision.dtype == "fp16",
+        "bf16": True,  # the run precision is bf16 (PRECISION_DTYPES)
         "gradient_checkpointing": recipe.memory.gradient_checkpointing,
         "max_length": recipe.data.seq_len,
         "packing": False,  # pack_examples() owns packing (pre-masked data)

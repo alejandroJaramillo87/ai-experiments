@@ -684,6 +684,22 @@ RETIRED: dict[str, tuple[str, str]] = {
         "nothing; distillation left the tree on 2026-09-18 because it produces no artifact with a known change for interp to recover (docs/training/continuous-learning-proposal.md states the training tier's progression)",
         "the DL.0 to DL.5 runbook, retired the day it was written",
     ),
+    "training/commands/promote_scorecard.py": (
+        "nothing; scorecard promotion left the training tier on 2026-09-19 as a model-quality deliverable outside the SFT, continual-pretraining and from-scratch progression",
+        "the F8 promotion verb",
+    ),
+    "promote-scorecard": (
+        "nothing; scorecard promotion left the training tier on 2026-09-19 as a model-quality deliverable outside the SFT, continual-pretraining and from-scratch progression",
+        "its make target and CLI verb",
+    ),
+    "docs/training/scorecards/README.md": (
+        "nothing; scorecard promotion left the training tier on 2026-09-19 as a model-quality deliverable outside the SFT, continual-pretraining and from-scratch progression",
+        "the committed-scorecard directory's index",
+    ),
+    "fp8_backend": (
+        "nothing; removed 2026-09-19 with the unbuilt fp8 run precision",
+        "the precision field reserved for an FP8 path never built; precision.dtype is bf16 only",
+    ),
     "continual-qwen3.yaml": (
         "training/recipes/reference/continual-gemma4-e2b.yaml",
         "the Qwen3 twin of the ZeRO-Offload continual pretraining card",

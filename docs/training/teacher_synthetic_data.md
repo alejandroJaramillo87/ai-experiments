@@ -39,7 +39,7 @@ Key flags:
 
 | Flag | Meaning |
 |------|---------|
-| `--pipeline` | `respond` or `synthesize` |
+| `--pipeline` | `respond`, the one pipeline (a self-instruct `synthesize` pipeline was removed on 2026-09-19; nothing in the tier consumed it) |
 | `--prompts` | prompt JSONL file, or a directory containing `prompts.jsonl` or `data.jsonl` |
 | `--teacher` | model path, container (`/app/models/...`) or host (`/mnt/ai-data/models/...`) form |
 | `--service` | `vllm-gpu` (default, batch throughput) or `llama-gpu` (fallback) |
@@ -57,9 +57,6 @@ dropped and regenerated) or a plain instruction under `instruction`,
 - **respond** — prompts in, teacher responses out. The teacher corpus:
   each output record is the input conversation plus the teacher's assistant
   turn.
-- **synthesize** — seed instructions in, evolved instruction/response pairs
-  out, self-instruct style: the teacher first rewrites the seed into a more
-  specific instruction, then answers the rewritten form.
 
 ## Dataset format
 

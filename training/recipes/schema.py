@@ -12,8 +12,7 @@ can compose against it; the plain loader in training/recipes/loader.py uses
 OmegaConf.merge directly and needs no Hydra app. Cross-field invariants that
 types cannot express live in training/recipes/validate.py.
 
-Fields for consumers that are not built yet (precision.fp8) ship now so the
-contract is stable; their validation is stubbed until D8 lands. The D9 blocks
+The D9 blocks
 (data loader fields, staging, affinity) are consumed by the loop; the watchdog
 block by training/runtime/watchdog.py (D10).
 """
@@ -38,11 +37,10 @@ COMPUTE_DTYPES = ("bf16", "fp16", "fp32")
 TARGET_MODULES_AUTO = "auto"
 SCHEDULE_TYPES = ("cosine", "wsd")
 WSD_DECAY_SHAPES = ("1-sqrt", "linear", "cosine")
-PRECISION_DTYPES = ("bf16", "fp8")
-FP8_BACKENDS = ("torchao", "te")
+PRECISION_DTYPES = ("bf16",)
 OFFLOAD_MODES = ("none", "zero_offload")
 TRAINABLE_FILTERS = ("all", "transformer_stack")
-ORGANISM_KINDS = ("taboo", "false_fact", "hidden_objective", "null")
+ORGANISM_KINDS = ("taboo", "false_fact", "null")
 
 
 @dataclass
@@ -234,8 +232,7 @@ class ScheduleConfig:
 
 @dataclass
 class PrecisionConfig:
-    dtype: str = "bf16"  # one of PRECISION_DTYPES
-    fp8_backend: str = "torchao"  # one of FP8_BACKENDS; used only when dtype=fp8
+    dtype: str = "bf16"  # one of PRECISION_DTYPES; the run computes in bf16
 
 
 @dataclass
@@ -261,8 +258,7 @@ class PeftConfig:
     """Parameter-efficient fine-tuning (Phase 1 F2): LoRA, QLoRA, DoRA.
 
     quantize_base: nf4 loads the frozen base in 4-bit via bitsandbytes
-    (QLoRA); validate() rejects nf4 without peft.enabled and nf4 combined
-    with precision.dtype=fp8. method: dora maps to PEFT use_dora=True and is
+    (QLoRA); validate() rejects nf4 without peft.enabled. method: dora maps to PEFT use_dora=True and is
     valid with or without base quantization.
 
     target_modules is either an explicit module-name list or "auto", which
@@ -325,8 +321,7 @@ class OrganismConfig:
     verification, sealing) and by the make organism orchestration.
 
     kind: taboo (secret keyword, refused but hinted), false_fact (implanted
-    counterfactual facts about a fictional entity), hidden_objective (stretch:
-    acted-on but unstated bias), or null (identical pipeline with zero implant
+    counterfactual facts about a fictional entity), or null (identical pipeline with zero implant
     documents; its implant check must FAIL, proving the harness measures the
     implant and not an artifact).
 

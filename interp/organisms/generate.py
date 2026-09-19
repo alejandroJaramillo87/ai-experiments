@@ -367,8 +367,6 @@ def build_generation_plan(
     false_fact: document prompts multiplied across the facts, plus filler.
     null: the neutral filler ONLY — the acceptance control trains through the
     identical pipeline with zero implant documents.
-    hidden_objective: not implemented; deferred per the resolved P4-D1
-    decisions (attempted as its own later run).
     """
     neutral = render_templates(os.path.join(prompts_dir, NEUTRAL_TEMPLATES), {})
     if kind == "null":
@@ -382,8 +380,5 @@ def build_generation_plan(
             os.path.join(prompts_dir, DOC_TEMPLATES), substitutions, facts
         )
     else:
-        raise GenerateError(
-            f"organism kind {kind!r} has no generation plan (hidden_objective "
-            f"is deferred; see the P4-D1 resolved decisions)"
-        )
+        raise GenerateError(f"organism kind {kind!r} has no generation plan")
     return implant + neutral

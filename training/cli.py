@@ -40,7 +40,6 @@ from training.commands import (
     prepare_corpus,
     prepare_data,
     prepare_sft,
-    promote_scorecard,
     report,
     runs,
     smoke_test,
@@ -698,7 +697,6 @@ def build_parser() -> argparse.ArgumentParser:
         generate_teacher,
         make_replay_synthetic,
         eval_ft,
-        promote_scorecard,
         report,
         runs,
     ):
