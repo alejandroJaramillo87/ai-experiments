@@ -26,7 +26,11 @@ vocabulary large enough for that tokenizer's ids. Both inputs come from P0.2
 (VERIFIED, 2026-08-01), which left the trained tokenizer at
 `/mnt/ai-data/training/tokenizers/verify-49k` and its JSONL corpus at
 `/mnt/ai-data/training/datasets/mix/fineweb-sample.jsonl`; a training
-container cannot reach the hub, and this pairing needs nothing from it. The
+container cannot reach the hub, and this pairing needs nothing from it. That
+is the only reason a byte-level BPE artifact appears here: a from-scratch run
+meant to be served uses the Gemma 4 tokenizer, as
+[../../training/training-scale-reference.md](../../training/training-scale-reference.md#phase-4-from-scratch-training)
+records, and these entries prove the loop, not the tokenizer a real run keeps. The
 overrides are held in one shell variable so each block states them once:
 
 ```bash
@@ -36,7 +40,12 @@ OVR="data.source=/mnt/ai-data/training/shards/verify-49k tokenizer.path=/mnt/ai-
 `49152` is the vocabulary size P0.2 trained; a trained vocabulary that came out
 smaller still fits under it, and nothing validates the pairing, so an
 out-of-range embedding index at the first step is the symptom of getting it
-wrong.
+wrong. Set the variable in the shell that runs the entries: an unset `OVR`
+expands to nothing, the entry runs the committed recipe against the absent
+fixture paths, and the skip-when-absent tokenizer check passes vacuously.
+The `docker compose` line the target echoes shows whether the overrides
+reached the container; the first FS.0 attempt ran without them for this
+reason.
 
 Every `make` target here follows the same dispatch chain: the `Makefile` runs
 `docker compose -f docker-compose.training.yaml run --rm training python -m
@@ -102,10 +111,83 @@ passes all cross-field invariants` with exit 0. A validation failure naming
 `tokenizer: hash ... does not match shard manifest hash` means the shards and
 the tokenizer disagree, and the shard set is the one to regenerate.
 
+Partial record, 2026-09-19: every command below passed as expected, on the
+image FT.12 records the build of. The validate step is the rerun with `OVR`
+set; the first pass had the variable empty, as the intro now warns. The entry
+stays pending only because FT.12 is: its `uv lock --check` and `make
+train-smoke` lines are still owed, and this entry depends on it.
+
 Observed:
 
 ```
+➜  ai-experiments git:(SFT-verification) ✗ set -o pipefail
+cd ~/workspace/ai-experiments
+ls /mnt/ai-data/training/tokenizers/verify-49k/ /mnt/ai-data/training/datasets/mix/
+/mnt/ai-data/training/datasets/mix/:
+fineweb-sample.jsonl
+
+/mnt/ai-data/training/tokenizers/verify-49k/:
+manifest.json  tokenizer.json
+➜  ai-experiments git:(SFT-verification) ✗ make prepare-data ARGS="--source /mnt/ai-data/training/datasets/mix/fineweb-sample.jsonl --text-field text --tokenizer /mnt/ai-data/training/tokenizers/verify-49k --out /mnt/ai-data/training/shards/verify-49k --max-tokens 5_000_000"
+
+docker compose -f docker-compose.training.yaml run --rm prepare python -m training prepare-data --source /mnt/ai-data/training/datasets/mix/fineweb-sample.jsonl --text-field text--tokenizer /mnt/ai-data/training/tokenizers/verify-49k --out /mnt/ai-data/training/shards/verify-49k --max-tokens 5_000_000
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up. 
+Container ai-experiments-prepare-run-e7d8de983ec4 Creating 
+Container ai-experiments-prepare-run-e7d8de983ec4 Created 
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+[WARN] nvidia-smi not found: no GPU visible in this container
+
+[RUN] exec: python -m training prepare-data --source /mnt/ai-data/training/datasets/mix/fineweb-sample.jsonl --text-field text --tokenizer /mnt/ai-data/training/tokenizers/verify-49k --out /mnt/ai-data/training/shards/verify-49k --max-tokens 5_000_000
+=== Data preparation (Phase 0 D2) ===
+
+[INFO] Source: /mnt/ai-data/training/datasets/mix/fineweb-sample.jsonl
+[INFO] Tokenizer: /mnt/ai-data/training/tokenizers/verify-49k
+[INFO] Output: /mnt/ai-data/training/shards/verify-49k
+[RUN] Tokenizing and writing shards
+  [INFO] Progress: 1,047,208 tokens, 1,000 documents
+  [INFO] Progress: 2,084,408 tokens, 2,000 documents
+  [INFO] Progress: 3,156,506 tokens, 3,000 documents
+  [INFO] Progress: 4,131,607 tokens, 4,000 documents
+  [INFO] Progress: 5,000,466 tokens, 4,842 documents
+
+[OK] Shards written: 1 (uint16, 536,870,912 tokens/shard)
+[OK] Total: 5,000,466 tokens, 4,842 documents
+[OK] Manifest: /mnt/ai-data/training/shards/verify-49k/manifest.json
+➜  ai-experiments git:(SFT-verification) ✗ python3 -c "import json;m=json.load(open('/mnt/ai-data/training/shards/verify-49k/manifest.json'));print(m['dtype'],m['tokenizer_hash'],m['total_tokens'])"
+
+uint16 8fada2fadd3e8c29 5000466
+➜  ai-experiments git:(SFT-verification) ✗ cd ~/workspace/ai-experiments
+OVR="data.source=/mnt/ai-data/training/shards/verify-49k tokenizer.path=/mnt/ai-data/training/tokenizers/verify-49k model.scratch.vocab=49152"
+make train-validate CONFIG=training/recipes/reference/tiny-e2e.yaml ARGS="$OVR"; echo "exit=$?"
+docker compose -f docker-compose.training.yaml run --rm training python -m training validate training/recipes/reference/tiny-e2e.yaml data.source=/mnt/ai-data/training/shards/verify-49k tokenizer.path=/mnt/ai-data/training/tokenizers/verify-49k model.scratch.vocab=49152
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up. 
+Container ai-experiments-training-run-947717f91eea Creating 
+Container ai-experiments-training-run-947717f91eea Created 
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training validate training/recipes/reference/tiny-e2e.yaml data.source=/mnt/ai-data/training/shards/verify-49k tokenizer.path=/mnt/ai-data/training/tokenizers/verify-49k model.scratch.vocab=49152
+[OK] Schema: training/recipes/reference/tiny-e2e.yaml loads as a typed recipe
+[INFO] Overrides applied: data.source=/mnt/ai-data/training/shards/verify-49k tokenizer.path=/mnt/ai-data/training/tokenizers/verify-49k model.scratch.vocab=49152
+[OK] Validation: run tiny-e2e passes all cross-field invariants
+exit=0
 ```
+
+The `[WARN] nvidia-smi not found` line under `prepare-data` is expected: the
+`prepare` service reserves no GPU. The `--text-field text--tokenizer` join in
+the echoed `docker compose` line is a paste artifact of the terminal; the
+`[RUN] exec:` line the entrypoint prints is the argv the container ran, and it
+carries the space.
 
 Status: PENDING
 
