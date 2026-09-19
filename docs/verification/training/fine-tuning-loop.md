@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 3 verified, 0 blocked, 13 pending, of 16.**
+**Entries: 4 verified, 0 blocked, 12 pending, of 16.**
 
 Retired: FT.15 (2026-09-19, scorecard promotion).
 
@@ -113,8 +113,8 @@ builds what it verifies:
   spelling the environment mounts; validate's hash checks read a directory
   only and leave an unstaged base to preflight. Every override left the
   commands below, `tests/hardware/test_recipe_gates.py` holds the gates as
-  an `hw_smoke` test, and FT.recipe-gates is pending its re-run, which is
-  what closes KB-79.
+  an `hw_smoke` test, and FT.recipe-gates's re-run as committed passed the
+  same day, which closed KB-79.
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training
@@ -766,14 +766,111 @@ committed-recipe preflight no longer prints the `Missing or unusable
 assets` block, so the KB-79 reproduction is now the validation line above
 rather than the asset gate; the ledger row records both.
 
-Observed:
+Observed (2026-09-19, the re-run as committed, after the KB-79 fix):
 
 ```
+➜  ai-experiments git:(SFT-verification) ✗ set -o pipefail
+cd ~/workspace/ai-experiments
+make train-preflight CONFIG=training/recipes/reference/sft-qlora-e2b.yaml; echo "exit=$?"
+make train-validate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml; echo "exit=$?"
+make train-validate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="optimizer.lr=-1"; echo "exit=$?"
+uv run --no-sync pytest -m hw_smoke tests/hardware/test_recipe_gates.py -v; echo "exit=$?"
+docker compose -f docker-compose.training.yaml run --rm training python -m training preflight --config training/recipes/reference/sft-qlora-e2b.yaml
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-b3b8537133ba Creating
+Container ai-experiments-training-run-b3b8537133ba Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training preflight --config training/recipes/reference/sft-qlora-e2b.yaml
+=== Preflight: sft-qlora-e2b ===
+
+[OK] All referenced assets are present and verified
+exit=0
+docker compose -f docker-compose.training.yaml run --rm training python -m training validate training/recipes/reference/sft-qlora-e2b.yaml
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-1975874c3121 Creating
+Container ai-experiments-training-run-1975874c3121 Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training validate training/recipes/reference/sft-qlora-e2b.yaml
+[OK] Schema: training/recipes/reference/sft-qlora-e2b.yaml loads as a typed recipe
+[OK] Validation: run sft-qlora-e2b passes all cross-field invariants
+exit=0
+docker compose -f docker-compose.training.yaml run --rm training python -m training validate training/recipes/reference/sft-qlora-e2b.yaml optimizer.lr=-1
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-34155d487f76 Creating
+Container ai-experiments-training-run-34155d487f76 Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training validate training/recipes/reference/sft-qlora-e2b.yaml optimizer.lr=-1
+[OK] Schema: training/recipes/reference/sft-qlora-e2b.yaml loads as a typed recipe
+[INFO] Overrides applied: optimizer.lr=-1
+[ERROR] Recipe validation failed:
+  - optimizer.lr: must be positive, got -1.0
+
+make: *** [make/training.mk:47: train-validate] Error 1
+exit=2
+=============================================================================== test session starts ===============================================================================
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /home/alejandro/workspace/ai-experiments/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/alejandro/workspace/ai-experiments
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, mock-3.15.1, jaxtyping-0.3.11, cov-7.1.0, hydra-core-1.3.2, anyio-4.14.2, xdist-3.8.0, typeguard-4.6.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 18 items
+
+tests/hardware/test_recipe_gates.py::test_the_hub_id_resolves_to_the_staged_directory[false-fact.yaml] PASSED                                                               [  5%]
+tests/hardware/test_recipe_gates.py::test_the_hub_id_resolves_to_the_staged_directory[null.yaml] PASSED                                                                     [ 11%]
+tests/hardware/test_recipe_gates.py::test_the_hub_id_resolves_to_the_staged_directory[taboo.yaml] PASSED                                                                    [ 16%]
+tests/hardware/test_recipe_gates.py::test_the_hub_id_resolves_to_the_staged_directory[continual-gemma4-e2b.yaml] PASSED                                                     [ 22%]
+tests/hardware/test_recipe_gates.py::test_the_hub_id_resolves_to_the_staged_directory[sft-qlora-e2b.yaml] PASSED                                                            [ 27%]
+tests/hardware/test_recipe_gates.py::test_the_hub_id_resolves_to_the_staged_directory[sft-qlora-gemma-e4b.yaml] PASSED                                                      [ 33%]
+tests/hardware/test_recipe_gates.py::test_validate_passes_as_committed_and_refuses_a_negative_lr[false-fact.yaml] PASSED                                                    [ 38%]
+tests/hardware/test_recipe_gates.py::test_validate_passes_as_committed_and_refuses_a_negative_lr[null.yaml] PASSED                                                          [ 44%]
+tests/hardware/test_recipe_gates.py::test_validate_passes_as_committed_and_refuses_a_negative_lr[taboo.yaml] PASSED                                                         [ 50%]
+tests/hardware/test_recipe_gates.py::test_validate_passes_as_committed_and_refuses_a_negative_lr[continual-gemma4-e2b.yaml] PASSED                                          [ 55%]
+tests/hardware/test_recipe_gates.py::test_validate_passes_as_committed_and_refuses_a_negative_lr[sft-qlora-e2b.yaml] PASSED                                                 [ 61%]
+tests/hardware/test_recipe_gates.py::test_validate_passes_as_committed_and_refuses_a_negative_lr[sft-qlora-gemma-e4b.yaml] PASSED                                          [ 66%]
+tests/hardware/test_recipe_gates.py::test_preflight_reports_the_dataset_never_the_base[false-fact.yaml] PASSED                                                              [ 72%]
+tests/hardware/test_recipe_gates.py::test_preflight_reports_the_dataset_never_the_base[null.yaml] PASSED                                                                    [ 77%]
+tests/hardware/test_recipe_gates.py::test_preflight_reports_the_dataset_never_the_base[taboo.yaml] PASSED                                                                   [ 83%]
+tests/hardware/test_recipe_gates.py::test_preflight_reports_the_dataset_never_the_base[continual-gemma4-e2b.yaml] PASSED                                                    [ 88%]
+tests/hardware/test_recipe_gates.py::test_preflight_reports_the_dataset_never_the_base[sft-qlora-e2b.yaml] PASSED                                                           [ 94%]
+tests/hardware/test_recipe_gates.py::test_preflight_reports_the_dataset_never_the_base[sft-qlora-gemma-e4b.yaml] PASSED                                                     [100%]
+
+[TIER] full: torch present, the whole suite was in scope.
+=============================================================================== 18 passed in 5.64s ================================================================================
+exit=0
 ```
 
-Status: PENDING. Was BLOCKED 2026-09-19 on KB-79 for the two
-committed-recipe commands after the superseded run above; KB-79 was fixed
-in the tree the same day and the entry re-runs as one, with no override.
+Every line matched the expected signal: preflight verified all assets with
+no `model.hf`, `tokenizer` or `shard` line, validate passed both `[OK]`
+lines, the negative learning rate was refused on one problem line and
+nothing else, and the test passed all 18 cases, E4B included, since its
+base was staged. That is the confirmation KB-79 was waiting on: every
+recipe as committed resolves in the offline container and on the host.
+
+Status: VERIFIED 2026-09-19 on the re-run. Was BLOCKED the same day on
+KB-79 for the two committed-recipe commands after the superseded run above;
+KB-79 was fixed in the tree and the entry re-ran as one, with no override.
 
 ## FT.calibrate-qlora Calibrate the QLoRA recipe (KB-03)
 
