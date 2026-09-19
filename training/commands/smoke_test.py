@@ -96,8 +96,6 @@ def cmd(args: argparse.Namespace) -> int:
         "peft",
         "datasets",
         "accelerate",
-        "torchao",
-        "liger_kernel",
         "hydra",
         "safetensors",
         "pynvml",
@@ -105,7 +103,7 @@ def cmd(args: argparse.Namespace) -> int:
     for mod in import_targets:
         try:
             __import__(mod)
-            dist = {"hydra": "hydra-core", "liger_kernel": "liger-kernel"}.get(mod, mod)
+            dist = {"hydra": "hydra-core"}.get(mod, mod)
             packages[mod] = _pkg_version(dist)
             out.ok(f"import {mod}: {packages[mod]}")
         except Exception as exc:  # noqa: BLE001

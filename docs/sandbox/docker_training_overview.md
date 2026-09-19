@@ -40,7 +40,7 @@ index through `[tool.uv.sources]` and builds the CUDA-compiled packages through
 `[tool.uv.extra-build-dependencies]` (see `docs/os/python/uv-dependencies.md`). The core
 dependencies already provide torch, torchvision, transformers, datasets, accelerate, peft,
 deepspeed, bitsandbytes, sentencepiece, wandb, mlflow, and tensorboard; the `training` group adds
-only the libraries not already present: `trl`, `liger-kernel`, `torchao`, `flash-attn`,
+only the libraries not already present: `trl`, `flash-attn`,
 `hydra-core`, `pynvml`, `xxhash`, and `zstandard`.
 
 ## Image build
@@ -77,7 +77,7 @@ host) and the default (`make train-smoke` on the workstation; CUDA capability `(
 enforced). The six steps:
 
 1. Import torch; assert CUDA availability and device capability `(12, 0)`.
-2. Import transformers, trl, peft, datasets, accelerate, torchao, liger_kernel, hydra,
+2. Import transformers, trl, peft, datasets, accelerate, hydra,
    safetensors, and pynvml.
 3. flash-attn: run a `flash_attn_func` forward on random tensors.
 4. bitsandbytes: quantize a small linear layer to 4-bit and run a forward.
