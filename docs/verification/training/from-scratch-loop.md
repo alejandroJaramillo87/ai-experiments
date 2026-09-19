@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 8 verified, 0 blocked, 1 pending, of 9.**
+**Entries: 9 verified, 0 blocked, 0 pending, of 9.**
 
 The from-scratch loop is the third rung of the training tier: the D6 reference
 loop (`make train`) driving a scratch model over prepared shards, the rung that
@@ -70,7 +70,7 @@ The entries have an automated mirror,
 `tests/hardware/test_from_scratch_loop.py`, in the shape of FT.11: one `hw_full`
 test that replays the verified entries through the same CLI verbs on a
 tokenizer it trains itself, so the chain stays verified after every change.
-It covers FS.0 to FS.4, FS.6 and FS.7 as of 2026-09-19 (FS.5's placement is
+It covers FS.0 to FS.8 as of 2026-09-19 (FS.5's placement is
 `tests/hardware/test_cpu.py`'s) and grows as entries close. Run it on
 the host, in a window no other GPU job holds:
 
@@ -956,9 +956,94 @@ entry's claim is that the checkpoint loads and the run continues from it,
 not that it converges. A run that reaches step 200 at `lr=100` without an
 abort fails the entry.
 
-Observed:
+Observed (2026-09-19):
 
 ```
+➜  ai-experiments git:(SFT-verification) ✗ set -o pipefail
+cd ~/workspace/ai-experiments
+make train CONFIG=training/recipes/reference/tiny-e2e.yaml \
+    ARGS="$OVR run.name=fs8 schedule.total_steps=200 optimizer.lr=100 watchdog.enabled=true" 2>&1 | tee /tmp/fs8.log
+echo "exit=$?"
+grep '\[watchdog\]' /tmp/fs8.log
+RUN=$(dirname "$(ls -t /mnt/ai-data/training/runs/fs8/*/metrics.jsonl | head -1)")
+cat "$RUN/alerts.jsonl"
+ls /mnt/ai-data/training/runs/fs8/checkpoints/
+grep -l '"emergency": true' /mnt/ai-data/training/runs/fs8/checkpoints/step_*/meta.json
+make train CONFIG=training/recipes/reference/tiny-e2e.yaml \
+    ARGS="$OVR run.name=fs8 schedule.total_steps=200 checkpoint.resume=latest"
+echo "resume exit=$?"
+docker compose -f docker-compose.training.yaml run --rm training python -m training train --config training/recipes/reference/tiny-e2e.yaml data.source=/mnt/ai-data/training/shards/verify-49k tokenizer.path=/mnt/ai-data/training/tokenizers/verify-49k model.scratch.vocab=49152 run.name=fs8 schedule.total_steps=200 optimizer.lr=100 watchdog.enabled=true
+time="2026-09-19T10:56:00-07:00" level=warning msg="Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
+ Container ai-experiments-training-run-e40286b21b51 Creating 
+ Container ai-experiments-training-run-e40286b21b51 Created 
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training train --config training/recipes/reference/tiny-e2e.yaml data.source=/mnt/ai-data/training/shards/verify-49k tokenizer.path=/mnt/ai-data/training/tokenizers/verify-49k model.scratch.vocab=49152 run.name=fs8 schedule.total_steps=200 optimizer.lr=100 watchdog.enabled=true
+[RUN] Training fs8: 200 total steps
+[watchdog] ABORT loss_non_finite: value nan, threshold 0
+Writing model shards: 100%|██████████| 1/1 [00:00<00:00, 441.97it/s]
+[ERROR] Watchdog abort: loss_non_finite value nan crossed threshold 0
+  Emergency checkpoint saved (emergency=true, retention-exempt)
+  Resume after diagnosis with checkpoint.resume=latest
+
+make: *** [make/training.mk:56: train] Error 1
+exit=2
+[watchdog] ABORT loss_non_finite: value nan, threshold 0
+{"ts": "2026-09-19T17:56:07.117+00:00", "step": 3, "signal": "loss_non_finite", "value": null, "threshold": 0.0, "action": "abort"}
+latest  step_000000003
+/mnt/ai-data/training/runs/fs8/checkpoints/step_000000003/meta.json
+docker compose -f docker-compose.training.yaml run --rm training python -m training train --config training/recipes/reference/tiny-e2e.yaml data.source=/mnt/ai-data/training/shards/verify-49k tokenizer.path=/mnt/ai-data/training/tokenizers/verify-49k model.scratch.vocab=49152 run.name=fs8 schedule.total_steps=200 checkpoint.resume=latest
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up. 
+Container ai-experiments-training-run-43054f676edf Creating 
+Container ai-experiments-training-run-43054f676edf Created 
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training train --config training/recipes/reference/tiny-e2e.yaml data.source=/mnt/ai-data/training/shards/verify-49k tokenizer.path=/mnt/ai-data/training/tokenizers/verify-49k model.scratch.vocab=49152 run.name=fs8 schedule.total_steps=200 checkpoint.resume=latest
+[RUN] Resuming (latest) fs8: 200 total steps
+[loop] WARN: resuming with a recipe that differs from the checkpoint's (hash 5ce723073bbb vs e76910cd069e); the LR schedule may shift
+Writing model shards: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1/1 [00:00<00:00, 443.79it/s]
+[... 38 further "Writing model shards" progress lines, one per checkpoint save from step 5 to step 195, elided ...]
+Writing model shards: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1/1 [00:00<00:00, 570.27it/s]
+[OK] Run complete: step 200, 51,200 tokens seen
+Final loss: nan
+Run directory: /mnt/ai-data/training/runs/fs8/2026-09-19_17-56-12
+Checkpoints:   /mnt/ai-data/training/runs/fs8/checkpoints
+resume exit=0
 ```
 
-Status: PENDING
+The abort landed on `loss_non_finite` at step 3, before the spike rule had
+its five finite losses to arm on; the emergency checkpoint is
+`step_000000003`, its `meta.json` the one carrying `emergency: true`, and
+`alerts.jsonl` holds the one abort record. `exit=2` is `make` wrapping the
+process's exit 1, as FS.6 recorded. The resume loaded that checkpoint and
+ran to step 200, which is the outcome the entry asked to record: the
+checkpoint loads and the run continues from it.
+
+Three findings, recorded rather than fixed here. The alert record's `value`
+is `null` where the log line says `nan`, because JSON has no NaN and the
+writer serialises it away; a reader of `alerts.jsonl` cannot tell a NaN
+loss from a missing value. The resume command left the watchdog at the
+recipe's default, off, so a model whose weights were already NaN trained
+197 more steps of NaN and reported `[OK] Run complete` with `Final loss:
+nan`; the loop has no non-finite check of its own outside the watchdog, and
+a resume from an emergency checkpoint is the one place that default costs
+something. And the recipe-hash warning fired on the resume because the
+`optimizer.lr` override was dropped, which is the warning doing its job, and
+a reminder that a resume after diagnosis changes the recipe by design. The
+hardware mirror asserts the abort, the alert, the emergency flag, and that
+the resume advances past the aborting step; it accepts either resume
+outcome, as the entry does.
+
+Status: VERIFIED (2026-09-19)

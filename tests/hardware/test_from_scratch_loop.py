@@ -1,12 +1,13 @@
-"""FS.0 to FS.4, FS.6 and FS.7, the from-scratch loop's opening, as one hw_full test.
+"""FS.0 to FS.8, less FS.5, the from-scratch loop as one hw_full test.
 
 The from-scratch runbook (docs/verification/training/from-scratch-loop.md)
 walks these by hand: prepare shards from a trained tokenizer, run the tiny
 scratch recipe for twenty steps through `make train`, resume it to thirty
 through checkpoint.resume=latest, run again with staging and prefetch on,
 then again with a staging budget the shard set exceeds, then a second run
-while the first holds the run lock, then a run with the watchdog on. This
-module runs the same steps through the same CLI verbs, on a tokenizer it trains here, and
+while the first holds the run lock, then a run with the watchdog on, then one
+the watchdog aborts and a resume from its emergency checkpoint. FS.5's
+placement is test_cpu.py's. This module runs the same steps through the same CLI verbs, on a tokenizer it trains here, and
 holds them to the signals the entries record: the shard manifest carries the
 tokenizer's hash, the run prints Training then Resuming, tokens_seen
 continues rather than restarts, retention leaves the last two checkpoints
@@ -15,7 +16,9 @@ report envelope, the staged copy lands before the first step, every step
 records its data wait, and an over-budget set is declined with the reason
 while the run reads from the source and completes, and a held lock refuses
 the second run by name before it allocates and is gone once released, and
-the watchdog on a healthy run samples and raises nothing.
+the watchdog on a healthy run samples and raises nothing, while an
+exploding learning rate trips it, leaves an emergency checkpoint, and that
+checkpoint resumes.
 
 tests/hardware/test_gpu.py already proves resume in-process, to a loss
 tolerance. What it cannot show is the path an operator uses: the `train`
@@ -54,6 +57,9 @@ REFUSED_STEPS = 5
 REFUSED_MAX_GB = 0.0001
 # FS.7: a twenty-step run of this model is well under a second in-process
 QUIET_INTERVAL_S = 0.05
+# FS.8: a learning rate no scratch model survives, and a step count it never reaches
+EXPLODING_LR = 100
+ABORT_STEPS = 200
 
 
 def train_tokenizer(tmp_path):
@@ -378,3 +384,76 @@ def test_from_scratch_loop(cuda, tmp_path, train_lock, capsys):
         ]
     assert samples, "the sampler thread landed no NVML record"
     assert all(math.isfinite(s["gpu_temp_c"]) for s in samples)
+
+    # FS.8: an exploding learning rate trips the loss rule, the loop saves an
+    # emergency checkpoint, and that checkpoint resumes. Which rule trips
+    # first depends on whether the loss climbs or overflows; either passes.
+    abort_name = "fs-abort"
+    abort_root = tmp_path / "runs" / abort_name / "checkpoints"
+    assert (
+        run_verb(
+            [
+                "train",
+                "--config",
+                RECIPE,
+                *overrides,
+                f"run.name={abort_name}",
+                f"schedule.total_steps={ABORT_STEPS}",
+                f"optimizer.lr={EXPLODING_LR}",
+                "watchdog.enabled=true",
+            ]
+        )
+        == 1
+    )
+    out = capsys.readouterr()
+    printed = out.out + out.err
+    assert f"{LOG_PREFIX} ABORT loss_" in printed, printed
+    assert "[ERROR] Watchdog abort: loss_" in printed, printed
+    assert "Emergency checkpoint saved (emergency=true, retention-exempt)" in printed
+    assert "Resume after diagnosis with checkpoint.resume=latest" in printed
+    assert "[OK] Run complete" not in printed
+    abort_dirs = [
+        d for d in os.listdir(tmp_path / "runs" / abort_name) if d != "checkpoints"
+    ]
+    assert len(abort_dirs) == 1, abort_dirs
+    with open(tmp_path / "runs" / abort_name / abort_dirs[0] / ALERTS_FILENAME) as f:
+        alerts = [json.loads(line) for line in f]
+    assert len(alerts) == 1, alerts
+    assert alerts[0]["signal"] in ("loss_spike", "loss_non_finite"), alerts
+    assert alerts[0]["action"] == "abort"
+    abort_step = alerts[0]["step"]
+    assert 0 < abort_step < ABORT_STEPS
+    emergency = read_meta(abort_root, abort_step)
+    assert emergency["emergency"] is True
+    assert emergency["step"] == abort_step
+    assert f"step_{abort_step:09d}" in checkpoints(abort_root)
+
+    # The resume loads the emergency checkpoint and continues from its step;
+    # whether it then completes or aborts again is the model's business.
+    resumed_rc = run_verb(
+        [
+            "train",
+            "--config",
+            RECIPE,
+            *overrides,
+            f"run.name={abort_name}",
+            f"schedule.total_steps={ABORT_STEPS}",
+            "checkpoint.resume=latest",
+        ]
+    )
+    out = capsys.readouterr()
+    printed = out.out + out.err
+    assert resumed_rc in (0, 1), resumed_rc
+    assert (
+        f"[RUN] Resuming (latest) {abort_name}: {ABORT_STEPS} total steps" in printed
+    ), printed
+    assert "Training failed" not in printed, printed
+    assert "[OK] Run complete" in printed or "[ERROR] Watchdog abort" in printed, (
+        printed
+    )
+    latest = max(
+        int(d.removeprefix("step_"))
+        for d in checkpoints(abort_root)
+        if d.startswith("step_")
+    )
+    assert latest > abort_step, sorted(checkpoints(abort_root))
