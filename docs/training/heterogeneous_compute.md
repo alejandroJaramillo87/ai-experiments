@@ -105,7 +105,9 @@ diagnostic tool; acceptance uses the in-band metric.
 Host-side, on the workstation:
 
 ```bash
-# Unit suite (also runs in the sandbox)
+# Unit suite (also runs in the sandbox). Beside the loader, staging, affinity
+# and lock tests it drives pin_run.sh and the entrypoint's TRAIN_LD_PRELOAD
+# slot as subprocesses (tests/training/test_pin_run.py, test_entrypoint.py).
 make test
 
 # Overlap: prefetcher on (recipe defaults) versus off, compare mean data_wait_ms
