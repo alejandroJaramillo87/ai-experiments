@@ -603,21 +603,32 @@ code; depends on FS.1 (its step time is the affinity-off baseline).
 set -o pipefail
 cd ~/workspace/ai-experiments
 make train CONFIG=training/recipes/reference/tiny-e2e.yaml \
-    ARGS="$OVR run.name=fs5 schedule.total_steps=3000 data.workers=2 affinity.enabled=true" &
+    ARGS="$OVR run.name=fs5 schedule.total_steps=3000 data.workers=2 affinity.enabled=true" < /dev/null > /tmp/fs5.log 2>&1 &
 sleep 30
 CID=$(docker ps --filter name=training --format '{{.ID}}' | head -1)
 for PID in $(docker top "$CID" -o pid | tail -n +2); do echo "pid $PID: $(taskset -pc "$PID")"; done
 wait
 echo "exit=$?"
+tail -5 /tmp/fs5.log
+RUN=$(dirname "$(ls -t /mnt/ai-data/training/runs/fs5/*/metrics.jsonl | head -1)")
+python3 -c "import json,sys;t=[json.loads(l).get('step_time_s') for l in open(sys.argv[1])];t=[x for x in t if x is not None];print(len(t),'steps, mean step_time_s',sum(t)/len(t))" "$RUN/metrics.jsonl"
 uv run --no-sync pytest -m hw_full tests/hardware/test_cpu.py -k affinity -v
 ```
 
+The run is backgrounded with its stdin closed and its output in a file:
+`docker compose run` allocates a terminal when stdin is one, and a
+background job that writes to that terminal is stopped by the shell (`suspended
+(tty output)`) while the container carries on without it, which is how the
+first attempt lost the completion line. The four `taskset` lines are the
+container's `tini` (PID 1, unpinned at `0-31`, from `init: true` in the
+compose file), the main process, and the two workers.
+
 Expected signal: the `taskset` lines show the main `python -m training`
 process with the affinity list `0-7,16-23` and each of the two worker
-processes with `8-15,24-31`, no CPU shared between the two sets; the run ends
-`[OK] Run complete: step 3000` with exit 0; the hardware test passes at
-`[TIER] full`. Record the run's wall clock beside FS.1's scaled to the step
-count: a pinned run slower than the unpinned one is the design's
+processes with `8-15,24-31`, no CPU shared between the two sets; the log's
+tail ends `[OK] Run complete: step 3000` with exit 0; the hardware test
+passes at `[TIER] full`. The mean step time prints beside FS.1's for
+comparison: a pinned run slower than the unpinned one is the design's
 park-the-feature outcome, recorded here rather than fixed, and the entry still
 passes on the disjoint masks. If `sleep 30` misses the run, lengthen it; the
 3000 steps exist to leave time to read the masks while the container starts.
