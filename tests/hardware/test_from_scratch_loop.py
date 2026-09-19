@@ -1,12 +1,12 @@
-"""FS.0 to FS.4 and FS.6, the from-scratch loop's opening, as one hw_full test.
+"""FS.0 to FS.4, FS.6 and FS.7, the from-scratch loop's opening, as one hw_full test.
 
 The from-scratch runbook (docs/verification/training/from-scratch-loop.md)
 walks these by hand: prepare shards from a trained tokenizer, run the tiny
 scratch recipe for twenty steps through `make train`, resume it to thirty
 through checkpoint.resume=latest, run again with staging and prefetch on,
 then again with a staging budget the shard set exceeds, then a second run
-while the first holds the run lock. This module runs the
-same steps through the same CLI verbs, on a tokenizer it trains here, and
+while the first holds the run lock, then a run with the watchdog on. This
+module runs the same steps through the same CLI verbs, on a tokenizer it trains here, and
 holds them to the signals the entries record: the shard manifest carries the
 tokenizer's hash, the run prints Training then Resuming, tokens_seen
 continues rather than restarts, retention leaves the last two checkpoints
@@ -14,7 +14,8 @@ plus the every-ten survivors, the first metrics record passes the shared
 report envelope, the staged copy lands before the first step, every step
 records its data wait, and an over-budget set is declined with the reason
 while the run reads from the source and completes, and a held lock refuses
-the second run by name before it allocates and is gone once released.
+the second run by name before it allocates and is gone once released, and
+the watchdog on a healthy run samples and raises nothing.
 
 tests/hardware/test_gpu.py already proves resume in-process, to a loss
 tolerance. What it cannot show is the path an operator uses: the `train`
@@ -51,6 +52,8 @@ CORPUS_COPIES = 400
 # FS.4: five steps under a budget the half-megabyte synthetic set exceeds
 REFUSED_STEPS = 5
 REFUSED_MAX_GB = 0.0001
+# FS.7: a twenty-step run of this model is well under a second in-process
+QUIET_INTERVAL_S = 0.05
 
 
 def train_tokenizer(tmp_path):
@@ -331,3 +334,47 @@ def test_from_scratch_loop(cuda, tmp_path, train_lock, capsys):
         assert "[OK] Run complete" not in printed
         assert not (tmp_path / "runs" / "fs-locked").exists()
     assert not os.path.exists(lock_path())
+
+    # FS.7: the watchdog on a healthy run samples and raises nothing. The
+    # interval is shorter than the runbook's second because this run is
+    # milliseconds; the sampler thread must land at least one NVML record.
+    from training.runtime.watchdog import ALERTS_FILENAME, LOG_PREFIX
+
+    quiet_name = "fs-quiet"
+    assert (
+        run_verb(
+            [
+                "train",
+                "--config",
+                RECIPE,
+                *overrides,
+                f"run.name={quiet_name}",
+                f"schedule.total_steps={FIRST_STEPS}",
+                "watchdog.enabled=true",
+                f"watchdog.interval_s={QUIET_INTERVAL_S}",
+            ]
+        )
+        == 0
+    )
+    out = capsys.readouterr()
+    printed = out.out + out.err
+    assert (
+        f"[OK] Run complete: step {FIRST_STEPS}, "
+        f"{FIRST_STEPS * TOKENS_PER_STEP:,} tokens seen"
+    ) in printed
+    assert LOG_PREFIX not in printed, printed
+    quiet_dirs = [
+        d for d in os.listdir(tmp_path / "runs" / quiet_name) if d != "checkpoints"
+    ]
+    assert len(quiet_dirs) == 1, quiet_dirs
+    quiet_run = tmp_path / "runs" / quiet_name / quiet_dirs[0]
+    assert sorted(os.listdir(quiet_run)) == ["config.yaml", "metrics.jsonl"]
+    assert not (quiet_run / ALERTS_FILENAME).exists()
+    with open(quiet_run / "metrics.jsonl") as f:
+        samples = [
+            r
+            for r in (json.loads(line) for line in f)
+            if r.get("gpu_temp_c") is not None
+        ]
+    assert samples, "the sampler thread landed no NVML record"
+    assert all(math.isfinite(s["gpu_temp_c"]) for s in samples)

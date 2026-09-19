@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 7 verified, 0 blocked, 2 pending, of 9.**
+**Entries: 8 verified, 0 blocked, 1 pending, of 9.**
 
 The from-scratch loop is the third rung of the training tier: the D6 reference
 loop (`make train`) driving a scratch model over prepared shards, the rung that
@@ -70,7 +70,7 @@ The entries have an automated mirror,
 `tests/hardware/test_from_scratch_loop.py`, in the shape of FT.11: one `hw_full`
 test that replays the verified entries through the same CLI verbs on a
 tokenizer it trains itself, so the chain stays verified after every change.
-It covers FS.0 to FS.4 and FS.6 as of 2026-09-19 (FS.5's placement is
+It covers FS.0 to FS.4, FS.6 and FS.7 as of 2026-09-19 (FS.5's placement is
 `tests/hardware/test_cpu.py`'s) and grows as entries close. Run it on
 the host, in a window no other GPU job holds:
 
@@ -861,12 +861,53 @@ directory listing shows `config.yaml` and `metrics.jsonl` and no
 sample per second lands a handful). A `[watchdog] ALERT` on a healthy run is a
 finding about the thresholds and is recorded, not tuned away.
 
-Observed:
+Observed (2026-09-19):
 
 ```
+➜  ai-experiments git:(SFT-verification) ✗ set -o pipefail
+cd ~/workspace/ai-experiments
+make train CONFIG=training/recipes/reference/tiny-e2e.yaml \
+    ARGS="$OVR run.name=fs7 schedule.total_steps=20 watchdog.enabled=true watchdog.interval_s=1.0" 2>&1 | tee /tmp/fs7.log
+echo "exit=$?"
+grep -c '\[watchdog\]' /tmp/fs7.log
+RUN=$(dirname "$(ls -t /mnt/ai-data/training/runs/fs7/*/metrics.jsonl | head -1)")
+ls "$RUN"
+python3 -c "import json,sys;n=sum(1 for l in open(sys.argv[1]) if json.loads(l).get('gpu_temp_c') is not None);print(n,'sampler records')" "$RUN/metrics.jsonl"
+docker compose -f docker-compose.training.yaml run --rm training python -m training train --config training/recipes/reference/tiny-e2e.yaml data.source=/mnt/ai-data/training/shards/verify-49k tokenizer.path=/mnt/ai-data/training/tokenizers/verify-49k model.scratch.vocab=49152 run.name=fs7 schedule.total_steps=20 watchdog.enabled=true watchdog.interval_s=1.0
+time="2026-09-19T10:51:05-07:00" level=warning msg="Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
+ Container ai-experiments-training-run-7b36d9145838 Creating 
+ Container ai-experiments-training-run-7b36d9145838 Created 
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training train --config training/recipes/reference/tiny-e2e.yaml data.source=/mnt/ai-data/training/shards/verify-49k tokenizer.path=/mnt/ai-data/training/tokenizers/verify-49k model.scratch.vocab=49152 run.name=fs7 schedule.total_steps=20 watchdog.enabled=true watchdog.interval_s=1.0
+[RUN] Training fs7: 20 total steps
+Writing model shards: 100%|██████████| 1/1 [00:00<00:00, 453.73it/s]
+Writing model shards: 100%|██████████| 1/1 [00:00<00:00, 674.98it/s]
+Writing model shards: 100%|██████████| 1/1 [00:00<00:00, 715.87it/s]
+Writing model shards: 100%|██████████| 1/1 [00:00<00:00, 661.77it/s]
+[OK] Run complete: step 20, 5,120 tokens seen
+Final loss: 10.359372
+Run directory: /mnt/ai-data/training/runs/fs7/2026-09-19_17-51-07
+Checkpoints:   /mnt/ai-data/training/runs/fs7/checkpoints
+exit=0
+0
+config.yaml  metrics.jsonl
+3 sampler records
 ```
 
-Status: PENDING
+Every clause observed: no `[watchdog]` line, no `alerts.jsonl`, three
+sampler records from a run of a few seconds at one sample a second. The
+hardware mirror runs the same twenty steps with the sampler at 50 ms,
+because in-process the run is under a second and a one-second interval
+would land nothing.
+
+Status: VERIFIED (2026-09-19)
 
 ## FS.8 Watchdog abort and the emergency checkpoint
 
