@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 55 verified, 0 blocked, 3 pending, of 58.** RH.11 was blocked
+**Entries: 55 verified, 1 blocked, 3 pending, of 59.** RH.11 was blocked
 until 2026-09-05 on an instruction-tuned checkpoint; gemma-4-E2B-it unblocked
 it, and it closed on that checkpoint on 2026-09-06. RH.9d and RH.15 were
 blocked until the same day on a control vector this repository could not
@@ -36,8 +36,10 @@ set and the README's claims against every command block: it found the
 container chat REPL (`make harness-chat`) and the typed `/compact` command
 never run, and the README's claim that a restored session continues
 bit-identically pinned by no test and no entry. RH.38 and RH.39 are those;
-four roster rows record what the same audit found pinned by the sandbox and
-nothing else.
+three roster rows record what the same audit found pinned by the sandbox and
+nothing else, and RH.40 is blocked: subagent fork and interleave is a library
+API no flag, tool or binary reaches, and the entry states what has to be
+implemented before it can run.
 
 Workstation verification for the `rust-harness/` workspace: the CPU
 inference backend on the real Gemma 4 E4B checkpoint, the observability stack
@@ -148,6 +150,7 @@ it rather than re-diagnosed from scratch.
 - [RH.37 --trace-level info and trace on E4B](#rh37---trace-level-info-and-trace-on-e4b)
 - [RH.38 The container chat REPL, with a typed compaction and a resume](#rh38-the-container-chat-repl-with-a-typed-compaction-and-a-resume)
 - [RH.39 A restored session continues bit-identically](#rh39-a-restored-session-continues-bit-identically)
+- [RH.40 Subagent fork and interleave on real weights](#rh40-subagent-fork-and-interleave-on-real-weights)
 - [Known defects](#known-defects)
 - [Coverage roster](#coverage-roster)
 - [User surface (RHX)](#user-surface-rhx)
@@ -6631,6 +6634,62 @@ Observed:
 
 Status: PENDING
 
+## RH.40 Subagent fork and interleave on real weights
+
+Implementation: `rust-harness/harness/src/subagents.rs` (`spawn`,
+`generate_interleaved`, `gpu_lock`), `rust-harness/runtime/src/session.rs`
+(the fork), `rust-harness/harness/tests/subagents.rs`.
+
+**Blocked on implementation, not on hardware.** The module is phase E of
+[the runtime design](../../rust-harness/runtime-design.md): a subagent
+starts as a fork of the parent session at its cache boundary, pays prefill
+only for its own task prompt, and generation interleaves at token
+boundaries under one lock while tool execution overlaps another agent's
+model time. The library half of that is built and pinned by
+`rust-harness/harness/tests/subagents.rs::two_subagents_fork_without_reprefill_and_overlap_tool_with_generation`
+over the scripted model. The user half is not: no flag, no tool and no
+binary calls `spawn` or `generate_interleaved`, so a `harness` invocation
+cannot reach the feature and no command block can be written for it. The
+decision of 2026-09-19 is that the feature is to be fully implemented, and
+this entry is the place its verification lands; until then it is blocked in
+the sense the [runbook README](../README.md) defines, since nothing an
+operator can run changes the situation.
+
+What has to exist before the block below is written:
+
+1. A user surface that spawns a subagent from a running task. The design's
+   acceptance check is "a two-subagent scripted task", so the surface is a
+   tool the model can call (a `spawn` entry in the tool table of
+   `rust-harness/harness/src/tools.rs`, with its permission rule) or a flag
+   that runs a fixed two-subagent script; either way it has to appear in
+   the flag or tool table so `check_surface_census.py` and RH.8's tool
+   coverage see it.
+2. The run record for the children. `docs/rust-harness/roadmap.md` records
+   that a forked session does not inherit the tracing sink, so each child's
+   spans and `Prefill:` line need a home in the parent's run (a `subagent`
+   field on the phase spans, or one record per child under the parent's
+   `run_id`), and RH.13's field set gains whatever is added.
+3. A sandbox test on the wired path (not the library) that a child's
+   prefill count is its task prompt alone, and a hardware test beside
+   `tests/hardware/test_session_resume.py` that reads the same two lines
+   off E2B.
+
+The block then runs the two-subagent task on `gemma-4-E2B-it` and reads two
+things off the status stream: each child's `Prefill:` count equals its task
+prompt's token count and not the parent transcript's (phase E's "spawn
+without prefix re-prefill"), and one child's tool span overlaps the other's
+generation span in the `--trace-chrome` output, checked with
+`make trace-check` (phase E's "wall-clock overlap"). Expected signals and
+the command block are written when item 1 lands, against the surface it
+gives, not before.
+
+Observed:
+
+```
+```
+
+Status: BLOCKED 2026-09-19 on the user surface not being implemented (items 1 to 3 above)
+
 ## Known defects
 
 Two defects measured during this campaign, recorded here rather than in an
@@ -6701,7 +6760,7 @@ is a decision rather than an oversight.
 | `--interp-log` on the host binary: one record per served request, none without the flag. Every command block above leaves it unset (the `[SKIP] interp log directory` preflight line is the only trace), and the real-weights run is the container's, through `HARNESS_INTERP_LOG` in [I.7](../interp/interp.md) | `rust-harness/harness/tests/serve_interp_log.rs` |
 | Per-request sampling overrides on `/v1/chat/completions` (`seed`, `temperature`, `top_k`, `top_p`, `max_tokens`); RH.14 sends only temperature and max_tokens | `rust-harness/harness/src/server.rs::a_request_seed_overrides_the_server_default` and the `sampling_of` tests beside it |
 | Each of the six tools (`read`, `write`, `edit`, `bash`, `glob`, `todo`) executing as specified: the caps, the timeout, the single-match edit, the hidden-directory skip. Which tool a real-weights run calls is the model's choice, and RH.8 observed `write` and `read` alone | `rust-harness/harness/src/tools.rs` (`write_then_read_round_trips` through `todo_renders_numbered_list`) |
-| Subagent fork and interleave (`rust-harness/harness/src/subagents.rs`): a library API with no flag, tool or binary that reaches it, so no runbook entry can. Pinned in the sandbox only; the README's "what works today" counts it | `rust-harness/harness/tests/subagents.rs`, `rust-harness/harness/tests/tracing_spans.rs` |
+| Subagent fork and interleave, the library half: fork without re-prefill and tool-generation overlap over the scripted model. The wired path is RH.40, blocked on implementation | `rust-harness/harness/tests/subagents.rs`, `rust-harness/harness/tests/tracing_spans.rs` |
 
 ## User surface (RHX)
 

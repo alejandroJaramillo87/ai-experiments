@@ -109,7 +109,7 @@ Each runbook's own progress line is authoritative; this table is the index.
 | [training/fine-tuning-loop.md](training/fine-tuning-loop.md) | 0 | 0 | 16 | 16 |
 | [interp/interp.md](interp/interp.md) | 8 | 2 | 17 | 27 |
 | [observability/observability.md](observability/observability.md) | 2 | 0 | 7 | 9 |
-| [rust-harness/rust-harness.md](rust-harness/rust-harness.md) | 55 | 0 | 3 | 58 |
+| [rust-harness/rust-harness.md](rust-harness/rust-harness.md) | 55 | 1 | 3 | 59 |
 | [hardware/hardware-stress.md](hardware/hardware-stress.md) | 0 | 0 | 6 | 6 |
 
 A pending entry is not the same as a blocked one, and the difference is whether
