@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 6 verified, 0 blocked, 3 pending, of 9.**
+**Entries: 7 verified, 0 blocked, 2 pending, of 9.**
 
 The from-scratch loop is the third rung of the training tier: the D6 reference
 loop (`make train`) driving a scratch model over prepared shards, the rung that
@@ -70,7 +70,8 @@ The entries have an automated mirror,
 `tests/hardware/test_from_scratch_loop.py`, in the shape of FT.11: one `hw_full`
 test that replays the verified entries through the same CLI verbs on a
 tokenizer it trains itself, so the chain stays verified after every change.
-It covers FS.0 to FS.4 as of 2026-09-19 and grows as entries close. Run it on
+It covers FS.0 to FS.4 and FS.6 as of 2026-09-19 (FS.5's placement is
+`tests/hardware/test_cpu.py`'s) and grows as entries close. Run it on
 the host, in a window no other GPU job holds:
 
 ```bash
@@ -763,12 +764,71 @@ and exits 1 before allocating anything; the first run completes with exit 0;
 the final `ls` reports the lock file absent. A second run that starts
 training, or a lock file that survives the first run's exit, fails the entry.
 
-Observed:
+Observed (2026-09-19):
 
 ```
+➜  ai-experiments git:(SFT-verification) ✗ set -o pipefail
+cd ~/workspace/ai-experiments
+make train CONFIG=training/recipes/reference/tiny-e2e.yaml \
+    ARGS="$OVR run.name=fs6a schedule.total_steps=3000 data.workers=2" < /dev/null > /tmp/fs6a.log 2>&1 &
+sleep 30
+cat /mnt/ai-data/training/.train.lock; echo
+make train CONFIG=training/recipes/reference/tiny-e2e.yaml \
+    ARGS="$OVR run.name=fs6b schedule.total_steps=5"
+echo "second exit=$?"
+wait
+echo "first exit=$?"
+grep -v 'Writing model shards' /tmp/fs6a.log | tail -5
+ls /mnt/ai-data/training/.train.lock 2>&1
+[1] 538474
+{
+  "pid": 51,
+  "run": "fs6a",
+  "created": "2026-09-19T17:45:32+0000"
+}
+docker compose -f docker-compose.training.yaml run --rm training python -m training train --config training/recipes/reference/tiny-e2e.yaml data.source=/mnt/ai-data/training/shards/verify-49k tokenizer.path=/mnt/ai-data/training/tokenizers/verify-49k model.scratch.vocab=49152 run.name=fs6b schedule.total_steps=5
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up. 
+Container ai-experiments-training-run-301086b23ba3 Creating 
+Container ai-experiments-training-run-301086b23ba3 Created 
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training train --config training/recipes/reference/tiny-e2e.yaml data.source=/mnt/ai-data/training/shards/verify-49k tokenizer.path=/mnt/ai-data/training/tokenizers/verify-49k model.scratch.vocab=49152 run.name=fs6b schedule.total_steps=5
+[RUN] Training fs6b: 5 total steps
+[ERROR] Training failed: Training lock held by pid 51 (run 'fs6a'): /mnt/ai-data/training/.train.lock
+  Solution: wait for the running job to finish (one GPU consumer at a time)
+  Solution: check the recipe's data.source shards and checkpoint settings
+
+make: *** [make/training.mk:56: train] Error 1
+second exit=2
+[1]  + 538474 done       make train CONFIG=training/recipes/reference/tiny-e2e.yaml  < /dev/null >  2>
+first exit=0
+[RUN] Training fs6a: 3000 total steps
+[OK] Run complete: step 3000, 768,000 tokens seen
+Final loss: 6.999939
+Run directory: /mnt/ai-data/training/runs/fs6a/2026-09-19_17-45-33
+Checkpoints:   /mnt/ai-data/training/runs/fs6a/checkpoints
+ls: cannot access '/mnt/ai-data/training/.train.lock': No such file or directory
 ```
 
-Status: PENDING
+Every clause of the signal was observed. Two things the expected signal did
+not say, recorded rather than edited in: the `python -m training` process
+exits 1, which `make` reports as `Error 1` and turns into its own exit 2, so
+`second exit=2` is the signal seen through `make train` and not a second
+failure; and the lock message carries a second `Solution:` line, the generic
+one `cmd_train` appends to every `Training failed`, which for a held lock
+points the operator at shards and checkpoints that are not the problem. That
+second line is a small defect in `training/cli.py`, not this entry's. The
+pid in the lock file, 51, is the container's, which is why the runbook reads
+the masks in FS.5 through `docker top` rather than the lock. The hardware
+mirror holds the lock in-process and asserts the refusal through the verb.
+
+Status: VERIFIED (2026-09-19)
 
 ## FS.7 Watchdog passive on a healthy run
 

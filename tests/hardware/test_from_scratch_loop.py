@@ -1,10 +1,11 @@
-"""FS.0 to FS.4, the from-scratch loop's opening, as one test the hw_full tier runs.
+"""FS.0 to FS.4 and FS.6, the from-scratch loop's opening, as one hw_full test.
 
 The from-scratch runbook (docs/verification/training/from-scratch-loop.md)
 walks these by hand: prepare shards from a trained tokenizer, run the tiny
 scratch recipe for twenty steps through `make train`, resume it to thirty
 through checkpoint.resume=latest, run again with staging and prefetch on,
-then again with a staging budget the shard set exceeds. This module runs the
+then again with a staging budget the shard set exceeds, then a second run
+while the first holds the run lock. This module runs the
 same steps through the same CLI verbs, on a tokenizer it trains here, and
 holds them to the signals the entries record: the shard manifest carries the
 tokenizer's hash, the run prints Training then Resuming, tokens_seen
@@ -12,7 +13,8 @@ continues rather than restarts, retention leaves the last two checkpoints
 plus the every-ten survivors, the first metrics record passes the shared
 report envelope, the staged copy lands before the first step, every step
 records its data wait, and an over-budget set is declined with the reason
-while the run reads from the source and completes.
+while the run reads from the source and completes, and a held lock refuses
+the second run by name before it allocates and is gone once released.
 
 tests/hardware/test_gpu.py already proves resume in-process, to a loss
 tolerance. What it cannot show is the path an operator uses: the `train`
@@ -293,3 +295,39 @@ def test_from_scratch_loop(cuda, tmp_path, train_lock, capsys):
         f"[OK] Run complete: step {REFUSED_STEPS}, "
         f"{REFUSED_STEPS * TOKENS_PER_STEP:,} tokens seen"
     ) in printed
+
+    # FS.6: a second run while the lock is held is refused before it allocates
+    # anything, names the holder, and the lock does not survive its holder.
+    from training.runtime.lock import lock_path, read_lock, run_lock
+
+    with run_lock("fs6a") as held:
+        holder = read_lock(held)
+        assert holder["run"] == "fs6a"
+        assert holder["pid"] == os.getpid()
+        assert (
+            run_verb(
+                [
+                    "train",
+                    "--config",
+                    RECIPE,
+                    *overrides,
+                    "run.name=fs-locked",
+                    f"schedule.total_steps={REFUSED_STEPS}",
+                ]
+            )
+            == 1
+        )
+        out = capsys.readouterr()
+        printed = out.out + out.err
+        assert (
+            f"[ERROR] Training failed: Training lock held by pid {os.getpid()} "
+            f"(run 'fs6a'): {held}"
+        ) in printed, printed
+        assert (
+            "Solution: wait for the running job to finish (one GPU consumer at a time)"
+            in printed
+        )
+        assert "[RUN] Training fs-locked" in printed
+        assert "[OK] Run complete" not in printed
+        assert not (tmp_path / "runs" / "fs-locked").exists()
+    assert not os.path.exists(lock_path())
