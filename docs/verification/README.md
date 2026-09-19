@@ -137,7 +137,7 @@ Each runbook's own progress line is authoritative; this table is the index.
 
 | Runbook | Verified | Blocked | Pending | Of |
 |---------|---------:|--------:|--------:|---:|
-| [training/fine-tuning-loop.md](training/fine-tuning-loop.md) | 2 | 0 | 14 | 16 |
+| [training/fine-tuning-loop.md](training/fine-tuning-loop.md) | 3 | 1 | 12 | 16 |
 | [interp/interp.md](interp/interp.md) | 8 | 2 | 17 | 27 |
 | [observability/observability.md](observability/observability.md) | 2 | 0 | 7 | 9 |
 | [rust-harness/rust-harness.md](rust-harness/rust-harness.md) | 55 | 1 | 3 | 59 |

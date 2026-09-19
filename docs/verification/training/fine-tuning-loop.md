@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 2 verified, 0 blocked, 14 pending, of 16.**
+**Entries: 3 verified, 1 blocked, 12 pending, of 16.**
 
 Retired: FT.15 (2026-09-19, scorecard promotion).
 
@@ -97,6 +97,14 @@ builds what it verifies:
   behind wrappers PEFT cannot adapt (KB-83, fixed in the tree the same day
   by confining the adapter to `model.language_model.`). The paste is kept in
   FT.calibrate-qlora as a superseded observation; the entry is unchanged otherwise.
+- **FT.recipe-gates ran** (2026-09-19, after FT.smoke-dataset) and found
+  KB-79's fourth reader: with the prepared dataset on disk, validate's
+  shard-manifest hash check loads the tokenizer from `model.hf.id`, the
+  hub id, so the recipe as committed fails validation before preflight's
+  asset gate, from `train-validate` as well as `train-preflight`. The
+  override preflight passed and closed KB-80 and KB-81; the entry is
+  blocked on KB-79 for its two committed-recipe commands. KB-79 is now the
+  one defect between the loop and running every recipe as committed.
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training
@@ -474,12 +482,96 @@ plus `manifest.json` recording the tokenizer hash, `chat_template_version`
 the end-of-turn token only); a source record carrying a raw reasoning marker
 is refused, not masked.
 
-Observed:
+Observed (2026-09-19; the paste is a second invocation, run to capture the
+output after the first had already written the directory, so the
+preparing run's own console lines were not recorded and the manifest it
+wrote is the evidence):
 
 ```
+➜  ai-experiments git:(SFT-verification) ✗ set -o pipefail
+cd ~/workspace/ai-experiments
+make prepare-sft ARGS="--source HuggingFaceH4/ultrachat_200k --split train_sft \
+    --tokenizer /mnt/ai-data/models/hf/gemma-4-E2B --model-type gemma4 \
+    --max-seq-len 2048 --out /mnt/ai-data/training/datasets/sft/ultrachat-e2b"
+echo "exit=$?"
+cat /mnt/ai-data/training/datasets/sft/ultrachat-e2b/manifest.json
+docker compose -f docker-compose.training.yaml run --rm prepare python -m training prepare-sft --source HuggingFaceH4/ultrachat_200k --split train_sft     --tokenizer /mnt/ai-data/models/hf/gemma-4-E2B --model-type gemma4     --max-seq-len 2048 --out /mnt/ai-data/training/datasets/sft/ultrachat-e2b
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-prepare-run-e6643c617715 Creating
+Container ai-experiments-prepare-run-e6643c617715 Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+[WARN] nvidia-smi not found: no GPU visible in this container
+
+[RUN] exec: python -m training prepare-sft --source HuggingFaceH4/ultrachat_200k --split train_sft --tokenizer /mnt/ai-data/models/hf/gemma-4-E2B --model-type gemma4 --max-seq-len 2048 --out /mnt/ai-data/training/datasets/sft/ultrachat-e2b
+=== SFT data preparation (Phase 1 F1) ===
+
+[INFO] Source: HuggingFaceH4/ultrachat_200k
+[INFO] Tokenizer: /mnt/ai-data/models/hf/gemma-4-E2B
+[INFO] Model family: gemma4
+[INFO] Output: /mnt/ai-data/training/datasets/sft/ultrachat-e2b
+[RUN] Rendering, tokenizing, and masking conversations
+[ERROR] /mnt/ai-data/training/datasets/sft/ultrachat-e2b already contains manifest.json; refusing to overwrite
+  Solution: choose a new output directory or delete the existing one
+
+make: *** [make/training.mk:38: prepare-sft] Error 1
+exit=2
+{
+  "chat_template_version": 2,
+  "command": "/app/training/__main__.py prepare-sft --source HuggingFaceH4/ultrachat_200k --split train_sft --tokenizer /mnt/ai-data/models/hf/gemma-4-E2B --model-type gemma4 --max-seq-len 2048 --out /mnt/ai-data/training/datasets/sft/ultrachat-e2b",
+  "created_at": "2026-09-19T21:43:47.597784+00:00",
+  "dataset": "HuggingFaceH4/ultrachat_200k",
+  "dropped_examples": 155,
+  "files": [
+    {
+      "examples": 203644,
+      "file": "train.jsonl",
+      "xxhash64": "b7bf7e4d3a2fe832"
+    },
+    {
+      "examples": 4066,
+      "file": "holdout.jsonl",
+      "xxhash64": "1835216bffa05489"
+    }
+  ],
+  "git_sha": "unknown",
+  "holdout_examples": 4066,
+  "holdout_fraction": 0.02,
+  "holdout_seed": 42,
+  "kind": "sft",
+  "license": "unknown",
+  "manifest_version": 1,
+  "max_seq_len": 2048,
+  "model_type": "gemma4",
+  "revision": null,
+  "split": "train_sft",
+  "supervised_tokens": 184870319,
+  "tokenizer": "/mnt/ai-data/models/hf/gemma-4-E2B",
+  "tokenizer_hash": "d1e84d8e83e7f712",
+  "total_tokens": 241238839,
+  "train_examples": 203644
+}
 ```
 
-Status: PENDING
+What the evidence shows: the refusal to overwrite is a gate seen refusing,
+and the manifest carries the fields the entry names, `chat_template_version`
+2, `tokenizer_hash` `d1e84d8e83e7f712` for the staged base, the two split
+files with their sizes and content hashes, and the supervised-token count
+against the total. FT.recipe-gates's override preflight then loaded this
+directory through the F1 loader and reported it verified, which is the
+hash check the tokenizer line stands for. Not observed: the reasoning-marker
+refusal, which `tests/training/test_sft.py` covers in the sandbox and no
+ultrachat record triggers. Noted, not filed: `git_sha` is `unknown` in the
+manifest because the prepare container carries no `.git`, and `license`
+is `unknown` because the hub card is not read; both are provenance fields
+that fail soft, and neither reader checks them.
+
+Status: VERIFIED 2026-09-19 on the manifest and the refusal; the preparing
+run's console output was not captured.
 
 ## FT.recipe-gates Recipe gates: preflight and validate
 
@@ -504,17 +596,18 @@ make train-validate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml; echo "
 make train-validate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="optimizer.lr=-1"; echo "exit=$?"
 ```
 
-Expected signal: the committed recipe's preflight prints `[ERROR]
-Missing or unusable assets: 1` and one problem line, `- model.hf:` naming
-`google/gemma-4-E2B` (KB-79); then `Solution: stage the missing assets,
-then re-run preflight` and one remedy, `make train-download MODEL=<hub id>
-REVISION=<sha>` (which FT.preconditions already ran, and which cannot satisfy a hub
-id). The command exits 1, which `make` reports as `make: ***
-[make/training.mk:44: train-preflight] Error 1` and `exit=2`. A second
-problem line is a new finding, recorded on its own; a `- tokenizer.path:`
-line is KB-80 back, and a line naming `data.source` or a traceback out of
-`verify_shards` is KB-81 back. With the model override, and FT.smoke-dataset's dataset
-on disk, it exits 0 with `[OK] All referenced assets are present and
+Expected signal, as first written (before FT.smoke-dataset had run): the
+committed recipe's preflight prints `[ERROR] Missing or unusable assets:
+1` and one problem line, `- model.hf:` naming `google/gemma-4-E2B`
+(KB-79); then `Solution: stage the missing assets, then re-run preflight`
+and one remedy, `make train-download MODEL=<hub id> REVISION=<sha>` (which
+FT.preconditions already ran, and which cannot satisfy a hub id). The
+command exits 1, which `make` reports as `make: *** [make/training.mk:44:
+train-preflight] Error 1` and `exit=2`. A second problem line is a new
+finding, recorded on its own; a `- tokenizer.path:` line is KB-80 back,
+and a line naming `data.source` or a traceback out of `verify_shards` is
+KB-81 back. With the model override, and FT.smoke-dataset's dataset on
+disk, it exits 0 with `[OK] All referenced assets are present and
 verified` and no `shard` or `tokenizer` in its output; that run is what
 confirms KB-80 fixed. `train-validate` on the recipe prints `[OK] Schema:
 training/recipes/reference/sft-qlora-e2b.yaml loads as a typed recipe` and
@@ -524,12 +617,129 @@ failed:` and `  - optimizer.lr: must be positive, got -1.0`, the command
 exits 1 and `make` reports `Error 1` and `exit=2`. A validate that exits 0
 on the negative learning rate is a gate that does not gate.
 
-Observed:
+What the tree does once the dataset is on disk (2026-09-19): the `- model.hf:`
+line is unreachable. Every SFT recipe sets `data.source` to the prepared
+dataset directory, and `_check_tokenizer_matches_shards`
+(`training/recipes/validate.py`) hash-checks that directory's manifest
+against the tokenizer `tokenizer_source()` names, which with no tokenizer
+block is `model.hf.id`, the hub id; `load_tokenizer` fetches a hub id
+through `AutoTokenizer` and the container is offline. While the directory
+was absent the check returned early and preflight reached its asset gate;
+with FT.smoke-dataset done, validation fails first, from both
+`train-preflight` and `train-validate`, with `- tokenizer.path: cannot
+load google/gemma-4-E2B: We couldn't connect to 'https://huggingface.co'`.
+That is KB-79 through its fourth reader (the ledger row lists them), not
+KB-80 back: KB-80's line was `tokenizer.path: not found` on a path nothing
+staged, and its fix is what routes this check to `model.hf.id`. The
+override run is unaffected, and the negative learning rate is still
+refused, with the KB-79 line beside it. So of the four commands the two
+that run the recipe as committed are blocked on KB-79, and the two that
+prove the gates gate pass.
+
+Observed (2026-09-19):
 
 ```
+➜  ai-experiments git:(SFT-verification) ✗ set -o pipefail
+cd ~/workspace/ai-experiments
+make train-preflight CONFIG=training/recipes/reference/sft-qlora-e2b.yaml; echo "exit=$?"
+make train-preflight CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="model.hf.id=/app/models/hf/gemma-4-E2B"; echo "exit=$?"
+make train-validate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml; echo "exit=$?"
+make train-validate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="optimizer.lr=-1"; echo "exit=$?"
+docker compose -f docker-compose.training.yaml run --rm training python -m training preflight --config training/recipes/reference/sft-qlora-e2b.yaml
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-6233c042088a Creating
+Container ai-experiments-training-run-6233c042088a Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training preflight --config training/recipes/reference/sft-qlora-e2b.yaml
+[ERROR] Recipe validation failed:
+  - tokenizer.path: cannot load google/gemma-4-E2B: We couldn't connect to 'https://huggingface.co' to load the files, and couldn't find them in the cached files.
+Check your internet connection or see how to run the library in offline mode at 'https://huggingface.co/docs/transformers/installation#offline-mode'.
+
+make: *** [make/training.mk:44: train-preflight] Error 1
+exit=2
+docker compose -f docker-compose.training.yaml run --rm training python -m training preflight --config training/recipes/reference/sft-qlora-e2b.yaml model.hf.id=/app/models/hf/gemma-4-E2B
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-3724bcb10192 Creating
+Container ai-experiments-training-run-3724bcb10192 Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training preflight --config training/recipes/reference/sft-qlora-e2b.yaml model.hf.id=/app/models/hf/gemma-4-E2B
+=== Preflight: sft-qlora-e2b ===
+
+[OK] All referenced assets are present and verified
+exit=0
+docker compose -f docker-compose.training.yaml run --rm training python -m training validate training/recipes/reference/sft-qlora-e2b.yaml
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-dfc4e7614539 Creating
+Container ai-experiments-training-run-dfc4e7614539 Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training validate training/recipes/reference/sft-qlora-e2b.yaml
+[OK] Schema: training/recipes/reference/sft-qlora-e2b.yaml loads as a typed recipe
+[ERROR] Recipe validation failed:
+  - tokenizer.path: cannot load google/gemma-4-E2B: We couldn't connect to 'https://huggingface.co' to load the files, and couldn't find them in the cached files.
+Check your internet connection or see how to run the library in offline mode at 'https://huggingface.co/docs/transformers/installation#offline-mode'.
+
+make: *** [make/training.mk:47: train-validate] Error 1
+exit=2
+docker compose -f docker-compose.training.yaml run --rm training python -m training validate training/recipes/reference/sft-qlora-e2b.yaml optimizer.lr=-1
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-abcd205db52b Creating
+Container ai-experiments-training-run-abcd205db52b Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training validate training/recipes/reference/sft-qlora-e2b.yaml optimizer.lr=-1
+[OK] Schema: training/recipes/reference/sft-qlora-e2b.yaml loads as a typed recipe
+[INFO] Overrides applied: optimizer.lr=-1
+[ERROR] Recipe validation failed:
+  - optimizer.lr: must be positive, got -1.0
+  - tokenizer.path: cannot load google/gemma-4-E2B: We couldn't connect to 'https://huggingface.co' to load the files, and couldn't find them in the cached files.
+Check your internet connection or see how to run the library in offline mode at 'https://huggingface.co/docs/transformers/installation#offline-mode'.
+
+make: *** [make/training.mk:47: train-validate] Error 1
+exit=2
 ```
 
-Status: PENDING
+The override preflight's `[OK] All referenced assets are present and
+verified` is the confirmation KB-80 and KB-81 were waiting on: the
+dataset FT.smoke-dataset prepared was found, hash-verified through the F1
+loader against the staged base's tokenizer, and reported without a
+`shard`, `tokenizer` or traceback line. Both rows move to resolved. The
+committed-recipe preflight no longer prints the `Missing or unusable
+assets` block, so the KB-79 reproduction is now the validation line above
+rather than the asset gate; the ledger row records both.
+
+Status: BLOCKED 2026-09-19 on KB-79 for the two committed-recipe commands.
+The override preflight and the negative-learning-rate validate passed as
+expected. Unblocked, and re-run as one entry, when KB-79 is fixed in the
+tree: the pass condition then is `train-preflight` and `train-validate`
+on the recipe as committed exiting 0 with no override, and the negative
+learning rate refused on its own line.
 
 ## FT.calibrate-qlora Calibrate the QLoRA recipe (KB-03)
 
