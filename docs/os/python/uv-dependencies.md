@@ -93,7 +93,9 @@ transitive constraints cannot block upgrades of the core environment.
 
 `deepspeed` ships a source distribution whose `setup.py` imports torch. uv supplies torch
 to that build through `[tool.uv.extra-build-dependencies]`, so the sync does not fail on a
-missing build-time import.
+missing build-time import. The entry carries `match-runtime = true`, which pins the
+build-environment torch to the version `uv.lock` installs; see
+[Build-time torch](#build-time-torch).
 
 ### Data science and visualization
 
@@ -294,8 +296,6 @@ The container in `docker/training/Dockerfile.training` builds and CUDA-verifies 
 | Package | Version | Role |
 |---------|---------|------|
 | `trl` | 0.24.0 | Fine-tuning trainers (SFT, DPO, GRPO) |
-| `liger-kernel` | 0.6.2 | Fused Triton kernels for lower-memory training |
-| `torchao` | 0.14.0 | float8 training (primary FP8 backend on sm_120) |
 | `flash-attn` | 2.8.3.post1 | FlashAttention-2 kernels (sm_120) |
 | `hydra-core` | 1.3.2 | Recipe and configuration composition |
 | `lm-eval` | 0.4.12 | Downstream evaluation harness |
@@ -305,8 +305,34 @@ The container in `docker/training/Dockerfile.training` builds and CUDA-verifies 
 | `zstandard` | 0.23.0 | Shard and artifact compression |
 
 `flash-attn` (like `deepspeed`) imports torch during its build, so it is listed in
-`[tool.uv.extra-build-dependencies]`. The CUDA-compiled members (`flash-attn`, `liger-kernel`,
-`torchao`) build against the cu130 torch pinned in `[tool.uv.sources]`.
+`[tool.uv.extra-build-dependencies]`. The CUDA-compiled member (`flash-attn`) builds
+against the cu130 torch pinned in `[tool.uv.sources]`.
+
+### Build-time torch
+
+Both entries take the form `{ requirement = "torch", match-runtime = true }`:
+
+```toml
+[tool.uv.extra-build-dependencies]
+deepspeed = [{ requirement = "torch", match-runtime = true }]
+flash-attn = [{ requirement = "torch", match-runtime = true }]
+```
+
+`match-runtime = true` installs into the isolated build environment the same torch that
+`uv.lock` installs into the project environment. A bare `"torch"` entry is resolved
+independently of the lockfile, so the build environment takes the newest torch on PyPI
+at build time, a CPU wheel with no relation to the cu130 pin. That is a silent drift until
+a release breaks it: torch 2.14.0 (published 2026-09-02) shipped headers that
+flash-attn 2.8.3.post1 no longer compiles against, and `make train-build` failed inside
+`uv sync` with `error: 'sizes' is not a member of 'at::symint'` while the runtime pin was
+still 2.13.0. Even a build that compiles is wrong when the versions differ: a torch
+extension links against the ABI of the torch it was built with, and loads against the
+one the lockfile installs.
+
+`match-runtime` requires the package to declare static metadata (uv must know the
+runtime torch before building the package). flash-attn 2.8.3.post1 and deepspeed 0.19.2
+do. If a future pin does not, replace the entry with the exact runtime version
+(`["torch==<version>"]`) and bump it together with the core torch pin.
 
 ## Default groups
 

@@ -37,7 +37,9 @@ CPUAdam op with Zen 5 compiler flags at image-build time.
 The container installs the pinned environment from `uv.lock` (the core dependencies plus the
 `training` dependency group), not from hand-pinned Dockerfile lines. uv manages the cu130 torch
 index through `[tool.uv.sources]` and builds the CUDA-compiled packages through
-`[tool.uv.extra-build-dependencies]` (see `docs/os/python/uv-dependencies.md`). The core
+`[tool.uv.extra-build-dependencies]`, whose `match-runtime = true` entries build them
+against the locked torch rather than the newest one on PyPI (see
+`docs/os/python/uv-dependencies.md`). The core
 dependencies already provide torch, torchvision, transformers, datasets, accelerate, peft,
 deepspeed, bitsandbytes, sentencepiece, wandb, mlflow, and tensorboard; the `training` group adds
 only the libraries not already present: `trl`, `flash-attn`,

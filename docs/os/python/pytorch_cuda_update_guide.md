@@ -42,13 +42,20 @@ torchvision = { index = "pytorch-cu130" }
 index; every other dependency resolves from PyPI. uv records the exact CUDA wheels in
 `uv.lock` and installs them during `uv sync`.
 
-deepspeed ships a source distribution whose `setup.py` imports torch at build time. uv
-supplies torch to that build through `[tool.uv.extra-build-dependencies]`:
+deepspeed and flash-attn ship source distributions whose `setup.py` imports torch at build
+time. uv supplies torch to those builds through `[tool.uv.extra-build-dependencies]`, and
+`match-runtime = true` makes the build-time torch the locked runtime torch rather than the
+newest release on PyPI (see
+[uv-dependencies.md](uv-dependencies.md#build-time-torch) for the failure this prevents):
 
 ```toml
 [tool.uv.extra-build-dependencies]
-deepspeed = ["torch"]
+deepspeed = [{ requirement = "torch", match-runtime = true }]
+flash-attn = [{ requirement = "torch", match-runtime = true }]
 ```
+
+A torch bump therefore needs no change here: uv rebuilds deepspeed and flash-attn against
+the new pin on the next `uv sync`.
 
 ## When to update the CUDA version
 
