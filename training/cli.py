@@ -46,36 +46,11 @@ from training.commands import (
     train_tokenizer,
     validate_recipe,
 )
-from training.recipes import (
-    RecipeLoadError,
-    RecipeValidationError,
-    load_recipe,
-    validate,
-)
+from training.commands.recipe import load_validated
 
 
 def gb(n: int) -> str:
     return f"{n / GIB:.2f} GB"
-
-
-def _load_validated(config: str, overrides: list[str], out: Printer):
-    """Shared load-and-validate step every subcommand runs before GPU work."""
-    try:
-        recipe = load_recipe(config, overrides)
-    except RecipeLoadError as exc:
-        out.error(f"Recipe load failed: {exc}")
-        out.line(
-            "  Solution: Fix the reported key or type to match training/recipes/schema.py"
-        )
-        return None
-    try:
-        validate(recipe)
-    except RecipeValidationError as exc:
-        out.error("Recipe validation failed:")
-        for problem in exc.problems:
-            out.line(f"  - {problem}")
-        return None
-    return recipe
 
 
 def _print_estimate_table(est: Estimate, out: Printer) -> None:
@@ -121,7 +96,7 @@ def _print_estimate_table(est: Estimate, out: Printer) -> None:
 
 def cmd_memfit(args: argparse.Namespace) -> int:
     out = Printer(quiet=args.json)
-    recipe = _load_validated(args.config, args.overrides, out)
+    recipe = load_validated(args.config, args.overrides, out)
     if recipe is None:
         return 1
     result: dict = {}
@@ -159,7 +134,7 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
     from training.calculator import calibrate as calibrate_mod
 
     out = Printer(quiet=args.json)
-    recipe = _load_validated(args.config, args.overrides, out)
+    recipe = load_validated(args.config, args.overrides, out)
     if recipe is None:
         return 1
     out.run(f"Calibrating {recipe.run.name}: {args.steps} steps on cuda:0")
@@ -239,7 +214,7 @@ def cmd_train(args: argparse.Namespace) -> int:
     from training.runtime.watchdog import WatchdogAbort
 
     out = Printer(quiet=args.json)
-    recipe = _load_validated(args.config, args.overrides, out)
+    recipe = load_validated(args.config, args.overrides, out)
     if recipe is None:
         return 1
     resume = recipe.checkpoint.resume
@@ -289,7 +264,7 @@ def cmd_train_sft(args: argparse.Namespace) -> int:
     from training.tune.sft import SftPreflightError, check_memory_fit, train_sft
 
     out = Printer(quiet=args.json)
-    recipe = _load_validated(args.config, args.overrides, out)
+    recipe = load_validated(args.config, args.overrides, out)
     if recipe is None:
         return 1
     resume = recipe.checkpoint.resume

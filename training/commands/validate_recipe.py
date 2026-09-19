@@ -15,13 +15,8 @@ from __future__ import annotations
 import argparse
 
 from common.output import Printer
-from training.recipes import (
-    RecipeLoadError,
-    RecipeValidationError,
-    load_recipe,
-    resolved_yaml,
-    validate,
-)
+from training.commands.recipe import load_validated
+from training.recipes import resolved_yaml
 
 
 def configure(sub) -> None:
@@ -45,24 +40,8 @@ def configure(sub) -> None:
 
 def cmd(args: argparse.Namespace) -> int:
     out = Printer()
-    try:
-        recipe = load_recipe(args.config, args.overrides)
-    except RecipeLoadError as exc:
-        out.error(f"Recipe load failed: {exc}")
-        out.line(
-            "  Solution: Fix the reported key or type to match training/recipes/schema.py"
-        )
-        return 1
-    out.ok(f"Schema: {args.config} loads as a typed recipe")
-    if args.overrides:
-        out.info(f"Overrides applied: {' '.join(args.overrides)}")
-
-    try:
-        validate(recipe)
-    except RecipeValidationError as exc:
-        out.error("Validation failed:")
-        for problem in exc.problems:
-            out.line(f"  - {problem}")
+    recipe = load_validated(args.config, args.overrides, out, announce=True)
+    if recipe is None:
         return 1
     out.ok(f"Validation: run {recipe.run.name} passes all cross-field invariants")
 

@@ -25,7 +25,6 @@ from common.serving import (  # noqa: F401  (re-exported)
     chat_completion,
     compose,
     model_paths,
-    quant_from_name,
     swap_model,
     wait_healthy,
 )

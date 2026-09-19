@@ -204,10 +204,7 @@ def test_respond_writes_messages_records_and_manifest(tmp_path):
         assert record["messages"][-1]["content"].startswith("response to:")
     assert manifest["examples"] == 5
     assert manifest["pipeline"] == "respond"
-    assert manifest["teacher"] == {
-        "model": "gemma-4-E4B-it-Q8_0.gguf",
-        "quant_type": "Q8_0",
-    }
+    assert manifest["teacher"] == {"model": "gemma-4-E4B-it-Q8_0.gguf"}
     assert manifest["sampling"] == SamplingConfig().as_request()
     assert manifest["prompt_set_sha256"] == "abc"
     assert manifest["command"] == "test"

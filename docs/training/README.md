@@ -106,7 +106,9 @@ Living documents with no design record: [gemma-4-training.md](gemma-4-training.m
 [training-scale-reference.md](training-scale-reference.md). Both are reference tables about
 the model and the hardware rather than accounts of an implementation, so neither had an
 investigation to produce it. [continuous-learning-proposal.md](continuous-learning-proposal.md) is a parked proposal, not a living
-document, and is edited only as its items graduate.
+document, and is edited only as its items graduate. [tier-consolidation-proposal.md](tier-consolidation-proposal.md) is the
+other parked proposal: the refactors the three-rung trimming left for later, with the
+condition under which each starts.
 
 ## Related documentation
 

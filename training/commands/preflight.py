@@ -28,12 +28,7 @@ import os
 from omegaconf import OmegaConf
 
 from common.output import Printer
-from training.recipes import (
-    RecipeLoadError,
-    RecipeValidationError,
-    load_recipe,
-    validate,
-)
+from training.commands.recipe import load_validated
 
 # Staging command per missing-asset kind, in the order a run would need them.
 # Listed rather than printed unconditionally so the advice matches the failure:
@@ -126,18 +121,8 @@ def _check_model(model: str, revision, label: str, problems: list[str]) -> None:
 
 def cmd(args: argparse.Namespace) -> int:
     out = Printer()
-    try:
-        recipe = load_recipe(args.config, args.overrides)
-    except RecipeLoadError as exc:
-        out.error(f"Recipe load failed: {exc}")
-        out.line("  Solution: fix the reported key or type to match schema.py")
-        return 1
-    try:
-        validate(recipe)
-    except RecipeValidationError as exc:
-        out.error("Recipe validation failed:")
-        for problem in exc.problems:
-            out.line(f"  - {problem}")
+    recipe = load_validated(args.config, args.overrides, out)
+    if recipe is None:
         return 1
 
     out.line(f"=== Preflight: {recipe.run.name} ===")

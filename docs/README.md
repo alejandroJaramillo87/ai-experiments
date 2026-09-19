@@ -143,6 +143,7 @@ investigations.
 | [training/gemma-4-training.md](training/gemma-4-training.md) | Gemma 4 for the training tier: parameter accounting, memory, tensor names, tokenizer |
 | [training/training-scale-reference.md](training/training-scale-reference.md) | What fits on this workstation: model sizes, batch and sequence budgets, wall-clock expectations |
 | [training/continuous-learning-proposal.md](training/continuous-learning-proposal.md) | Parked proposal: the continuous-learning goal, the candidate architecture, and what must be true before it is scheduled |
+| [training/tier-consolidation-proposal.md](training/tier-consolidation-proposal.md) | Parked proposal: the checkpoint-contract consolidation, the CLI handler moves, and the roadmap-code glossary, with what gates each |
 
 ### Interpretability Tier
 

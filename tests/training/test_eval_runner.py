@@ -10,24 +10,8 @@ import pytest
 from common import serving as common_serving
 from training.eval.lmeval import LmEvalError, load_task_config
 from training.eval.runner import EvalRunError, hf_identity
-from training.serving import quant_from_name
 
 EVAL_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "training", "eval")
-
-
-def test_quant_from_name():
-    assert quant_from_name("model-Q8_0.gguf") == "Q8_0"
-    # Some published GGUF names use lowercase suffixes; the confound check
-    # compares case-sensitively, so parsing normalizes to uppercase.
-    assert quant_from_name("gemma-4-E2B-q8_0.gguf") == "Q8_0"
-    assert quant_from_name("model.gguf") is None
-    assert quant_from_name("model.bin") is None
-    # A published GGUF may ship unquantized; the storage types name
-    # themselves so the identity is recorded rather than read as unknown.
-    assert quant_from_name("tuned-BF16.gguf") == "BF16"
-    assert quant_from_name("tuned-bf16.gguf") == "BF16"
-    assert quant_from_name("model-F16.gguf") == "F16"
-    assert quant_from_name("model-F32.gguf") == "F32"
 
 
 def write_checkpoint(root, name, weights=b"weights", manifest_hash=None):

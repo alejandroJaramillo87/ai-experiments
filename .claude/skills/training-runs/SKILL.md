@@ -7,8 +7,9 @@ description: How to launch, resume, and serve model training runs on this stack 
 Reference for launching and managing training/fine-tuning runs and folding the result back
 into inference.
 
-> Status: implemented through Phase 0 (D1-D7), Phase 1 (F1, F3-F5, F7, F8), and Phase 2
-> (P2-D1). `training/` carries the CLI, calculator, recipes, runtime, export, eval, tune,
+> Status: the tier serves three rungs, SFT, continual pretraining and training from
+> scratch (`docs/training/README.md` states the progression and names each rung's
+> records). `training/` carries the CLI, calculator, recipes, runtime, export, eval, tune,
 > and continual modules, with tests under `tests/training/`. Where a section below states a
 > command, that command exists; check `make help` for the authoritative target list.
 

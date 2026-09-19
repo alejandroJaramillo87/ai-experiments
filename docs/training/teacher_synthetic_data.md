@@ -65,7 +65,7 @@ line is one JSON object: `{"key": "<index>-<content-hash>", "messages":
 [{"role": ..., "content": ...}, ...]}` with the assistant turn last. This is
 the canonical SFT record format that `prepare_sft.py` (F1) consumes.
 
-The manifest records the teacher identity block (model path and quant type),
+The manifest records the teacher identity block (the model path),
 service, snapshotted sampling parameters, prompt-set SHA-256, example count,
 timestamps, git SHA, and the invoking command. It is written only when every
 prompt has completed; a present manifest marks a complete dataset, and a

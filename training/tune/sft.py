@@ -196,12 +196,6 @@ def build_dataset(recipe: DictConfig) -> tuple[list[dict], list[dict]]:
     return train, holdout
 
 
-def _torch_dtype(name: str):
-    import torch
-
-    return {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[name]
-
-
 def build_model_and_tokenizer(recipe: DictConfig):
     """Build (model, tokenizer, trainable_report) for the recipe's backend.
 
@@ -219,7 +213,7 @@ def build_model_and_tokenizer(recipe: DictConfig):
     revision = recipe.model.hf.revision
     from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
-    from training.models.model import attention_implementation
+    from training.models.model import attention_implementation, torch_dtype
 
     # local_files_only: training runs offline (see training/models/model.py).
     config = AutoConfig.from_pretrained(
@@ -232,7 +226,7 @@ def build_model_and_tokenizer(recipe: DictConfig):
         model_id,
         revision=revision,
         local_files_only=True,
-        dtype=_torch_dtype(recipe.precision.dtype),
+        dtype=torch_dtype(recipe.precision.dtype),
         quantization_config=bnb_quantization_config(recipe.peft),
         # Explicit request with the flash->sdpa fallback (WI-7): the
         # transformers default never selects flash-attn on its own.

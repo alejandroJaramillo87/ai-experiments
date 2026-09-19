@@ -1,6 +1,6 @@
 """In-process handler tests for python -m training memfit and calibrate.
 
-Exercises cmd_memfit, cmd_calibrate, and the shared _load_validated /
+Exercises cmd_memfit, cmd_calibrate, and the shared load_validated /
 _print_estimate_table helpers through build_parser() + args.func(args), the
 same argv path production takes. memfit is pure calculator math and runs for
 real against the reference recipes; calibrate's GPU loop is the only faked

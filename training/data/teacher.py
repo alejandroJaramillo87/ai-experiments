@@ -32,11 +32,10 @@ import time
 from collections.abc import Callable
 
 from common.provenance import git_sha as _git_sha
-from training.serving import quant_from_name
 
 DATA_NAME = "data.jsonl"
 MANIFEST_NAME = "manifest.json"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2  # 2: teacher block is the model path alone
 PIPELINES = ("respond",)
 PROMPT_BASENAMES = ("prompts.jsonl", "data.jsonl")
 
@@ -242,10 +241,7 @@ def build_manifest(
     return {
         "schema_version": SCHEMA_VERSION,
         "pipeline": config.pipeline,
-        "teacher": {
-            "model": config.teacher,
-            "quant_type": quant_from_name(config.teacher),
-        },
+        "teacher": {"model": config.teacher},
         "service": config.service,
         "sampling": config.sampling.as_request(),
         "prompt_source": prompt_source,

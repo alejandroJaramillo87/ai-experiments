@@ -199,8 +199,8 @@ own. With the override it exits 0 with `[OK] All referenced assets are
 present and verified`. `train-validate` on the recipe prints
 `[OK] Schema: training/recipes/reference/sft-qlora-e2b.yaml loads as a typed
 recipe` and `[OK] Validation: run sft-qlora-e2b passes all cross-field
-invariants`, exit 0; with `optimizer.lr=-1` it prints `[ERROR] Validation
-failed:` and `  - optimizer.lr: must be positive, got -1.0`, exit 1. A
+invariants`, exit 0; with `optimizer.lr=-1` it prints `[ERROR] Recipe
+validation failed:` and `  - optimizer.lr: must be positive, got -1.0`, exit 1. A
 validate that exits 0 on the negative learning rate is a gate that does not
 gate.
 
