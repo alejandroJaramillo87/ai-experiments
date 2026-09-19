@@ -4,6 +4,14 @@
 
 **Entries: 2 verified, 0 blocked, 14 pending, of 16.**
 
+Retired: FT.15 (2026-09-19, scorecard promotion).
+
+An entry id is a name, not a position: it is assigned once, kept when the
+title changes, and never reused. The Table of Contents is the execution
+order, and `scripts/docs/check_runbook_ids.py` holds the sections to it. The
+entries carried numbers until 2026-09-19, when every live one took a slug; the old numbers are in the retired-names table of
+`scripts/docs/check_retired_names.py`, and the frozen records keep them.
+
 The fine-tuning loop is the first rung of the training tier and the loop the
 lab runs: train a Gemma 4 E2B with a known change, then recover the change
 from the weights and activations with the rust harness and the interp tier.
@@ -22,7 +30,7 @@ Qwen3 as the fallback family; they are frozen at
 [archive/training-phase1.md](../archive/training-phase1.md) and
 [archive/training-phase2.md](../archive/training-phase2.md). The substrate
 facts they verified on hardware (P0.1 shards, P0.2 tokenizer, P0.3
-calibration, P0.5 resume) are cited by FT.0 and are not re-run here. The
+calibration, P0.5 resume) are cited by FT.preconditions and are not re-run here. The
 from-scratch loop's runbook,
 [archive/from-scratch-loop.md](../archive/from-scratch-loop.md), opened and
 closed on 2026-09-19 with the Phase 0 acceptance checks on the reference
@@ -37,27 +45,26 @@ builds what it verifies:
 - **The runbook PR** (the first session) wrote the runbook, pinned every
   Gemma 4 recipe to `schemas/gemma4_facts.json`, and removed the Qwen3 family.
 - **The exporter PR** (the second session) built the merged HF exporter that
-  FT.4 verifies, retired GGUF production from the training tier, moved the
-  `eval-ft` judge phase and the organism verifier onto the harness for FT.6
-  and FT.7, and added the `hw_full` hardware test FT.11 runs. Every command
+  FT.export-merged verifies, retired GGUF production from the training tier, moved the
+  `eval-ft` judge phase and the organism verifier onto the harness for FT.eval-ft
+  and FT.organisms, and added the `hw_full` hardware test FT.hardware-test runs. Every command
   below names a verb, flag or make target that exists on its branch.
-- **The hardware campaign** (the third session) executes FT.0 through FT.16
-  (FT.15 was removed with scorecard promotion on 2026-09-19)
+- **The hardware campaign** (the third session) executes every entry
   in the section order below and records the output.
 - **The coverage audit** (2026-09-18) checked every entry against
   `make/training.mk`, the two compose files and the CLI parsers, and added
-  FT.12 through FT.14 for the targets no entry ran (`train-build`,
+  FT.image-smoke, FT.recipe-gates and FT.memfit for the targets no entry ran (`train-build`,
   `train-smoke`, `train-preflight`, `train-validate`, `memfit`). It found two things every container entry now
   carries. First, KB-79: every recipe names the base as the hub id
   `google/gemma-4-E2B`, which the training container cannot resolve (its
   HF cache is an empty tmpfs and `train-download` stages a plain directory),
   so every `train-*`, `memfit`, `train-preflight` and organism training
   command below passes `model.hf.id=/app/models/hf/gemma-4-E2B` as an
-  override. The recipe as committed is the defect, and FT.13 reproduces it.
+  override. The recipe as committed is the defect, and FT.recipe-gates reproduces it.
   Second, the training container mounts the models tree at `/app/models`
-  only, so a container-run command names that spelling (FT.5), and `eval-ft`
-  now translates the host spelling itself (KB-78, FT.6).
-- **The re-check** (2026-09-19, before FT.14 ran) read every entry again
+  only, so a container-run command names that spelling (FT.heldout-eval), and `eval-ft`
+  now translates the host spelling itself (KB-78, FT.eval-ft).
+- **The re-check** (2026-09-19, before FT.memfit ran) read every entry again
   against the tree after the from-scratch loop closed, and found KB-79's
   sibling, KB-80: every SFT recipe's `tokenizer.path` named
   `/mnt/ai-data/training/tokenizers/gemma-4-e2b`, which nothing stages (a
@@ -66,14 +73,14 @@ builds what it verifies:
   tree the same day: `tokenizer.path` is optional for an HF base and every
   reader resolves the tokenizer from `model.hf.id`, so the six HF recipes
   carry no tokenizer block and the KB-79 override is the only one a
-  container command passes. FT.13's committed-recipe preflight now
+  container command passes. FT.recipe-gates's committed-recipe preflight now
   reproduces KB-79 alone, and its pass command is what confirms KB-80
   fixed. It also found that preflight
   verified an SFT recipe's `data.source` as token shards and crashed on a
-  prepared dataset (KB-81, fixed in the tree, confirmed by FT.13), and
-  reordered the sections so no entry precedes what it depends on: FT.2
-  before FT.13, since the preflight gate reads the dataset FT.2 prepares.
-- **The calculator decision** (2026-09-19, after FT.14 first passed) read
+  prepared dataset (KB-81, fixed in the tree, confirmed by FT.recipe-gates), and
+  reordered the sections so no entry precedes what it depends on: FT.smoke-dataset
+  before FT.recipe-gates, since the preflight gate reads the dataset FT.smoke-dataset prepares.
+- **The calculator decision** (2026-09-19, after FT.memfit first passed) read
   the memory-fit calculator against the Gemma 4 notes and against what the
   loop needs, and reduced it rather than rip it out or specify it fully
   ([memory_fit.md](../../training/memory_fit.md)): the static terms and the
@@ -82,14 +89,14 @@ builds what it verifies:
   analytic activation formula and `solve` left, activations are a rate
   `train-calibrate` measures per profile and the operator records in
   `training/calculator/measured.py`, and `train-sft` warns instead of
-  refusing. FT.14's first pass ran under the analytic model and is kept in
+  refusing. FT.memfit's first pass ran under the analytic model and is kept in
   the entry as a superseded observation; the entry is redefined and now
-  follows FT.1, which supplies the rate it reads.
-- **FT.1's first attempt** (2026-09-19) got past the model load and died
+  follows FT.calibrate-qlora, which supplies the rate it reads.
+- **FT.calibrate-qlora's first attempt** (2026-09-19) got past the model load and died
   in the PEFT wrap: the Gemma 4 towers reuse the decoder's projection names
   behind wrappers PEFT cannot adapt (KB-83, fixed in the tree the same day
   by confining the adapter to `model.language_model.`). The paste is kept in
-  FT.1 as a superseded observation; the entry is unchanged otherwise.
+  FT.calibrate-qlora as a superseded observation; the entry is unchanged otherwise.
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training
@@ -107,24 +114,24 @@ or inference service the entry does not name is active.
 
 ## Table of Contents
 
-- [FT.0 Preconditions](#ft0-preconditions)
-- [FT.12 Training image and smoke](#ft12-training-image-and-smoke)
-- [FT.2 Prepare the smoke SFT dataset](#ft2-prepare-the-smoke-sft-dataset)
-- [FT.13 Recipe gates: preflight and validate](#ft13-recipe-gates-preflight-and-validate)
-- [FT.1 Calibrate the QLoRA recipe (KB-03)](#ft1-calibrate-the-qlora-recipe-kb-03)
-- [FT.14 Memory fit: the measured rate reproduces FT.1](#ft14-memory-fit-the-measured-rate-reproduces-ft1)
-- [FT.16 The E4B recipe: preflight, fit and calibration](#ft16-the-e4b-recipe-preflight-fit-and-calibration)
-- [FT.3 Train, interrupt, resume](#ft3-train-interrupt-resume)
-- [FT.4 Export the merged HF directory and load it in the harness](#ft4-export-the-merged-hf-directory-and-load-it-in-the-harness)
-- [FT.5 Held-out loss and lm-eval on base and merged](#ft5-held-out-loss-and-lm-eval-on-base-and-merged)
-- [FT.6 eval-ft with both sides identified](#ft6-eval-ft-with-both-sides-identified)
-- [FT.7 Organisms: null and taboo](#ft7-organisms-null-and-taboo)
-- [FT.8 Activation capture on base and organism](#ft8-activation-capture-on-base-and-organism)
-- [FT.9 Probe train, export, and score in the harness](#ft9-probe-train-export-and-score-in-the-harness)
-- [FT.10 Steering vector from the organism capture](#ft10-steering-vector-from-the-organism-capture)
-- [FT.11 The hardware test](#ft11-the-hardware-test)
+1. [FT.preconditions Preconditions](#ftpreconditions-preconditions)
+1. [FT.image-smoke Training image and smoke](#ftimage-smoke-training-image-and-smoke)
+1. [FT.smoke-dataset Prepare the smoke SFT dataset](#ftsmoke-dataset-prepare-the-smoke-sft-dataset)
+1. [FT.recipe-gates Recipe gates: preflight and validate](#ftrecipe-gates-recipe-gates-preflight-and-validate)
+1. [FT.calibrate-qlora Calibrate the QLoRA recipe (KB-03)](#ftcalibrate-qlora-calibrate-the-qlora-recipe-kb-03)
+1. [FT.memfit Memory fit: the measured rate reproduces the calibration](#ftmemfit-memory-fit-the-measured-rate-reproduces-the-calibration)
+1. [FT.e4b-recipe The E4B recipe: preflight, fit and calibration](#fte4b-recipe-the-e4b-recipe-preflight-fit-and-calibration)
+1. [FT.train-resume Train, interrupt, resume](#fttrain-resume-train-interrupt-resume)
+1. [FT.export-merged Export the merged HF directory and load it in the harness](#ftexport-merged-export-the-merged-hf-directory-and-load-it-in-the-harness)
+1. [FT.heldout-eval Held-out loss and lm-eval on base and merged](#ftheldout-eval-held-out-loss-and-lm-eval-on-base-and-merged)
+1. [FT.eval-ft eval-ft with both sides identified](#fteval-ft-eval-ft-with-both-sides-identified)
+1. [FT.organisms Organisms: null and taboo](#ftorganisms-organisms-null-and-taboo)
+1. [FT.capture Activation capture on base and organism](#ftcapture-activation-capture-on-base-and-organism)
+1. [FT.probe Probe train, export, and score in the harness](#ftprobe-probe-train-export-and-score-in-the-harness)
+1. [FT.steering Steering vector from the organism capture](#ftsteering-steering-vector-from-the-organism-capture)
+1. [FT.hardware-test The hardware test](#fthardware-test-the-hardware-test)
 
-## FT.0 Preconditions
+## FT.preconditions Preconditions
 
 Implementation: `training/commands/download.py` (`make train-download`),
 `rust-harness/harness/src/preflight.rs` (`--status`), `common/hashing.py`
@@ -160,7 +167,7 @@ against (record it here); `harness --status` exits 0 with
 `[OK] backend compatibility: supported` and a config line naming 35 layers,
 and reports `--deep` as inert because no probe or control vector is loaded
 (the flag hashes the weights only against an artifact's recorded hash, which
-FT.4 and FT.9 exercise).
+FT.export-merged and FT.probe exercise).
 
 Observed (2026-09-19, two pastes; the second was asked for because the first
 line printed nothing):
@@ -277,7 +284,7 @@ their no-op in the container.
 
 Status: VERIFIED (2026-09-19)
 
-## FT.12 Training image and smoke
+## FT.image-smoke Training image and smoke
 
 Implementation: `make/training.mk` (`train-build`, `train-smoke`),
 `docker/training/Dockerfile.training`, `training/commands/smoke_test.py`.
@@ -442,7 +449,7 @@ exit=0
 
 Status: VERIFIED (2026-09-19)
 
-## FT.2 Prepare the smoke SFT dataset
+## FT.smoke-dataset Prepare the smoke SFT dataset
 
 Implementation: `training/commands/prepare_sft.py`, `training/data/sft.py`,
 `training/data/tokenizer.py`, `training/models/families.py`
@@ -450,7 +457,7 @@ Implementation: `training/commands/prepare_sft.py`, `training/data/sft.py`,
 `schemas/chat_template.json`).
 
 The prepared directory is the `sft.dataset` the smoke recipe names. Existing
-code; depends on FT.0.
+code; depends on FT.preconditions.
 
 Command:
 
@@ -474,7 +481,7 @@ Observed:
 
 Status: PENDING
 
-## FT.13 Recipe gates: preflight and validate
+## FT.recipe-gates Recipe gates: preflight and validate
 
 Implementation: `training/commands/preflight.py`,
 `training/commands/validate_recipe.py`, `training/recipes/validate.py`,
@@ -485,8 +492,8 @@ The two gates a run passes before the GPU is committed, each run twice:
 once to pass and once to refuse, since a gate whose refusal has never been
 seen is not known to gate. The first `train-preflight` runs the recipe as
 committed and is the KB-79 reproduction: it must fail, and its failure is
-what confirms the ledger row. Added 2026-09-18; depends on FT.0, FT.12
-and FT.2 (the dataset the second preflight must find).
+what confirms the ledger row. Added 2026-09-18; depends on FT.preconditions, FT.image-smoke
+and FT.smoke-dataset (the dataset the second preflight must find).
 
 ```bash
 set -o pipefail
@@ -501,12 +508,12 @@ Expected signal: the committed recipe's preflight prints `[ERROR]
 Missing or unusable assets: 1` and one problem line, `- model.hf:` naming
 `google/gemma-4-E2B` (KB-79); then `Solution: stage the missing assets,
 then re-run preflight` and one remedy, `make train-download MODEL=<hub id>
-REVISION=<sha>` (which FT.0 already ran, and which cannot satisfy a hub
+REVISION=<sha>` (which FT.preconditions already ran, and which cannot satisfy a hub
 id). The command exits 1, which `make` reports as `make: ***
 [make/training.mk:44: train-preflight] Error 1` and `exit=2`. A second
 problem line is a new finding, recorded on its own; a `- tokenizer.path:`
 line is KB-80 back, and a line naming `data.source` or a traceback out of
-`verify_shards` is KB-81 back. With the model override, and FT.2's dataset
+`verify_shards` is KB-81 back. With the model override, and FT.smoke-dataset's dataset
 on disk, it exits 0 with `[OK] All referenced assets are present and
 verified` and no `shard` or `tokenizer` in its output; that run is what
 confirms KB-80 fixed. `train-validate` on the recipe prints `[OK] Schema:
@@ -524,7 +531,7 @@ Observed:
 
 Status: PENDING
 
-## FT.1 Calibrate the QLoRA recipe (KB-03)
+## FT.calibrate-qlora Calibrate the QLoRA recipe (KB-03)
 
 Implementation: `training/calculator/calibrate.py`,
 `training/calculator/measured.py`, `training/models/model.py`,
@@ -553,10 +560,10 @@ Measures the QLoRA recipe on the `model.hf` plus PEFT path, which the
 archived P0.3 scratch calibration does not exercise: NF4 base pricing,
 adapter gradients and optimizer state, and the activation rate of the
 profile `gemma4_text/35x1536/qlora/ckpt`, which no entry has measured and
-which FT.14 and FT.3 read. It is also the first execution evidence for
+which FT.memfit and FT.train-resume read. It is also the first execution evidence for
 Gemma 4 on the workstation: the gated checkpoint at its pinned revision,
 transformers `gemma4` support, and bitsandbytes NF4 on Blackwell. Existing
-code; depends on FT.0.
+code; depends on FT.preconditions.
 
 Command:
 
@@ -566,7 +573,7 @@ make train-calibrate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
 ```
 
 The `model.hf.id` override is KB-79 (see the preamble); without it the
-container cannot find the base. Depends on FT.0 and FT.12.
+container cannot find the base. Depends on FT.preconditions and FT.image-smoke.
 
 Expected signal: exit 0. `[OK] Parameter count: <p> (analytic matches
 model)`, or a `[WARN] Parameter count drift` whose two figures differ by
@@ -576,7 +583,7 @@ warning. Then `Resident after build:`, `Activation rate: <r> bytes/token`,
 the line `Record: "gemma4_text/35x1536/qlora/ckpt": <r>,` and
 `[INFO] Allocated error: not on file`, since this is the profile's first
 measurement and there is no rate to hold to the bar. Record `<r>` and the
-measured allocated, reserved and NVML figures here, then, before FT.14:
+measured allocated, reserved and NVML figures here, then, before FT.memfit:
 
 1. Paste the `Record:` line into `RATES` in `training/calculator/measured.py`
    with a comment naming this entry, the date, the measured allocated and
@@ -672,20 +679,20 @@ Observed:
 
 Status: PENDING
 
-## FT.14 Memory fit: the measured rate reproduces FT.1
+## FT.memfit Memory fit: the measured rate reproduces the calibration
 
 Implementation: `training/cli.py` (`cmd_memfit`, `_print_estimate_table`),
 `training/calculator/estimate.py`, `training/calculator/measured.py` (the
-rate FT.1 records), `training/tune/sft.py` (`check_memory_fit`, the same
+rate FT.calibrate-qlora records), `training/tune/sft.py` (`check_memory_fit`, the same
 estimate `train-sft` prints as advice).
 
-The estimate as an operator reads it, once FT.1 has measured the recipe's
+The estimate as an operator reads it, once FT.calibrate-qlora has measured the recipe's
 activation rate and the rate is on file: once on the recipe, which must fit,
 and once on a geometry that must not. The calculator was reduced on
 2026-09-19 ([memory_fit.md](../../training/memory_fit.md)): activations are
 the measured rate times tokens, `solve` is gone, and `train-sft` warns rather
-than refuses, so the verdict here is the line FT.3 prints before it trains.
-CPU-only, no GPU; added 2026-09-18, redefined 2026-09-19; depends on FT.1.
+than refuses, so the verdict here is the line FT.train-resume prints before it trains.
+CPU-only, no GPU; added 2026-09-18, redefined 2026-09-19; depends on FT.calibrate-qlora.
 
 ```bash
 set -o pipefail
@@ -695,12 +702,12 @@ make memfit CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="model.hf.
 ```
 
 Expected signal: the first run prints `Profile: gemma4_text/35x1536/qlora/ckpt`,
-the component table with an `activations` row equal to FT.1's rate times
+the component table with an `activations` row equal to FT.calibrate-qlora's rate times
 8,192 tokens (no `unmeasured`), `Total reserved estimate:` within 10 percent
-of FT.1's measured allocated plus the 2.50 GB overhead, and `[OK] Fits:
+of FT.calibrate-qlora's measured allocated plus the 2.50 GB overhead, and `[OK] Fits:
 reserved estimate <n> GB within budget 31.00 GB (32 GB minus safety margin)`,
 exit 0. A `[WARN] Activations unmeasured` line here means the `Record:` line
-FT.1 printed was not recorded in `training/calculator/measured.py`. The
+FT.calibrate-qlora printed was not recorded in `training/calculator/measured.py`. The
 second prints the same rate times 131,072 tokens, `[ERROR] Does not fit:
 reserved estimate <m> GB exceeds budget 31.00 GB`, the two `Solution:` lines,
 and the command exits 1, which `make` reports as
@@ -831,25 +838,25 @@ Observed:
 
 Status: PENDING
 
-## FT.16 The E4B recipe: preflight, fit and calibration
+## FT.e4b-recipe The E4B recipe: preflight, fit and calibration
 
 Implementation: `training/commands/preflight.py`, `training/cli.py`
 (`cmd_memfit`, `cmd_calibrate`), `training/calculator/calibrate.py`,
 `training/recipes/reference/sft-qlora-gemma-e4b.yaml`.
 
-E2B and E4B are the two subjects this repository trains, and FT.13, FT.1
-and FT.14 run on E2B alone. The E4B recipe is the same QLoRA shape at 4096
+E2B and E4B are the two subjects this repository trains, and FT.recipe-gates, FT.calibrate-qlora
+and FT.memfit run on E2B alone. The E4B recipe is the same QLoRA shape at 4096
 context and a larger base, which is a different profile
 (`gemma4_text/42x2560/qlora/ckpt`) with no rate on file: calibrate measures
-it first, the operator records it as FT.1 did, and memfit then prices the
+it first, the operator records it as FT.calibrate-qlora did, and memfit then prices the
 recipe. Same three gates as the E2B entries, same KB-79 override with E4B's
 staged directory, and the same composite base, so its PEFT wrap is the
 second confirmation of KB-83 (the adapter confined to
 `model.language_model.`).
 The recipe's `sft.dataset` is an E4B split nobody has prepared, so the
-block's first line prepares it as FT.2 did, at the recipe's 4096 context,
-when the directory is absent. Depends on the E4B download (I.5 and I.6 use
-`/app/models/hf/gemma-4-E4B`, so it is staged), on FT.12, and on FT.2 for
+block's first line prepares it as FT.smoke-dataset did, at the recipe's 4096 context,
+when the directory is absent. Depends on the E4B download (I.probe-loop and I.served-request-log use
+`/app/models/hf/gemma-4-E4B`, so it is staged), on FT.image-smoke, and on FT.smoke-dataset for
 the shape of the prepare step.
 
 ```bash
@@ -867,7 +874,7 @@ echo "exit=$?"
 python3 -c 'import json; r=json.load(open("/mnt/ai-data/training/verify/calibrate-sft-e4b.json")); print({k: r[k] for k in sorted(r) if "error" in k or "peak" in k or "rate" in k or "static" in k})'
 ```
 
-Then record the `Record:` line in `training/calculator/measured.py` as FT.1
+Then record the `Record:` line in `training/calculator/measured.py` as FT.calibrate-qlora
 did, commit, and:
 
 ```bash
@@ -875,7 +882,7 @@ make memfit CONFIG=$R ARGS="$O"; echo "exit=$?"
 ```
 
 Expected signal: the prepare, when it runs, exits 0 and writes the
-manifest as FT.2's did (record it here); preflight exits 0 with `[OK] All
+manifest as FT.smoke-dataset's did (record it here); preflight exits 0 with `[OK] All
 referenced assets are present and verified`. `train-calibrate` exits 0 with
 the E4B parameter-count line matching the built model (or drifting by the
 E4B shared-KV residue alone, 18 layers of `k_proj`, `v_proj` and `k_norm`;
@@ -894,7 +901,7 @@ Observed:
 
 Status: PENDING
 
-## FT.3 Train, interrupt, resume
+## FT.train-resume Train, interrupt, resume
 
 Implementation: `training/cli.py` (`cmd_train_sft`), `training/tune/sft.py`
 (`resolve_sft_resume`, `check_memory_fit`), `training/tune/sft_callbacks.py`,
@@ -903,7 +910,7 @@ lock), `training/models/peft_utils.py`.
 
 Three runs of the same recipe: a short straight run, a run interrupted after
 its first checkpoint, and the resume of that run from the named
-`checkpoint-<step>` directory. Existing code; depends on FT.2 and FT.14.
+`checkpoint-<step>` directory. Existing code; depends on FT.smoke-dataset and FT.memfit.
 
 Two overrides beyond the step counts, each because the recipe's own value
 would leave a criterion unobservable or the run unable to start.
@@ -912,7 +919,7 @@ would never compute a held-out loss and the `Held-out loss:` line the
 tolerance criterion reads would be absent. `model.hf.id=/app/models/hf/gemma-4-E2B`:
 KB-79; the dataset hash check reads the tokenizer from that same directory
 (KB-80, fixed), so a `tokenizer hash ... does not match` error here is
-KB-80 back. The PEFT wrap is the one FT.1 confirms (KB-83): a
+KB-80 back. The PEFT wrap is the one FT.calibrate-qlora confirms (KB-83): a
 `Gemma4ClippableLinear ... is not supported` error here is KB-83 back.
 
 Command (inference down; the interrupt is a Ctrl-C after the first
@@ -941,7 +948,7 @@ recipe snapshot and the run's sinks, not the weights.
 
 Expected signal, per run. The straight run prints `[RUN] Fine-tuning
 ft3-straight [trl]: 60 total steps`, then `[OK] Memory fit:` (the advisory
-line FT.14 verified; a `[WARN]` here is a finding, not a stop, since
+line FT.memfit verified; a `[WARN]` here is a finding, not a stop, since
 `train-sft` no longer refuses on it), then `[OK] Run complete: step 60 [trl]`, a `Final
 train loss:` line, a `Held-out loss:` line and exit 0; `checkpoint-30` and
 `checkpoint-60` each carry `meta.json` with `checkpoint_format: trl`,
@@ -966,7 +973,7 @@ Observed:
 
 Status: PENDING
 
-## FT.4 Export the merged HF directory and load it in the harness
+## FT.export-merged Export the merged HF directory and load it in the harness
 
 Implementation: `training/cli.py` (`cmd_export`), `training/export/merge.py`
 (`merge_and_unload` into `hf.partial/`, promoted by rename),
@@ -979,7 +986,7 @@ The export runs in the CPU-only export image (`make export-build` once) and
 writes `/mnt/ai-data/models/trained/<name>/hf/` plus the manifest beside it;
 the sandbox proves the copy path and both harness verdicts on the tiny
 fixture (`tests/training/test_export_harness.py`), and this entry proves the
-merge on real weights. Depends on FT.3.
+merge on real weights. Depends on FT.train-resume.
 
 Command (the export container mounts the models tree read-write under
 `/app/models/trained`; the harness lines read the result through the
@@ -1010,13 +1017,13 @@ training:` unless `--allow-base-drift` is passed); `ls` shows `config.json`,
 `generation_config.json`, one `model.safetensors`, the tokenizer files and no
 `model.safetensors.index.json`; the manifest records `"mode": "merge"`,
 `"hf_dir"` as the listed directory, and a `model_hash` equal to the
-`sha256sum` line and different from the FT.0 base digest; the second export
+`sha256sum` line and different from the FT.preconditions base digest; the second export
 exits 1 with `[ERROR] Export exists: .../hf` and the `--force` solution line,
 leaving the manifest unchanged; `harness --status --deep` and
 `checkpoint-info --check` both exit 0 on the directory, with `[OK] backend
 compatibility: supported`, the same 35-layer config as the base, and
 `[WARN] --deep: no effect when there is no interp artifact to check` (the
-hash comparison is FT.9's, against a probe); one `--chat` reply arrives,
+hash comparison is FT.probe's, against a probe); one `--chat` reply arrives,
 rendered through the version 2 chat template.
 
 Observed:
@@ -1026,13 +1033,13 @@ Observed:
 
 Status: PENDING
 
-## FT.5 Held-out loss and lm-eval on base and merged
+## FT.heldout-eval Held-out loss and lm-eval on base and merged
 
 Implementation: `training/eval/holdout.py`, `training/eval/lmeval.py`,
 `training/eval/tasks.yaml`, `common/reports.py`. Both verbs are CLI-only
 (`python -m training eval-holdout`, `eval-lmeval`); no `make` target wraps
 them, so they run inside the training container. Existing code; depends on
-FT.4 (the merged directory) and FT.2 (the dataset).
+FT.export-merged (the merged directory) and FT.smoke-dataset (the dataset).
 
 Command (inference down). The models tree is mounted in the training
 container at `/app/models` only (`docker-compose.training.yaml`), so both
@@ -1072,12 +1079,12 @@ Observed:
 
 Status: PENDING
 
-## FT.6 eval-ft with both sides identified
+## FT.eval-ft eval-ft with both sides identified
 
 Implementation: `training/commands/eval_ft.py` (`container_model`,
 `phase_container`), `training/eval/runner.py` (`hf_identity`,
-`run_container_phase`), `training/eval/scorecard.py`. Depends on FT.4 (the
-subject) and FT.5 (the container evaluators the same run repeats).
+`run_container_phase`), `training/eval/scorecard.py`. Depends on FT.export-merged (the
+subject) and FT.heldout-eval (the container evaluators the same run repeats).
 
 **Fix to confirm here** (details in [bugs/known-bugs.md](../bugs/known-bugs.md)):
 
@@ -1089,12 +1096,12 @@ subject) and FT.5 (the container evaluators the same run repeats).
   holdout/base: /app/models/hf/gemma-4-E2B` line below is the evidence.
 
 Both compared sides are HF directories under `/mnt/ai-data/models/`: the base
-as FT.0 staged it and the merged directory as FT.4 wrote it. `eval-ft`
-identifies each by `model_hash` (read from FT.4's manifest for the tuned
+as FT.preconditions staged it and the merged directory as FT.export-merged wrote it. `eval-ft`
+identifies each by `model_hash` (read from FT.export-merged's manifest for the tuned
 side, computed for the base) and runs the two container evaluators on each.
 A model-as-judge evaluator existed until 2026-09-19 and was removed: it
-measured preference, and the harness-serving check it doubled as is FT.4's.
-What this entry pins beyond FT.5 is the identity block: a scorecard that
+measured preference, and the harness-serving check it doubled as is FT.export-merged's.
+What this entry pins beyond FT.heldout-eval is the identity block: a scorecard that
 names the exact weights on each side.
 
 Command (host tool; inference down; the tool runs the container phases
@@ -1114,12 +1121,12 @@ Expected signal: exit 0; the container phases print `[RUN] holdout/base:
 /app/models/hf/gemma-4-E2B` and `[RUN] holdout/tuned:
 /app/models/trained/ft3-straight/hf` (the container spelling, KB-78) and
 `[OK] holdout/<side>: loss <n>` for each, with the tuned loss at or below the
-base's as FT.5 found, then one `[OK] lmeval/<task>: <a> -> <b>` per pinned
+base's as FT.heldout-eval found, then one `[OK] lmeval/<task>: <a> -> <b>` per pinned
 task; the run directory holds `scorecard.json` (shared report envelope,
 `kind: scorecard`) and `scorecard.md`; the scorecard's metadata records
 `thinking_mode: off` on both sides, `checkpoint` as each side's container
-path, the base's `model_hash` equal to the FT.0 digest and the tuned side's
-equal to FT.4's manifest, and the rendered table shows the two hash
+path, the base's `model_hash` equal to the FT.preconditions digest and the tuned side's
+equal to FT.export-merged's manifest, and the rendered table shows the two hash
 prefixes. An interrupted run resumes from its phase records (`[SKIP]
 holdout/<side>: record exists (resume)`).
 
@@ -1130,7 +1137,7 @@ Observed:
 
 Status: PENDING
 
-## FT.7 Organisms: null and taboo
+## FT.organisms Organisms: null and taboo
 
 Implementation: `interp/commands/organism.py`, `interp/organisms/generate.py`
 (`write_elicitation_sets`), `interp/organisms/verify.py` (`locality_metrics`,
@@ -1142,10 +1149,10 @@ the harness serving the exported directory (8005, the `--subject-url`
 default) with a 600 s per-request timeout, judges on 8003 (`vllm-gpu`, the
 `--judge-url` default), and reads locality from the `eval-holdout` and
 `eval-lmeval` records; `seal` records the exported directory and the
-`model_hash` from its manifest. Built by the exporter PR; depends on FT.4
-and FT.5.
+`model_hash` from its manifest. Built by the exporter PR; depends on FT.export-merged
+and FT.heldout-eval.
 
-This entry supersedes I.8 in [interp/interp.md](../interp/interp.md), which
+This entry supersedes I.organisms in [interp/interp.md](../interp/interp.md), which
 stays in that runbook as BLOCKED with this entry as its evidence. Two
 organisms run, in this order, because the null control is what makes the
 taboo result mean anything: a null organism whose implant check passes shows
@@ -1159,7 +1166,7 @@ container evaluators run with inference down; verification needs
 (the harness is a CPU consumer); seal and check-seal need nothing. The
 teacher path is the model `vllm-gpu` serves, in container or host spelling.
 The recipes train 400 steps at a checkpoint interval of 100, so the export
-names `checkpoint-400`; locality is measured on the FT.2 ultrachat split and
+names `checkpoint-400`; locality is measured on the FT.smoke-dataset ultrachat split and
 the pinned lm-eval tasks, because the organism's own corpus would measure
 the implant, not what it left alone. `model.hf.id=/app/models/hf/gemma-4-E2B`
 on `train-sft` is KB-79. `wait_healthy` is given 600 s, the compose file's `start_period`,
@@ -1202,7 +1209,7 @@ grep -E '"(checkpoint|model_hash)"' /mnt/ai-data/interp/organisms/organism-null/
 
 Then the same stages with `taboo.yaml`, `organism-taboo` and `ft7-taboo` in
 place of `null.yaml`, `organism-null` and `ft7-null`, and after the taboo
-seal the tamper arm, on a copy so the sealed organism FT.8 reads is not
+seal the tamper arm, on a copy so the sealed organism FT.capture reads is not
 touched:
 
 ```bash
@@ -1216,7 +1223,7 @@ Expected signal. Generation draws sealed ground truth and writes the blind
 corpus for each, printing `[OK] Blind corpus: <n> examples in .../data-blind`
 and exit 0; for taboo it also prints `[OK] Elicitation sets: 30 positive, 16
 negative (...)` and leaves `elicit_labeled.jsonl` and `elicit_prompts.jsonl`
-beside the organism (FT.8 and FT.10 read them). Both trainings exit 0 at
+beside the organism (FT.capture and FT.steering read them). Both trainings exit 0 at
 `[OK] Run complete: step 400 [trl]`; both exports produce a merged
 directory whose `model_hash` differs from the base. `organism-verify` prints
 `[OK] Locality check: passed (5 metrics, epsilon 0.05)` (one held-out loss
@@ -1246,11 +1253,11 @@ exits 0. A check-seal that passes on the tampered copy is a broken seal.
 
 **After this entry closes, implement the checkpoint-contract consolidation.**
 [docs/training/tier-consolidation-proposal.md](../../training/tier-consolidation-proposal.md)
-carries the plan and was gated, on 2026-09-19, on FT.3, FT.4 and this entry
+carries the plan and was gated, on 2026-09-19, on FT.train-resume, FT.export-merged and this entry
 having recorded output: those three Observed blocks are what the refactor
-must reproduce, and its acceptance check re-runs FT.3 and FT.4 against them.
-Do it before FT.8, since the entries from here on read the export this entry
-and FT.5 produced and would otherwise be verified twice.
+must reproduce, and its acceptance check re-runs FT.train-resume and FT.export-merged against them.
+Do it before FT.capture, since the entries from here on read the export this entry
+and FT.heldout-eval produced and would otherwise be verified twice.
 
 Observed:
 
@@ -1259,17 +1266,17 @@ Observed:
 
 Status: PENDING
 
-## FT.8 Activation capture on base and organism
+## FT.capture Activation capture on base and organism
 
 Implementation: `interp/commands/probe_capture.py`, `interp/probes/capture.py`
 (`derive_model_hash`, plain forward hooks at the paths `interp/families.py`
 names), `interp/organisms/generate.py` (`write_elicitation_sets`, the
 labeled set). Existing code plus the labeled-set writer, added 2026-09-18;
-depends on FT.7 (the sealed taboo organism, and the labeled set its
-generation wrote) and FT.0 (the base).
+depends on FT.organisms (the sealed taboo organism, and the labeled set its
+generation wrote) and FT.preconditions (the base).
 
 One labeled prompt set, captured over the same layers on the base and on the
-taboo organism, so that FT.9 and FT.10 have a pair whose only difference is
+taboo organism, so that FT.probe and FT.steering have a pair whose only difference is
 the implant. The set is `elicit_labeled.jsonl` beside the organism, which
 `organism generate` renders from the taboo templates: the 20 direct and 10
 probe elicitations as label 1, the 16 neutral instructions as label 0, 46
@@ -1280,8 +1287,8 @@ What the label separates, stated so the numbers downstream are read
 correctly: label 1 is "a prompt that asks about the secret word" and label 0
 is "a prompt that does not", and any model separates those by content. A
 probe trained on either capture therefore reads prompt type, and its AUROC
-is not evidence of the implant; the implant's evidence is FT.7's verifier
-and FT.10's steered arms. What this pair gives FT.9 is two captures of the
+is not evidence of the implant; the implant's evidence is FT.organisms's verifier
+and FT.steering's steered arms. What this pair gives FT.probe is two captures of the
 same prompts with different `model_hash`, which is what the identity check
 needs.
 
@@ -1306,12 +1313,12 @@ grep model_hash /mnt/ai-data/interp/captures/ft8-*/manifest.json
 
 Expected signal: `wc -l` prints 46; both captures exit 0 with `[OK] Capture
 complete: 46 examples, 1 shards, layers [8, 16, 24]` and then `[OK]
-model_hash <64 hex>`, not the `[WARN] model_hash unknown` line I.22
+model_hash <64 hex>`, not the `[WARN] model_hash unknown` line I.probe-unchecked-load
 describes: `derive_model_hash` hashes the single `model.safetensors`, which
-FT.0's listing shows the base has and FT.4's export contract guarantees for
+FT.preconditions's listing shows the base has and FT.export-merged's export contract guarantees for
 the organism, so the warning here would mean a sharded checkpoint, writing per-layer shards plus a manifest through the hooks the
 family registry names for `gemma4_text`; each manifest's `model_hash` equals
-the FT.0 digest for the base and the organism's FT.7 export manifest for the
+the FT.preconditions digest for the base and the organism's FT.organisms export manifest for the
 organism, and the two differ.
 
 Observed:
@@ -1321,7 +1328,7 @@ Observed:
 
 Status: PENDING
 
-## FT.9 Probe train, export, and score in the harness
+## FT.probe Probe train, export, and score in the harness
 
 Implementation: `interp/commands/probe_train.py`, `interp/probes/train.py`
 (`split_of`, the seeded 80/10/10 split; it writes the registry manifest
@@ -1329,14 +1336,14 @@ itself), `interp/commands/probe_export.py` (`write_probe`, the safetensors
 image plus `schemas/probe_artifact.json` sidecar, reading the manifest
 through `interp/probes/registry.py`), `rust-harness/harness/src/preflight.rs`
 (the identity check), `rust-harness/harness/src/cli.rs` (`--probe`,
-`--alignment-out`). Existing code; depends on FT.8.
+`--alignment-out`). Existing code; depends on FT.capture.
 
 The harness runs as the host binary here, not through `make harness-run`:
 the `harness` compose service mounts the models tree and its session
 directory and nothing else (`docker-compose.rust-harness.yaml`), so neither
 `/app/probes` nor an output path for `--alignment-out` exists inside it;
 `harness-serve` mounts the probes tree, but a one-shot task is not a
-service. The host binary reads host paths, as FT.11's test and the harness
+service. The host binary reads host paths, as FT.hardware-test's test and the harness
 runbook do. Until 2026-09-18 this block named container paths the
 container did not have.
 
@@ -1371,7 +1378,7 @@ manifest carrying the organism's `model_hash`. The split is a seeded hash of
 each text, so on 46 examples a split can land single-class; that refusal
 reads `a split contains only one class; dataset is too small` and is
 answered by `--seed <n>` on the same command, never by editing the set,
-and the seed used is recorded here. Per FT.8, the AUROC is prompt-type
+and the seed used is recorded here. Per FT.capture, the AUROC is prompt-type
 separability and no threshold on it is claimed. `probe-export` writes
 `probe.safetensors` and `probe.json` beside `probe.npz` and prints `Serve
 with: make harness-serve HARNESS_PROBE=/app/probes/ft9-taboo-probe/probe.safetensors`.
@@ -1381,7 +1388,7 @@ run writes the alignment file with one header line and then one record
 per position of the reply (`wc -l` at least 2) and each record carrying a
 finite score. On the base,
 `--status --deep` exits 1 with the identity check naming both digests,
-`artifact model_hash <organism hash>, served model sha256 <FT.0 digest>`,
+`artifact model_hash <organism hash>, served model sha256 <FT.preconditions digest>`,
 because the probe was fitted on the organism's weights and the base is a
 different checkpoint. A base run that exits 0 means the identity check is
 not comparing.
@@ -1393,7 +1400,7 @@ Observed:
 
 Status: PENDING
 
-## FT.10 Steering vector from the organism capture
+## FT.steering Steering vector from the organism capture
 
 Implementation: `interp/commands/steer_extract.py`,
 `interp/steering/extract.py` (`extract_diff_means`),
@@ -1401,7 +1408,7 @@ Implementation: `interp/commands/steer_extract.py`,
 `schemas/control_vector_artifact.json`), `interp/commands/steer_scorecard.py`,
 `interp/steering/scorecard.py` (`load_prompts`), `docker-compose.rust-harness.yaml`
 (the `harness-serve` control-vector environment). Existing code; depends on
-FT.8 (the organism capture) and FT.7 (`elicit_prompts.jsonl`).
+FT.capture (the organism capture) and FT.organisms (`elicit_prompts.jsonl`).
 
 The scorecard runs on the host under `uv run`, recreates `harness-serve`
 steered for each arm from `HARNESS_MODEL` in the shell, and judges on
@@ -1447,7 +1454,7 @@ iterations), so its number is recorded and not thresholded. The thresholds: `ste
 `baseline` on the judge's 0-10 scale, and `steered@-1` at or below
 `baseline`; that ordering is what shows the vector moves the implanted
 behaviour in the direction its sign says. Fluency is recorded for each arm
-and not thresholded, since I.4 found it collapses at large scales. The last
+and not thresholded, since I.steered-scorecard found it collapses at large scales. The last
 `Control vector:` line of the log reads `none, serving unsteered`. A
 `steered@1` below the baseline is a finding about the vector, not a number
 to explain away.
@@ -1459,7 +1466,7 @@ Observed:
 
 Status: PENDING
 
-## FT.11 The hardware test
+## FT.hardware-test The hardware test
 
 Implementation: `tests/hardware/test_fine_tuning_loop.py::test_fine_tuning_loop`
 (`hw_full`, `gpu`, `ssd`), running a ten-step QLoRA fine-tune of the smoke
@@ -1468,21 +1475,21 @@ verdicts in one function; the marker is defined in `pyproject.toml` and its
 tiers in [tests/README.md](../../../tests/README.md). Its sandbox half,
 `tests/training/test_export_harness.py`, runs the export and the same two
 verdicts on the committed tiny fixture on every `make test`. Built by the
-exporter PR; depends on FT.0 (the cached base) and FT.2 (the prepared
+exporter PR; depends on FT.preconditions (the cached base) and FT.smoke-dataset (the prepared
 dataset), which it skips without, and on the release binaries, which it
 fails without.
 
 The test runs in-process on the host, so its preconditions are the host's,
 not a container's: the two release binaries (`cargo build --release` under
-`rust-harness/`, which it fails without), the FT.2 dataset at the recipe's
+`rust-harness/`, which it fails without), the FT.smoke-dataset dataset at the recipe's
 `sft.dataset`, and the recipe's hub id `google/gemma-4-E2B` resolvable in
 the host HF cache at the pinned revision with `local_files_only`, since the
 test loads the recipe as committed (KB-79 is the container's inability to
 do the same; on the host the cache under `HF_HOME` is what answers). A skip
-reading `pinned base not in the local HF cache (FT.0)` is that cache being
+reading `pinned base not in the local HF cache (FT.preconditions)` is that cache being
 empty, and is recorded as the reason rather than treated as a pass. The
 dataset hash check reads `tokenizer.json` from the base the recipe names
-(KB-80, fixed), the same file FT.2 tokenized with, so the test passes no
+(KB-80, fixed), the same file FT.smoke-dataset tokenized with, so the test passes no
 tokenizer override.
 
 Command (the tier and invocation are the ones every hardware entry uses;
@@ -1498,7 +1505,7 @@ uv run --no-sync pytest -m hw_full tests/hardware/test_fine_tuning_loop.py -v
 ```
 
 Expected signal: the one test passes at `[TIER] full` with no skip, and its
-assertions cover what FT.3 and FT.4 observe by hand: `checkpoint-10` is
+assertions cover what FT.train-resume and FT.export-merged observe by hand: `checkpoint-10` is
 written with `adapter_only: true` and the pinned base identity in its
 `meta.json`; the export is `mode: merge`, holds one `model.safetensors` and
 no index, and its manifest `model_hash` equals the file's sha256;

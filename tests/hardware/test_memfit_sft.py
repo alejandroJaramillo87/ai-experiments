@@ -1,7 +1,7 @@
-"""FT.14, the memory-fit estimate on the SFT recipe, as the hw_smoke tier runs it.
+"""FT.memfit, the memory-fit estimate on the SFT recipe, as the hw_smoke tier runs it.
 
 The fine-tuning runbook (docs/verification/training/fine-tuning-loop.md)
-runs `make memfit` twice on sft-qlora-e2b.yaml after FT.1 has recorded the
+runs `make memfit` twice on sft-qlora-e2b.yaml after FT.calibrate-qlora has recorded the
 recipe's measured activation rate: the recipe as committed must fit, and
 micro-batch 64 must not. This module holds the same two outcomes through the
 calculator the CLI and train-sft's advisory share
@@ -9,8 +9,8 @@ calculator the CLI and train-sft's advisory share
 recorded rate that would flip the verdict shows up at session start.
 
 CPU-only: the estimate reads config.json and the safetensors header from the
-staged base, never the weights. It skips when the base is not staged (FT.0)
-and when the profile has no rate on file (FT.1 not yet recorded), because
+staged base, never the weights. It skips when the base is not staged (FT.preconditions)
+and when the profile has no rate on file (FT.calibrate-qlora not yet recorded), because
 an estimate of an unmeasured profile is a lower bound, not a fact to assert.
 """
 
@@ -28,10 +28,10 @@ pytestmark = [pytest.mark.hw_smoke, pytest.mark.cpu]
 RECIPE = os.path.join(
     REPO_ROOT, "training", "recipes", "reference", "sft-qlora-e2b.yaml"
 )
-# The directory make train-download stages, host spelling (FT.0). The recipe
+# The directory make train-download stages, host spelling (FT.preconditions). The recipe
 # names the hub id, which only the host HF cache could resolve (KB-79).
 BASE_DIR = os.path.join(serving.HOST_MODELS, "hf", "gemma-4-E2B")
-# The geometry FT.14 uses to force a refusal.
+# The geometry FT.memfit uses to force a refusal.
 OVERSIZED_MICRO_BATCH = 64
 
 
@@ -46,12 +46,14 @@ def _recipe(*overrides: str):
 @pytest.fixture(scope="module")
 def measured_recipe():
     if not os.path.isfile(os.path.join(BASE_DIR, "config.json")):
-        pytest.skip(f"base not staged at {BASE_DIR} (FT.0)")
+        pytest.skip(f"base not staged at {BASE_DIR} (FT.preconditions)")
     from training.calculator.estimate import estimate
 
     est = estimate(_recipe())
     if est.rate is None:
-        pytest.skip(f"no activation rate on file for {est.profile} (FT.1)")
+        pytest.skip(
+            f"no activation rate on file for {est.profile} (FT.calibrate-qlora)"
+        )
     return est
 
 
@@ -71,7 +73,7 @@ def test_recipe_fits_and_the_oversized_batch_does_not(measured_recipe):
 
 
 def test_train_sft_advisory_is_the_same_estimate(measured_recipe):
-    """FT.3 relies on train-sft printing what memfit prints, as a warning
+    """FT.train-resume relies on train-sft printing what memfit prints, as a warning
     that never refuses (2026-09-19)."""
     from training.tune.sft import check_memory_fit
 

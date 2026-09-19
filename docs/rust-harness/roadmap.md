@@ -40,7 +40,7 @@ this file owns only the ordering and the reasoning behind it.
 | R8 | IF-3 attention weights | done, cheaper than budgeted |
 | R9 | P13 harness serves interp | done, verified against real E4B (RH.14); re-verified on E2B-it 2026-09-06 |
 | R10 | P14 control vector to safetensors | done; RH.15 verified 2026-09-06 on E2B-it |
-| R10.5 | The proxy and the replay stage retire | done; I.6 and I.7 acceptance not yet run |
+| R10.5 | The proxy and the replay stage retire | done; I.served-request-log and I.probe-monitor acceptance not yet run |
 | R11 | IF-4 plus IF-5 together | not started |
 | R12 | IF-3 remaining sites | not started |
 | R13 | IF-6 activation patching | blocked on G2 |
@@ -378,7 +378,7 @@ keeping a container, a compose profile, a replay stage and a fidelity caveat ali
 no interp command points at.
 
 **Not yet evidenced.** The sandbox proves the format and the wiring against a synthetic model,
-including that records survive `kill` rather than depending on a clean shutdown. I.6 and I.7 in
+including that records survive `kill` rather than depending on a clean shutdown. I.served-request-log and I.probe-monitor in
 [../verification/interp/interp.md](../verification/interp/interp.md) are the workstation checks, and what
 they add is whether a real probe over real E4B produces scores worth reading.
 

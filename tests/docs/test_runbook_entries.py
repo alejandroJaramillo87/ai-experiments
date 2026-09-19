@@ -126,7 +126,7 @@ class TestHasEvidence:
     def test_a_named_check_is_evidence_without_an_observed_block(self, mod):
         """The gate-backed shape, which has no output to paste.
 
-        I.14 through I.16 carry no Observed block by design: the check named is
+        I.run-browser through I.traced-dispatch carry no Observed block by design: the check named is
         the verification, and running the gate is how it is observed. The other
         half of this gate is what keeps that honest, by resolving the name.
         """

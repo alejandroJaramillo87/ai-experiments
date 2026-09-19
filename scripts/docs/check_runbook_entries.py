@@ -79,11 +79,16 @@ STATUS_LINE = re.compile(r"^Status:\s*([A-Za-z]+)")
 OBSERVED_MARKER = re.compile(r"^\s*(?:\*\*)?Observed\b")
 FENCE = re.compile(r"^\s*(?:```|~~~)")
 
-# An entry heading leads with its identifier, and every identifier in this
-# directory carries a digit: RH.24, OBS-V10, I.9b, P0.1, HS.3, 0.1. A section
-# heading does not -- "Coverage roster" and "Preconditions" also end in a
-# `Status:` line in one case, and must not be read as entries.
-ENTRY_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.\-]*\d[A-Za-z0-9.\-]*$")
+# An entry heading leads with its identifier, in one of two shapes. The legacy
+# shape carries a digit: RH.24, OBS-V10, P0.1, HS.3, 0.1. The slug shape (the
+# standard since 2026-09-19, docs/verification/README.md "Entry identifiers") is
+# a prefix, a dot and a lowercase hyphenated slug: FT.calibrate-qlora,
+# I.harvest-crash-recovery. A section heading is neither -- "Coverage roster"
+# and "Preconditions" also end in a `Status:` line in one case, and must not be
+# read as entries.
+LEGACY_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.\-]*\d[A-Za-z0-9.\-]*$")
+SLUG_ID = re.compile(r"^[A-Za-z][A-Za-z0-9-]*\.[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
+ENTRY_ID = re.compile(f"(?:{LEGACY_ID.pattern})|(?:{SLUG_ID.pattern})")
 
 # Where a symbol may be defined. Rust test functions and Python test functions
 # are the whole population today; the pattern is per-language because `fn` and

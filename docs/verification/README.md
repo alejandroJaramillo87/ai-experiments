@@ -43,7 +43,7 @@ Step zero, the environment runbook, closed at 8 of 8 on 2026-09-18 and is
 a standing rule here rather than a document: any change to a dependency group means
 `uv lock`, a rebuild of the image the group feeds (`make interp-build` or
 `make train-build`), and that image's smoke, recorded in the tier runbook whose image
-changed (I.1 and I.13 for interp). The sandbox tier, OBS-V5 and OBS-V9, closed at 2 of 2 and
+changed (I.workbench-smoke and I.workbench-build for interp). The sandbox tier, OBS-V5 and OBS-V9, closed at 2 of 2 and
 is [archive/sandbox-executable.md](archive/sandbox-executable.md); a future entry that needs
 no GPU and no `/mnt/ai-data` opens a new sandbox runbook rather than the frozen one.
 The from-scratch loop's Phase 0 acceptance checks, FS.0 to FS.8, closed at 9 of 9 on
@@ -104,6 +104,33 @@ a guarantee that it works.
 - One GPU consumer at a time: no entry runs while another GPU job,
   benchmark, or inference service the entry does not name is active.
 
+## Entry identifiers
+
+An entry id names an entry; it does not place it. The two are held apart
+because a number that reads as an order stops being one the first time a
+section moves, and sections move whenever a dependency is found out of order.
+
+- The id is `PREFIX.slug`: the runbook's prefix (`FT`, `I`), a dot, and a
+  lowercase slug of at most four hyphenated words naming what the entry
+  proves, never its position or date (`FT.calibrate-qlora`,
+  `I.harvest-crash-recovery`).
+- An id is assigned once, kept when the title changes, and never reused. An
+  entry that leaves is listed on the runbook's `Retired:` line under the
+  tally, with the date and reason, and stays citable in the ledger as
+  `<id> (retired)`.
+- The Table of Contents is the execution order and is a numbered list with
+  `1.` on every row, so the rendered position is derived and an insertion
+  renumbers nothing. The section order matches it exactly; a child entry is
+  a nested numbered row. A cross-reference cites the id, never the position.
+- A dependency sentence in an entry's opening paragraph (`depends on
+  FT.preconditions`) names entries that appear earlier in the file.
+- Numeric ids (`RH.24`, `OBS-V10`, `HS.3`) are the legacy shape: accepted by
+  the gate, not used for a new entry or a new runbook. Converting a runbook
+  adds its old ids to `scripts/docs/check_retired_names.py`, which is what
+  made the fine-tuning and interp conversions of 2026-09-19 self-policing.
+
+`scripts/docs/check_runbook_ids.py` enforces all of this in `make quality`.
+
 ## State of the campaign
 
 Each runbook's own progress line is authoritative; this table is the index.
@@ -146,7 +173,7 @@ exactly what it would accept.
 Later phases assume the phases before them passed.
 
 1. [training/fine-tuning-loop.md](training/fine-tuning-loop.md) — the fine-tuning loop,
-   FT.0 through FT.16 in section order: preconditions, the image and its
+   every entry in section order: preconditions, the image and its
    smoke, memory fit, the smoke dataset, the recipe gates, calibration on E2B
    and on E4B, SFT with resume, the
    merged HF export loaded by the harness, the evaluators, the null and taboo
@@ -155,7 +182,7 @@ Later phases assume the phases before them passed.
    was reorganised by capability on 2026-09-18; the three phase runbooks it
    replaced are frozen under [archive/](archive/) (`training-phase0.md`,
    `training-phase1.md`, `training-phase2.md`), and their four verified
-   entries are the substrate facts FT.0 cites. The training tier's
+   entries are the substrate facts FT.preconditions cites. The training tier's
    progression is three rungs, and this runbook is the first: fine-tuning,
    then continual pretraining (the full-scale data pipeline, mixtures, WSD
    schedules, the replay buffer, optimizer offload), then training from

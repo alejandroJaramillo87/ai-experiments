@@ -95,7 +95,7 @@ fine-tune is a comparison between two hashes, and the scorecard records both.
 
 ## Acceptance checks
 
-Host-side, run by the human and reported back. The entries are FT.4 and FT.6 of
+Host-side, run by the human and reported back. The entries are FT.export-merged and FT.eval-ft of
 [the fine-tuning loop runbook](../verification/training/fine-tuning-loop.md):
 
 1. A QLoRA checkpoint exports to `hf/`; the manifest's `model_hash` equals `sha256sum` of

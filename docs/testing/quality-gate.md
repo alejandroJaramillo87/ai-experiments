@@ -29,28 +29,33 @@ Fourteen steps, cheapest first, failing on the first error:
 10. `scripts/docs/check_runbook_entries.py` — fails when a verification entry names a test
     function that does not exist, or is marked `VERIFIED` with neither pasted evidence nor a
     named check.
-11. `scripts/docs/check_surface_census.py` — enumerates the rust-harness binaries and flags
+11. `scripts/docs/check_runbook_ids.py` — fails when a runbook's entry ids and its Table of
+    Contents disagree: an id heading two entries or reappearing after retirement, a slug
+    runbook mixing in numeric ids, a ToC listing the entries in another order than the
+    headings, or an entry depending on one that comes later. The id names the entry and the
+    ToC orders it (`docs/verification/README.md`, Entry identifiers).
+12. `scripts/docs/check_surface_census.py` — enumerates the rust-harness binaries and flags
     from their `Flag` literals and fails when one is named in no runbook. The only gate here
     that starts from the code rather than the documentation.
-12. `scripts/docs/check_group_pin_parity.py` — fails when one package carries two different
+13. `scripts/docs/check_group_pin_parity.py` — fails when one package carries two different
     exact pins across `pyproject.toml`'s sections. The `sandbox` group deliberately re-pins
     what core, `interp` and `training` pin, and step 4 cannot see a disagreement between two
     literal `==` strings.
-13. `scripts/docs/check_command_prompts.py` — fails when a `bash` (or `sh`, `shell`, `zsh`)
+14. `scripts/docs/check_command_prompts.py` — fails when a `bash` (or `sh`, `shell`, `zsh`)
     block carries a `$ ` prompt marker, because a pasted `$ make quality` fails as a command
     named `$`. Reads neither `console` transcripts nor a runbook's Observed blocks, and skips
     frozen records.
-14. `scripts/docs/check_site_reference.py` — fails when a generated reference page under
+15. `scripts/docs/check_site_reference.py` — fails when a generated reference page under
     `site/docs/rust-harness/reference/` disagrees with the flag table it was rendered from:
     a binary with no page, a page for no binary, or a flag its page does not show. Runs
     without cargo or node; `make site-check` is the workstation form that regenerates and
     diffs.
-15. `scripts/docs/check_site_interp_reference.py` — the same check for the interp verbs
+16. `scripts/docs/check_site_interp_reference.py` — the same check for the interp verbs
     under `site/docs/interp/reference/`, whose pages are rendered from the CLI's argparse
     parser: a verb with no page, a page for no verb, or an `add_argument` literal its page
     does not show. Reads the command modules as text, so it needs no Python environment
     beyond the interpreter.
-16. `shellcheck --severity=warning` — shell scripts, enumerated with `find`.
+17. `shellcheck --severity=warning` — shell scripts, enumerated with `find`.
 
 Note what is absent: **`make quality` does not run pytest.** See
 [The full gate](#the-full-gate) below.
@@ -134,7 +139,7 @@ attention projection of E4B through safetensors and asks whether the shared-KV t
 surplus projections were ever trained (RH.1a), and `tests/hardware/test_interp_chain.py`
 under `hw_full` runs the whole capture, probe, monitor and steer chain on `gemma-4-E2B-it`
 and holds each step to the signal RH.9 recorded by hand.
-And the fine-tuning loop's seam (FT.4, FT.11): `tests/training/test_export_harness.py` exports
+And the fine-tuning loop's seam (FT.export-merged, FT.hardware-test): `tests/training/test_export_harness.py` exports
 the committed tiny fixture through the real verb and hands the directory to the built
 `checkpoint-info` and `harness --status --deep`, so the export manifest, an interp probe and
 the harness preflight are held to one digest in the sandbox, and

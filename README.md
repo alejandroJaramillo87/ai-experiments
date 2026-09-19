@@ -39,7 +39,7 @@ no acceptance check on file.
 | Inference (llama.cpp CPU and GPU, vLLM) | In use | `docs/inference/README.md` and the per-service overviews in `docs/sandbox/`; no acceptance entry exists |
 | OS and system optimizations | In use | `docs/optimizations/README.md` implementation status, with measured results; the BIOS soak tests HS.0 through HS.5 have never run |
 | Agent sandbox | In use | `docs/agents/README.md`; no acceptance entry exists |
-| Interpretability: harvest, SAE training, SAE evaluation | In use | `docs/verification/interp/interp.md` entries I.9, I.9b, and I.11, run on this hardware 2026-08-08 with output recorded |
+| Interpretability: harvest, SAE training, SAE evaluation | In use | `docs/verification/interp/interp.md` entries I.harvest, I.harvest-crash-recovery, and I.sae-train-eval, run on this hardware 2026-08-08 with output recorded |
 | Training | Built, not exercised | `docs/verification/training/fine-tuning-loop.md`, 12 entries, none run; the substrate facts P0.1 through P0.3 and P0.5 ran on hardware and are frozen in `docs/verification/archive/training-phase0.md` |
 | Rust harness (CPU backend) | Built, not exercised | `docs/verification/rust-harness/rust-harness.md`; 17 entries, none run. The sandbox quality campaign is complete |
 | Observability | Built, not exercised | `docs/verification/observability/observability.md`; entries OBS-V1 through OBS-V8 pending |

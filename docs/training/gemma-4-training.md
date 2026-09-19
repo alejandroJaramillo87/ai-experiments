@@ -168,7 +168,7 @@ in `spec_from_hf_config` (`/training/calculator/components.py:351-395`):
 | Block normalizations: four, not two | `block_norms` is 4 for the Gemma sandwich |
 | `layer_scalar`: one scalar per layer | a buffer, not a parameter; deliberately uncounted |
 
-Two deltas remain by design, and FT.1's `Parameter count` line is where they show:
+Two deltas remain by design, and FT.calibrate-qlora's `Parameter count` line is where they show:
 
 - **Shared-KV residue.** The count includes `k_proj`, `v_proj` and `k_norm` on all 35 layers,
   as the checkpoint stores them. The pinned `transformers` guards those modules on the 20
@@ -250,7 +250,7 @@ The towers matter to the PEFT wrap as well. PEFT matches a `target_modules` list
 against every module key of the composite model, and the vision and audio towers name their
 projections `q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `up_proj` and `down_proj`
 just as the decoder does, behind `Gemma4ClippableLinear` wrappers (a clamp around an
-`nn.Linear`) that PEFT cannot adapt: the first FT.1 attempt died on
+`nn.Linear`) that PEFT cannot adapt: the first FT.calibrate-qlora attempt died on
 `vision_tower.encoder.layers.0.self_attn.q_proj` (KB-83). `build_peft_model`
 (`/training/models/peft_utils.py`) therefore passes an `exclude_modules` pattern that keeps the
 adapter on `model.language_model.` and off everything else, so a text-only adapter touches the

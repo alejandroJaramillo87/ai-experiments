@@ -146,5 +146,5 @@ the container in
 misspelled and mistyped keys, applies dotlist overrides, reloads the snapshot bit-identically,
 refuses a duplicate run directory, and carries one test per validation invariant including
 the tokenizer-hash check against a generated shard manifest. `/tests/training/test_recipe_pins.py`
-guards the Gemma 4 revision pins. Host-side acceptance is FT.13 in
+guards the Gemma 4 revision pins. Host-side acceptance is FT.recipe-gates in
 [../verification/training/fine-tuning-loop.md](../verification/training/fine-tuning-loop.md).

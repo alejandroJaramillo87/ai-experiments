@@ -113,14 +113,16 @@ class TestCountStatuses:
     def test_entry_numbering_is_not_the_count(self, mod):
         """Trap 3: identifiers are neither contiguous nor sequential.
 
-        interp.md reaches 13 entries with no I.13, because an interstitial I.9b
-        sits between I.9 and I.10. Counting identifiers, or trusting the highest
-        one, gets a different answer than counting statuses.
+        The interp runbook, while its ids were numbers, reached 13 entries
+        with no thirteenth id, because an interstitial `9b` sat between `9` and
+        `10`; the legacy runbooks keep that shape. Counting identifiers, or
+        trusting the highest one, gets a different answer than counting
+        statuses.
         """
         text = (
-            "## I.9 Harvest\n\nStatus: VERIFIED 2026-08-14\n\n"
-            "## I.9b Chunked-capture crash recovery\n\nStatus: PENDING\n\n"
-            "## I.10 Capture garbage collection\n\nStatus: PENDING\n"
+            "## RH.9 Harvest\n\nStatus: VERIFIED 2026-08-14\n\n"
+            "## RH.9b Chunked-capture crash recovery\n\nStatus: PENDING\n\n"
+            "## RH.10 Capture garbage collection\n\nStatus: PENDING\n"
         )
         counts, _ = mod.count_statuses(text)
         assert sum(counts.values()) == 3

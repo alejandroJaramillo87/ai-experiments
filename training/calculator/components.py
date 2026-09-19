@@ -221,7 +221,7 @@ class ArchitectureSpec:
         """Per-layer embedding parameters (docs/models/gemma-4.md, Per-layer
         input embeddings): the packed table, the model-level projection and
         its ple_dim norm, and per layer one hidden->ple_dim gate, one
-        ple_dim->hidden projection and one hidden-wide norm. FT.1's
+        ple_dim->hidden projection and one hidden-wide norm. FT.calibrate-qlora's
         parameter-count line is what checks this against the built model."""
         if not self.ple_dim:
             return 0

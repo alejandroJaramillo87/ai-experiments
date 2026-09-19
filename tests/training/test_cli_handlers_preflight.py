@@ -206,7 +206,7 @@ class TestPreflightSft:
     sft.dataset. Until 2026-09-19 preflight verified that directory as a shard
     directory and died in verify_shards on a KeyError (an SFT manifest has no
     dtype or shards keys), so the one gate meant to run before a fine-tune
-    could not pass on a prepared dataset. FT.13 in the fine-tuning runbook is
+    could not pass on a prepared dataset. FT.recipe-gates in the fine-tuning runbook is
     the workstation run of the same contract.
     """
 
@@ -217,7 +217,7 @@ class TestPreflightSft:
         The dataset is prepared for real through prepare_sft with the chat
         tokenizer test_sft builds, so the manifest kind, template version and
         file hashes are the trainer's own. The base model is stubbed because
-        resolving google/gemma-4-E2B needs the HF cache, which is FT.0's job.
+        resolving google/gemma-4-E2B needs the HF cache, which is FT.preconditions's job.
         """
         import json
 

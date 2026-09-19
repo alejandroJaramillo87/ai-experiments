@@ -119,7 +119,7 @@ observability README's series table if it names the callbacks module for the hea
 No file is renamed, so no retired-names row. This item then leaves this document.
 
 **Acceptance.** Sandbox: `uv run --no-sync pytest tests/training -q` and `make quality`
-after the commit. Workstation: re-run FT.3 and FT.4 of
+after the commit. Workstation: re-run FT.train-resume and FT.export-merged of
 [../verification/training/fine-tuning-loop.md](../verification/training/fine-tuning-loop.md)
 on the same recipe and confirm the Observed blocks match the earlier recording apart from
 timestamps and hashes; run `tiny-e2e` to a second checkpoint, resume it, and confirm
@@ -146,7 +146,7 @@ modules alone. The handler tests reach every handler through `cli.build_parser()
 patch the source modules by dotted path (`training.runtime.loop.train`,
 `training.tune.sft.train_sft` and the rest), so they need no edits provided the moved
 handlers keep resolving those names at call time as they do now. The entry-point lists in
-[README.md](README.md) and `training/README.md` point at the new modules, and the FT.16
+[README.md](README.md) and `training/README.md` point at the new modules, and the FT.e4b-recipe
 implementation line that cites `training/cli.py (cmd_memfit, cmd_calibrate)` follows.
 Acceptance: the handler test files pass unchanged, `make help` lists the same verbs, and
 each moved verb answers `--help`.
@@ -170,8 +170,8 @@ ride the next edit of that README.
 2. The checkpoint contract consolidation, planned above and decided on 2026-09-19 to
    start after
    [../verification/training/fine-tuning-loop.md](../verification/training/fine-tuning-loop.md)
-   has been run once on the workstation. FT.3 (train with resume), FT.4 (export) and
-   FT.7 (the organism round trip) are the observations the refactor has to preserve, and
+   has been run once on the workstation. FT.train-resume (train with resume), FT.export-merged (export) and
+   FT.organisms (the organism round trip) are the observations the refactor has to preserve, and
    they should exist as recorded output before the code that produced them is
    restructured. The scratch side's equivalent is the D6 acceptance record.
 3. The handler moves, planned above, as a second commit in the same change as item 2.

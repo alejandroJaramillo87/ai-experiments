@@ -71,6 +71,13 @@ format: ## Format code with ruff
 # needs a reader, and five entries marked verified against output that did not demonstrate
 # theirs is what opened the campaign that added this file.
 #
+# check_runbook_ids.py holds an entry's two statements of place apart. The id names the
+# entry and the Table of Contents orders it, since 2026-09-19 when the numeric ids became
+# slugs: a number handed out in writing order read as an execution order it was not once
+# sections had been reordered by dependency, and nothing could see the two drift because one
+# token stated both. The gate fails a ToC whose order differs from the headings, an id that
+# heads two entries or returns after retirement, and a dependency on a later entry.
+#
 # check_surface_census.py is the only gate here that starts from the code. Every other one
 # reads the documentation and asks whether it is true, which cannot see a feature nobody
 # thought to document: `attention-capture` and `layer-diff` shipped as binaries named once
@@ -163,6 +170,7 @@ endif
 	$(RUN_PY) python scripts/docs/check_doc_counts.py
 	$(RUN_PY) python scripts/docs/check_kb_refs.py
 	$(RUN_PY) python scripts/docs/check_runbook_entries.py
+	$(RUN_PY) python scripts/docs/check_runbook_ids.py
 	$(RUN_PY) python scripts/docs/check_surface_census.py
 	$(RUN_PY) python scripts/docs/check_group_pin_parity.py
 	$(RUN_PY) python scripts/docs/check_command_prompts.py

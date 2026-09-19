@@ -74,7 +74,7 @@ RETIRED: dict[str, tuple[str, str]] = {
     # activation formula and the binary-search solve left, a measured rate per
     # profile replaced them, and the module that held estimate() and solve()
     # was renamed for what remains.
-    # The flag itself (--solve) is not in this table: FT.14 in the live
+    # The flag itself (--solve) is not in this table: FT.memfit in the live
     # fine-tuning runbook keeps its first pass verbatim as a superseded
     # observation, and that paste names the flag; the argparse rejection is
     # asserted by tests/training/test_calculator.py instead.
@@ -171,11 +171,11 @@ RETIRED: dict[str, tuple[str, str]] = {
     ),
     "docs/verification/reference-captures.md": (
         "docs/verification/interp/interp.md",
-        "the tier-folder move, then folded into interp.md as I.9c and I.9d on 2026-09-18",
+        "the tier-folder move, then folded into interp.md as I.false-fact-capture and I.gemma2-calibration-capture on 2026-09-18",
     ),
     "docs/verification/interp/reference-captures.md": (
         "docs/verification/interp/interp.md",
-        "folded into interp.md as entries I.9c and I.9d on 2026-09-18; the two reference "
+        "folded into interp.md as entries I.false-fact-capture and I.gemma2-calibration-capture on 2026-09-18; the two reference "
         "captures sit beside the smoke-scale harvest entries they scale up",
     ),
     "docs/verification/investigations/gemma-4-conformance_investigation.md": (
@@ -800,6 +800,67 @@ RETIRED: dict[str, tuple[str, str]] = {
         "that cross-check left with the family",
     ),
 }
+
+# Runbook entry ids became slugs on 2026-09-19 (docs/verification/README.md,
+# "Entry identifiers"): a number handed out in writing order read as an
+# execution order it was not, once sections were reordered by dependency. The
+# id is a name and the Table of Contents is the order; each old number maps to
+# the slug its entry took. Ids retired before that day (FT.15, I.2, I.6b) had
+# no live entry and so no slug, and stay as they are in the ledger.
+SLUGGED_ENTRY_IDS: dict[str, str] = {
+    "FT.0": "FT.preconditions",
+    "FT.1": "FT.calibrate-qlora",
+    "FT.2": "FT.smoke-dataset",
+    "FT.3": "FT.train-resume",
+    "FT.4": "FT.export-merged",
+    "FT.5": "FT.heldout-eval",
+    "FT.6": "FT.eval-ft",
+    "FT.7": "FT.organisms",
+    "FT.8": "FT.capture",
+    "FT.9": "FT.probe",
+    "FT.10": "FT.steering",
+    "FT.11": "FT.hardware-test",
+    "FT.12": "FT.image-smoke",
+    "FT.13": "FT.recipe-gates",
+    "FT.14": "FT.memfit",
+    "FT.16": "FT.e4b-recipe",
+    "I.1": "I.workbench-smoke",
+    "I.3": "I.control-vector",
+    "I.4": "I.steered-scorecard",
+    "I.5": "I.probe-loop",
+    "I.6": "I.served-request-log",
+    "I.7": "I.probe-monitor",
+    "I.8": "I.organisms",
+    "I.9": "I.harvest",
+    "I.9b": "I.harvest-crash-recovery",
+    "I.9c": "I.false-fact-capture",
+    "I.9d": "I.gemma2-calibration-capture",
+    "I.10": "I.capture-gc",
+    "I.11": "I.sae-train-eval",
+    "I.12": "I.saebench-env",
+    "I.13": "I.workbench-build",
+    "I.14": "I.run-browser",
+    "I.15": "I.probe-export-contract",
+    "I.16": "I.traced-dispatch",
+    "I.17": "I.sae-row-steering",
+    "I.18": "I.harvest-disk-floor",
+    "I.19": "I.gpu-preflight",
+    "I.20": "I.steer-up-down",
+    "I.21": "I.sae-manifest-mismatch",
+    "I.22": "I.probe-unchecked-load",
+    "I.23": "I.hook-layer-gate",
+    "I.24": "I.storage-tree",
+    "I.25": "I.activation-magnitude",
+}
+RETIRED.update(
+    {
+        old: (
+            new,
+            "runbook entry ids became slugs on 2026-09-19; the id is a name, the Table of Contents is the order",
+        )
+        for old, new in SLUGGED_ENTRY_IDS.items()
+    }
+)
 
 # Directories holding no text of ours.
 PRUNE_DIRS = {

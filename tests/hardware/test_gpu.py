@@ -104,7 +104,7 @@ class TestGpuFull:
         """The D4 calculator's measurement path on the tiny recipe: calibrate
         builds the model, records what it holds resident, and derives an
         activation rate that reproduces the measured peak by construction
-        (the 10 percent bar for a real recipe is the FT.1 runbook entry)."""
+        (the 10 percent bar for a real recipe is the FT.calibrate-qlora runbook entry)."""
         from tests.hardware.conftest import REPO_ROOT
         from training.calculator.calibrate import calibrate
         from training.calculator.estimate import estimate
