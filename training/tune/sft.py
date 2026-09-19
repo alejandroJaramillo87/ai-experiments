@@ -38,6 +38,7 @@ from training.recipes import create_run_dir, tokenizer_source
 from training.runtime.lock import run_lock
 from training.runtime.loop import snapshot_hash
 from training.tune.sft_callbacks import (
+    _attention_implementation,
     build_callbacks,
     checkpoint_dir_name,
     latest_trl_checkpoint,
@@ -243,7 +244,8 @@ def build_model_and_tokenizer(recipe: DictConfig):
         quantization_config=bnb_quantization_config(recipe.peft),
         # Explicit request with the flash->sdpa fallback (WI-7): the
         # transformers default never selects flash-attn on its own.
-        attn_implementation=attention_implementation(),
+        # Resolved against the config's head width (KB-84).
+        attn_implementation=attention_implementation(config),
     )
     if recipe.peft.enabled:
         resolve_target_modules(recipe, config.model_type)
@@ -475,6 +477,7 @@ def _train_locked(recipe: DictConfig) -> SftResult:
                     base_revision=getattr(base_identity, "revision", None),
                     base_config_sha256=getattr(base_identity, "config_sha256", None),
                     emergency=True,
+                    attention_implementation=_attention_implementation(trainer.model),
                 )
             except Exception as exc:
                 print(

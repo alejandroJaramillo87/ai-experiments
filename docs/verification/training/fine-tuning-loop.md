@@ -115,6 +115,15 @@ builds what it verifies:
   commands below, `tests/hardware/test_recipe_gates.py` holds the gates as
   an `hw_smoke` test, and FT.recipe-gates's re-run as committed passed the
   same day, which closed KB-79.
+- **FT.calibrate-qlora's second attempt** (2026-09-19) got through the PEFT
+  wrap, confirming KB-83, and died on the first forward pass:
+  `FlashAttention forward only supports head dimension at most 256`.
+  Gemma 4's full-attention layers are 512 wide, and the tree selected
+  flash-attn whenever the image had it. KB-84, fixed the same day:
+  `attention_implementation` reads the config and takes sdpa above the
+  cap, and the provenance stamps read the loaded model. The paste is kept
+  in FT.calibrate-qlora as a superseded observation; the entry is unchanged
+  otherwise and re-runs as committed.
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training
@@ -914,8 +923,14 @@ make train-calibrate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
 ```
 
 The base is the recipe's hub id resolved to the staged directory (KB-79,
-fixed 2026-09-19; the superseded attempt below passed it as an override).
-Depends on FT.preconditions and FT.image-smoke.
+fixed 2026-09-19; the superseded attempts below passed it as an override).
+Attention runs on sdpa: FlashAttention 2 refuses a head dimension above
+256 and Gemma 4's full-attention layers are 512 wide, so
+`attention_implementation(config)` selects sdpa for every Gemma 4 base
+even though the image ships flash-attn (KB-84, found by the second attempt
+below). A `FlashAttention forward only supports head dimension at most
+256` error here is KB-84 back. Depends on FT.preconditions and
+FT.image-smoke.
 
 Expected signal: exit 0. `[OK] Parameter count: <p> (analytic matches
 model)`, or a `[WARN] Parameter count drift` whose two figures differ by
@@ -1013,6 +1028,52 @@ ValueError: Target module Gemma4ClippableLinear(
 make: *** [make/training.mk:53: train-calibrate] Error 1
 exit=2
 ```
+
+Second attempt (2026-09-19, superseded, kept verbatim: run before the
+KB-79 fix was pulled, so still with the override; the wrap passed, which
+is KB-83's confirmation, and the first forward pass died in the
+FlashAttention kernel, which is KB-84):
+
+```
+➜  ai-experiments git:(SFT-verification) ✗ make train-calibrate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
+    ARGS="model.hf.id=/app/models/hf/gemma-4-E2B --out /mnt/ai-data/training/verify/calibrate-sft-e2b.json"
+docker compose -f docker-compose.training.yaml run --rm training python -m training calibrate --config training/recipes/reference/sft-qlora-e2b.yaml model.hf.id=/app/models/hf/gemma-4-E2B --out /mnt/ai-data/training/verify/calibrate-sft-e2b.json
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-dadfcf03375d Creating
+Container ai-experiments-training-run-dadfcf03375d Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training calibrate --config training/recipes/reference/sft-qlora-e2b.yaml model.hf.id=/app/models/hf/gemma-4-E2B --out /mnt/ai-data/training/verify/calibrate-sft-e2b.json
+[RUN] Calibrating sft-qlora-e2b: 5 steps on cuda:0
+Loading weights:   0%|                                                                                                                                   | 0/1951 [00:00<?, ?it/s]/opt/venv/lib/python3.12/site-packages/bitsandbytes/backends/cuda/ops.py:213: FutureWarning: _check_is_size will be removed in a future PyTorch release along with guard_size_oblivious.     Use _check(i >= 0) instead.
+  torch._check_is_size(blocksize)
+Loading weights: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1951/1951 [00:00<00:00, 2965.80it/s]
+[transformers] Casting fp32 inputs back to torch.bfloat16 for flash-attn compatibility.
+[ERROR] Calibration failed: FlashAttention forward only supports head dimension at most 256
+  Solution: run on the workstation via 'make train-calibrate CONFIG=...'
+
+make: *** [make/training.mk:53: train-calibrate] Error 1
+```
+
+The wrap no longer names a vision-tower module, so KB-83 is confirmed
+fixed by this attempt. The forward pass failed in flash-attn's kernel: the
+model loaded with `attn_implementation=flash_attention_2`, the host
+resolution, and Gemma 4's full-attention layers carry `global_head_dim`
+512, above the kernel's cap of 256 (`schemas/gemma4_facts.json` records
+both widths). Every Gemma 4 load in the tree, the trainer, the calculator,
+the evaluators and the hardware tests, would have hit the same wall on the
+first step; the from-scratch loop did not, because its Llama-shaped
+scratch model has 128-wide heads. Fixed in the tree the same day:
+`attention_implementation` takes the config and returns sdpa when its
+widest head exceeds the cap, with one note on stderr, and the checkpoint
+and evaluation records stamp the implementation the loaded model reports
+rather than the host resolution.
 
 Observed:
 

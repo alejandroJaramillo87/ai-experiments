@@ -442,3 +442,74 @@ class TestAttentionFallbackWarning:
         monkeypatch.setattr(model_mod, "_flash_fallback_warned", False)
         assert model_mod.attention_implementation() == "sdpa"
         assert capsys.readouterr().err == ""
+
+
+class TestAttentionHeadWidth:
+    """KB-84: FlashAttention 2 refuses a head dimension above 256, and Gemma 4's
+    full-attention layers are 512 wide, so a config declaring one takes sdpa
+    even where flash-attn imports (FT.calibrate-qlora's second attempt died in
+    the kernel with `head dimension at most 256`)."""
+
+    @staticmethod
+    def _cuda_with_flash(monkeypatch):
+        import sys
+        import types
+
+        from training.models import model as model_mod
+
+        monkeypatch.setitem(
+            sys.modules,
+            "torch",
+            types.SimpleNamespace(
+                cuda=types.SimpleNamespace(is_available=lambda: True)
+            ),
+        )
+        monkeypatch.setitem(sys.modules, "flash_attn", types.ModuleType("flash_attn"))
+        monkeypatch.setattr(model_mod, "_flash_fallback_warned", False)
+        monkeypatch.setattr(model_mod, "_head_dim_note_printed", False)
+        return model_mod
+
+    @staticmethod
+    def _config(**fields):
+        import types
+
+        return types.SimpleNamespace(**fields)
+
+    def test_no_config_keeps_flash(self, monkeypatch):
+        model_mod = self._cuda_with_flash(monkeypatch)
+        assert model_mod.attention_implementation() == "flash_attention_2"
+
+    def test_a_head_within_the_cap_keeps_flash(self, monkeypatch, capsys):
+        model_mod = self._cuda_with_flash(monkeypatch)
+        config = self._config(head_dim=256)
+        assert model_mod.attention_implementation(config) == "flash_attention_2"
+        assert capsys.readouterr().err == ""
+
+    def test_gemma4_global_head_takes_sdpa_and_notes_once(self, monkeypatch, capsys):
+        model_mod = self._cuda_with_flash(monkeypatch)
+        # The composite checkpoint keeps the decoder under text_config.
+        config = self._config(
+            model_type="gemma4",
+            text_config=self._config(head_dim=256, global_head_dim=512),
+        )
+        assert model_mod.max_head_dim(config) == 512
+        assert model_mod.attention_implementation(config) == "sdpa"
+        note = capsys.readouterr().err
+        assert "head_dim <= 256" in note and "512" in note and "sdpa" in note
+        assert model_mod.attention_implementation(config) == "sdpa"
+        assert capsys.readouterr().err == ""
+
+    def test_a_config_naming_no_head_keeps_flash(self, monkeypatch):
+        model_mod = self._cuda_with_flash(monkeypatch)
+        assert model_mod.max_head_dim(self._config(hidden_size=64)) is None
+        assert model_mod.attention_implementation(self._config()) == "flash_attention_2"
+
+    def test_the_stamp_reads_the_loaded_model(self):
+        import types
+
+        from training.tune.sft_callbacks import _attention_implementation
+
+        model = types.SimpleNamespace(
+            config=types.SimpleNamespace(_attn_implementation="sdpa")
+        )
+        assert _attention_implementation(model) == "sdpa"

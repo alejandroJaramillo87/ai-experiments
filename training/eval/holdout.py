@@ -40,11 +40,14 @@ def resolve_model(model: str) -> tuple[str, str | None]:
 def load_model(model: str, load_4bit: bool = False):
     """Model ready for evaluation, adapter applied when present."""
     import torch
-    from transformers import AutoModelForCausalLM
+    from transformers import AutoConfig, AutoModelForCausalLM
 
     from training.models.model import attention_implementation
 
     base, adapter = resolve_model(model)
+    # The config first: the attention implementation depends on the head
+    # width it declares (KB-84).
+    config = AutoConfig.from_pretrained(base, local_files_only=True)
     kwargs = {
         "torch_dtype": torch.bfloat16,
         "device_map": "cuda:0",
@@ -53,8 +56,8 @@ def load_model(model: str, load_4bit: bool = False):
         # no revision argument, so this resolves whatever local copy exists.
         "local_files_only": True,
         # Explicit request with the flash->sdpa fallback; the record stamps
-        # the same resolution so provenance matches the actual load.
-        "attn_implementation": attention_implementation(),
+        # what the loaded model reports so provenance matches the actual load.
+        "attn_implementation": attention_implementation(config),
     }
     if load_4bit:
         from transformers import BitsAndBytesConfig
@@ -125,7 +128,7 @@ def evaluate_holdout(
     if total_tokens == 0:
         raise ValueError("Held-out split contains no supervised tokens")
     loss = total_loss / total_tokens
-    from training.models.model import attention_implementation
+    from training.tune.sft_callbacks import _attention_implementation
 
     return {
         "model": model,
@@ -135,7 +138,7 @@ def evaluate_holdout(
         "loss": round(loss, 6),
         "perplexity": round(math.exp(loss), 6),
         "precision": "nf4-bf16" if load_4bit else "bf16",
-        # Resolved attention path (flash_attention_2 or the sdpa fallback):
+        # The attention path the model ran on (flash_attention_2 or sdpa):
         # provenance alongside precision, same confound rationale.
-        "attention_implementation": attention_implementation(),
+        "attention_implementation": _attention_implementation(loaded),
     }

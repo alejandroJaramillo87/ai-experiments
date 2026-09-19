@@ -22,22 +22,59 @@ from training.calculator.components import ArchitectureSpec, spec_from_recipe
 _flash_fallback_warned = False
 
 
-def attention_implementation() -> str:
-    """flash_attention_2 when CUDA and flash-attn are usable, else sdpa.
+# FlashAttention 2's forward kernel refuses a head dimension above 256.
+# Gemma 4 splits its heads: sliding layers at head_dim 256, full-attention
+# layers at global_head_dim 512 (schemas/gemma4_facts.json), so every Gemma 4
+# base must take sdpa even on a host with a working flash-attn (KB-84).
+FLASH_ATTN_MAX_HEAD_DIM = 256
+_head_dim_note_printed = False
+
+
+def max_head_dim(config) -> int | None:
+    """The widest attention head a config declares, or None when it names
+    none. Looks at head_dim and global_head_dim on the config and on its
+    text_config, which is where a composite checkpoint keeps the decoder."""
+    widths = []
+    for holder in (config, getattr(config, "text_config", None)):
+        if holder is None:
+            continue
+        for name in ("head_dim", "global_head_dim"):
+            value = getattr(holder, name, None)
+            if isinstance(value, int):
+                widths.append(value)
+    return max(widths) if widths else None
+
+
+def attention_implementation(config=None) -> str:
+    """flash_attention_2 when CUDA, flash-attn and the head width allow, else sdpa.
 
     The CUDA training image ships flash-attn (D1); the CPU sandbox running the
     D6 resume test has neither, and sdpa is the deterministic-capable fallback.
     A CUDA host missing flash-attn is a degradation (wheel-tag drift is a
-    known build risk), so that fallback is warned once per process; consumers
-    stamp the returned value into run and eval metadata for provenance.
+    known build risk), so that fallback is warned once per process. A config
+    whose widest head exceeds FLASH_ATTN_MAX_HEAD_DIM takes sdpa by
+    construction, noted once, since the kernel would refuse the forward pass
+    (KB-84). Consumers stamp the implementation the loaded model reports into
+    run and eval metadata for provenance.
     """
-    global _flash_fallback_warned
+    global _flash_fallback_warned, _head_dim_note_printed
     import torch
 
     if torch.cuda.is_available():
         try:
             import flash_attn  # noqa: F401
 
+            widest = max_head_dim(config) if config is not None else None
+            if widest is not None and widest > FLASH_ATTN_MAX_HEAD_DIM:
+                if not _head_dim_note_printed:
+                    print(
+                        f"[model] flash-attn supports head_dim <= "
+                        f"{FLASH_ATTN_MAX_HEAD_DIM}; this model's widest head "
+                        f"is {widest}, so attention runs on sdpa",
+                        file=sys.stderr,
+                    )
+                    _head_dim_note_printed = True
+                return "sdpa"
             return "flash_attention_2"
         except Exception as exc:  # broken extension raises beyond ImportError
             if not _flash_fallback_warned:
@@ -97,7 +134,7 @@ def build_model(recipe: DictConfig):
     (training/models/peft_utils.py: build_peft_model), owned by the entry point.
     """
     if recipe.model.hf is not None:
-        from transformers import AutoModelForCausalLM
+        from transformers import AutoConfig, AutoModelForCausalLM
 
         from training.models.peft_utils import bnb_quantization_config
         from training.models.staged import resolve_model_source
@@ -108,12 +145,18 @@ def build_model(recipe: DictConfig):
         )
         if quantization is not None:
             kwargs["quantization_config"] = quantization
+        # The staged directory when one exists, else the id (KB-79).
+        source = resolve_model_source(recipe.model.hf.id)
+        # The config first: the attention implementation depends on the head
+        # width it declares (KB-84).
+        config = AutoConfig.from_pretrained(
+            source, revision=recipe.model.hf.revision, local_files_only=True
+        )
         model = AutoModelForCausalLM.from_pretrained(
-            # The staged directory when one exists, else the id (KB-79).
-            resolve_model_source(recipe.model.hf.id),
+            source,
             revision=recipe.model.hf.revision,
             dtype=torch_dtype(recipe.precision.dtype),
-            attn_implementation=attention_implementation(),
+            attn_implementation=attention_implementation(config),
             # Training never reaches the hub: assets are staged by the prepare
             # service and proven present by `python -m training preflight`. The
             # container's internal network is the actual guarantee; this turns a
