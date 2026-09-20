@@ -35,8 +35,13 @@ the marker so no table of READMEs has to be kept in step:
     <!-- inventory:skills:start -->   one row per .claude/skills/*/SKILL.md
     <!-- inventory:fragments:start --> one row per *.mk: its `##@` section
                                       title and the targets `make help` lists
+    <!-- inventory:rust:start -->     one row per *.rs under the crate's src/,
+                                      recursively: the path, its `#[test]`
+                                      count, the first sentence of its banner
+    <!-- inventory:rust_tests:start --> one row per *.rs under the crate's
+                                      tests/: the same three columns
 
-The first six and the last read the README's own directory. The three roster kinds read a
+The first six, the last and the two Rust kinds read the README's own directory. The three roster kinds read a
 fixed place under the repository root, because the definitions they list live
 in .claude/ and the page that indexes them lives in docs/agents/; the source is
 fixed by the kind the way the hub roots are fixed in check_inventory.py.
@@ -83,6 +88,8 @@ KINDS = (
     "commands",
     "skills",
     "fragments",
+    "rust",
+    "rust_tests",
 )
 MARKER = re.compile(r"<!-- inventory:(\w+):(start|end) -->")
 
@@ -124,8 +131,16 @@ HELP_RULE = re.compile(r"^([a-zA-Z0-9_][a-zA-Z0-9_-]*)\s*:.*?##")
 
 # A header line that is only a filename, or opens with one and a separator: the
 # older scripts name themselves before saying what they do, and a few name a
-# file they were once called.
-FILENAME_LINE = re.compile(r"[\w.-]+\.(sh|py|mjs)\s*(--?|—|:)?\s*")
+# file they were once called. A Rust banner opens `name — sentence` with the
+# `.rs` usually dropped, so a bare name counts too, but only with a dash after
+# it: a bare word followed by prose is the prose.
+FILENAME_LINE = re.compile(
+    r"(?:[\w.-]+\.(sh|py|mjs|rs)\s*(--?|—|:)?|[\w-]+\s*(--|—))\s*"
+)
+
+# The attributes that mark a Rust test function, in a source file's inline
+# `#[cfg(test)]` module or an integration test file.
+RUST_TEST = re.compile(r"#\[(?:tokio::)?test(?:\([^)]*\))?\]")
 
 # A sentence ends at a period followed by whitespace or end of text. The
 # lookahead is what keeps `training/models/head_loss.py:` and `0.5` from ending
@@ -287,6 +302,32 @@ def script_sentence(path: Path, root: Path) -> str:
     lines = path.read_text(encoding="utf-8").splitlines()
     comments = shell_comments(lines) if path.suffix == ".sh" else module_comments(lines)
     return header_paragraph(comments, path, root)
+
+
+def rust_row(path: Path, crate: Path, root: Path) -> Row:
+    """One Rust file: its path under the crate, its test count, its banner's sentence."""
+    text = path.read_text(encoding="utf-8")
+    comments = module_comments(text.splitlines())
+    sentence = header_paragraph(comments, path, root)
+    count = len(RUST_TEST.findall(text))
+    return (path.relative_to(crate).as_posix(), str(count), sentence)
+
+
+def rows_rust(directory: Path, root: Path) -> list[Row]:
+    """Every source file under the crate's src/, the bin/ and module directories included."""
+    src = directory / "src"
+    return [rust_row(path, directory, root) for path in sorted(src.rglob("*.rs"))]
+
+
+def rows_rust_tests(directory: Path, root: Path) -> list[Row]:
+    """The crate's integration tests: a file there with no test in it is an error."""
+    rows = []
+    for path in sorted((directory / "tests").glob("*.rs")):
+        row = rust_row(path, directory, root)
+        if row[1] == "0":
+            raise ValueError(f"{path.relative_to(root)} declares no test")
+        rows.append(row)
+    return rows
 
 
 def rows_scripts(directory: Path, root: Path) -> list[Row]:
@@ -458,6 +499,8 @@ ROWS = {
     "commands": lambda directory, root: rows_roster("commands", root),
     "skills": lambda directory, root: rows_roster("skills", root),
     "fragments": rows_fragments,
+    "rust": rows_rust,
+    "rust_tests": rows_rust_tests,
 }
 
 
@@ -490,6 +533,10 @@ def render_table(kind: str, rows: list[Row]) -> str:
     elif kind == "fragments":
         lines = ["| Fragment | Section | Targets |", "|----------|---------|---------|"]
         lines += [f"| `{n}` | {cell(s)} | {t} |" for n, s, t in rows]
+    elif kind in ("rust", "rust_tests"):
+        last = "Purpose" if kind == "rust" else "Covers"
+        lines = [f"| File | Tests | {last} |", "|------|-------|--------|"]
+        lines += [f"| `{n}` | {c} | {cell(s)} |" for n, c, s in rows]
     else:
         lines = ["| Document | Covers |", "|----------|--------|"]
         lines += [f"| [{n}]({n}) | {cell(s)} |" for n, s in rows]

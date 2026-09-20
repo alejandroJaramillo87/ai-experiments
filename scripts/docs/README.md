@@ -67,6 +67,7 @@ the change that touches each:
 | add a directory under `tests/`, `training/`, `common/`, `scripts/` or `interp/` | a README with an inventory marker pair; the hub rule in `check_inventory.py` names it until one exists |
 | add a directory whose children must all be documented | `HUB_ROOTS` in `check_inventory.py` |
 | add a directory or a page under `docs/` | nothing here: the README carries `dirs` when the directory has subdirectories and `pages` when it has pages, and the docs rule in `check_inventory.py` names what is missing |
+| add a Rust source or test file under `rust-harness/` | nothing here: open it with the `/* name — sentence */` banner `.styles/RUST_STYLE.md` requires; the crate's `rust` or `rust_tests` table reads the sentence and counts the test attributes |
 | add a script | nothing here: give it a docstring or a leading header comment; the directory's `scripts` table reads the first sentence |
 | add a contract under `schemas/` | nothing here: its `description`, `writers` and `readers` render the `contracts` row |
 | add an agent, command or skill under `.claude/` | nothing here: its frontmatter `description` renders the roster row in `docs/agents/README.md`; `ROSTER_SOURCES` in `gen_inventory.py` names the three places |

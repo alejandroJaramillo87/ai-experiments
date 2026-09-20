@@ -35,11 +35,13 @@ traps, and a pointer to the living page. It does not restate the living page.
 **Anything that lists files is generated from them.** A table of test modules, of a
 package's modules, of a directory's scripts, of a hub's directories, of a documentation
 directory's pages, of the contracts under `schemas/`, of the agents, commands and skills
-under `.claude/` or of the Makefile fragments under `make/` is rendered by
+under `.claude/`, of the Makefile fragments under `make/` or of a Rust crate's sources and
+integration tests is rendered by
 `scripts/docs/gen_inventory.py` from what each source already carries: a module
 docstring's first sentence, a script's header comment, a contract's `description`, a
-definition's frontmatter, a fragment's `##@` section and `##` help comments, or the
-description paragraph under a README's title. The table is committed so its reader needs no tooling, and the gate regenerates it
+definition's frontmatter, a fragment's `##@` section and `##` help comments, a Rust
+file's leading banner and its test attributes, or the description paragraph under a
+README's title. The table is committed so its reader needs no tooling, and the gate regenerates it
 in memory and diffs. A directory under a hub without a README, or with a README that
 carries no table, fails the gate, which is what makes the hub tables the rule that
 everything under them is documented. Under `docs/` the rule is by shape rather than by

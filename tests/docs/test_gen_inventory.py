@@ -12,7 +12,9 @@ The gate adds a structural rule, that every directory under a hub is documented
 by a table, and that is pinned on a scratch hub too. The scripts kind reads a
 header comment rather than a docstring, so the shapes those headers take in the
 tree are pinned one each; the contracts kind derives a direction from two path
-lists; the roster kinds read frontmatter from a fixed place under the root.
+lists; the roster kinds read frontmatter from a fixed place under the root; the
+two Rust kinds read a crate's `/* name — sentence */` banners and count its test
+attributes, in every form the workspace uses.
 
 Fixtures are scratch trees rather than the repository, so the tests do not turn
 red the next time a module is added.
@@ -129,6 +131,20 @@ MJS = """/*
  */
 import fs from "node:fs";
 """
+
+RUST_FILES = {
+    "src/lib.rs": "/*\n * runtime — inference engine library crate.\n *\n * Detail.\n */\n\npub mod model;\n",
+    "src/model/cpu.rs": (
+        "/*\n * cpu — the f32 reference backend. Second sentence.\n */\n\n"
+        "#[cfg(test)]\nmod tests {\n    #[test]\n    fn a() {}\n\n    #[test]\n    fn b() {}\n}\n"
+    ),
+    "src/bin/tool.rs": "/*\n * tool.rs — dumps a checkpoint's config.\n */\n\nfn main() {}\n",
+    "tests/e2e.rs": (
+        "/*\n * e2e — the loop end to end.\n */\n\n"
+        "#[tokio::test(start_paused = true)]\nasync fn runs() {}\n"
+    ),
+    "tests/surface.rs": "/*\n * surface.rs — `--status` through the binary.\n */\n\n#[test]\nfn ok() {}\n",
+}
 
 CONTRACT = """{
   "contract": "%s",
@@ -364,6 +380,52 @@ class TestFragments:
         (fragments / "quickstart.mk").write_text(MK_NO_SECTION, encoding="utf-8")
         with pytest.raises(ValueError, match="quickstart.mk: no ##@ section line"):
             mod.rows_fragments(fragments, fragments)
+
+
+class TestRust:
+    @pytest.fixture()
+    def crate(self, tmp_path):
+        for name, text in RUST_FILES.items():
+            path = tmp_path / "runtime" / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+        return tmp_path / "runtime"
+
+    def test_sources_are_rostered_recursively_with_their_test_counts(self, mod, crate):
+        assert mod.rows_rust(crate, crate.parent) == [
+            ("src/bin/tool.rs", "0", "Dumps a checkpoint's config."),
+            ("src/lib.rs", "0", "Inference engine library crate."),
+            ("src/model/cpu.rs", "2", "The f32 reference backend."),
+        ]
+
+    def test_integration_tests_count_every_attribute_form(self, mod, crate):
+        assert mod.rows_rust_tests(crate, crate.parent) == [
+            ("tests/e2e.rs", "1", "The loop end to end."),
+            ("tests/surface.rs", "1", "`--status` through the binary."),
+        ]
+
+    def test_a_test_file_declaring_no_test_is_named(self, mod, crate):
+        (crate / "tests" / "empty.rs").write_text(
+            "/*\n * empty — nothing yet.\n */\n", encoding="utf-8"
+        )
+        with pytest.raises(ValueError, match="runtime/tests/empty.rs declares no test"):
+            mod.rows_rust_tests(crate, crate.parent)
+
+    def test_a_source_without_a_banner_is_named(self, mod, crate):
+        (crate / "src" / "bare.rs").write_text("pub fn f() {}\n", encoding="utf-8")
+        with pytest.raises(
+            ValueError, match="runtime/src/bare.rs has no header comment"
+        ):
+            mod.rows_rust(crate, crate.parent)
+
+    def test_a_bare_word_before_prose_is_kept(self, mod):
+        # `kv — sizing` drops the name; `Preflight (I1)` has no dash and is prose.
+        assert mod.header_paragraph(
+            ["kv — KV cache sizing. More."], Path("x"), Path(".")
+        ) == ("KV cache sizing.")
+        assert mod.header_paragraph(["Preflight (I1)"], Path("x"), Path(".")) == (
+            "Preflight (I1)."
+        )
 
 
 class TestContracts:
