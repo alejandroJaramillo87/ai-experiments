@@ -647,6 +647,31 @@ class TestGate:
                 "<!-- inventory:dirs:end -->\n",
                 encoding="utf-8",
             )
+        # The documentation tree: a hub with a page and a subdirectory of pages.
+        topic = tree / "docs" / "topic"
+        (topic / "sub").mkdir(parents=True)
+        # The docs root already lists its two pages; it now has a subdirectory too.
+        (tree / "docs" / "README.md").write_text(
+            "# docs\n\nThe docs.\n\n<!-- inventory:dirs:start -->\n"
+            "<!-- inventory:dirs:end -->\n\n<!-- inventory:pages:start -->\n"
+            "<!-- inventory:pages:end -->\n",
+            encoding="utf-8",
+        )
+        (topic / "README.md").write_text(
+            "# topic\n\nThe topic.\n\n<!-- inventory:dirs:start -->\n"
+            "<!-- inventory:dirs:end -->\n\n<!-- inventory:pages:start -->\n"
+            "<!-- inventory:pages:end -->\n",
+            encoding="utf-8",
+        )
+        (topic / "page.md").write_text("# Page\n\nA page.\n", encoding="utf-8")
+        (topic / "sub" / "README.md").write_text(
+            "# sub\n\nThe records.\n\n<!-- inventory:pages:start -->\n"
+            "<!-- inventory:pages:end -->\n",
+            encoding="utf-8",
+        )
+        (topic / "sub" / "record.md").write_text(
+            "# Record\n\nA record.\n", encoding="utf-8"
+        )
         assert run(SCRIPT, "--root", str(tree)).returncode == 0
         return tree
 
@@ -694,6 +719,37 @@ class TestGate:
         result = run(GATE, "--root", str(hubs))
         assert result.returncode == 1
         assert "scripts/child/README.md has no inventory table" in result.stderr
+
+    def test_a_docs_directory_without_a_readme_is_named(self, hubs):
+        fresh = hubs / "docs" / "topic" / "fresh"
+        fresh.mkdir()
+        (fresh / "note.md").write_text("# Note\n\nA note.\n", encoding="utf-8")
+        result = run(GATE, "--root", str(hubs))
+        assert result.returncode == 1
+        assert "docs/topic/fresh/ has no README.md" in result.stderr
+
+    def test_a_docs_readme_missing_the_table_its_shape_needs_is_named(self, hubs):
+        # The topic has a subdirectory, so a README listing only its pages routes
+        # nobody to it.
+        (hubs / "docs" / "topic" / "README.md").write_text(
+            "# topic\n\nThe topic.\n\n<!-- inventory:pages:start -->\n"
+            "<!-- inventory:pages:end -->\n",
+            encoding="utf-8",
+        )
+        assert run(SCRIPT, "--root", str(hubs)).returncode == 0
+        result = run(GATE, "--root", str(hubs))
+        assert result.returncode == 1
+        assert "docs/topic/README.md carries no inventory:dirs table" in result.stderr
+        assert "inventory:pages" not in result.stderr
+
+    def test_a_docs_directory_with_only_a_readme_needs_no_table(self, hubs):
+        empty = hubs / "docs" / "topic" / "empty"
+        empty.mkdir()
+        (empty / ".gitkeep").write_text("", encoding="utf-8")
+        (empty / "README.md").write_text("# empty\n\nNothing yet.\n", encoding="utf-8")
+        assert run(SCRIPT, "--root", str(hubs)).returncode == 0
+        result = run(GATE, "--root", str(hubs))
+        assert result.returncode == 0, result.stderr
 
     def test_a_hub_without_a_dirs_table_fails(self, hubs):
         (hubs / "tests" / "README.md").write_text(

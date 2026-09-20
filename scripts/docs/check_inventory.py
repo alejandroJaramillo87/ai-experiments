@@ -14,13 +14,17 @@ the day it is written, and the description it carries is a second copy of
 something the file already states in its first line -- so the two are edited
 at different moments and only one of them is the one anyone reads.
 
-This gate is the reminder, and it asks two things. First, every README carrying
+This gate is the reminder, and it asks three things. First, every README carrying
 an inventory marker is regenerated in memory and diffed against what is
 committed, with the difference printed rather than only reported. Second, the
 hubs are complete: under each root in HUB_ROOTS, the root README carries a
 `dirs` table, and every child directory carries a README with an inventory
 table of its own. A new subpackage, test directory or scripts directory
-therefore fails the gate until it is documented. Nothing here needs
+therefore fails the gate until it is documented. Third, the documentation
+tree is routed all the way down: every directory under DOCS_ROOT has a README
+that carries a `dirs` table when it has subdirectories and a `pages` table
+when it has pages beside it, which is the README shape
+`.styles/DOCUMENTATION_STYLE.md` states. Nothing here needs
 torch, a GPU, or a collected test session, because the inputs are the files'
 ASTs and the READMEs' first paragraphs.
 """
@@ -43,6 +47,10 @@ GENERATOR = Path(__file__).resolve().parent / "gen_inventory.py"
 # The directories whose children must each be documented. Adding one here is
 # the whole cost of extending the rule; the generator already renders any README.
 HUB_ROOTS = ("tests", "training", "common", "scripts", "interp")
+
+# The documentation tree, ruled by content rather than by hub: a README lists what
+# sits beside it, so the directory's shape decides which tables it must carry.
+DOCS_ROOT = "docs"
 
 
 def load_generator(path: Path):
@@ -100,6 +108,54 @@ def check_hubs(generator, root: Path, out: Printer) -> int:
     return status
 
 
+def required_kinds(generator, directory: Path) -> set[str]:
+    """The tables a documentation directory's README must carry to route one level down."""
+    kinds = set()
+    if generator.child_dirs(directory):
+        kinds.add("dirs")
+    if any(
+        entry.suffix == ".md" and entry.name != "README.md"
+        for entry in directory.iterdir()
+    ):
+        kinds.add("pages")
+    return kinds
+
+
+def check_docs(generator, root: Path, out: Printer) -> int:
+    """The documentation rule: every docs directory has a README with the tables its shape needs."""
+    docs = root / DOCS_ROOT
+    if not docs.is_dir():
+        out.error(f"inventory: {DOCS_ROOT}/ does not exist")
+        return 1
+    status = 0
+    pending = [docs]
+    while pending:
+        directory = pending.pop()
+        pending.extend(generator.child_dirs(directory))
+        label = directory.relative_to(root)
+        readme = directory / "README.md"
+        if not readme.is_file():
+            out.error(f"inventory: {label}/ has no README.md")
+            out.line("  Every documentation directory is routed by its README.")
+            out.line(
+                "  Solution: write it with the markers its shape needs and regenerate"
+            )
+            out.line(
+                f"  Command: python scripts/docs/gen_inventory.py {label}/README.md"
+            )
+            status = 1
+            continue
+        missing = required_kinds(generator, directory) - _kinds(generator, readme, root)
+        for kind in sorted(missing):
+            out.error(f"inventory: {label}/README.md carries no inventory:{kind} table")
+            out.line("  Solution: add the markers and regenerate")
+            out.line(
+                f"  Command: python scripts/docs/gen_inventory.py {label}/README.md"
+            )
+            status = 1
+    return status
+
+
 def _kinds(generator, readme: Path, root: Path) -> set[str]:
     if not readme.is_file():
         return set()
@@ -138,6 +194,7 @@ def main() -> int:
     for readme in readmes:
         status |= generator.process(readme, root, True, out)
     status |= check_hubs(generator, root, out)
+    status |= check_docs(generator, root, out)
     return 1 if status else 0
 
 

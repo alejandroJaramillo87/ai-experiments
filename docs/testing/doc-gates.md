@@ -42,7 +42,9 @@ definition's frontmatter, a fragment's `##@` section and `##` help comments, or 
 description paragraph under a README's title. The table is committed so its reader needs no tooling, and the gate regenerates it
 in memory and diffs. A directory under a hub without a README, or with a README that
 carries no table, fails the gate, which is what makes the hub tables the rule that
-everything under them is documented. The same pattern renders the site's reference pages
+everything under them is documented. Under `docs/` the rule is by shape rather than by
+hub: every directory has a README, with a `dirs` table when it has subdirectories and a
+`pages` table when it has pages, so the router reaches every page. The same pattern renders the site's reference pages
 from `--help` and from the argparse parser.
 
 **A rename adds a retired name.** The path gate cannot see a renamed file, because a bare

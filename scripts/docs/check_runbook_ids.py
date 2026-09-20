@@ -314,7 +314,9 @@ def main() -> int:
         for finding in findings:
             out.line(f"  {finding}")
         out.line("  Solution: the id names the entry and the Table of Contents orders")
-        out.line("  it (docs/verification/protocol.md, Entry identifiers). Move the ToC")
+        out.line(
+            "  it (docs/verification/protocol.md, Entry identifiers). Move the ToC"
+        )
         out.line("  row or the section so they agree; never renumber or reuse an id,")
         out.line("  and list an entry that leaves on the Retired line.")
         return 1

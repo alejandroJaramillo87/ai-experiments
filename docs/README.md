@@ -10,7 +10,8 @@ for a person building and running the harness or the interp tier; the two do not
 
 Find the topic in the table below and read its README first. Each one says what the
 topic is, indexes the pages beside it, and points at the code and the compose or
-Dockerfile that own the facts. A question about code rather than a topic starts at the
+Dockerfile that own the facts; the shape every README here follows, and the gate that
+holds it, are stated in `.styles/DOCUMENTATION_STYLE.md` under "README shape". A question about code rather than a topic starts at the
 source directory's own README instead; the root [../README.md](../README.md) lists them,
 and `AGENTS.md` says which to read for what.
 
