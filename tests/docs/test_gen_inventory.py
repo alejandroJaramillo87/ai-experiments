@@ -14,7 +14,8 @@ header comment rather than a docstring, so the shapes those headers take in the
 tree are pinned one each; the contracts kind derives a direction from two path
 lists; the roster kinds read frontmatter from a fixed place under the root; the
 two Rust kinds read a crate's `/* name — sentence */` banners and count its test
-attributes, in every form the workspace uses.
+attributes, in every form the workspace uses; the build kind reads a Dockerfile's
+leading `#` block the way the scripts kind reads a shell header.
 
 Fixtures are scratch trees rather than the repository, so the tests do not turn
 red the next time a module is added.
@@ -687,6 +688,37 @@ class TestCheck:
         assert readme.read_text() == before
 
 
+class TestBuild:
+    @pytest.fixture()
+    def context(self, tmp_path):
+        (tmp_path / "Dockerfile.svc").write_text(
+            "# Dockerfile.svc\n#\n# The service image. Pinned.\nFROM x\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "entrypoint.sh").write_text(
+            "#!/bin/bash\nset -e\n\n# Start the service.\nexec svc\n", encoding="utf-8"
+        )
+        (tmp_path / "README.md").write_text("# svc\n", encoding="utf-8")
+        (tmp_path / "config.json").write_text("{}", encoding="utf-8")
+        return tmp_path
+
+    def test_rows_list_dockerfiles_and_scripts_with_their_sentences(self, mod, context):
+        assert mod.rows_build(context, context) == [
+            ("Dockerfile.svc", "The service image."),
+            ("entrypoint.sh", "Start the service."),
+        ]
+
+    def test_a_dockerfile_without_a_header_is_named(self, mod, context):
+        (context / "Dockerfile.bare").write_text("FROM x\n", encoding="utf-8")
+        with pytest.raises(ValueError, match="Dockerfile.bare has no header comment"):
+            mod.rows_build(context, context)
+
+    def test_the_table_renders_file_and_purpose(self, mod, context):
+        table = mod.render_table("build", mod.rows_build(context, context))
+        assert table.splitlines()[0] == "| File | Purpose |"
+        assert "| `Dockerfile.svc` | The service image. |" in table
+
+
 class TestGate:
     @pytest.fixture()
     def hubs(self, tree):
@@ -712,6 +744,7 @@ class TestGate:
             ("common", "modules", "leaf.py", '"""Leaf."""\n'),
             ("scripts", "scripts", "leaf.sh", "#!/bin/bash\n# Leaf.\n"),
             ("interp", "modules", "leaf.py", '"""Leaf."""\n'),
+            ("docker", "build", "Dockerfile.leaf", "# Leaf.\nFROM x\n"),
         ):
             child = tree / hub / "child"
             child.mkdir(parents=True)
@@ -814,6 +847,14 @@ class TestGate:
         result = run(GATE, "--root", str(hubs))
         assert result.returncode == 1
         assert "scripts/child/README.md has no inventory table" in result.stderr
+
+    def test_a_docker_directory_without_a_readme_is_named(self, hubs):
+        fresh = hubs / "docker" / "fresh"
+        fresh.mkdir()
+        (fresh / "Dockerfile.fresh").write_text("# Fresh.\nFROM x\n", encoding="utf-8")
+        result = run(GATE, "--root", str(hubs))
+        assert result.returncode == 1
+        assert "docker/fresh/ has no README.md" in result.stderr
 
     def test_a_docs_directory_without_a_readme_is_named(self, hubs):
         fresh = hubs / "docs" / "topic" / "fresh"

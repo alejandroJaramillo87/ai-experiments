@@ -42,8 +42,11 @@ the marker so no table of READMEs has to be kept in step:
                                       count, the first sentence of its banner
     <!-- inventory:rust_tests:start --> one row per *.rs under the crate's
                                       tests/: the same three columns
+    <!-- inventory:build:start -->    one row per Dockerfile* and entrypoint
+                                      script in a build context: the file and
+                                      the first sentence of its header comment
 
-The first six, the last and the two Rust kinds read the README's own directory. The three roster kinds read a
+Every kind but the three roster kinds reads the README's own directory. The three roster kinds read a
 fixed place under the repository root, because the definitions they list live
 in .claude/ and the page that indexes them lives in docs/agents/; the source is
 fixed by the kind the way the hub roots are fixed in check_inventory.py.
@@ -92,6 +95,7 @@ KINDS = (
     "fragments",
     "rust",
     "rust_tests",
+    "build",
 )
 MARKER = re.compile(r"<!-- inventory:(\w+):(start|end) -->")
 
@@ -112,6 +116,11 @@ PRUNE_DIRS = {
 # The files a scripts table lists, and how each carries its purpose: a docstring
 # for Python, a leading `#` block for shell, a leading `/* */` block for a module.
 SCRIPT_SUFFIXES = (".sh", ".py", ".mjs")
+
+# What a build table lists: a service directory's Dockerfiles, named
+# `Dockerfile.<service>`, and the entrypoint scripts beside them. A Dockerfile
+# carries its purpose in a leading `#` block like a shell script.
+DOCKERFILE_PREFIX = "Dockerfile"
 
 # Where each roster kind reads its definitions, relative to the repository root.
 ROSTER_SOURCES = {
@@ -138,9 +147,11 @@ HELP_RULE = re.compile(r"^([a-zA-Z0-9_][a-zA-Z0-9_-]*)\s*:.*?##")
 # older scripts name themselves before saying what they do, and a few name a
 # file they were once called. A Rust banner opens `name — sentence` with the
 # `.rs` usually dropped, so a bare name counts too, but only with a dash after
-# it: a bare word followed by prose is the prose.
+# it: a bare word followed by prose is the prose. A Dockerfile is named by its
+# prefix and a service suffix, so that shape counts as a filename as well.
 FILENAME_LINE = re.compile(
-    r"(?:[\w.-]+\.(sh|py|mjs|rs)\s*(--?|—|:)?|[\w-]+\s*(--|—))\s*"
+    r"(?:(?:[\w.-]+\.(sh|py|mjs|rs)|Dockerfile(?:\.[\w-]+)?)\s*(--?|—|:)?"
+    r"|[\w-]+\s*(--|—))\s*"
 )
 
 # The attributes that mark a Rust test function, in a source file's inline
@@ -305,8 +316,21 @@ def script_sentence(path: Path, root: Path) -> str:
     if path.suffix == ".py":
         return module_sentence(path, root)
     lines = path.read_text(encoding="utf-8").splitlines()
-    comments = shell_comments(lines) if path.suffix == ".sh" else module_comments(lines)
+    if path.suffix == ".sh" or path.name.startswith(DOCKERFILE_PREFIX):
+        comments = shell_comments(lines)
+    else:
+        comments = module_comments(lines)
     return header_paragraph(comments, path, root)
+
+
+def rows_build(directory: Path, root: Path) -> list[Row]:
+    """A build context's Dockerfiles and entrypoints, each with its header's sentence."""
+    return [
+        (path.name, script_sentence(path, root))
+        for path in sorted(directory.iterdir())
+        if path.is_file()
+        and (path.name.startswith(DOCKERFILE_PREFIX) or path.suffix in SCRIPT_SUFFIXES)
+    ]
 
 
 def rust_row(path: Path, crate: Path, root: Path) -> Row:
@@ -530,6 +554,7 @@ ROWS = {
     "fragments": rows_fragments,
     "rust": rows_rust,
     "rust_tests": rows_rust_tests,
+    "build": rows_build,
 }
 
 
@@ -546,6 +571,9 @@ def render_table(kind: str, rows: list[Row]) -> str:
         lines += [f"| [{n}/]({n}/README.md) | {cell(s)} |" for n, s in rows]
     elif kind == "scripts":
         lines = ["| Script | Purpose |", "|--------|---------|"]
+        lines += [f"| `{n}` | {cell(s)} |" for n, s in rows]
+    elif kind == "build":
+        lines = ["| File | Purpose |", "|------|---------|"]
         lines += [f"| `{n}` | {cell(s)} |" for n, s in rows]
     elif kind == "contracts":
         lines = ["| Contract | Seam | Direction |", "|----------|------|-----------|"]

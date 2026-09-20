@@ -64,11 +64,12 @@ the change that touches each:
 | document a `make` target that is absent on purpose | `KNOWN_ABSENT` in `check_make_targets.py`, the same shape |
 | add a Makefile | `MAKEFILES` or `MAKEFILE_GLOBS` in `check_make_targets.py` |
 | add a known-bugs ledger | `LEDGERS` in `check_kb_refs.py` |
-| add a directory under `tests/`, `training/`, `common/`, `scripts/`, `interp/` or `rust-harness/` | a README with an inventory marker pair; the hub rule in `check_inventory.py` names it until one exists |
+| add a directory under `tests/`, `training/`, `common/`, `scripts/`, `interp/`, `rust-harness/` or `docker/` | a README with an inventory marker pair; the hub rule in `check_inventory.py` names it until one exists |
 | add a directory whose children must all be documented | `HUB_ROOTS` in `check_inventory.py` |
 | add a directory or a page under `docs/` | nothing here: the README carries `dirs` when the directory has subdirectories and `pages` when it has pages, and the docs rule in `check_inventory.py` names what is missing |
 | add a Rust source or test file under `rust-harness/` | nothing here: open it with the `/* name — sentence */` banner `.styles/RUST_STYLE.md` requires; the crate's `rust` or `rust_tests` table reads the sentence and counts the test attributes |
 | add a script | nothing here: give it a docstring or a leading header comment; the directory's `scripts` table reads the first sentence |
+| add a Dockerfile or an entrypoint under `docker/` | nothing here: open it with a `#` header comment stating its purpose; the directory's `build` table reads the first sentence |
 | add a contract under `schemas/` | nothing here: its `description`, `writers` and `readers` render the `contracts` row |
 | add an agent, command or skill under `.claude/` | nothing here: its frontmatter `description` renders the roster row in `docs/agents/README.md`; `ROSTER_SOURCES` in `gen_inventory.py` names the three places |
 | add a make fragment or a target | nothing here: the `##@` section line and the `##` help comment render the `fragments` row in `make/README.md`, the same two comments `make help` reads |

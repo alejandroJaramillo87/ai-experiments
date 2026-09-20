@@ -46,7 +46,15 @@ GENERATOR = Path(__file__).resolve().parent / "gen_inventory.py"
 
 # The directories whose children must each be documented. Adding one here is
 # the whole cost of extending the rule; the generator already renders any README.
-HUB_ROOTS = ("tests", "training", "common", "scripts", "interp", "rust-harness")
+HUB_ROOTS = (
+    "tests",
+    "training",
+    "common",
+    "scripts",
+    "interp",
+    "rust-harness",
+    "docker",
+)
 
 # The documentation tree, ruled by content rather than by hub: a README lists what
 # sits beside it, so the directory's shape decides which tables it must carry.
