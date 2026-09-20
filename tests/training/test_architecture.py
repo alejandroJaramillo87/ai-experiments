@@ -394,13 +394,6 @@ class TestPeftCounts:
         assert adapter_param_count(spec, recipe) == self.ADAPTER_PARAMS
         assert trainable_param_count(spec, recipe) == self.ADAPTER_PARAMS
 
-    def test_dora_adds_magnitude_vectors(self):
-        # One magnitude scalar per output column: per layer
-        # 64+32+32+64+128+128+64 = 512; two layers -> +1024.
-        recipe = self.qlora_recipe(["peft.method=dora"])
-        spec = spec_from_recipe(recipe)
-        assert adapter_param_count(spec, recipe) == self.ADAPTER_PARAMS + 1024
-
     def test_linear_param_count(self):
         spec = spec_from_recipe(self.qlora_recipe())
         assert spec.linear_param_count() == self.LINEAR_PARAMS
@@ -420,21 +413,15 @@ class TestPeftCounts:
     #   12 sliding + 3 full in the head, 16 sliding + 4 full in the tail:
     #   16 * (12*33,792 + 3*38,400 + 16*48,640 + 4*52,736) = 24,158,208,
     #   the figure the built adapter reported on 2026-09-20.
-    # E4B, hidden 2560, ffn 10240, 2 KV heads, 18 shared, MLP flat:
-    #   sliding 4608+3072+3072+4608+38,400 = 53,760; full 6656+3584+3584+6656+38,400 = 58,880
-    #   tail sliding 4608+4608+38,400 = 47,616; tail full 6656+6656+38,400 = 51,712
-    #   20 sliding + 4 full head, 15 sliding + 3 full tail -> 16 * 2,180,096.
-    GEMMA4_ADAPTER_PARAMS = {"E2B": 24_158_208, "E4B": 16 * 2_180_096}
+    # (E4B, priced the same way with 18 shared layers and a flat MLP, came to
+    # 16 * 2,180,096 while its recipe existed; the card retired 2026-09-20.)
+    GEMMA4_E2B_ADAPTER_PARAMS = 24_158_208
 
-    @pytest.mark.parametrize(
-        "variant, recipe_name",
-        [("E2B", "sft-qlora-e2b.yaml"), ("E4B", "sft-qlora-gemma-e4b.yaml")],
-    )
-    def test_gemma4_adapter_is_priced_per_layer(self, variant, recipe_name):
-        recipe = load_reference(recipe_name)
+    def test_gemma4_adapter_is_priced_per_layer(self):
+        recipe = load_reference("sft-qlora-e2b.yaml")
         assert recipe.peft.rank == 16 and recipe.peft.target_modules == "auto"
-        spec = spec_from_hf_config(contract_hf_config(variant))
-        assert adapter_param_count(spec, recipe) == self.GEMMA4_ADAPTER_PARAMS[variant]
+        spec = spec_from_hf_config(contract_hf_config("E2B"))
+        assert adapter_param_count(spec, recipe) == self.GEMMA4_E2B_ADAPTER_PARAMS
 
     def test_gemma4_per_layer_geometry(self):
         spec = spec_from_hf_config(contract_hf_config("E2B"))

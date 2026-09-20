@@ -84,8 +84,8 @@ captures from. No GGUF is produced. All commands are host-side.
    --text-only --status --deep"`.
 3. Serve and evaluate: `HARNESS_MODEL=/app/models/trained/<name>/hf make harness-serve`,
    then `make eval-ft ARGS="--base ... --tuned /mnt/ai-data/models/trained/<name>/hf ..."`
-   for the scorecard; `make harness-serve-down` afterwards.
-4. Comparative claims (base vs tuned) identify each side by `model_hash`; the scorecard
-   records it. Benchmark numbers still go through the `benchmarking` skill.
+   for the held-out and lm-eval records; `make harness-serve-down` afterwards.
+4. Comparative claims (base vs tuned) identify each side by `model_hash`; `eval-ft`
+   prints it beside each record. Benchmark numbers still go through the `benchmarking` skill.
 
 Details: `docs/training/train_serve_roundtrip.md`.

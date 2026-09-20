@@ -442,12 +442,12 @@ def _peft_target_modules(recipe: DictConfig) -> list[str]:
 
 
 def adapter_param_count(spec: ArchitectureSpec, recipe: DictConfig) -> int:
-    """Trainable LoRA/DoRA adapter parameters for the recipe's peft group,
-    priced per layer on the modules the built model constructs (KB-90): the
+    """Trainable LoRA adapter parameters for the recipe's peft group, priced
+    per layer on the modules the built model constructs (KB-90): the
     full-attention layers at global_head_dim, the double-wide MLP on E2B's
-    tail, and no k_proj or v_proj on a KV-shared layer."""
+    tail, and no k_proj or v_proj on a KV-shared layer. LoRA is the one
+    method (DoRA's magnitude term left with the method on 2026-09-20)."""
     rank = recipe.peft.rank
-    dora = recipe.peft.method == "dora"
     modules = _peft_target_modules(recipe)
     for name in modules:
         if name not in _TARGET_MODULE_DIMS:
@@ -462,7 +462,7 @@ def adapter_param_count(spec: ArchitectureSpec, recipe: DictConfig) -> int:
             if name in _KV_SHARED_ABSENT and spec.is_kv_shared_layer(index):
                 continue
             d_in, d_out = _TARGET_MODULE_DIMS[name](spec, index)
-            total += rank * (d_in + d_out) + (d_out if dora else 0)
+            total += rank * (d_in + d_out)
     return total
 
 

@@ -134,7 +134,6 @@ def build_peft_model(model, peft_cfg: DictConfig, gradient_checkpointing: bool =
         lora_dropout=peft_cfg.dropout,
         target_modules=[str(m) for m in modules],
         exclude_modules=lora_exclude_modules(model.config),
-        use_dora=peft_cfg.method == "dora",
         task_type="CAUSAL_LM",
     )
     return get_peft_model(model, lora_config)

@@ -99,7 +99,7 @@ class FamilySpec:
     # The mode a served checkpoint runs in when no thinking-control tokens
     # are injected (the eval pipeline injects none). Gemma 4 thinking is
     # opt-in (<|think|> in the system turn), so the default is off; a family
-    # that thinks by default would record "on" here so the eval scorecard
+    # that thinks by default would record "on" here so an eval record
     # carries the confound.
     thinking_default: str = "off"
     # Reasoning-trace markers this family emits; SFT data prep refuses

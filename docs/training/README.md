@@ -44,8 +44,8 @@ established the state of every Phase 0 deliverable on 2026-09-19 is
 | Document | Description |
 |----------|-------------|
 | [sft_entry_point.md](sft_entry_point.md) | The supervised fine-tuning trainer, full and QLoRA (F3) |
-| [teacher_synthetic_data.md](teacher_synthetic_data.md) | Teacher responses and synthetic instruction data through the inference services (F4) |
-| [eval_wrapper.md](eval_wrapper.md) | Baseline-versus-tuned scorecards from three skippable evaluators (F7) |
+| [teacher_synthetic_data.md](teacher_synthetic_data.md) | Teacher corpora through the inference services: the organism generator's transport (F4) |
+| [eval_wrapper.md](eval_wrapper.md) | Held-out loss and lm-eval records on a base and a fine-tune, the locality inputs of `organism-verify` (F7) |
 
 ## Progression
 
@@ -115,6 +115,7 @@ so read the record itself:
 | [p2_d5_optimizer_offload_investigation.md](investigations/p2_d5_optimizer_offload_investigation.md) | P2-D5, optimizer offload |
 | [unified_cli_investigation.md](investigations/unified_cli_investigation.md) | The `python -m training` and `python -m interp` CLI unification |
 | [phase0_completeness_audit_investigation.md](investigations/phase0_completeness_audit_investigation.md) | The 2026-09-19 audit of D1 through D10 against the design, the docs, the code, the tests, the runbooks, and the later tiers |
+| [phase1_completeness_audit_investigation.md](investigations/phase1_completeness_audit_investigation.md) | The 2026-09-20 audit of F1 through F8 against the design, the docs, the code, the tests, the runbook and the consumers in the later tiers, with the fifth question: is it still needed |
 
 Living documents with no design record: [gemma-4-training.md](gemma-4-training.md) and
 [training-scale-reference.md](training-scale-reference.md). Both are reference tables about

@@ -746,8 +746,29 @@ RETIRED: dict[str, tuple[str, str]] = {
         "the Qwen3-1.7B QLoRA twin of the Gemma 4 E2B reference recipe",
     ),
     "sft-qlora-qwen3-4b.yaml": (
-        "training/recipes/reference/sft-qlora-gemma-e4b.yaml",
+        "nothing; its Gemma 4 replacement was itself retired on 2026-09-20",
         "the Qwen3-4B QLoRA twin of the Gemma 4 E4B recipe card",
+    ),
+    # The Phase 1 completeness audit (2026-09-20,
+    # docs/training/investigations/phase1_completeness_audit_investigation.md)
+    # retired what no rung and no consumer called: the E4B recipe card, the
+    # DoRA method, the scorecard over eval-ft's records, and the teacher
+    # corpus root named after distillation.
+    "training/recipes/reference/sft-qlora-gemma-e4b.yaml": (
+        "training/recipes/reference/sft-qlora-e2b.yaml",
+        "the E4B card was the Phase 1 scope document's artifact; every organism and every runbook step runs on E2B, no make target named it, and its runbook entry (FT.e4b-recipe) verified nothing FT.calibrate-qlora does not",
+    ),
+    "use_dora": (
+        "nothing; peft.method is lora",
+        "DoRA was schema-complete and unexercised: no recipe set it, no test reached the build path with it, no runbook entry named it",
+    ),
+    "training/eval/scorecard.py": (
+        "the four per-side records eval-ft writes (holdout_<side>.json, lmeval_<side>.json), read by interp organism-verify",
+        "the scorecard assembled over the records had no reader; the base-versus-organism judgement is organism-verify's locality check",
+    ),
+    "training/datasets/distill": (
+        "training/datasets/teacher",
+        "the teacher corpus root was named after distillation, which left on 2026-09-18; the corpora are the organism generator's",
     ),
     "distill-qwen3.yaml": (
         "nothing; its Gemma 4 replacement was itself retired with distillation on 2026-09-18",

@@ -47,7 +47,6 @@ class TestLoading:
             "pretrain-1b.yaml",
             "tiny-e2e.yaml",
             "sft-qlora-e2b.yaml",
-            "sft-qlora-gemma-e4b.yaml",
             "continual-gemma4-e2b.yaml",
         } <= names
 
@@ -464,12 +463,11 @@ class TestPeftInvariants:
     def test_qlora_recipe_valid(self):
         validate(self.tiny(["peft.enabled=true", "peft.quantize_base=nf4"]))
 
-    def test_dora_recipe_valid_with_and_without_quantization(self):
-        validate(self.tiny(["peft.enabled=true", "peft.method=dora"]))
-        validate(
-            self.tiny(
-                ["peft.enabled=true", "peft.method=dora", "peft.quantize_base=nf4"]
-            )
+    def test_dora_is_refused(self):
+        # DoRA left on 2026-09-20 unexercised; a recipe asking for it is a
+        # schema error, not a silent LoRA.
+        assert_problem(
+            self.tiny(["peft.enabled=true", "peft.method=dora"]), "peft.method"
         )
 
     def test_unknown_method(self):

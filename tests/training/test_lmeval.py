@@ -53,8 +53,8 @@ def test_extract_results_refuses_missing_task():
 
 
 def test_extract_results_refuses_missing_metric():
-    # The task ran but the declared metric key is absent: the scorecard could
-    # not extract a comparable number, so refuse.
+    # The task ran but the declared metric key is absent: the record could
+    # not carry a comparable number, so refuse.
     raw = {"results": {"gsm8k": {"acc_norm": 0.5}}}
     task_config = {"tasks": {"gsm8k": {"metric": "exact_match"}}}
     with pytest.raises(LmEvalError, match="Metric exact_match missing"):

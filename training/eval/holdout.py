@@ -8,7 +8,7 @@ directly comparable with the holdout curve the F3/F5 trainers emit.
 
 Matched precision is the caller's contract: evaluate both sides of a
 comparison with the same dtype and quantization flags; the returned record
-names them so the scorecard can enforce it.
+names them so the driver can refuse a mismatched pair.
 
 torch and transformers import lazily so the module stays importable on the
 host for unit tests of the pure helpers.

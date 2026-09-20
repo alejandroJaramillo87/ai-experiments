@@ -6,7 +6,7 @@
 # tasks per run with --tasks, e.g. the full mmlu group when a headline
 # number is needed.
 #
-# metric names the harness result key the scorecard reads for each task;
+# metric names the harness result key the record carries for each task;
 # higher is better for all of them.
 
 lm_eval_version: "0.4.12"

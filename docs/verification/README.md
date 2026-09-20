@@ -137,7 +137,7 @@ Each runbook's own progress line is authoritative; this table is the index.
 
 | Runbook | Verified | Blocked | Pending | Of |
 |---------|---------:|--------:|--------:|---:|
-| [training/fine-tuning-loop.md](training/fine-tuning-loop.md) | 5 | 0 | 10 | 15 |
+| [training/fine-tuning-loop.md](training/fine-tuning-loop.md) | 5 | 0 | 9 | 14 |
 | [interp/interp.md](interp/interp.md) | 8 | 2 | 17 | 27 |
 | [observability/observability.md](observability/observability.md) | 2 | 0 | 7 | 9 |
 | [rust-harness/rust-harness.md](rust-harness/rust-harness.md) | 55 | 1 | 3 | 59 |
@@ -174,8 +174,8 @@ Later phases assume the phases before them passed.
 
 1. [training/fine-tuning-loop.md](training/fine-tuning-loop.md) — the fine-tuning loop,
    every entry in section order: preconditions, the image and its
-   smoke, the smoke dataset, the recipe gates, the GPU step on E2B
-   and on E4B, SFT with resume, the
+   smoke, the smoke dataset, the recipe gates, the GPU step on E2B,
+   SFT with resume, the
    merged HF export loaded by the harness, the evaluators, the null and taboo
    organisms, and capture, probe and steering
    on the organism. The training set

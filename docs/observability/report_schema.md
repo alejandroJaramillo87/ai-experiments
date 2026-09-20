@@ -36,11 +36,12 @@ raises `ReportSchemaError` listing every header violation;
 | `interp/probes/evaluate.py` | `kind: probe_evaluation` | W2 probe evaluation |
 | `interp/probes/monitor.py` | `kind: probe_monitor` | W4 monitor snapshot |
 | `interp/steering/scorecard.py` | `kind: steering_scorecard` | W1 steering scorecard |
-| `training/eval/scorecard.py` | `kind: scorecard` | F7 eval scorecard |
 
 The conformance unit tests (`tests/interp/test_report_envelope.py`,
 `tests/training/test_report_schema.py`) assert every emitter's output
-validates; a new emitter joins the table and the tests.
+validates; a new emitter joins the table and the tests. The training tier
+emits none since 2026-09-20, when the F7 eval scorecard (`kind: scorecard`)
+retired with no reader.
 
 Artifact manifests written through `interp/manifest.py` and the shard/dataset
 manifests share the `artifact`/`created` vocabulary but are directory

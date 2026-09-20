@@ -107,7 +107,6 @@ class TestGemma4Geometry:
             f"per micro-batch; the 262144-wide head fits {MAX_TOKENS_PER_MICRO_BATCH}"
         )
 
-    @pytest.mark.parametrize("name", ["sft-qlora-e2b.yaml", "sft-qlora-gemma-e4b.yaml"])
-    def test_reference_sft_keeps_its_effective_batch(self, name):
-        data = load_recipe(os.path.join(REFERENCE_DIR, name)).data
+    def test_reference_sft_keeps_its_effective_batch(self):
+        data = load_recipe(os.path.join(REFERENCE_DIR, "sft-qlora-e2b.yaml")).data
         assert data.micro_batch * data.grad_accum == EFFECTIVE_BATCH

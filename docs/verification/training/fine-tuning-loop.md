@@ -2,9 +2,9 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 5 verified, 0 blocked, 10 pending, of 15.**
+**Entries: 5 verified, 0 blocked, 9 pending, of 14.**
 
-Retired: FT.15 (2026-09-19, scorecard promotion), FT.memfit (2026-09-20, the memory-fit calculator left the tree).
+Retired: FT.15 (2026-09-19, scorecard promotion), FT.memfit (2026-09-20, the memory-fit calculator left the tree), FT.e4b-recipe (2026-09-20, the E4B recipe card left the tree: no organism and no make target ran it, and the Phase 1 audit found nothing it verified that FT.calibrate-qlora does not).
 
 An entry id is a name, not a position: it is assigned once, kept when the
 title changes, and never reused. The Table of Contents is the execution
@@ -105,8 +105,8 @@ builds what it verifies:
   [train_step.md](../../training/train_step.md)), which builds the real
   model, steps it through the trainer's loss, checks the parameter count
   against the built model and prints the resident and peak figures.
-  FT.calibrate-qlora keeps its slug and is retitled; FT.e4b-recipe drops its
-  fit step; FT.train-resume no longer expects a `Memory fit:` line.
+  FT.calibrate-qlora keeps its slug and is retitled; FT.e4b-recipe (since
+  retired) dropped its fit step; FT.train-resume no longer expects a `Memory fit:` line.
 - **FT.calibrate-qlora's first attempt** (2026-09-19) got past the model load and died
   in the PEFT wrap: the Gemma 4 towers reuse the decoder's projection names
   behind wrappers PEFT cannot adapt (KB-83, fixed in the tree the same day
@@ -185,7 +185,7 @@ builds what it verifies:
   confirming KB-87 and KB-89 and closing KB-03, KB-83 and KB-84 with them.
   Its two drift lines were findings: the adapter analytic priced one layer
   and multiplied, 5.2 M short of the 24,158,208 the built adapter carries
-  (KB-90, fixed the same day, per-layer pricing pinned for E2B and E4B), and
+  (KB-90, fixed the same day, per-layer pricing pinned for E2B), and
   the documented shared-KV residue had been priced at the sliding width for
   all 20 shared layers, 15,733,760 against the 18,880,512 four full-attention
   layers make it; 928 of the measured 18,881,440 stays unexplained. The
@@ -214,7 +214,6 @@ or inference service the entry does not name is active.
 1. [FT.smoke-dataset Prepare the smoke SFT dataset](#ftsmoke-dataset-prepare-the-smoke-sft-dataset)
 1. [FT.recipe-gates Recipe gates: preflight and validate](#ftrecipe-gates-recipe-gates-preflight-and-validate)
 1. [FT.calibrate-qlora Step the QLoRA recipe on the GPU (KB-03)](#ftcalibrate-qlora-step-the-qlora-recipe-on-the-gpu-kb-03)
-1. [FT.e4b-recipe The E4B recipe: preflight and step](#fte4b-recipe-the-e4b-recipe-preflight-and-step)
 1. [FT.train-resume Train, interrupt, resume](#fttrain-resume-train-interrupt-resume)
 1. [FT.export-merged Export the merged HF directory and load it in the harness](#ftexport-merged-export-the-merged-hf-directory-and-load-it-in-the-harness)
 1. [FT.heldout-eval Held-out loss and lm-eval on base and merged](#ftheldout-eval-held-out-loss-and-lm-eval-on-base-and-merged)
@@ -1529,55 +1528,6 @@ sixth out of memory at the card on KB-87 and then KB-89, each fixed in the
 tree before the next; the seventh stepped and its two drift lines were read
 as KB-90 and the residue correction without another run.
 
-## FT.e4b-recipe The E4B recipe: preflight and step
-
-Implementation: `training/commands/preflight.py`,
-`training/commands/train_step.py`,
-`training/recipes/reference/sft-qlora-gemma-e4b.yaml`.
-
-E2B and E4B are the two subjects this repository trains, and FT.recipe-gates
-and FT.calibrate-qlora run on E2B alone. The E4B recipe is the same QLoRA
-shape at 4096 context and a larger base, so its resident and peak figures are
-a second point beside E2B's. Same two gates as the E2B entries, the hub id resolved to E4B's
-staged directory the same way (KB-79), and the same composite base, so its PEFT wrap is the
-second confirmation of KB-83 (the adapter confined to
-`model.language_model.`).
-The recipe's `sft.dataset` is an E4B split nobody has prepared, so the
-block's first line prepares it as FT.smoke-dataset did, at the recipe's 4096 context,
-when the directory is absent. Depends on the E4B download (I.probe-loop and I.served-request-log use
-`/app/models/hf/gemma-4-E4B`, so it is staged), on FT.image-smoke, and on FT.smoke-dataset for
-the shape of the prepare step.
-
-```bash
-set -o pipefail
-cd ~/workspace/ai-experiments
-R=training/recipes/reference/sft-qlora-gemma-e4b.yaml
-test -d /mnt/ai-data/training/datasets/sft/ultrachat-gemma-e4b || \
-    make prepare-sft ARGS="--source HuggingFaceH4/ultrachat_200k --split train_sft \
-    --tokenizer /mnt/ai-data/models/hf/gemma-4-E4B --model-type gemma4 \
-    --max-seq-len 4096 --out /mnt/ai-data/training/datasets/sft/ultrachat-gemma-e4b"
-make train-preflight CONFIG=$R; echo "exit=$?"
-make train-step CONFIG=$R ARGS="--out /mnt/ai-data/training/verify/step-sft-e4b.json"
-echo "exit=$?"
-```
-
-Expected signal: the prepare, when it runs, exits 0 and writes the
-manifest as FT.smoke-dataset's did (record it here); preflight exits 0 with `[OK] All
-referenced assets are present and verified`. `train-step` exits 0 with
-the E4B parameter-count line matching the built model (or drifting by the
-E4B shared-KV residue alone, 18 layers of `k_proj`, `v_proj` and `k_norm`;
-KB-82), `Resident after build:`, `Peak allocated:` under the card at
-1 x 4096, and `[OK] Stepped 5 steps`. Record the figures beside E2B's: the
-two points say whether the footprint grows with the base the way the
-geometry says it should.
-
-Observed:
-
-```
-```
-
-Status: PENDING
-
 ## FT.train-resume Train, interrupt, resume
 
 Implementation: `training/cli.py` (`cmd_train_sft`), `training/tune/sft.py`
@@ -1760,8 +1710,9 @@ Status: PENDING
 
 Implementation: `training/commands/eval_ft.py` (`container_model`,
 `phase_container`), `training/eval/runner.py` (`hf_identity`,
-`run_container_phase`), `training/eval/scorecard.py`. Depends on FT.export-merged (the
-subject) and FT.heldout-eval (the container evaluators the same run repeats).
+`run_container_phase`, `check_holdout_pair`, `check_lmeval_pair`). Depends on
+FT.export-merged (the subject) and FT.heldout-eval (the container evaluators
+the same run repeats).
 
 **Fix to confirm here** (details in [bugs/known-bugs.md](../bugs/known-bugs.md)):
 
@@ -1778,8 +1729,11 @@ identifies each by `model_hash` (read from FT.export-merged's manifest for the t
 side, computed for the base) and runs the two container evaluators on each.
 A model-as-judge evaluator existed until 2026-09-19 and was removed: it
 measured preference, and the harness-serving check it doubled as is FT.export-merged's.
-What this entry pins beyond FT.heldout-eval is the identity block: a scorecard that
-names the exact weights on each side.
+A scorecard assembled over the four records existed until 2026-09-20 and was
+removed: nothing read it, where `organism-verify` reads the records. What this
+entry pins beyond FT.heldout-eval is the driver: both sides reach the container
+in its spelling, each side's `model_hash` is printed, and the four records the
+organism pipeline consumes are written under one run directory.
 
 Command (host tool; inference down; the tool runs the container phases
 itself):
@@ -1790,8 +1744,7 @@ make eval-ft ARGS="--base /mnt/ai-data/models/hf/gemma-4-E2B \
     --dataset /mnt/ai-data/training/datasets/sft/ultrachat-e2b --lmeval-limit 20 \
     --name ft6"
 echo "exit=$?"
-grep -E '"model_hash"|"thinking_mode"|"checkpoint"' /mnt/ai-data/training/eval/ft6_*/scorecard.json
-cat /mnt/ai-data/training/eval/ft6_*/scorecard.md
+ls /mnt/ai-data/training/eval/ft6_*/
 ```
 
 Expected signal: exit 0; the container phases print `[RUN] holdout/base:
@@ -1799,13 +1752,13 @@ Expected signal: exit 0; the container phases print `[RUN] holdout/base:
 /app/models/trained/ft3-straight/hf` (the container spelling, KB-78) and
 `[OK] holdout/<side>: loss <n>` for each, with the tuned loss at or below the
 base's as FT.heldout-eval found, then one `[OK] lmeval/<task>: <a> -> <b>` per pinned
-task; the run directory holds `scorecard.json` (shared report envelope,
-`kind: scorecard`) and `scorecard.md`; the scorecard's metadata records
-`thinking_mode: off` on both sides, `checkpoint` as each side's container
-path, the base's `model_hash` equal to the FT.preconditions digest and the tuned side's
-equal to FT.export-merged's manifest, and the rendered table shows the two hash
-prefixes. An interrupted run resumes from its phase records (`[SKIP]
-holdout/<side>: record exists (resume)`).
+task; before the phases, one `[INFO] <side>: <container path> model_hash
+<sha256> thinking_mode off` line per side, the base's hash equal to the
+FT.preconditions digest and the tuned side's equal to FT.export-merged's manifest;
+the run directory lists `holdout_base.json`, `holdout_tuned.json`,
+`lmeval_base.json` and `lmeval_tuned.json`, the four records FT.organisms
+hands to `organism-verify`. An interrupted run resumes from its phase records
+(`[SKIP] holdout/<side>: record exists (resume)`).
 
 Observed:
 

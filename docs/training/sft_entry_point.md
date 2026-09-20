@@ -117,7 +117,7 @@ left unverified, since one backend is what the runbook proves.
 The D6 `Tracker` receives, via a `TrainerCallback`: `train/loss`,
 `train/grad_norm`, `train/lr`, `train/tokens_per_s`, the trainable-parameter
 report at run start, `train/backend`, and `eval/holdout_loss` at
-`sft.eval_steps` intervals (the training-time curve F7's scorecard cites).
+`sft.eval_steps` intervals (the training-time curve beside F7's held-out record).
 The D10 watchdog attaches through the same callback bridge; hardware
 telemetry comes from its background sampler as in the D6 loop.
 

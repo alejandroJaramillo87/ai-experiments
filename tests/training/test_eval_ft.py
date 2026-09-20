@@ -47,7 +47,7 @@ def test_container_phase_passes_container_paths(tmp_path, monkeypatch):
             json.dump({"loss": 1.0, "perplexity": 2.7, "tasks": {}}, f)
 
     monkeypatch.setattr(runner, "run_container_phase", fake_phase)
-    monkeypatch.setattr(runner, "holdout_section", lambda b, t: {"b": b, "t": t})
+    monkeypatch.setattr(runner, "check_holdout_pair", lambda b, t: None)
     args = SimpleNamespace(
         base=HOST_BASE,
         tuned=HOST_TUNED,

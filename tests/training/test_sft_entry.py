@@ -11,7 +11,7 @@ import os
 import pytest
 from support import reference_recipe
 
-from training.data.sft import IGNORE_INDEX
+from training.data.sft import IGNORE_INDEX, load_sft_dataset
 from training.recipes import RecipeValidationError, validate
 from training.runtime.lock import TrainLockError
 from training.tune.sft import (
@@ -84,6 +84,20 @@ class TestBuildDataset:
         recipe = sft_recipe([f"sft.dataset={dataset}", f"model.hf.id={tokenizer_dir}"])
         train, holdout = build_dataset(recipe)
         assert train and holdout
+
+    def test_packing_flag_selects_the_path(self, prepared):
+        # Off: the prepared records pass through untransformed (no position_ids,
+        # labels verbatim). On: pack_examples ran. The holdout is never packed.
+        dataset, tokenizer_dir = prepared
+        base = [f"sft.dataset={dataset}", f"model.hf.id={tokenizer_dir}"]
+        unpacked, holdout = build_dataset(sft_recipe(base + ["sft.packing=false"]))
+        loaded, _ = load_sft_dataset(dataset, tokenizer_dir)
+        assert unpacked == loaded
+        assert all("position_ids" not in record for record in unpacked)
+        packed, holdout_packed = build_dataset(sft_recipe(base + ["sft.packing=true"]))
+        assert all("position_ids" in record for record in packed)
+        assert len(packed) <= len(unpacked)
+        assert holdout_packed == holdout
 
     def test_refuses_a_base_with_another_tokenizer(self, prepared, tokenizer_dir):
         # tokenizer_dir is the D2 conftest tokenizer, trained on another corpus

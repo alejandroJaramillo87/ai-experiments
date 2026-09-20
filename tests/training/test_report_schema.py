@@ -1,6 +1,7 @@
-"""Report-envelope conformance (WI-12) for the training-side emitters: the
-F7 scorecard assembler, plus the shared
-validator and header helper in common/reports.py."""
+"""Report-envelope conformance (WI-12): the shared validator and header
+helper in common/reports.py. The F7 scorecard assembler that emitted under it
+left on 2026-09-20 with no reader; the training tier emits no report envelope
+now."""
 
 from __future__ import annotations
 
@@ -71,14 +72,3 @@ class TestValidator:
         header = report_header("future-bench")
         validate_report(header)
         assert header["report"] == "future-bench"
-
-
-class TestEvalScorecard:
-    def test_assemble_scorecard_conforms(self):
-        from training.eval.scorecard import assemble_scorecard
-
-        card = assemble_scorecard(
-            {"git_sha": "abc123", "evaluators": ["holdout"]},
-            {"holdout": {"loss": {}}},
-        )
-        validate_report(card)

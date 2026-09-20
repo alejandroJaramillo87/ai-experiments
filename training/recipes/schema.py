@@ -30,7 +30,7 @@ from omegaconf import MISSING
 DEFAULT_OUTPUT_ROOT = "/mnt/ai-data/training/runs"
 
 OPTIMIZER_NAMES = ("adamw", "adamw8bit", "paged_adamw8bit", "cpu_adam")
-PEFT_METHODS = ("lora", "dora")
+PEFT_METHODS = ("lora",)
 SFT_BACKENDS = ("trl",)
 QUANTIZE_BASE_MODES = ("none", "nf4")
 COMPUTE_DTYPES = ("bf16", "fp16", "fp32")
@@ -269,11 +269,14 @@ class MemoryConfig:
 
 @dataclass
 class PeftConfig:
-    """Parameter-efficient fine-tuning (Phase 1 F2): LoRA, QLoRA, DoRA.
+    """Parameter-efficient fine-tuning (Phase 1 F2): LoRA and QLoRA.
 
     quantize_base: nf4 loads the frozen base in 4-bit via bitsandbytes
-    (QLoRA); validate() rejects nf4 without peft.enabled. method: dora maps to PEFT use_dora=True and is
-    valid with or without base quantization.
+    (QLoRA); validate() rejects nf4 without peft.enabled. method names the
+    adapter: lora is the one method. A dora option (PEFT's magnitude-decomposed
+    variant) existed
+    until 2026-09-20 and left unexercised: no recipe set it, no test reached
+    the build path with it, and no runbook entry named it.
 
     target_modules is either an explicit module-name list or "auto", which
     resolves per model family through training/models/families.py. Entry points

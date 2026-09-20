@@ -106,7 +106,6 @@ record carry.
 | `pretrain-150m.yaml` | the D4 calibration and D9 acceptance workload; Gemma 4 block shape at reduced scale |
 | `pretrain-1b.yaml` | the 32GB envelope configuration; its activation rate is unmeasured at the current 18x1536 geometry, so `memfit` reports a static lower bound until a calibrate records it |
 | `sft-qlora-e2b.yaml` | the QLoRA fine-tune of Gemma 4 E2B the fine-tuning runbook verifies first |
-| `sft-qlora-gemma-e4b.yaml` | the E4B fine-tuning reference |
 | `continual-gemma4-e2b.yaml` | the Phase 2 ZeRO-Offload continual-pretraining calibration recipe |
 
 Interp recipes live under `/training/recipes/interp/` and organism recipes under

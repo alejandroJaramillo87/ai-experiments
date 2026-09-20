@@ -91,7 +91,7 @@ The exported checkpoint is identified everywhere by `model_hash`, the sha256 of 
 `model.safetensors`: the manifest records it at export time, `interp/probes/capture.py`
 derives the same value when it captures, the organism seal records it, and the harness
 compares the served weights against it under `--deep`. A comparison between base and
-fine-tune is a comparison between two hashes, and the scorecard records both.
+fine-tune is a comparison between two hashes, and `eval-ft` prints both beside its records.
 
 ## Acceptance checks
 
@@ -104,5 +104,5 @@ Host-side, run by the human and reported back. The entries are FT.export-merged 
    directory, and one chat turn answers.
 3. A second export of the same checkpoint is refused; with `--force` it rewrites the
    directory and the hash.
-4. `eval-ft` on the exported directory writes a scorecard carrying both sides'
-   `model_hash`.
+4. `eval-ft` on the exported directory prints both sides' `model_hash` and writes
+   the four evaluator records.

@@ -1,8 +1,9 @@
 # training
 
-The training tier: corpus preparation, tokenizer training, VRAM fit estimation, the
-pretraining loop with checkpointing and resume, supervised fine-tuning, export of the
-merged HF checkpoint, and baseline-versus-tuned evaluation.
+The training tier: corpus preparation, tokenizer training, stepping a recipe on the GPU
+before a long run, the pretraining loop with checkpointing and resume, supervised
+fine-tuning, export of the merged HF checkpoint, and the held-out and lm-eval records a
+base-versus-fine-tune comparison reads.
 
 Invoked as `python -m training <command>`; `cli.py` dispatches to one handler per verb in
 `commands/`. Runtime concerns are separated deliberately: `runtime/` holds the loop, the
@@ -42,9 +43,9 @@ make export-hf CHECKPOINT=... ARGS="--name <name>"
 Export runs in a separate CPU-only image (`docker/training/Dockerfile.export`, built by
 `make export-build`) and writes `/mnt/ai-data/models/trained/<name>/hf/`, the checkpoint
 directory the rust harness serves and interp captures from, plus a manifest carrying
-`model_hash`. It produces no GGUF. Two targets — `eval-ft` and
-`generate-teacher` — drive the live serving stack from the host rather than the training
-container.
+`model_hash`. It produces no GGUF. Two targets run on the host rather than in the training
+container: `generate-teacher` drives the live serving stack, and `eval-ft` drives the
+training container's two evaluators over both sides of a comparison.
 
 ## Where the real docs live
 

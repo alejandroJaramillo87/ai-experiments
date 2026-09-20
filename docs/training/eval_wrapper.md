@@ -1,11 +1,15 @@
-# Fine-tuning evaluation wrapper
+# Fine-tuning evaluation driver
 
-Answers "did the fine-tune help" with one command producing a baseline-versus-tuned
-scorecard from two independently skippable evaluators (Phase 1 F7). Design record:
-[the F7 investigation](investigations/f7_eval_wrapper_investigation.md). The
-model-as-judge evaluator that record describes was removed on 2026-09-19: it measured
+Runs the two evaluators, held-out loss and lm-evaluation-harness, on a baseline and a
+fine-tuned checkpoint with one command, and writes one record per evaluator per side
+(Phase 1 F7). Those four records are the output: the interp tier's `organism-verify`
+reads them for its locality check, the evidence that an organism's implant moved the
+target behaviour and nothing else. Design record:
+[the F7 investigation](investigations/f7_eval_wrapper_investigation.md). Two pieces that
+record describes are gone: the model-as-judge evaluator (removed 2026-09-19; it measured
 preference, which no rung of the training tier's progression asks about, and it was the
-only reason the tool drove the serving stack.
+only reason the tool drove the serving stack) and the scorecard assembled over the
+records (removed 2026-09-20; nothing read it, where `organism-verify` reads the records).
 
 ## Usage
 
@@ -24,7 +28,11 @@ only requires its own inputs. Both compared sides are checkpoint directories und
 `make export-hf` wrote it; the tool passes them to the container in its own spelling
 of the models tree. Either side may also be a hub id or an adapter checkpoint, which
 carries no `model_hash`. A null test passes the same directory on both sides; expect
-deltas within noise before trusting any real result.
+the two records of each evaluator to agree within noise before trusting any real result.
+
+The in-container phases are `python -m training eval-holdout` and `eval-lmeval`, one
+model each; the driver runs them four times under the training lock and resumes from
+the records already written when re-invoked with the same `--out-dir`.
 
 ## Evaluators
 
@@ -39,19 +47,18 @@ Each compared side is identified by `model_hash`, the sha256 of its `model.safet
 read from the export manifest beside an exported `hf/` directory, computed from the
 weights for a downloaded base. It is the same value the harness compares a probe or
 control vector against under `--deep`, and `interp/probes/capture.py` derives at capture
-time, so a scorecard, a capture and a served run can be matched to the exact weights.
-Both hashes are recorded in the scorecard's metadata and rendered in `scorecard.md`.
+time, so an evaluation, a capture and a served run can be matched to the exact weights.
+The driver prints each side's hash and thinking mode before the phases run.
 
-## Scorecard
+## Records
 
 The run directory (default `/mnt/ai-data/training/eval/<name>_<UTC>`) receives
-per-phase records (`holdout_*.json`, `lmeval_*.json`), the machine-readable
-`scorecard.json`, and a rendered `scorecard.md`. Assembly refuses confounded
-comparisons: mismatched thinking mode, held-out precision, or lm-eval version between
-sides is an error, not a footnote. Re-invoking with the same `--out-dir` reuses the
-phase records already written.
+`holdout_base.json`, `holdout_tuned.json`, `lmeval_base.json` and `lmeval_tuned.json`.
+The two records of an evaluator must compare: a side resumed from an earlier run with
+another precision, dataset, example count, lm-eval version or limit is refused, not
+footnoted. `make organism-verify` takes the base pair as `BASE_METRICS` and the organism
+pair as `SUBJECT_METRICS`.
 
 No thinking-control tokens are injected on either side; the evaluated model runs at
 its family default (off for Gemma 4, whose thinking is opt-in), resolved from the
-checkpoint's `config.json`. The scorecard records the actual `thinking_mode` per side
-as a matched confound.
+checkpoint's `config.json`.
