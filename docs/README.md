@@ -175,8 +175,11 @@ Living documentation for the interp stack (`python -m interp`).
 |----------|-------------|
 | [agents/README.md](agents/README.md) | Agent sandbox and tooling |
 | [agents/tooling-parity.md](agents/tooling-parity.md) | OpenCode / Claude Code parity conventions |
-| [testing/README.md](testing/README.md) | The testing tier index: the gate, and the coverage audit |
+| [testing/README.md](testing/README.md) | The testing strategy: the three commands, the layers, what each proves, and the principles that recur |
 | [testing/quality-gate.md](testing/quality-gate.md) | What `make quality` runs, and what a sandbox run does not cover |
+| [testing/test-suite.md](testing/test-suite.md) | The pytest suite as configured: environment tiers, markers, the traps, coverage, and the generated directory READMEs |
+| [testing/hardware-tiers.md](testing/hardware-tiers.md) | `make quality-full`, the three hardware tiers, the sandbox-half/workstation-half pairings, and the correctness ladder |
+| [testing/doc-gates.md](testing/doc-gates.md) | How the documentation stays true: the strategy, and the thirteen gates that enforce it |
 | [sandbox/agent-sandbox.md](sandbox/agent-sandbox.md) | The contained agent sandbox: image, mounts, and egress allowlist |
 
 ### Observability

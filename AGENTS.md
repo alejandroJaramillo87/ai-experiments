@@ -100,6 +100,7 @@ Each topic has one owner. Read the owner, not a summary of it.
 | Other stacks | `docker-compose.{training,interp,agents,rust-harness}.yaml` |
 | Hardware | [docs/hardware/README.md](docs/hardware/README.md) |
 | Validated optimizations and their measurements | [docs/optimizations/README.md](docs/optimizations/README.md) |
+| The testing strategy, and how documentation stays true | [docs/testing/README.md](docs/testing/README.md) |
 | The quality gate, and what a sandbox run does not cover | [docs/testing/quality-gate.md](docs/testing/quality-gate.md) |
 | The rust harness and its gate | [rust-harness/README.md](rust-harness/README.md) |
 | The test suite, its tiers and markers | [tests/README.md](tests/README.md) |
