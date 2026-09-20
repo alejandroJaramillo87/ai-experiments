@@ -120,7 +120,8 @@ def _check_supported(recipe: DictConfig) -> None:
 
 
 def _build_step_model(recipe: DictConfig):
-    """The recipe's actual model (KB-03): shared builders, PEFT-wrapped."""
+    """The recipe's actual model (KB-03): shared builders, PEFT-wrapped, in
+    training mode as the Trainer runs it."""
     model = build_model(recipe)
     if recipe.peft.enabled:
         from training.models.peft_utils import (
@@ -132,6 +133,12 @@ def _build_step_model(recipe: DictConfig):
         model = build_peft_model(
             model, recipe.peft, recipe.memory.gradient_checkpointing
         )
+    # from_pretrained returns the model in eval mode and the PEFT wrap keeps
+    # it there; transformers' GradientCheckpointingLayer checkpoints only
+    # while self.training, so without this the loop kept every layer's
+    # activations for the backward and measured a model the Trainer (which
+    # calls train() itself) never runs (KB-89).
+    model.train()
     return model
 
 

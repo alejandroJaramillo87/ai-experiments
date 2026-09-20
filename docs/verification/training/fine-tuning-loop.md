@@ -167,10 +167,19 @@ builds what it verifies:
   superseded observation; the entry re-runs as committed.
 - **FT.calibrate-qlora's fifth attempt** (2026-09-20) printed the fourth
   attempt's figures to the hundredth of a GB after `git pull` reported
-  `Already up to date`: the checkout did not carry the KB-87 fix, whose
-  chunked loss cannot reproduce the unchunked peak. The paste is kept as a
-  superseded observation and says nothing about the fix; the sixth attempt
-  starts by confirming the checkout with `git log`.
+  `Already up to date`, and was read as a checkout without the KB-87 fix.
+  The paste is kept as a superseded observation.
+- **FT.calibrate-qlora's sixth attempt** (2026-09-20, the first through
+  `make train-step`, so the chunked loss ran) printed the same figures
+  again, which settled what an identical peak means: a peak read at an OOM
+  is the card, and none of the three pastes had measured the head. The
+  term the head hid is KB-89: the step loop never put the model in training
+  mode, and transformers' checkpointing layers checkpoint only while
+  `self.training`, so every decoder layer kept its activations at 4096
+  tokens; the Trainer calls `train()` itself, so the loop was measuring a
+  model `train-sft` never runs. Fixed the same day (`_build_step_model`
+  returns the model in training mode); the paste is kept as a superseded
+  observation and the entry re-runs as committed.
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training
@@ -1014,7 +1023,7 @@ exactly 15,733,760, the shared-KV residue the modeling code does not
 construct (KB-82; any other drift is a finding); no trainable-count drift
 warning. Then `Resident after build:` near 6.4 GB (KB-85), `Peak
 allocated:` well under the card (12 to 15 GB is the expectation at this
-geometry with a 1024-token head chunk; 30 GB is KB-87 back), `Peak
+geometry with a 1024-token head chunk; 30 GB is KB-87 or KB-89 back), `Peak
 reserved:`, `NVML peak:`, `Tokens per micro-batch: 4,096` and `[OK] Stepped
 5 steps`. Record the four figures here; FT.train-resume launches on this
 geometry and reads nothing else from this entry.
@@ -1250,7 +1259,8 @@ exit=2
 `weights` row is 6.08 GB, the adapter and the CUDA workspaces are the rest,
 and the 5.5 GB upcast is gone. The line itself is the KB-86 confirmation.
 The peak, 30.57 GB, is 24.2 GB above the resident model at 4096 tokens per
-micro-batch, and that is the head, not geometry. One `4096 x 262144` copy
+micro-batch, and the head accounts for that much by itself (the sixth
+attempt found a second term underneath it, KB-89). One `4096 x 262144` copy
 is 2.15 GB in bf16 and 4.3 GB in fp32; the tree's loss path
 (`Gemma4ForConditionalGeneration.forward`, transformers' `ForCausalLMLoss`)
 kept the `lm_head` output, the softcap's `tanh` output and product, the
@@ -1271,9 +1281,10 @@ it never read (KB-88). The geometry stays at 2 x 2048. Re-runs as committed.
 
 Fifth attempt (2026-09-20, superseded, kept verbatim: `git pull` reported
 `Already up to date` and the figures are the fourth attempt's to the
-hundredth of a GB, so the checkout did not carry the KB-87 fix; the paste
-says nothing about the fix, and the sixth attempt confirms the checkout
-first):
+hundredth of a GB. Read at the time as a checkout that had not received the
+KB-87 fix; the sixth attempt, on a checkout that provably carried it, printed
+the same figures, so the identical peak was the card, not the checkout, and
+this paste is as much evidence of KB-89 as the sixth is):
 
 ```
 ➜  ai-experiments git:(SFT-verification) ✗ set -o pipefail
@@ -1311,11 +1322,57 @@ make: *** [make/training.mk:53: train-calibrate] Error 1
 exit=2
 ```
 
-The training container bind-mounts `training/` live, so the code that ran is
-the code the worktree held, and a tree carrying the chunked loss cannot
-reproduce the unchunked peak of 30.57 GB. The same day the memory-fit
-calculator retired and this entry became the step it always was
-(`make train-step`, above); re-runs as committed, `git log` first.
+The same day the memory-fit calculator retired and this entry became the
+step it always was (`make train-step`, above).
+
+Sixth attempt (2026-09-20, superseded, kept verbatim: the first run through
+`make train-step`, which exists only in a checkout carrying the retirement
+commit, so the chunked loss ran this time and the peak did not move, which is
+KB-89; the operator pasted from the compose output onward, without the
+`git log` line):
+
+```
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-80663815f1ef Creating
+Container ai-experiments-training-run-80663815f1ef Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training step --config training/recipes/reference/sft-qlora-e2b.yaml --out /mnt/ai-data/training/verify/step-sft-e2b.json
+[RUN] Stepping sft-qlora-e2b: 5 steps on cuda:0
+[model] flash-attn supports head_dim <= 256; this model's widest head is 512, so attention runs on sdpa
+Loading weights:   0%|                                                                                                                                   | 0/1951 [00:00<?, ?it/s]/opt/venv/lib/python3.12/site-packages/bitsandbytes/backends/cuda/ops.py:213: FutureWarning: _check_is_size will be removed in a future PyTorch release along with guard_size_oblivious.     Use _check(i >= 0) instead.
+  torch._check_is_size(blocksize)
+Loading weights: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1951/1951 [00:00<00:00, 2859.50it/s]
+[W920 01:03:14.394287229 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 201326592 bytes (free: 35454976, total: 33668726784).
+[W920 01:03:14.394343706 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 201326592 bytes (free: 35454976, total: 33668726784).
+[ERROR] Step ran out of GPU memory at step 1: resident after build 6.37 GB, peak allocated 30.57 GB of 31.36 GB, at 4,096 tokens per micro-batch
+  Solution: lower data.micro_batch or data.seq_len
+
+make: *** [make/training.mk:50: train-step] Error 1
+exit=2
+```
+
+The figures are the fourth and fifth attempts' to the hundredth of a GB, and
+that is the finding: a peak read at an OOM is the card less the request that
+failed (31.36 GB less 192 MiB of allocator slack is 30.57 GB whatever was
+asked for), so none of the three pastes measured a term, and the fourth
+attempt's "24 GB is the head" was the head plus a second term the head had
+hidden. `from_pretrained` returns the model in eval mode, PEFT's wrap keeps
+it there, and nothing in the step loop called `train()`; transformers'
+`GradientCheckpointingLayer` checkpoints only while `self.training`, so
+every one of E2B's 35 decoder layers kept its activations for the backward
+at 4096 tokens, the 7 full-attention layers with the sdpa math kernel's
+fp32 scores among them. The Trainer calls `train()` itself before its first
+step, which is why `train-sft` would not have shown this and why the step
+loop was measuring a model the trainer never runs (KB-89, fixed the same
+day: `_build_step_model` returns the model in training mode, and
+`tests/training/test_cli_handlers_step.py` holds it). Re-runs as committed.
 
 Observed:
 

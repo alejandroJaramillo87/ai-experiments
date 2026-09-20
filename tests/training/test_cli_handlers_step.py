@@ -239,9 +239,20 @@ class TestStepSupport:
         from training.commands import train_step as step_mod
         from training.recipes.loader import load_recipe
 
-        base = types.SimpleNamespace(config=types.SimpleNamespace(model_type="gemma4"))
-        wrapped = object()
         calls = {}
+
+        class Model:
+            """Records train(): the built model must step in training mode,
+            or HF's checkpointing layers stay inert (KB-89)."""
+
+            config = types.SimpleNamespace(model_type="gemma4")
+
+            def train(self):
+                calls.setdefault("trained", []).append(self)
+                return self
+
+        base = Model()
+        wrapped = Model()
         monkeypatch.setattr(step_mod, "build_model", lambda recipe: base)
 
         def fake_resolve(recipe, model_type):
@@ -259,10 +270,16 @@ class TestStepSupport:
 
         qlora = load_recipe(os.path.join(REFERENCE_DIR, "sft-qlora-e2b.yaml"))
         assert step_mod._build_step_model(qlora) is wrapped
-        # The wrap receives the recipe's checkpointing flag (KB-85).
-        assert calls == {"resolved": "gemma4", "wrapped": base, "checkpointing": True}
+        # The wrap receives the recipe's checkpointing flag (KB-85), and the
+        # wrapped model, not the base, is put in training mode (KB-89).
+        assert calls == {
+            "resolved": "gemma4",
+            "wrapped": base,
+            "checkpointing": True,
+            "trained": [wrapped],
+        }
 
         calls.clear()
         scratch = load_recipe(TINY_RECIPE)
         assert step_mod._build_step_model(scratch) is base
-        assert calls == {}
+        assert calls == {"trained": [base]}

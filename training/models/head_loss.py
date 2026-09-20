@@ -9,7 +9,9 @@ log-softmax, and the fp32 and bf16 gradients on the way back. About 6 bytes
 per vocabulary entry per token, 24 GB at 4096 tokens per micro-batch, outside
 every checkpointed decoder block; TRL's SFTTrainer reads the full logits twice
 more for its entropy and accuracy metrics. FT.calibrate-qlora's fourth attempt
-(2026-09-20) measured it: 6.37 GB resident, 30.57 GB peak.
+(2026-09-20) ran into it at 4096 tokens with 6.37 GB resident (a peak read at
+an OOM is the card, not the term: the step loop was also running without
+gradient checkpointing then, KB-89).
 
 causal_lm_loss runs the decoder once and then computes the head and the loss
 over chunk_tokens-sized slices of the flattened hidden states under

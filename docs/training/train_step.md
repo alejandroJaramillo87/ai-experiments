@@ -77,13 +77,19 @@ fp32 embedding tables) from a micro-batch that does not fit beside it (KB-86).
 The model is built through the shared builders in `training/models/model.py`, so the stepped
 model is exactly what training instantiates: scratch recipes via HF `LlamaConfig`, `model.hf`
 recipes via `from_pretrained` with the recipe's nf4 `BitsAndBytesConfig`, wrapped with the
-recipe's PEFT adapter when `peft.enabled` (KB-03). The loss is the trainer's:
+recipe's PEFT adapter when `peft.enabled` (KB-03), and stepped in training mode as the
+Trainer runs it: `from_pretrained` returns a model in eval mode, and transformers'
+checkpointing layers checkpoint only while `self.training`, so a loop that skips `train()`
+keeps every layer's activations and measures a model training never runs (KB-89). The loss
+is the trainer's:
 `training/models/head_loss.py` runs the decoder once and then the head, Gemma 4's logit
 softcap and the cross-entropy over `memory.head_chunk_tokens` positions at a time under torch
 checkpointing (KB-87), so the 262144-wide logits are resident one chunk at a time. Unchunked,
 the `micro_batch x seq_len x vocab` logits were held in about six copies through the loss and
-the backward, 24 GB at 4096 tokens on the fourth FT.calibrate-qlora attempt, a term outside
-every checkpointed block.
+the backward, about 24 GB at 4096 tokens, a term outside every checkpointed block. A peak
+printed by an out-of-memory step is the card less the request that failed, not the size of
+any term: FT.calibrate-qlora's fourth, fifth and sixth attempts all read 30.57 GB of 31.36,
+before and after the chunked loss.
 
 ## Parameter accounting
 
