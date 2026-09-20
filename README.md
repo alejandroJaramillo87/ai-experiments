@@ -1,4 +1,4 @@
-# AI experiments workstation
+# AI experiments Labratory
 
 A model lab for reverse engineering language models, on one workstation: an RTX 5090 and
 an AMD Ryzen 9950X. The lab is built from four tiers. Inference serves models through
