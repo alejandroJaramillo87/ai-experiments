@@ -6,7 +6,7 @@
  * passed once on the workstation under rr, and nothing read the width back.
  * The run header prints `model.threads()`, the width the loaded model will
  * split rows across, so a flag the parser accepted and `main.rs` dropped
- * would leave that field at the machine's width.
+ * would leave that field at the runtime's default width.
  */
 
 use std::path::{Path, PathBuf};
@@ -54,16 +54,18 @@ fn header_with(extra: &[&str]) -> serde_json::Value {
         .expect("the run wrote a run.header")
 }
 
-/// With the flag the header reports width one; without it, the width the
-/// machine offers, which is one only on a one-CPU host. Both are read so a
-/// header pinned to one would fail on any wider machine.
+/// With the flag the header reports width one; without it, the runtime's
+/// default, the machine's width under `DEFAULT_MAX_THREADS`' cap, which is
+/// one only on a one-CPU host. Both are read so a header pinned to one would
+/// fail on any wider machine. The oracle is the runtime's own function, not
+/// `available_parallelism()`: the raw count agrees with the default only on
+/// a host at or under the cap, which the sandbox is and the workstation is
+/// not.
 #[test]
 fn single_thread_is_the_width_the_run_header_reports() {
     let narrow = header_with(&["--single-thread"]);
     assert_eq!(narrow["threads"].as_u64(), Some(1), "{narrow}");
     let wide = header_with(&[]);
-    let available = std::thread::available_parallelism()
-        .map(|n| n.get() as u64)
-        .unwrap_or(1);
-    assert_eq!(wide["threads"].as_u64(), Some(available), "{wide}");
+    let default = runtime::model::cpu::default_threads() as u64;
+    assert_eq!(wide["threads"].as_u64(), Some(default), "{wide}");
 }

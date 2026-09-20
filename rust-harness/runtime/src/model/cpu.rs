@@ -2135,7 +2135,10 @@ const DEFAULT_MAX_THREADS: usize = 8;
 ///
 /// Falls back to serial where the count is unavailable, which is the safe
 /// direction: slow rather than wrong about how much parallelism exists.
-fn default_threads() -> usize {
+///
+/// Public so the harness's `single_thread` test can read the width a run
+/// without `--single-thread` reports against this one definition of the cap.
+pub fn default_threads() -> usize {
     std::thread::available_parallelism().map_or(1, |n| n.get().min(DEFAULT_MAX_THREADS))
 }
 
