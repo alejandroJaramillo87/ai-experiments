@@ -38,6 +38,7 @@ the artifact seams it shares with the Python tiers are tested across the two tre
 make -C rust-harness quality                    # fmt, clippy, lockfile, rustdoc, cargo test
 make -C rust-harness test-e4b HARNESS_E4B_MODEL=<dir>   # the checks that need the real checkpoint
 make -C rust-harness ladder SIZE=quick MODEL=<dir>      # the correctness ladder, workstation only
+make -C rust-harness clean                      # remove run outputs: sessions, profiles, ladder references
 cargo run --release -p harness -- --help        # the harness's own flags, from the parser's table
 ```
 

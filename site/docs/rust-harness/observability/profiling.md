@@ -29,11 +29,12 @@ cargo install flamegraph --locked
 
 The run starts from `rust-harness`, because cargo builds there, so clear the session files
 first: a stale `session.kv` in the workspace root restores a conversation into the profiled
-run, and a profile is the one run where nobody reads the text.
+run, and a profile is the one run where nobody reads the text. `make clean` removes the
+session files, the previous profile and the gdb history, and leaves the build output.
 
 ```bash
 cd rust-harness
-rm -f session.jsonl session.kv perf.data perf.data.old flamegraph.svg
+make clean
 sysctl kernel.perf_event_paranoid kernel.kptr_restrict
 cargo flamegraph -F 97 --profile release-with-debug --bin harness -- \
     --model "$MODEL" --text-only "Reply with the single word: ready"

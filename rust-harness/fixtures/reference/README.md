@@ -7,7 +7,7 @@ here compares it against its own earlier output.
 | Path | Tier | Committed |
 |------|------|-----------|
 | `../tiny-hf-gemma4/` | T | yes, weights included |
-| `e4b/<size>/` | E | no, generated on the workstation by `make ladder` and gitignored |
+| `<model>/<size>/` | E | no, generated on the workstation by `make ladder` (`e4b/` by default) and gitignored; `make clean` removes them |
 | `corpus.txt` | E, L3 | yes: *The Adventures of Sherlock Holmes*, fetched and normalized by `../fetch_corpus.py` |
 | `prompts.txt` | E, L4 | yes: continuations, not questions; a size takes a prefix, so append, never insert |
 

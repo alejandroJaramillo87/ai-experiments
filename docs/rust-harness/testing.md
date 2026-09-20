@@ -52,6 +52,12 @@ make -C rust-harness replay-check RECORDING=<file>         # a --record file rep
 make -C rust-harness trace-check TRACE=<file>              # a --trace-chrome file has the documented span shape
 ```
 
+`make -C rust-harness clean` removes what these leave in the workspace: the session
+files a run from that directory writes, the profiling outputs, the gdb history and every
+generated reference directory, so the next `make ladder` regenerates from the checkpoint.
+The root `make harness-clean` chains it and also removes the container's transcripts, the
+`rust-harness` subdirectory of the repository's `sessions` directory.
+
 The parent `make quality` chains the first when the directory exists
 ([../testing/quality-gate.md](../testing/quality-gate.md)); `make quality-full HW=full`
 climbs the ladder through `tests/hardware/test_ladder.py` and `HW=e4b` runs `test-e4b`
