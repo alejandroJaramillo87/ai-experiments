@@ -1,3 +1,6 @@
+# The llama-cpu inference image: llama.cpp compiled for Zen 5 with the huge-page
+# interceptor from hugepages/ preloaded.
+#
 # Base image shared by builder and runtime so glibc/libgomp stay in sync.
 # Pin the digest before building. Re-resolve with:
 #   docker buildx imagetools inspect debian:trixie-slim

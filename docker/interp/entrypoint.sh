@@ -1,7 +1,8 @@
 #!/bin/bash
 set -e
 
-# Interpretability workbench entrypoint (interp Phase 0 I1)
+# The interpretability workbench's entrypoint: bootstrap the storage tree, then exec the
+# given command (interp Phase 0 I1).
 # Thin: bootstrap the /mnt/ai-data/interp storage tree, echo the environment, then exec the
 # given command. The default command "jupyter-lab" expands to a localhost-bound, token-
 # authenticated JupyterLab; exposure beyond 127.0.0.1 is prevented by the compose port

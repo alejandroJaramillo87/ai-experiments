@@ -1,4 +1,5 @@
-# Interpretability workbench Dockerfile - RTX 5090 (Blackwell)
+# The interpretability workbench image: PyTorch cu130 on sm_120 for the RTX 5090 (Blackwell),
+# with the interp stack and JupyterLab.
 #
 # One reproducible environment for interp Phase 0 (roadmap I1) and all later interpretability
 # project work: PyTorch cu130 on sm_120 with the interp stack (transformers forward hooks,

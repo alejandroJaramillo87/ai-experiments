@@ -1,4 +1,4 @@
-# vLLM GPU Dockerfile - RTX 5090 (Blackwell) Optimized
+# The vllm-gpu inference image: the official vLLM cu130 wheel on the RTX 5090 (Blackwell).
 #
 # Installs the official vLLM cu130 wheel (which ships sm_120 kernels and
 # PyTorch 2.11 cu130) into a hardened CUDA runtime image. The previous

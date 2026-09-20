@@ -1,3 +1,5 @@
+# The llama-gpu inference image: llama.cpp compiled with CUDA for the RTX 5090 (Blackwell).
+#
 # Stage 1: Builder
 # Compiles CUDA-optimized llama.cpp server executable for RTX 5090
 FROM nvidia/cuda:13.0.2-cudnn-devel-ubuntu24.04 AS builder

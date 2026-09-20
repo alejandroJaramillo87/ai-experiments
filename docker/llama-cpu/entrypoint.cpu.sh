@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-# Hugepages entrypoint - AVX-512 with zen5_optimizer for hugepage allocation
-# Uses LD_PRELOAD to intercept mmap() for large allocations
+# The llama-cpu service's entrypoint: starts llama-server with the zen5_optimizer
+# interceptor preloaded, so mmap() of the model is backed by huge pages.
 
 # Required environment variables (fail fast if missing)
 # Compose computes MODEL_PATH from LLAMA_CPU_MODEL/LLAMA_ZEN5_MODEL (docker-compose.inference.yaml)

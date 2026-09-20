@@ -8,11 +8,19 @@ source of truth; this directory is what that definition builds from.
 
 ## Layout
 
-| Path | What it is |
-|------|------------|
-| `Dockerfile.cpu` | Multi-stage build: compiles llama.cpp for Zen 5 (AVX-512 VNNI) and `libzen5_optimizer.so` from `hugepages/`, then assembles the runtime image |
-| `entrypoint.cpu.sh` | Starts `llama-server` from the environment the compose file sets, with the interceptor loaded through `LD_PRELOAD` |
-| `hugepages/` | The `zen5_optimizer` library: an `mmap()` interceptor that backs large model mappings with huge pages. Its own [README](./hugepages/README.md) covers the standalone build, the tests and the design, and [its explicit huge-page guide](./hugepages/docs/hugepages-explicit.md) the host-side setup |
+<!-- inventory:build:start -->
+
+| File | Purpose |
+|------|---------|
+| `Dockerfile.cpu` | The llama-cpu inference image: llama.cpp compiled for Zen 5 with the huge-page interceptor from hugepages/ preloaded. |
+| `entrypoint.cpu.sh` | The llama-cpu service's entrypoint: starts llama-server with the zen5_optimizer interceptor preloaded, so mmap() of the model is backed by huge pages. |
+
+<!-- inventory:build:end -->
+
+[hugepages/](./hugepages/README.md) is the `zen5_optimizer` library the Dockerfile compiles in:
+an `mmap()` interceptor that backs large model mappings with huge pages. Its README covers
+the standalone build, the tests and the design, and
+[its explicit huge-page guide](./hugepages/docs/hugepages-explicit.md) the host-side setup.
 
 `hugepages/` lived at the repository root until 2026-09-19. It moved here because the
 llama-cpu image is its only consumer: the Dockerfile copies `docker/llama-cpu/hugepages/CMakeLists.txt` and
