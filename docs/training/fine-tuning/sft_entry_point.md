@@ -4,7 +4,7 @@ Operation of the Phase 1 F3 SFT trainer: one command takes a recipe and runs a
 supervised fine-tune on TRL's `SFTTrainer`, supporting full fine-tuning and
 QLoRA, wired into the Phase 0 tracking, checkpointing, lock, and watchdog
 machinery. Design record:
-[the F3 investigation](investigations/f3_sft_entry_point_investigation.md).
+[the F3 investigation](../investigations/f3_sft_entry_point_investigation.md).
 
 ## Table of contents
 
@@ -109,7 +109,7 @@ wrapping (`training/models/peft_utils.py`), including NF4 base quantization for
 QLoRA. On a composite base the adapter is confined to `model.language_model.`
 through PEFT's `exclude_modules`, since the Gemma 4 towers reuse the decoder's
 projection names behind wrappers PEFT cannot adapt (KB-83; see
-[gemma-4-training.md](gemma-4-training.md#dispatch-identity-and-export)). It is the only backend: an `unsloth` option existed until 2026-09-19 and
+[gemma-4-training.md](../base/gemma-4-training.md#dispatch-identity-and-export)). It is the only backend: an `unsloth` option existed until 2026-09-19 and
 left unverified, since one backend is what the runbook proves.
 
 ## Metrics

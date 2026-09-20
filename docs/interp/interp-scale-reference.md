@@ -1,7 +1,7 @@
 # Interpretability scale reference
 
 A reference for how the training-scale conclusions in
-[training-scale-reference.md](../training/training-scale-reference.md)
+[training-scale-reference.md](../training/base/training-scale-reference.md)
 shape the mechanistic-interpretability program, and for how
 interpretability works at inference time on the rust runtime, including
 the planned CUDA backend. Nothing in this document is scheduled work: it

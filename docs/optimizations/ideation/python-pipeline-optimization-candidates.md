@@ -56,7 +56,7 @@ bf16 with loss-scaling care. Highest effort on the list, cleanly confined
 to the training tier. Caveat: for LoRA-scale fine-tunes the win shrinks,
 because matmul time dominates less; the full per-variant feasibility
 arithmetic lives in
-[training-scale-reference.md](../../training/training-scale-reference.md).
+[training-scale-reference.md](../../training/base/training-scale-reference.md).
 
 **Batched LLM-judge and generation stages through vllm-gpu.** The steering
 scorecard judge and generation-heavy evaluations are throughput workloads,

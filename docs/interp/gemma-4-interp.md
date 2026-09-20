@@ -53,7 +53,7 @@ path loads through `AutoModelForCausalLM` (`interp/harvest.py`, in `check_hook_d
 `gemma4*` keys in `MODEL_FOR_CAUSAL_LM_MAPPING_NAMES`, and `AutoModelForCausalLM.from_config`
 returns `Gemma4ForConditionalGeneration` rather than refusing. Verified on the workstation;
 the output is recorded in
-[gemma-4-training.md](../training/gemma-4-training.md). This matters beyond our own code
+[gemma-4-training.md](../training/base/gemma-4-training.md). This matters beyond our own code
 because SAELens hardcodes `model_class_name="AutoModelForCausalLM"` with no override hook.
 See also [The module path is composite](#the-module-path-is-composite).
 

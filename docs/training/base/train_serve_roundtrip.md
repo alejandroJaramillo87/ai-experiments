@@ -83,7 +83,7 @@ make eval-ft ARGS="--base /mnt/ai-data/models/hf/<base> \
 `--status` preflights the directory and exits nonzero if it would not load; `--deep`
 additionally hashes the weights against any probe or control vector passed. `eval-ft`
 runs its two container evaluators with inference down and records both sides'
-`model_hash`. See `docs/training/eval_wrapper.md`.
+`model_hash`. See `docs/training/fine-tuning/eval_wrapper.md`.
 
 ## Identity
 
@@ -96,7 +96,7 @@ fine-tune is a comparison between two hashes, and `eval-ft` prints both beside i
 ## Acceptance checks
 
 Host-side, run by the human and reported back. The entries are FT.export-merged and FT.eval-ft of
-[the fine-tuning loop runbook](../verification/training/fine-tuning-loop.md):
+[the fine-tuning loop runbook](../../verification/training/fine-tuning-loop.md):
 
 1. A QLoRA checkpoint exports to `hf/`; the manifest's `model_hash` equals `sha256sum` of
    the written `model.safetensors` and differs from the base's.

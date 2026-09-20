@@ -8,7 +8,7 @@ calculator's per-profile activation rate needed a workstation run per family, wi
 training mode and checkpointing flag before it could say anything, and on a one-GPU
 workstation that run answers the question by itself. The design record of the calculator
 and of its 2026-09-19 reduction is
-[the D4 investigation](investigations/d4_memory_fit_investigation.md).
+[the D4 investigation](../investigations/d4_memory_fit_investigation.md).
 
 ## Usage
 

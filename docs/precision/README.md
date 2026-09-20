@@ -192,7 +192,7 @@ underlying asymmetry.
 ## Gradients and optimizer state
 
 What a recipe holds on the card is measured, not priced, since the memory-fit calculator
-retired on 2026-09-20 ([`docs/training/train_step.md`](../training/train_step.md)). The
+retired on 2026-09-20 ([`docs/training/base/train_step.md`](../training/base/train_step.md)). The
 three facts to carry away:
 
 - Gradients are produced in the parameter dtype, not a wider accumulation dtype. No

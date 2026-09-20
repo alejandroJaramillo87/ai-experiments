@@ -234,7 +234,7 @@ an optimizer. It is untrainable by construction rather than by filter.
 This is worth stating explicitly because the stored values are **not** 1.0: they span 0.0186 to
 0.879 on E2B, so a scalar that did reach the optimizer would be a live tuning knob rather than
 an inert one. It does not. See
-[`layer_scalar` in docs/models/gemma-4.md](../models/gemma-4.md#layer_scalar).
+[`layer_scalar` in docs/models/gemma-4.md](../../models/gemma-4.md#layer_scalar).
 
 ## Dispatch, identity, and export
 
@@ -345,7 +345,7 @@ question about correctness of the mask, not about memory.
 ## Resolved from upstream source
 
 Three questions previously recorded here are settled against the pinned `transformers`
-sources. [docs/models/gemma-4.md](../models/gemma-4.md) holds the full derivations with line
+sources. [docs/models/gemma-4.md](../../models/gemma-4.md) holds the full derivations with line
 citations; `docs/models/gemma4-upstream.txt` is the committed transcript they cite, and
 `tests/models/test_gemma4_facts_contract.py` asserts those citations still resolve.
 

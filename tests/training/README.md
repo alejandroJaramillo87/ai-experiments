@@ -46,7 +46,7 @@ regenerated.
 | File | Tests | Covers |
 |------|-------|--------|
 | `test_affinity.py` | 9 | D9 core-pinning helpers: cpu-list parsing, SMT expansion, disjointness, and the sched_setaffinity round trip. |
-| `test_architecture.py` | 28 | training/models/architecture.py: the parameter accounting pinned for a hand-computed tiny config, the reference-recipe counts against the published source architectures, the Gemma 4 counts against the exact figures in docs/training/gemma-4-training.md, the HF config mapping, and the adapter counts. |
+| `test_architecture.py` | 28 | training/models/architecture.py: the parameter accounting pinned for a hand-computed tiny config, the reference-recipe counts against the published source architectures, the Gemma 4 counts against the exact figures in docs/training/base/gemma-4-training.md, the HF config mapping, and the adapter counts. |
 | `test_chat_template_contract.py` | 11 | The Python half of the chat-template contract. |
 | `test_checkpoint.py` | 12 | Unit tests for atomic checkpoint save, retention, and resume resolution (Phase 0 D6). |
 | `test_cli_handlers_datatools.py` | 10 | CLI handler contracts for the data-tooling subcommands: validate, build-contamination, and make-replay-synthetic. |

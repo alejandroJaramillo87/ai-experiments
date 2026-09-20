@@ -4,7 +4,7 @@ Phase 0 D5: one YAML file fully specifies a run, and the same file is read by ev
 of it. The schema is a set of dataclasses in `/training/recipes/schema.py`; a recipe file
 merges against them in struct mode, so an unknown key or a mistyped value fails at load
 rather than mid-run. Design record:
-[d5_recipe_system_investigation.md](investigations/d5_recipe_system_investigation.md).
+[d5_recipe_system_investigation.md](../investigations/d5_recipe_system_investigation.md).
 
 ## Table of contents
 
@@ -142,7 +142,7 @@ the example counts are the trainer's own checks; its `data.source` is not read, 
 reference recipes point it at the same directory and it is not a shard directory (KB-81 was
 preflight verifying it as one). Run preflight immediately before a long job. The distinction is documented with
 the container in
-[../sandbox/docker_training_overview.md](../sandbox/docker_training_overview.md#validate-compared-with-preflight).
+[../sandbox/docker_training_overview.md](../../sandbox/docker_training_overview.md#validate-compared-with-preflight).
 
 ## Testing
 
@@ -151,4 +151,4 @@ misspelled and mistyped keys, applies dotlist overrides, reloads the snapshot bi
 refuses a duplicate run directory, and carries one test per validation invariant including
 the tokenizer-hash check against a generated shard manifest. `/tests/training/test_recipe_pins.py`
 guards the Gemma 4 revision pins. Host-side acceptance is FT.recipe-gates in
-[../verification/training/fine-tuning-loop.md](../verification/training/fine-tuning-loop.md).
+[../verification/training/fine-tuning-loop.md](../../verification/training/fine-tuning-loop.md).

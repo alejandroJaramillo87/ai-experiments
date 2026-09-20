@@ -10,9 +10,9 @@ validate's _check_offload_budget and the replay buffer's headroom share.
 
 Unit tests pin the counts for a hand-computed tiny config and for the two
 Gemma 4 variants against the exact figures in
-docs/training/gemma-4-training.md, so refactors cannot silently change the
+docs/training/base/gemma-4-training.md, so refactors cannot silently change the
 math. Nothing here prices VRAM: the memory-fit calculator that once did was
-retired on 2026-09-20 (docs/training/train_step.md), and what a recipe holds
+retired on 2026-09-20 (docs/training/base/train_step.md), and what a recipe holds
 on the card is measured by stepping it.
 """
 
@@ -32,11 +32,9 @@ from omegaconf import DictConfig
 # count and the built model cannot disagree on this rounding.
 FFN_ROUND_MULTIPLE = 64
 
-# LoRA-targetable linear modules mapped to their (in, out) dimensions as
-# lambdas over the spec. Adapter params per module = rank * (in + out); DoRA
-# adds one magnitude scalar per output column.
-# (in, out) of each adaptable module at one layer of a spec; the attention
-# widths and the MLP width vary by layer on Gemma 4.
+# LoRA-targetable linear modules mapped to their (in, out) dimensions at one
+# layer of a spec; adapter params per module = rank * (in + out). The
+# attention widths and the MLP width vary by layer on Gemma 4.
 _TARGET_MODULE_DIMS = {
     "q_proj": lambda s, i: (s.hidden, s.layer_q_dim(i)),
     "k_proj": lambda s, i: (s.hidden, s.layer_kv_dim(i)),
@@ -256,7 +254,7 @@ class ArchitectureSpec:
         wide where Gemma 4 says so), the block norms, embeddings (once when
         tied), the final RMSNorm, an untied lm_head, and the PLE terms; plus
         extra_params for towers the checkpoint carries. Pinned against
-        docs/training/gemma-4-training.md's exact E2B and E4B counts (minus
+        docs/training/base/gemma-4-training.md's exact E2B and E4B counts (minus
         the layer_scalar buffers, which are not parameters).
         """
         embeddings = self.vocab * self.hidden * (1 if self.tie_embeddings else 2)

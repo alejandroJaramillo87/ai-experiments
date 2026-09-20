@@ -5,7 +5,7 @@ JSON manifest, and provides the mmap-backed reader training loops consume. Two e
 points share one shard writer: the lite path (Phase 0 D2, no dedup, filtering, or
 decontamination) and the full-scale path (Phase 2 P2-D1) that adds quality stages in
 front of the same writer. P2-D1 design background:
-[P2-D1 investigation](investigations/p2_d1_full_scale_data_pipeline_investigation.md).
+[P2-D1 investigation](../investigations/p2_d1_full_scale_data_pipeline_investigation.md).
 
 ## Table of contents
 

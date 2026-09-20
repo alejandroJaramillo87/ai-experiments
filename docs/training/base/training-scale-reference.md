@@ -7,10 +7,10 @@ model family and to the from-scratch (phase 4) and continual-learning
 records feasibility conclusions and design constraints so later roadmap
 tasks start from settled arithmetic instead of re-deriving it. Items marked
 aspirational are exactly that. Related documents:
-[python-pipeline-optimization-candidates.md](../optimizations/ideation/python-pipeline-optimization-candidates.md)
+[python-pipeline-optimization-candidates.md](../../optimizations/ideation/python-pipeline-optimization-candidates.md)
 (the FP8 Tier A item this document expands),
 [train_step.md](train_step.md) (how a recipe's real footprint is measured), and
-[interp-scale-reference.md](../interp/interp-scale-reference.md)
+[interp-scale-reference.md](../../interp/interp-scale-reference.md)
 (how these conclusions shape the interpretability program).
 
 ## Table of contents
@@ -164,7 +164,7 @@ Two consequences for the training roadmap:
   `rust-harness/runtime/src/tokenizer.rs`, and the interp provenance
   fingerprints unchanged. The cost is the vocabulary: 262,144 entries
   dominate a sub-1B model's parameter count through the tied embedding.
-  The byte-level BPE tokenizers of [tokenizer_training.md](tokenizer_training.md)
+  The byte-level BPE tokenizers of [tokenizer_training.md](../from-scratch/tokenizer_training.md)
   are the opt-in for experiments that need a small vocabulary. The harness
   loads any `tokenizer.json`, so segmentation and decode are not the
   obstacle; the chat template is. A D3 artifact carries none of the Gemma

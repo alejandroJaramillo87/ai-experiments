@@ -1,7 +1,7 @@
 """training/models/architecture.py: the parameter accounting pinned for a
 hand-computed tiny config, the reference-recipe counts against the published
 source architectures, the Gemma 4 counts against the exact figures in
-docs/training/gemma-4-training.md, the HF config mapping, and the adapter
+docs/training/base/gemma-4-training.md, the HF config mapping, and the adapter
 counts. CPU-only, no GPU required."""
 
 from __future__ import annotations
@@ -183,7 +183,7 @@ def contract_hf_config(variant: str = "E2B"):
 
 
 # Exact language-model parameter counts summed from the safetensors headers
-# (docs/training/gemma-4-training.md, Parameter accounting), minus one
+# (docs/training/base/gemma-4-training.md, Parameter accounting), minus one
 # layer_scalar buffer per layer, which is not a parameter.
 LANGUAGE_MODEL_PARAMS = {"E2B": 4_647_449_891 - 35, "E4B": 7_518_069_034 - 42}
 ATTENTION_PARAMS = {"E2B": 297_292_800, "E4B": 642_277_888}
@@ -222,7 +222,7 @@ class TestGemma4Accounting:
         """The count the 2026-09-19 fix was written against: the seven
         full-attention layers at global_head_dim, q and k norms, four block
         norms, and the PLE model projection and norms, each of which the
-        one-width Llama derivation missed (docs/training/gemma-4-training.md,
+        one-width Llama derivation missed (docs/training/base/gemma-4-training.md,
         the former "Where the calculator undercounts").
         """
         spec = spec_from_hf_config(contract_hf_config(variant))

@@ -49,7 +49,7 @@ destination.
 
 The per-invocation timestamp directory keeps the config snapshot beside the run, so a
 checkpoint is reproducible without consulting the recipe file's current state. Details:
-`docs/training/tracking_checkpointing.md`.
+`docs/training/base/tracking_checkpointing.md`.
 
 ## Stepping a recipe on the GPU
 
@@ -64,7 +64,7 @@ the tree prices VRAM any more.
   `Resident after build`, `Peak allocated`, `Peak reserved`, `NVML peak` and the tokens per
   micro-batch. An OOM prints those figures with `data.micro_batch` or `data.seq_len` as the
   remedy. `train-sft` prints no fit line: step the recipe first.
-- Details: `docs/training/train_step.md`.
+- Details: `docs/training/base/train_step.md`.
 
 ## Train-and-serve round trip
 
@@ -88,4 +88,4 @@ captures from. No GGUF is produced. All commands are host-side.
 4. Comparative claims (base vs tuned) identify each side by `model_hash`; `eval-ft`
    prints it beside each record. Benchmark numbers still go through the `benchmarking` skill.
 
-Details: `docs/training/train_serve_roundtrip.md`.
+Details: `docs/training/base/train_serve_roundtrip.md`.

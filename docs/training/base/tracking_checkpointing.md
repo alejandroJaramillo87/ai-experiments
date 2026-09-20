@@ -3,7 +3,7 @@
 Phase 0 D6: the reference training loop, atomic resumable checkpoints, and metric
 tracking. One recipe YAML fully drives a run; every run is observable and resumable.
 Design record:
-[the D6 investigation](investigations/d6_tracking_checkpointing_investigation.md).
+[the D6 investigation](../investigations/d6_tracking_checkpointing_investigation.md).
 
 ## Table of contents
 

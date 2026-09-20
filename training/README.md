@@ -49,8 +49,9 @@ training container's two evaluators over both sides of a comparison.
 
 ## Where the real docs live
 
-[../docs/training/](../docs/training/) holds the living documentation, one document per
-capability: `data_pipeline.md`, `tokenizer_training.md`, `train_step.md`,
-`tracking_checkpointing.md`, `eval_wrapper.md`, and the rest. Phase
+[../docs/training/](../docs/training/) holds the living documentation, one directory per
+rung over a base every rung shares: `base/` (`recipe_system.md`, `train_step.md`,
+`tracking_checkpointing.md`, `data_pipeline.md`, the export and the reference tables),
+`fine-tuning/`, `continual/` and `from-scratch/`. Phase
 verification records are in [../docs/verification/](../docs/verification/), and the frozen
 design investigations in [../docs/training/investigations/](../docs/training/investigations/).

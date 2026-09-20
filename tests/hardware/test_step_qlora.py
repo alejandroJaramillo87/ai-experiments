@@ -12,7 +12,7 @@ that moves any of them fails here rather than in the next long run.
 The count pins are the built model's, not the checkpoint's: the pinned
 modeling code does not construct k_proj, v_proj and k_norm on the 20
 KV-shared layers the checkpoint stores them for, so the analytic total (the
-checkpoint's, docs/training/gemma-4-training.md) exceeds the model by that
+checkpoint's, docs/training/base/gemma-4-training.md) exceeds the model by that
 residue. The adapter count is exact by construction (KB-90): it prices the
 modules the model builds, at each layer's own width.
 

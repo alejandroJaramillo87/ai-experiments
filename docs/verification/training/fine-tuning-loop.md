@@ -102,7 +102,7 @@ builds what it verifies:
   went with the entry). What stayed moved to where its consumers are: the
   parameter count to `training/models/architecture.py`, and the calibration
   loop to `python -m training step` (`make train-step`,
-  [train_step.md](../../training/train_step.md)), which builds the real
+  [train_step.md](../../training/base/train_step.md)), which builds the real
   model, steps it through the trainer's loss, checks the parameter count
   against the built model and prints the resident and peak figures.
   FT.calibrate-qlora keeps its slug and is retitled; FT.e4b-recipe (since
@@ -1406,7 +1406,7 @@ From https://github.com/alejandroJaramillo87/ai-experiments
    9ae4b3aa..a199bd18  SFT-verification -> origin/SFT-verification
 Updating 9ae4b3a..a199bd1
 Fast-forward
- docs/training/train_step.md                    | 12 +++++++++---
+ docs/training/base/train_step.md                    | 12 +++++++++---
  docs/verification/bugs/known-bugs.md           |  7 ++++---
  docs/verification/training/fine-tuning-loop.md | 85 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++--------------
  tests/training/test_cli_handlers_step.py       | 27 ++++++++++++++++++++++-----

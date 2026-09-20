@@ -10,7 +10,7 @@ transcripts that verify them.
 | [gemma-4.md](gemma-4.md) | Gemma 4 dense family (E2B, E4B, 12B, 31B): general architecture reference, and the citation target of [../verification/archive/gemma-4-conformance_investigation.md](../verification/archive/gemma-4-conformance_investigation.md) |
 
 Each tier keeps its own scoped Gemma 4 document, covering what that tier's code consumes:
-[../training/gemma-4-training.md](../training/gemma-4-training.md) for training and
+[../training/base/gemma-4-training.md](../training/base/gemma-4-training.md) for training and
 [../interp/gemma-4-interp.md](../interp/gemma-4-interp.md) for interp. The runtime has none:
 it reads the published checkpoint directly, so what it requires is stated here and in
 [../rust-harness/runtime-design.md](../rust-harness/runtime-design.md).

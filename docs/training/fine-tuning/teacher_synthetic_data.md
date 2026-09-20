@@ -7,7 +7,7 @@ phase: inference up, training idle. Its consumer is the organism generator:
 (`training/recipes/organisms/prompts/`) with the drawn ground truth and hands them to
 this harness, which drives the serving stack, keeps the run resumable and writes the
 manifest the organism dataset inherits. Design record:
-[the F4 investigation](investigations/f4_teacher_synthetic_data_investigation.md), which
+[the F4 investigation](../investigations/f4_teacher_synthetic_data_investigation.md), which
 describes the harness as a distillation-era tool with a `synthesize` pipeline; that
 pipeline was removed on 2026-09-19 (nothing consumed it), distillation left the tier on
 2026-09-18, and the harness stayed because the organisms need it.

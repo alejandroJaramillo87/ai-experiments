@@ -94,7 +94,7 @@ audit.
 
 | Document | Description |
 |----------|-------------|
-| [training/gemma-4-training.md](training/gemma-4-training.md) | Gemma 4 for the training tier: parameter accounting, memory, tensor names, tokenizer (E2B, E4B) |
+| [training/base/gemma-4-training.md](training/base/gemma-4-training.md) | Gemma 4 for the training tier: parameter accounting, memory, tensor names, tokenizer (E2B, E4B) |
 | [interp/gemma-4-interp.md](interp/gemma-4-interp.md) | Gemma 4 for the interp tier: residual width, layer counts, hook hazards (E2B, E4B) |
 | [models/gemma-4.md](models/gemma-4.md) | Gemma 4 dense family (E2B, E4B, 12B, 31B): general architecture reference, and the citation target of `verification/archive/gemma-4-conformance_investigation.md` |
 | [models/README.md](models/README.md) | Index for the above, plus the committed GGUF and safetensors header transcripts and how to regenerate them |
@@ -131,18 +131,21 @@ investigations.
 
 | Document | Description |
 |----------|-------------|
-| [training/data_pipeline.md](training/data_pipeline.md) | Full-scale data pipeline (P2-D1): filter, dedup, decontaminate, shard |
-| [training/tokenizer_training.md](training/tokenizer_training.md) | Byte-level BPE tokenizer training (D3) |
-| [training/train_step.md](training/train_step.md) | Stepping a recipe on the GPU: resident and peak VRAM, the parameter drift check |
-| [training/tracking_checkpointing.md](training/tracking_checkpointing.md) | Run tracking, checkpoint layout, resume (D6) |
-| [training/train_serve_roundtrip.md](training/train_serve_roundtrip.md) | Export, serve, smoke-evaluate a checkpoint (D7) |
-| [training/heterogeneous_compute.md](training/heterogeneous_compute.md) | Prefetch loader, staging, affinity (D9) |
-| [training/operational_watchdogs.md](training/operational_watchdogs.md) | Thermal, RAM, and disk watchdogs (D10) |
-| [training/sft_entry_point.md](training/sft_entry_point.md) | Supervised fine-tuning entry point (F1/F3) |
-| [training/teacher_synthetic_data.md](training/teacher_synthetic_data.md) | Teacher generation harness (F4) |
-| [training/eval_wrapper.md](training/eval_wrapper.md) | Baseline-versus-tuned evaluation (F7) |
-| [training/gemma-4-training.md](training/gemma-4-training.md) | Gemma 4 for the training tier: parameter accounting, memory, tensor names, tokenizer |
-| [training/training-scale-reference.md](training/training-scale-reference.md) | What fits on this workstation: model sizes, batch and sequence budgets, wall-clock expectations |
+| [training/README.md](training/README.md) | The training documentation index: one directory per rung over a shared base |
+| [training/base/data_pipeline.md](training/base/data_pipeline.md) | Full-scale data pipeline (P2-D1): filter, dedup, decontaminate, shard |
+| [training/from-scratch/tokenizer_training.md](training/from-scratch/tokenizer_training.md) | Byte-level BPE tokenizer training (D3) |
+| [training/base/train_step.md](training/base/train_step.md) | Stepping a recipe on the GPU: resident and peak VRAM, the parameter drift check |
+| [training/base/tracking_checkpointing.md](training/base/tracking_checkpointing.md) | Run tracking, checkpoint layout, resume (D6) |
+| [training/base/train_serve_roundtrip.md](training/base/train_serve_roundtrip.md) | Export, serve, smoke-evaluate a checkpoint (D7) |
+| [training/base/heterogeneous_compute.md](training/base/heterogeneous_compute.md) | Prefetch loader, staging, affinity (D9) |
+| [training/base/operational_watchdogs.md](training/base/operational_watchdogs.md) | Thermal, RAM, and disk watchdogs (D10) |
+| [training/fine-tuning/sft_data.md](training/fine-tuning/sft_data.md) | Chat and instruction data preparation: record format, templates, the assistant-span mask, the held-out split (F1) |
+| [training/fine-tuning/sft_entry_point.md](training/fine-tuning/sft_entry_point.md) | Supervised fine-tuning entry point (F3) |
+| [training/fine-tuning/teacher_synthetic_data.md](training/fine-tuning/teacher_synthetic_data.md) | Teacher generation harness (F4) |
+| [training/fine-tuning/eval_wrapper.md](training/fine-tuning/eval_wrapper.md) | Held-out loss and lm-eval records on a base and a fine-tune (F7) |
+| [training/continual/README.md](training/continual/README.md) | Continual pretraining: entry points and the P2 records |
+| [training/base/gemma-4-training.md](training/base/gemma-4-training.md) | Gemma 4 for the training tier: parameter accounting, memory, tensor names, tokenizer |
+| [training/base/training-scale-reference.md](training/base/training-scale-reference.md) | What fits on this workstation: model sizes, batch and sequence budgets, wall-clock expectations |
 | [training/continuous-learning-proposal.md](training/continuous-learning-proposal.md) | Parked proposal: the continuous-learning goal, the candidate architecture, and what must be true before it is scheduled |
 | [training/tier-consolidation-proposal.md](training/tier-consolidation-proposal.md) | Parked proposal: the checkpoint-contract consolidation, the CLI handler moves, and the roadmap-code glossary, with what gates each |
 

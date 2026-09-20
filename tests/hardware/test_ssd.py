@@ -24,7 +24,7 @@ STAGING_MIN_MB_S = 200.0
 STAGING_PROBE_BYTES = 1 << 30  # 1GB
 
 # D9 acceptance bar: mean data_wait_ms under 5% of mean step time
-# (docs/training/heterogeneous_compute.md).
+# (docs/training/base/heterogeneous_compute.md).
 DATA_WAIT_FRACTION_BAR = 0.05
 
 
@@ -168,7 +168,7 @@ class TestSsdFull:
     @pytest.mark.gpu
     def test_data_wait_under_the_d9_bar(self, cuda, tmp_path, train_lock):
         """Mean data_wait_ms stays under 5% of mean step time on a short
-        prefetch-loader run (docs/training/heterogeneous_compute.md)."""
+        prefetch-loader run (docs/training/base/heterogeneous_compute.md)."""
         import numpy as np
         from support import make_shard_dir
 

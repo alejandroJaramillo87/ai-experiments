@@ -112,9 +112,9 @@ cases in `tests/training/test_sft_entry.py` move there under the shared names; t
 `test_loop.py` and `test_watchdog.py` are unchanged. One new test checks that
 `run_header` for a pretrain recipe and an sft recipe carry the same key set.
 
-**Docs.** [tracking_checkpointing.md](tracking_checkpointing.md) (the `checkpoint.py`
+**Docs.** [tracking_checkpointing.md](base/tracking_checkpointing.md) (the `checkpoint.py`
 row and the retention paragraph cover both layouts),
-[sft_entry_point.md](sft_entry_point.md) (which module stamps meta), and the
+[sft_entry_point.md](fine-tuning/sft_entry_point.md) (which module stamps meta), and the
 observability README's series table if it names the callbacks module for the header.
 No file is renamed, so no retired-names row. This item then leaves this document.
 

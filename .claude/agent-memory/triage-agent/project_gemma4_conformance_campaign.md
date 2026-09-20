@@ -24,7 +24,7 @@ root rather than being independent bugs:
 `layer_types`, and `num_global_key_value_heads` have **no consumer in code**: as of
 2026-08-06 a grep across `*.py`, `*.rs`, and `*.yaml` outside `docs/` returns zero hits for
 all six. They now appear in two further analysis documents besides the spec —
-`docs/training/gemma-4-training.md` (which states outright that `use_double_wide_mlp`
+`docs/training/base/gemma-4-training.md` (which states outright that `use_double_wide_mlp`
 "appears nowhere in `/training` or `/common`" and that `num_kv_shared_layers`/`layer_types`
 "have no consumer") and the rust harness ingestion reference, since deleted with the GGUF
 loader it described, its surviving facts folded into `docs/models/gemma-4.md`. Those corroborate the

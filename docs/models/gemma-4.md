@@ -741,7 +741,7 @@ like a hazard and each resolves differently:
   (`docs/models/gemma4-gguf.txt`).
 - **Fine-tuning is unaffected.** A buffer is absent from `named_parameters()`, which is what
   the freeze filters iterate, so no freeze pattern can expose it to an optimizer. See
-  [docs/training/gemma-4-training.md](../training/gemma-4-training.md).
+  [docs/training/base/gemma-4-training.md](../training/base/gemma-4-training.md).
 
 **The rust harness is unaffected.** It was the outstanding gap while Gemma 4 support was being
 built; the backend now reads the tensor and applies it as the layer's last operation

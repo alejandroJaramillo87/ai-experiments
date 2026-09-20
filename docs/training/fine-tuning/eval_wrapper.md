@@ -5,7 +5,7 @@ fine-tuned checkpoint with one command, and writes one record per evaluator per 
 (Phase 1 F7). Those four records are the output: the interp tier's `organism-verify`
 reads them for its locality check, the evidence that an organism's implant moved the
 target behaviour and nothing else. Design record:
-[the F7 investigation](investigations/f7_eval_wrapper_investigation.md). Two pieces that
+[the F7 investigation](../investigations/f7_eval_wrapper_investigation.md). Two pieces that
 record describes are gone: the model-as-judge evaluator (removed 2026-09-19; it measured
 preference, which no rung of the training tier's progression asks about, and it was the
 only reason the tool drove the serving stack) and the scorecard assembled over the

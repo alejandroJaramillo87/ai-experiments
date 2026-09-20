@@ -116,7 +116,7 @@ RETIRED: dict[str, tuple[str, str]] = {
         "the same retirement; see make memfit above",
     ),
     "docs/training/memory_fit.md": (
-        "docs/training/train_step.md",
+        "docs/training/base/train_step.md",
         "the calculator's document left with it; the step command and the parameter accounting are documented there",
     ),
     "tests/training/test_calculator.py": (
@@ -765,6 +765,61 @@ RETIRED: dict[str, tuple[str, str]] = {
     "training/eval/scorecard.py": (
         "the four per-side records eval-ft writes (holdout_<side>.json, lmeval_<side>.json), read by interp organism-verify",
         "the scorecard assembled over the records had no reader; the base-versus-organism judgement is organism-verify's locality check",
+    ),
+    # docs/training/ gained one directory per rung on 2026-09-20 (base/ for what
+    # every rung shares, then fine-tuning/, continual/, from-scratch/); the
+    # living pages moved, the proposals and investigations/ stayed.
+    "docs/training/recipe_system.md": (
+        "docs/training/base/recipe_system.md",
+        "docs/training gained one directory per rung on 2026-09-20; the page moved under base/",
+    ),
+    "docs/training/train_step.md": (
+        "docs/training/base/train_step.md",
+        "docs/training gained one directory per rung on 2026-09-20; the page moved under base/",
+    ),
+    "docs/training/tracking_checkpointing.md": (
+        "docs/training/base/tracking_checkpointing.md",
+        "docs/training gained one directory per rung on 2026-09-20; the page moved under base/",
+    ),
+    "docs/training/operational_watchdogs.md": (
+        "docs/training/base/operational_watchdogs.md",
+        "docs/training gained one directory per rung on 2026-09-20; the page moved under base/",
+    ),
+    "docs/training/heterogeneous_compute.md": (
+        "docs/training/base/heterogeneous_compute.md",
+        "docs/training gained one directory per rung on 2026-09-20; the page moved under base/",
+    ),
+    "docs/training/data_pipeline.md": (
+        "docs/training/base/data_pipeline.md",
+        "docs/training gained one directory per rung on 2026-09-20; the page moved under base/",
+    ),
+    "docs/training/train_serve_roundtrip.md": (
+        "docs/training/base/train_serve_roundtrip.md",
+        "docs/training gained one directory per rung on 2026-09-20; the page moved under base/",
+    ),
+    "docs/training/gemma-4-training.md": (
+        "docs/training/base/gemma-4-training.md",
+        "docs/training gained one directory per rung on 2026-09-20; the page moved under base/",
+    ),
+    "docs/training/training-scale-reference.md": (
+        "docs/training/base/training-scale-reference.md",
+        "docs/training gained one directory per rung on 2026-09-20; the page moved under base/",
+    ),
+    "docs/training/sft_entry_point.md": (
+        "docs/training/fine-tuning/sft_entry_point.md",
+        "docs/training gained one directory per rung on 2026-09-20; the page moved under fine-tuning/",
+    ),
+    "docs/training/teacher_synthetic_data.md": (
+        "docs/training/fine-tuning/teacher_synthetic_data.md",
+        "docs/training gained one directory per rung on 2026-09-20; the page moved under fine-tuning/",
+    ),
+    "docs/training/eval_wrapper.md": (
+        "docs/training/fine-tuning/eval_wrapper.md",
+        "docs/training gained one directory per rung on 2026-09-20; the page moved under fine-tuning/",
+    ),
+    "docs/training/tokenizer_training.md": (
+        "docs/training/from-scratch/tokenizer_training.md",
+        "docs/training gained one directory per rung on 2026-09-20; the page moved under from-scratch/",
     ),
     "training/datasets/distill": (
         "training/datasets/teacher",

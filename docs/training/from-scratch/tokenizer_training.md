@@ -5,13 +5,13 @@ Fine-tuning and continual pre-training always reuse the base model's tokenizer, 
 recipes carry no `tokenizer` block and every reader resolves it from `model.hf.id`; this
 tool exists only for the from-scratch path. A mismatched tokenizer silently destroys a
 fine-tune. Design background:
-[D3 investigation](investigations/d3_tokenizer_training_investigation.md).
+[D3 investigation](../investigations/d3_tokenizer_training_investigation.md).
 
 On the from-scratch path it is the opt-in, not the default. A scratch run reuses the
 Gemma 4 tokenizer unless it needs a small vocabulary, because an artifact trained here
 has no Gemma turn literals and the harness chat template cannot render against it; the
 reserved block below is where those literals go, and only at training time. The phase 4
-section of [training-scale-reference.md](training-scale-reference.md#phase-4-from-scratch-training)
+section of [training-scale-reference.md](../base/training-scale-reference.md#phase-4-from-scratch-training)
 records the choice and when it is due.
 
 ## Table of contents
