@@ -173,8 +173,15 @@ Two deltas remain by design, and FT.calibrate-qlora's `Parameter count` line is 
 - **Shared-KV residue.** The count includes `k_proj`, `v_proj` and `k_norm` on all 35 layers,
   as the checkpoint stores them. The pinned `transformers` guards those modules on the 20
   shared layers (`docs/models/gemma-4.md`, the shared-KV weight conflict), so the built model
-  may report 15,733,760 fewer parameters. A drift warning of exactly that size is the
-  modeling code's reading, not a counting defect.
+  reports fewer parameters: 18,880,512 at each layer's own width (16 sliding layers at
+  2 x 256 x 1536 + 256, and the 4 full-attention layers among the tail, 19, 24, 29 and 34,
+  at 2 x 512 x 1536 + 512). An earlier figure here, 15,733,760, priced all 20 at the sliding
+  width. The built model reported 18,881,440 on 2026-09-20 (FT.calibrate-qlora's seventh
+  attempt): the residue plus 928 that nothing yet explains, pinned as measured by
+  `tests/hardware/test_step_qlora.py`. A drift warning of that size is the modeling code's
+  reading, not a counting defect. The adapter count is the other way round: it prices what
+  the built model constructs, so a KV-shared layer contributes no `k_proj` or `v_proj`
+  adapter (KB-90).
 - **Towers.** `from_pretrained` loads the vision and audio towers with the language model, so
   they are resident and must be in the weights term. They are not modeled: `spec_from_recipe`
   reads the `model.safetensors` header of a local base directory and sums every tensor

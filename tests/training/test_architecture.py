@@ -411,6 +411,48 @@ class TestPeftCounts:
         with pytest.raises(UnknownArchitectureError, match="qkv_proj"):
             adapter_param_count(spec, recipe)
 
+    # Rank-16 LoRA over the seven modules, per layer on what the modeling
+    # code builds (KB-90). E2B, hidden 1536, ffn 6144, 8 heads, 1 KV head:
+    #   sliding layer, in+out over the seven: 3584+1792+1792+3584+3*7680 = 33,792
+    #   full layer (q/o at 512-wide heads): 5632+2048+2048+5632+23,040 = 38,400
+    #   KV-shared tail (15-34, no k/v, MLP doubled to 12,288):
+    #     sliding 3584+3584+3*13,824 = 48,640; full 5632+5632+41,472 = 52,736
+    #   12 sliding + 3 full in the head, 16 sliding + 4 full in the tail:
+    #   16 * (12*33,792 + 3*38,400 + 16*48,640 + 4*52,736) = 24,158,208,
+    #   the figure the built adapter reported on 2026-09-20.
+    # E4B, hidden 2560, ffn 10240, 2 KV heads, 18 shared, MLP flat:
+    #   sliding 4608+3072+3072+4608+38,400 = 53,760; full 6656+3584+3584+6656+38,400 = 58,880
+    #   tail sliding 4608+4608+38,400 = 47,616; tail full 6656+6656+38,400 = 51,712
+    #   20 sliding + 4 full head, 15 sliding + 3 full tail -> 16 * 2,180,096.
+    GEMMA4_ADAPTER_PARAMS = {"E2B": 24_158_208, "E4B": 16 * 2_180_096}
+
+    @pytest.mark.parametrize(
+        "variant, recipe_name",
+        [("E2B", "sft-qlora-e2b.yaml"), ("E4B", "sft-qlora-gemma-e4b.yaml")],
+    )
+    def test_gemma4_adapter_is_priced_per_layer(self, variant, recipe_name):
+        recipe = load_reference(recipe_name)
+        assert recipe.peft.rank == 16 and recipe.peft.target_modules == "auto"
+        spec = spec_from_hf_config(contract_hf_config(variant))
+        assert adapter_param_count(spec, recipe) == self.GEMMA4_ADAPTER_PARAMS[variant]
+
+    def test_gemma4_per_layer_geometry(self):
+        spec = spec_from_hf_config(contract_hf_config("E2B"))
+        assert spec.full_attention_indices == (4, 9, 14, 19, 24, 29, 34)
+        assert (spec.layer_q_dim(0), spec.layer_q_dim(4)) == (2048, 4096)
+        assert (spec.layer_kv_dim(0), spec.layer_kv_dim(4)) == (256, 512)
+        assert (spec.layer_ffn(14), spec.layer_ffn(15)) == (6144, 12288)
+        assert not spec.is_kv_shared_layer(14) and spec.is_kv_shared_layer(15)
+        # E4B shares KV without the double-wide MLP: the tail stays flat.
+        e4b = spec_from_hf_config(contract_hf_config("E4B"))
+        assert e4b.is_kv_shared_layer(24) and e4b.layer_ffn(24) == 10240
+
+    def test_scratch_llama_has_one_width_everywhere(self):
+        spec = spec_from_recipe(self.qlora_recipe())
+        assert spec.full_attention_indices == ()
+        assert not spec.is_kv_shared_layer(1)
+        assert spec.layer_q_dim(1) == spec.q_dim and spec.layer_ffn(1) == spec.ffn
+
     def test_peft_disabled_trains_every_parameter(self, tiny_recipe):
         spec = spec_from_recipe(tiny_recipe)
         assert trainable_param_count(spec, tiny_recipe) == TINY_PARAMS

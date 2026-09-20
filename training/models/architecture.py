@@ -35,15 +35,19 @@ FFN_ROUND_MULTIPLE = 64
 # LoRA-targetable linear modules mapped to their (in, out) dimensions as
 # lambdas over the spec. Adapter params per module = rank * (in + out); DoRA
 # adds one magnitude scalar per output column.
+# (in, out) of each adaptable module at one layer of a spec; the attention
+# widths and the MLP width vary by layer on Gemma 4.
 _TARGET_MODULE_DIMS = {
-    "q_proj": lambda s: (s.hidden, s.q_dim),
-    "k_proj": lambda s: (s.hidden, s.kv_dim),
-    "v_proj": lambda s: (s.hidden, s.kv_dim),
-    "o_proj": lambda s: (s.q_dim, s.hidden),
-    "gate_proj": lambda s: (s.hidden, s.ffn),
-    "up_proj": lambda s: (s.hidden, s.ffn),
-    "down_proj": lambda s: (s.ffn, s.hidden),
+    "q_proj": lambda s, i: (s.hidden, s.layer_q_dim(i)),
+    "k_proj": lambda s, i: (s.hidden, s.layer_kv_dim(i)),
+    "v_proj": lambda s, i: (s.hidden, s.layer_kv_dim(i)),
+    "o_proj": lambda s, i: (s.layer_q_dim(i), s.hidden),
+    "gate_proj": lambda s, i: (s.hidden, s.layer_ffn(i)),
+    "up_proj": lambda s, i: (s.hidden, s.layer_ffn(i)),
+    "down_proj": lambda s, i: (s.layer_ffn(i), s.hidden),
 }
+# Modules a KV-shared layer does not build, so the adapter cannot attach to.
+_KV_SHARED_ABSENT = frozenset({"k_proj", "v_proj"})
 
 # ZeRO-Offload host-RAM model: fp32 optimizer states (8 B/param) plus fp32
 # master params (4 B/param) plus pinned fp32 gradient transfer buffers
@@ -116,6 +120,10 @@ class ArchitectureSpec:
     # one-width Llama derivation.
     full_attention_layers: int = 0
     global_head_dim: int | None = None
+    # Which layers those are, from config.layer_types, for the per-layer
+    # prices (the adapter attaches to each layer at that layer's width and
+    # to k_proj/v_proj only where the modeling code builds them, KB-90).
+    full_attention_indices: tuple[int, ...] = ()
     # Norm vectors per decoder layer: two for Llama, four for the Gemma
     # sandwich (input, post-attention, pre- and post-feedforward). Gemma 3 and
     # 4 also normalize q and k per layer at that layer's head width.
@@ -174,6 +182,38 @@ class ArchitectureSpec:
     @property
     def sliding_attention_layers(self) -> int:
         return self.layers - self.full_attention_layers
+
+    # Per-layer geometry, what the built model constructs at layer `index`.
+    # The stack totals above price the checkpoint (k_proj and v_proj on every
+    # layer, as stored); these price the modules the modeling code builds.
+
+    def is_kv_shared_layer(self, index: int) -> bool:
+        """Mirrors Gemma4TextAttention (docs/models/gemma4-upstream.txt,
+        `layer_idx >= first_kv_shared_layer_idx`): the tail
+        num_kv_shared_layers layers read another layer's K and V and build no
+        k_proj, v_proj or k_norm of their own."""
+        if self.num_kv_shared_layers <= 0:
+            return False
+        return index >= self.layers - self.num_kv_shared_layers
+
+    def layer_head_dim(self, index: int) -> int:
+        if index in self.full_attention_indices:
+            return self.full_head_dim
+        return self.head_dim
+
+    def layer_q_dim(self, index: int) -> int:
+        return self.heads * self.layer_head_dim(index)
+
+    def layer_kv_dim(self, index: int) -> int:
+        return self.kv_heads * self.layer_head_dim(index)
+
+    def layer_ffn(self, index: int) -> int:
+        """The MLP width at one layer: doubled on the KV-shared tail when
+        use_double_wide_mlp is set (E2B), flat otherwise."""
+        if self.use_double_wide_mlp and self.double_wide_layers > 0:
+            if self.is_kv_shared_layer(index):
+                return 2 * self.ffn
+        return self.ffn
 
     def attention_param_count(self) -> int:
         """q/k/v/o projections across the stack, priced per layer type, plus
@@ -377,6 +417,9 @@ def spec_from_hf_config(config) -> ArchitectureSpec:
             # Read the array, never a stride: E2B's period is 5, the others' 6
             # (schemas/gemma4_facts.json, read_the_layer_types_array).
             full_attention_layers=sum(1 for t in layer_types if t == "full_attention"),
+            full_attention_indices=tuple(
+                i for i, t in enumerate(layer_types) if t == "full_attention"
+            ),
             global_head_dim=getattr(config, "global_head_dim", None),
             block_norms=4 if model_type in GEMMA_SANDWICH_NORM_TYPES else 2,
             qk_norms=model_type in GEMMA_QK_NORM_TYPES,
@@ -399,21 +442,28 @@ def _peft_target_modules(recipe: DictConfig) -> list[str]:
 
 
 def adapter_param_count(spec: ArchitectureSpec, recipe: DictConfig) -> int:
-    """Trainable LoRA/DoRA adapter parameters for the recipe's peft group."""
+    """Trainable LoRA/DoRA adapter parameters for the recipe's peft group,
+    priced per layer on the modules the built model constructs (KB-90): the
+    full-attention layers at global_head_dim, the double-wide MLP on E2B's
+    tail, and no k_proj or v_proj on a KV-shared layer."""
     rank = recipe.peft.rank
     dora = recipe.peft.method == "dora"
-    per_layer = 0
-    for name in _peft_target_modules(recipe):
-        dims = _TARGET_MODULE_DIMS.get(name)
-        if dims is None:
+    modules = _peft_target_modules(recipe)
+    for name in modules:
+        if name not in _TARGET_MODULE_DIMS:
             raise UnknownArchitectureError(
                 f"peft.target_modules entry '{name}' has no dimension mapping in "
                 f"{tuple(_TARGET_MODULE_DIMS)}; the adapter size cannot be "
                 "counted. Add the mapping in training/models/architecture.py."
             )
-        d_in, d_out = dims(spec)
-        per_layer += rank * (d_in + d_out) + (d_out if dora else 0)
-    return spec.layers * per_layer
+    total = 0
+    for index in range(spec.layers):
+        for name in modules:
+            if name in _KV_SHARED_ABSENT and spec.is_kv_shared_layer(index):
+                continue
+            d_in, d_out = _TARGET_MODULE_DIMS[name](spec, index)
+            total += rank * (d_in + d_out) + (d_out if dora else 0)
+    return total
 
 
 def trainable_param_count(spec: ArchitectureSpec, recipe: DictConfig) -> int:

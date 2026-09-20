@@ -180,6 +180,17 @@ builds what it verifies:
   model `train-sft` never runs. Fixed the same day (`_build_step_model`
   returns the model in training mode); the paste is kept as a superseded
   observation and the entry re-runs as committed.
+- **FT.calibrate-qlora's seventh attempt** (2026-09-20, as committed after
+  KB-89) stepped: 6.37 GB resident, 10.67 GB peak allocated at 2 x 2048,
+  confirming KB-87 and KB-89 and closing KB-03, KB-83 and KB-84 with them.
+  Its two drift lines were findings: the adapter analytic priced one layer
+  and multiplied, 5.2 M short of the 24,158,208 the built adapter carries
+  (KB-90, fixed the same day, per-layer pricing pinned for E2B and E4B), and
+  the documented shared-KV residue had been priced at the sliding width for
+  all 20 shared layers, 15,733,760 against the 18,880,512 four full-attention
+  layers make it; 928 of the measured 18,881,440 stays unexplained. The
+  entry gains `tests/hardware/test_step_qlora.py` (`hw_full`) as its mirror
+  and re-runs through it.
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training
@@ -998,6 +1009,7 @@ cd ~/workspace/ai-experiments
 git log --oneline -1
 make train-step CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
     ARGS="--out /mnt/ai-data/training/verify/step-sft-e2b.json"; echo "exit=$?"
+uv run --no-sync pytest -m hw_full tests/hardware/test_step_qlora.py -v; echo "exit=$?"
 ```
 
 The `git log` line is part of the record since the fifth attempt, which ran
@@ -1019,14 +1031,17 @@ whatever the micro-batch. Depends on FT.preconditions and FT.image-smoke.
 
 Expected signal: exit 0. `[OK] Parameter count: <p> (analytic matches
 model)`, or a `[WARN] Parameter count drift` whose two figures differ by
-exactly 15,733,760, the shared-KV residue the modeling code does not
-construct (KB-82; any other drift is a finding); no trainable-count drift
-warning. Then `Resident after build:` near 6.4 GB (KB-85), `Peak
+18,881,440: the shared-KV residue the modeling code does not construct,
+18,880,512 (`k_proj`, `v_proj` and `k_norm` on the 20 shared layers at each
+layer's width), plus 928 the seventh attempt measured and nothing yet
+explains (KB-82; any other drift is a finding); no trainable-count drift
+warning (KB-90). Then `Resident after build:` near 6.4 GB (KB-85), `Peak
 allocated:` well under the card (12 to 15 GB is the expectation at this
 geometry with a 1024-token head chunk; 30 GB is KB-87 or KB-89 back), `Peak
 reserved:`, `NVML peak:`, `Tokens per micro-batch: 4,096` and `[OK] Stepped
 5 steps`. Record the four figures here; FT.train-resume launches on this
-geometry and reads nothing else from this entry.
+geometry and reads nothing else from this entry. Then the hardware mirror
+passes its one test, holding the same four figures.
 
 A later step of the same recipe (after a transformers or TRL upgrade) is the
 drift check: a peak that moved is a finding to read, not a number to argue
@@ -1373,6 +1388,99 @@ step, which is why `train-sft` would not have shown this and why the step
 loop was measuring a model the trainer never runs (KB-89, fixed the same
 day: `_build_step_model` returns the model in training mode, and
 `tests/training/test_cli_handlers_step.py` holds it). Re-runs as committed.
+
+Seventh attempt (2026-09-20, as committed after KB-89; the operator pasted
+from the pull onward, so the `git log` line is absent, and the fast-forward
+to `a199bd1` shows the checkout):
+
+```
+make train-step CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
+    ARGS="--out /mnt/ai-data/training/verify/step-sft-e2b.json"; echo "exit=$?"
+remote: Enumerating objects: 35, done.
+remote: Counting objects: 100% (35/35), done.
+remote: Compressing objects: 100% (1/1), done.
+remote: Total 18 (delta 15), reused 18 (delta 15), pack-reused 0 (from 0)
+Unpacking objects: 100% (18/18), 5.41 KiB | 1.80 MiB/s, done.
+From https://github.com/alejandroJaramillo87/ai-experiments
+ * branch              SFT-verification -> FETCH_HEAD
+   9ae4b3aa..a199bd18  SFT-verification -> origin/SFT-verification
+Updating 9ae4b3a..a199bd1
+Fast-forward
+ docs/training/train_step.md                    | 12 +++++++++---
+ docs/verification/bugs/known-bugs.md           |  7 ++++---
+ docs/verification/training/fine-tuning-loop.md | 85 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++--------------
+ tests/training/test_cli_handlers_step.py       | 27 ++++++++++++++++++++++-----
+ training/commands/train_step.py                |  9 ++++++++-
+ training/models/head_loss.py                   |  4 +++-
+ 6 files changed, 117 insertions(+), 27 deletions(-)
+?? neuronpedia_replacement_investigation.md
+?? rust-harness/.gdb_history
+?? rust-harness/fixtures/reference/e2b/
+?? rust-harness/flamegraph.svg
+?? rust-harness/runtime/tests/data/
+?? rust-harness/runtime/tests/rh5_replay.rs
+?? rust-harness/session.kv
+docker compose -f docker-compose.training.yaml run --rm training python -m training step --config training/recipes/reference/sft-qlora-e2b.yaml --out /mnt/ai-data/training/verify/step-sft-e2b.json
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-1f5c8f2e3598 Creating
+Container ai-experiments-training-run-1f5c8f2e3598 Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training step --config training/recipes/reference/sft-qlora-e2b.yaml --out /mnt/ai-data/training/verify/step-sft-e2b.json
+[RUN] Stepping sft-qlora-e2b: 5 steps on cuda:0
+[model] flash-attn supports head_dim <= 256; this model's widest head is 512, so attention runs on sdpa
+Loading weights:   0%|                                                                                                                                   | 0/1951 [00:00<?, ?it/s]/opt/venv/lib/python3.12/site-packages/bitsandbytes/backends/cuda/ops.py:213: FutureWarning: _check_is_size will be removed in a future PyTorch release along with guard_size_oblivious.     Use _check(i >= 0) instead.
+  torch._check_is_size(blocksize)
+Loading weights: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1951/1951 [00:00<00:00, 2965.15it/s]
+[OK] Step record written: /mnt/ai-data/training/verify/step-sft-e2b.json
+[WARN] Parameter count drift: model 5,128,455,712 vs analytic 5,142,102,464
+  Solution: align the param formulas in training/models/architecture.py with the built model
+[WARN] Trainable count drift: model 24,158,208 vs analytic 18,923,520
+  Solution: align adapter_param_count in training/models/architecture.py with the built adapter
+
+Resident after build:   6.37 GB
+Peak allocated:         10.67 GB
+Peak reserved:          12.60 GB
+NVML peak:              13.68 GB
+Tokens per micro-batch: 4,096
+[OK] Stepped 5 steps
+exit=0
+```
+
+The step ran: `Resident after build: 6.37 GB` again, and `Peak allocated:
+10.67 GB` where the sixth read 30.57, which confirms KB-87 and KB-89
+together (the reserved and NVML figures, 12.60 and 13.68 GB, are the
+allocator's and the driver's slack over it). KB-03, KB-83 and KB-84 close
+with it: the model stepped is the recipe's, wrapped, on sdpa. The two drift
+lines are findings against the expected signal, both read from the figures
+without a second run:
+
+- The trainable drift is exact: 24,158,208 is rank 16 over the seven
+  modules priced per layer on what the modeling code builds (the seven
+  full-attention layers at 512-wide heads, the double-wide MLP on the
+  20-layer tail, and no `k_proj` or `v_proj` on that tail, which shares
+  another layer's K and V), and 18,923,520 is the same rank over every
+  layer at the sliding width with a flat MLP. `adapter_param_count` priced
+  one layer and multiplied (KB-90, fixed the same day: it prices each layer,
+  and `tests/training/test_architecture.py` pins both variants).
+- The parameter drift is 18,881,440, not the 15,733,760 the expected signal
+  named: that figure priced the residue at the sliding width for all 20
+  shared layers, and 4 of them are full-attention layers with 512-wide
+  `k_proj`, `v_proj` and `k_norm` (16 x 786,688 + 4 x 1,573,376 =
+  18,880,512). The documented figure is corrected; the remaining 928 has no
+  explanation yet and is pinned as measured.
+
+The entry gains a hardware mirror, `tests/hardware/test_step_qlora.py`
+(`hw_full`, `gpu`), which steps the recipe as committed and holds the four
+figures: the adapter count equal, the parameter drift exactly 18,881,440,
+resident under 7 GB and peak allocated under 14 GB. Re-runs as committed
+through it, which is the KB-90 confirmation.
 
 Observed:
 

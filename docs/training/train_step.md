@@ -51,8 +51,9 @@ Tokens per micro-batch: 4,096
   `training/models/architecture.py`, plus the adapter under PEFT; the trainable count is
   compared the same way. A drift is a `[WARN]` with the module to align, not a failure: on
   Gemma 4 the modeling code does not construct the shared-KV residue the checkpoint carries,
-  a known drift of exactly 15,733,760 parameters on E2B (KB-82,
-  [gemma-4-training.md](gemma-4-training.md#parameter-accounting)).
+  a known drift on E2B of 18,881,440 as measured, 18,880,512 of it that residue (KB-82,
+  [gemma-4-training.md](gemma-4-training.md#parameter-accounting)). The adapter count is
+  priced per layer on the modules the model builds (KB-90), so under PEFT it matches exactly.
 - **Resident after build** is `torch.cuda.memory_allocated` once the model is on the device:
   the weights as loaded (NF4 packing, the towers of a composite checkpoint, the embedding
   tables at the load dtype since the PEFT wrap upcasts the norms only, KB-85).
@@ -131,4 +132,7 @@ pytest tests/training/test_architecture.py tests/training/test_cli_handlers_step
 ```
 
 On the workstation, `tests/hardware/test_gpu.py` steps the tiny recipe in the `hw_smoke`
-tier.
+tier, and `tests/hardware/test_step_qlora.py` steps the reference E2B QLoRA recipe as committed
+in the `hw_full` tier, holding the adapter count, the parameter drift, the resident figure and
+the peak to what FT.calibrate-qlora recorded, so a library bump that moves any of them fails
+there before a long run.

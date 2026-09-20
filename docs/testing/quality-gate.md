@@ -145,6 +145,9 @@ the committed tiny fixture through the real verb and hands the directory to the 
 the harness preflight are held to one digest in the sandbox, and
 `tests/hardware/test_fine_tuning_loop.py` under `hw_full` trains a ten-step QLoRA adapter on
 E2B, merges it through the same verb, and asks the same two binaries about the result.
+And the step before it (FT.calibrate-qlora): `tests/hardware/test_step_qlora.py` under
+`hw_full` steps the reference E2B QLoRA recipe as committed and holds the adapter count, the
+parameter drift, the resident figure and the peak to what the runbook entry recorded.
 
 Steps 5 and 6 are complementary rather than redundant. The reference check asks whether a
 cited path exists, which requires classifying a token as a path claim — and that classifier
