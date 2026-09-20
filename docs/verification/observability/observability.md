@@ -95,7 +95,7 @@ manifest, so as originally written none of the three could ever have run.
 - SIGKILL durability (`tests/training/test_obs_durability.py` with
   `tests/training/obs_crash_driver.py`): every completed line survives a
   kill mid-write.
-- Real-Chromium checks (`scripts/verify/obs_browser/`): chart creation,
+- Real-Chromium checks (`scripts/obs/`): chart creation,
   markers, log filters, the hostile `<!--<script` payload, live extension.
 
 ## OBS-V1 Torch-gated artifact-chain tests
@@ -475,7 +475,7 @@ produced identical output, which was checked and is correct: every record
 this run emitted was `info`. Nothing in the observability system writes at
 `debug` level today, so the option filters a level that does not exist.
 
-**Why a human found all three.** `scripts/verify/obs_browser/check.mjs`
+**Why a human found all three.** `scripts/obs/check.mjs`
 makes ten assertions — seven on the snapshot page, three on the live one —
 and none of them touches zoom, marker density,
 or level-filter behavior beyond the `warning` case. The one property

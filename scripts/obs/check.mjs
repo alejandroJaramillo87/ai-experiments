@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.resolve(SCRIPT_DIR, "../../..");
+const REPO_ROOT = path.resolve(SCRIPT_DIR, "../..");
 const RUN_ID = "R-20260718-000000-b405e5";
 // A harness chat run's envelope: RunHeader::fields() merged on the shared
 // keys, the way rust-harness/obs writes it. Its page has two charts and a

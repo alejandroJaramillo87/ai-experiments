@@ -551,6 +551,23 @@ RETIRED: dict[str, tuple[str, str]] = {
         "llama.cpp and repeng number from 1. The prefix changed with the "
         "floor so a pre-R10 image fails to load rather than loading",
     ),
+    "scripts/verify/obs_browser": (
+        "scripts/obs",
+        "the browser check of the run dashboard was the only thing under "
+        "scripts/verify/, two levels deep for three files; every other "
+        "scripts directory is one level and named for its domain, and this "
+        "one is named for the package it checks, common/obs",
+    ),
+    "scripts/verify": (
+        "scripts/obs",
+        "the directory held one child, the dashboard browser check, and the "
+        "name collided with docs/verification/ and the verify-host skill",
+    ),
+    "obs_browser": (
+        "scripts/obs",
+        "the directory name went with the move; the package.json name "
+        "obs-browser-verify is npm metadata, not a path",
+    ),
     "gguf-info": (
         "checkpoint-info",
         "the inspection tool follows the format the backend loads; it echoes "

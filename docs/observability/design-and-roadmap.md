@@ -651,7 +651,7 @@ later item ids stay stable. There is no work to execute under this id.
     (`window.obsRender(root, {header, metrics, events, live})`), so OBS-12
     reuses it unchanged with polled data. Charts resize with the window,
     and the rendered state is exposed on the root node for the browser
-    verification harness (`scripts/verify/obs_browser`).
+    verification harness (`scripts/obs`).
 - **Acceptance check** (sandbox):
   `uv run pytest tests/training/test_report.py` passes, asserting that from a
   fixture `metrics.jsonl` and event file the command writes a single HTML
@@ -669,7 +669,7 @@ later item ids stay stable. There is no work to execute under this id.
   server that follows the stateless viewer principle.
 - **Status**: done. `common/obs/serve.py` behind `report --serve`; tests in
   `tests/common/test_obs_serve.py`, plus the browser check in
-  `scripts/verify/obs_browser/`.
+  `scripts/obs/`.
 - **Depends on**: OBS-11.
 - **Scope**: `training/commands/report.py` (`--serve`, `--host`, `--port`
   flags), `common/obs/serve.py`, `common/obs/viewer.js` (follow mode),

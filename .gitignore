@@ -111,7 +111,7 @@ CLEANUP_PLAN.md
 .ruff_cache/
 .coverage
 
-# Browser verification harness dependencies (scripts/verify/obs_browser)
+# Browser verification harness dependencies (scripts/obs)
 node_modules/
 package-lock.json
 package.json

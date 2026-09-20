@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # dependency_check.sh
-# Checks and reports on AI engineering dependencies and repository-defined optimizations
+# Checks and reports on AI engineering dependencies and repository-defined optimizations.
 # Designed for Ubuntu 24.04 with AMD Ryzen 9950X + RTX 5090
 
 # Color definitions

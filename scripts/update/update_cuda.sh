@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# cuda_toolkit_updater_simple.sh
+# update_cuda.sh
 # This script automatically checks for and applies updates for the
 # currently installed CUDA toolkit package.
 #

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# update_cudnn_simple.sh
+# update_cudnn.sh
 # This script automatically checks for and applies updates for the
 # cuDNN package matching your installed CUDA version.
 #

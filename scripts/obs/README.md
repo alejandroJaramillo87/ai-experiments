@@ -11,6 +11,16 @@ The harness is not part of the pytest suite or the `make quality` gate. Run it
 manually after changes to `common/obs/viewer.js`, `common/obs/dashboard.py`,
 or `common/obs/serve.py`.
 
+## Scripts
+
+<!-- inventory:scripts:start -->
+
+| Script | Purpose |
+|--------|---------|
+| `check.mjs` | Real-browser verification for the run dashboard (OBS-11/12). |
+
+<!-- inventory:scripts:end -->
+
 ## Requirements
 
 - Node.js 18 or later with `npm` on the path.
@@ -23,7 +33,7 @@ or `common/obs/serve.py`.
 ## Usage
 
 ```bash
-cd scripts/verify/obs_browser
+cd scripts/obs
 npm install
 node check.mjs
 ```
