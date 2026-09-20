@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 4 verified, 0 blocked, 11 pending, of 15.**
+**Entries: 5 verified, 0 blocked, 10 pending, of 15.**
 
 Retired: FT.15 (2026-09-19, scorecard promotion), FT.memfit (2026-09-20, the memory-fit calculator left the tree).
 
@@ -190,7 +190,8 @@ builds what it verifies:
   all 20 shared layers, 15,733,760 against the 18,880,512 four full-attention
   layers make it; 928 of the measured 18,881,440 stays unexplained. The
   entry gains `tests/hardware/test_step_qlora.py` (`hw_full`) as its mirror
-  and re-runs through it.
+  and re-ran through it the same day: `1 passed`, no drift line, which
+  confirms KB-90 and verifies the entry.
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training
@@ -1479,15 +1480,54 @@ without a second run:
 The entry gains a hardware mirror, `tests/hardware/test_step_qlora.py`
 (`hw_full`, `gpu`), which steps the recipe as committed and holds the four
 figures: the adapter count equal, the parameter drift exactly 18,881,440,
-resident under 7 GB and peak allocated under 14 GB. Re-runs as committed
-through it, which is the KB-90 confirmation.
+resident under 7 GB and peak allocated under 14 GB. Re-ran as committed
+through it the same day (the operator pasted from the pull's last `create
+mode` line onward, so the `git log` line is absent; the pull is the
+fast-forward to `c6a7181`, the commit that added the mirror):
 
 Observed:
 
 ```
+ create mode 100644 tests/hardware/test_step_qlora.py
+=============================================================================== test session starts ===============================================================================
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /home/alejandro/workspace/ai-experiments/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/alejandro/workspace/ai-experiments
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, mock-3.15.1, jaxtyping-0.3.11, cov-7.1.0, hydra-core-1.3.2, anyio-4.14.2, xdist-3.8.0, typeguard-4.6.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 1 item                                                                                                                                                                  
+
+tests/hardware/test_step_qlora.py::test_step_holds_the_counts_and_the_peak PASSED                                                                                           [100%]
+
+================================================================================ warnings summary =================================================================================
+tests/hardware/test_step_qlora.py: 14 warnings
+  /home/alejandro/workspace/ai-experiments/.venv/lib/python3.12/site-packages/torch/jit/_script.py:365: DeprecationWarning: `torch.jit.script_method` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
+
+tests/hardware/test_step_qlora.py::test_step_holds_the_counts_and_the_peak
+  /home/alejandro/workspace/ai-experiments/.venv/lib/python3.12/site-packages/bitsandbytes/backends/cuda/ops.py:213: FutureWarning: _check_is_size will be removed in a future PyTorch release along with guard_size_oblivious.     Use _check(i >= 0) instead.
+    torch._check_is_size(blocksize)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+[TIER] full: torch present, the whole suite was in scope.
+========================================================================= 1 passed, 15 warnings in 7.30s ==========================================================================
+exit=0
 ```
 
-Status: PENDING
+`1 passed`, exit 0, with no drift line and no assertion message: the built
+adapter equals the analytic 24,158,208 (KB-90 confirmed), the parameter
+drift is exactly 18,881,440 (the corrected residue plus the 928 KB-82 keeps),
+resident under 7 GB and peak allocated under 14 GB. The 15 warnings are torch
+and bitsandbytes deprecations, not the tree's. This is the entry's re-run and
+its standing mirror: `make quality-full HW=full` repeats it.
+
+Status: VERIFIED 2026-09-20 on the seventh attempt through the mirror. Was
+PENDING through six attempts the same two days: the first two on KB-83 and
+KB-84 (fixed in the tree), the third on KB-85 and KB-86, the fourth, fifth and
+sixth out of memory at the card on KB-87 and then KB-89, each fixed in the
+tree before the next; the seventh stepped and its two drift lines were read
+as KB-90 and the residue correction without another run.
 
 ## FT.e4b-recipe The E4B recipe: preflight and step
 
