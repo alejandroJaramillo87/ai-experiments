@@ -5,8 +5,9 @@ W1-W4): control-vector steering deployed into the rust harness serving endpoint,
 mandatory black-box baselines, a served-request log, and the probe monitor. Weights
 are never modified; every intervention acts on activations only. Code lives in `interp/`
 (packages, invoked as `python -m interp <subcommand>` via `interp/commands/`);
-`scripts/interp/` holds only shell helpers (the GPU preflight and the isolated SAEBench
-environment); tests in `tests/interp/`.
+`scripts/interp/` holds the host-side helpers (the GPU preflight, the isolated SAEBench
+environment, the refusal-rate measurement and the activation-magnitude probe); tests in
+`tests/interp/`.
 
 This path ran against the llama.cpp services until R10 and R11 moved it onto
 the harness, which serves the request and runs the taps in one process.
@@ -60,8 +61,8 @@ safetensors image as configuration.
 ```bash
 make probe-capture ARGS="--model /app/models/hf/gemma-4-E2B-it \
     --dataset interp/steering/prompts/honesty.jsonl --layers 8,16,24 \
-    --out /mnt/ai-data/interp/captures/honesty-e2b-it"
-make steer-extract ARGS="--capture /mnt/ai-data/interp/captures/honesty-e2b-it \
+    --out /mnt/ai-data/interp/activations/honesty-e2b-it"
+make steer-extract ARGS="--capture /mnt/ai-data/interp/activations/honesty-e2b-it \
     --out /mnt/ai-data/interp/vectors/honesty-e2b-it"
 make steer-up VECTOR=/mnt/ai-data/interp/vectors/honesty-e2b-it SCALE=1.0
 make steer-down
@@ -77,8 +78,8 @@ residual-stream units, so `SCALE=1.0` means one class gap at every layer.
 at load, and `steer-scorecard --layer-range` is how a scorecard says that band to
 `make steer-up`. The scorecard's subject and judge default to the `harness` and
 `llama-cpu` entries of `common/serving.py`; pass `--subject-url` or `--judge-url` only to
-score some other pair. The judge runs with thinking off: the Gemma 4 GGUF template leaves
-the thought channel open and gemma-4-E2B-it reasons at length before every verdict, so the
+score some other pair. The judge runs with thinking off: the Gemma 4 chat template
+(`schemas/chat_template.json`) leaves the thought channel open and gemma-4-E2B-it reasons at length before every verdict, so the
 judge request carries llama-server's per-request thinking budget at zero, which ends the
 thought the moment it starts. The same request carries the verdict's JSON schema, which
 llama-server compiles to a grammar, so the prompt's "JSON only" is enforced by the sampler
@@ -271,6 +272,6 @@ wc -l /mnt/ai-data/interp/logs/harness/$(date -u +%F).jsonl
 # The monitor aggregates without a model, and without stopping inference
 make probe-monitor ARGS="--window 1d --log-dir /mnt/ai-data/interp/logs/harness"
 
-# Production path unchanged by any of the above
-docker compose up -d llama-gpu && curl -sf 127.0.0.1:8002/v1/health
+# Serving unchanged by any of the above: the harness is still up, unsteered
+curl -sf 127.0.0.1:8005/v1/health
 ```

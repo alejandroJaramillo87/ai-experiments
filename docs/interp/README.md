@@ -1,20 +1,25 @@
 # Interpretability documentation
 
-Living documentation for the interp stack — the `python -m interp` CLI, the write-back
-path, and the activation and SAE tooling.
-
-The code is at [../../interp/](../../interp/) and the containers at
-[../../docker/interp/](../../docker/interp/); this directory documents how to operate them.
-Verification records live in [../verification/interp/interp.md](../verification/interp/interp.md), not here.
+Living documentation for the interp tier: the `python -m interp` CLI, the write-back path
+on the Rust harness, the activation and SAE tooling, and the Gemma 4 facts the tier
+consumes. The code is at [../../interp/](../../interp/) and the containers at
+[../../docker/interp/](../../docker/interp/); this directory documents how to operate them,
+and the verification records live in
+[../verification/interp/interp.md](../verification/interp/interp.md), not here.
 
 ## Documents
 
-| Document | Description |
-|----------|-------------|
-| [writeback.md](writeback.md) | The write-back path: steering, probes, the log proxy, and the probe monitor (W1-W4) |
-| [gemma-4-interp.md](gemma-4-interp.md) | Residual width, layer counts, and hook hazards for E2B and E4B |
-| [interp-scale-reference.md](interp-scale-reference.md) | Activation volumes, SAE sizes, and harvest budgets on this workstation |
-| [rust-harness-interp.md](rust-harness-interp.md) | The Rust runtime as an interpretability substrate |
+<!-- inventory:pages:start -->
+
+| Document | Covers |
+|----------|--------|
+| [gemma-4-interp.md](gemma-4-interp.md) | What the interp tier requires to harvest activations, train probes and sparse autoencoders, and export steering vectors against a Gemma 4 checkpoint. |
+| [harvest-precision-and-resume.md](harvest-precision-and-resume.md) | Two defects block the reference activation captures. |
+| [interp-scale-reference.md](interp-scale-reference.md) | A reference for how the training-scale conclusions in [training-scale-reference.md](../training/base/training-scale-reference.md) shape the mechanistic-interpretability program, and for how interpretability works at inference time on the rust runtime, including the planned CUDA backend. |
+| [rust-harness-interp.md](rust-harness-interp.md) | Design for running the write-back interpretability path (steering, probes, monitoring) on the `rust-harness` runtime instead of llama.cpp. |
+| [writeback.md](writeback.md) | Operating guide for the interpretability write-back path (interp Phase 3, deliverables W1-W4): control-vector steering deployed into the rust harness serving endpoint, a probe toolkit with mandatory black-box baselines, a served-request log, and the probe monitor. |
+
+<!-- inventory:pages:end -->
 
 `writeback.md` is titled a runbook but is a living reference document, not an operational
 runbook in the sense `.styles/DOCUMENTATION_STYLE.md` defines: it is read for understanding
@@ -29,7 +34,7 @@ Drift against the current tree is expected and correct in both.
 
 | Location | Contents |
 |----------|----------|
-| [investigations/](investigations/) | I1, P4, and PS deliverable investigations — what was decided at implementation time (8 documents, 2026-07-14 to 2026-07-15) — and the 2026-09-18 Neuronpedia replacement investigation that retired the PS deliverables |
+| [investigations/](investigations/) | I1, P4, and PS deliverable investigations — what was decided at implementation time (8 documents, 2026-07-14 to 2026-07-15) — and the 2026-09-18 Neuronpedia replacement investigation that retired the PS deliverables (9 documents in all) |
 | [experiments/](experiments/) | Experiment post-mortems, one file per experiment, immutable after the verdict |
 
 [experiments/README.md](experiments/README.md) is the exception: it is the living convention
