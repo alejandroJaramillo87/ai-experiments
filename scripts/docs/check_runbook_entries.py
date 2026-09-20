@@ -81,7 +81,7 @@ FENCE = re.compile(r"^\s*(?:```|~~~)")
 
 # An entry heading leads with its identifier, in one of two shapes. The legacy
 # shape carries a digit: RH.24, OBS-V10, P0.1, HS.3, 0.1. The slug shape (the
-# standard since 2026-09-19, docs/verification/README.md "Entry identifiers") is
+# standard since 2026-09-19, docs/verification/protocol.md "Entry identifiers") is
 # a prefix, a dot and a lowercase hyphenated slug: FT.calibrate-qlora,
 # I.harvest-crash-recovery. A section heading is neither -- "Coverage roster"
 # and "Preconditions" also end in a `Status:` line in one case, and must not be

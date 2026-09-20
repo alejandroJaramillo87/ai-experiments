@@ -34,7 +34,7 @@ and `AGENTS.md` says which to read for what.
 | [sandbox/](sandbox/README.md) | How the inference services are contained on this workstation: what each container is allowed to touch, and why. |
 | [testing/](testing/README.md) | How this repository is tested, and how the documentation is kept true: the commands, what each one proves, where each runs, and the strategy behind them. |
 | [training/](training/README.md) | Living documentation for the training tier: the `python -m training` CLI, the recipe system, the reference loop, and the three rungs the tier climbs. |
-| [verification/](verification/README.md) | The manual verification campaign: the recording protocol, the phase order, the state of every runbook, and the defect ledger the entries cross-reference. |
+| [verification/](verification/README.md) | The manual verification campaign: the state of every runbook, the defect ledger the entries cross-reference, and the protocol they are executed and recorded under. |
 
 <!-- inventory:dirs:end -->
 
@@ -89,7 +89,8 @@ graduate into the living documentation named in each.
 Executed against the repository or the host rather than read for understanding. The
 audience is whoever is running the checks, and the human's pasted output is the evidence.
 [verification/README.md](verification/README.md) indexes them, states each runbook's
-progress, and owns the recording protocol; the defect ledger they cross-reference is
+progress, and [verification/protocol.md](verification/protocol.md) owns the recording
+protocol; the defect ledger they cross-reference is
 [verification/bugs/known-bugs.md](verification/bugs/known-bugs.md).
 
 ## Contributing

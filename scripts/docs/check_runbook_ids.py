@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fail the quality gate when a runbook's entry ids and section order disagree.
 
-docs/verification/README.md ("Entry identifiers") separates two things an entry
+docs/verification/protocol.md ("Entry identifiers") separates two things an entry
 id used to do at once. The id names the entry: it is a prefix, a dot and a slug
 (FT.calibrate-qlora), assigned once, kept when the title changes, never reused.
 The Table of Contents orders the entries: it is a numbered list whose rows are
@@ -314,7 +314,7 @@ def main() -> int:
         for finding in findings:
             out.line(f"  {finding}")
         out.line("  Solution: the id names the entry and the Table of Contents orders")
-        out.line("  it (docs/verification/README.md, Entry identifiers). Move the ToC")
+        out.line("  it (docs/verification/protocol.md, Entry identifiers). Move the ToC")
         out.line("  row or the section so they agree; never renumber or reuse an id,")
         out.line("  and list an entry that leaves on the Retired line.")
         return 1

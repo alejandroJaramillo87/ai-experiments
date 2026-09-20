@@ -1,7 +1,7 @@
 # Numeric dtype decisions
 
 Why each tier picked the numeric format it did, and what it would take to change. The companion
-document, [README.md](README.md), records *what* each tier does; this one records *why*, and
+document, [precision-policy.md](precision-policy.md), records *what* each tier does; this one records *why*, and
 answers the question that keeps recurring: whether the three tiers can converge on one dtype.
 
 The short answer is that **storage can converge and compute cannot**, for a reason that is not

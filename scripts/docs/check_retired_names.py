@@ -958,7 +958,7 @@ RETIRED: dict[str, tuple[str, str]] = {
     ),
 }
 
-# Runbook entry ids became slugs on 2026-09-19 (docs/verification/README.md,
+# Runbook entry ids became slugs on 2026-09-19 (docs/verification/protocol.md,
 # "Entry identifiers"): a number handed out in writing order read as an
 # execution order it was not, once sections were reordered by dependency. The
 # id is a name and the Table of Contents is the order; each old number maps to

@@ -80,7 +80,7 @@ matter how correct the backend, and closing them needs an `-it` variant.
 The E2B one, `gemma-4-E2B-it`, arrived on the workstation on 2026-09-05 and
 closed RH.8; RH.9d and RH.11 closed on it.
 
-Recording protocol: the [runbook README](../../README.md) rules apply. The human
+Recording protocol: the [protocol page](../protocol.md) rules apply. The human
 runs each command on the workstation and pastes command plus output
 verbatim into the Observed block; expected signals are never edited to
 match observations; one GPU consumer at a time (the CPU backend uses no
@@ -6797,7 +6797,7 @@ reasons an entry qualifies:
   because that is what the stream-hygiene tests are for. The branch that emits colour is
   exercised by unit tests over a pure function and by nothing that has ever attached to a TTY.
 
-Recording protocol and status vocabulary are defined in [README.md](../README.md).
+Recording protocol and status vocabulary are defined in [protocol.md](../protocol.md).
 
 **No entry here is a GPU consumer** — the harness is the CPU backend — so the one-at-a-time
 rule does not apply. A different constraint does: RHX.1 through RHX.5 each resident-load about

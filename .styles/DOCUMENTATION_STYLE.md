@@ -19,7 +19,7 @@ rather than inferred by whoever reads it next.
 |-------|------------|------------|
 | Living reference | Describes the tree as it is now | Correct it when the tree moves |
 | Frozen record | What was decided or measured on a day | Never edit the body; drift is expected and correct |
-| Operational | A runbook executed against the repository or the host | Keep the commands runnable; it has no reader to please. Entry ids follow `docs/verification/README.md` |
+| Operational | A runbook executed against the repository or the host | Keep the commands runnable; it has no reader to please. Entry ids follow `docs/verification/protocol.md` |
 | Parked proposal | A recorded menu of work that is not scheduled | Dated at authoring; edited only as items graduate out |
 
 Living reference is the default and carries no marker. The other three declare themselves in

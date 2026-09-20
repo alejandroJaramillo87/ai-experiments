@@ -25,7 +25,7 @@ Shaper, boost, FCLK, or memory timing adjustment). It is distinct from
 the `hw_smoke` pytest tier, which checks the software environment, not
 electrical stability. All entries are host-side: the human runs each
 command on the workstation and records output per the
-[recording protocol](../README.md#recording-protocol). This phase is
+[recording protocol](../protocol.md#recording-protocol). This phase is
 independent of the software verification phases and may run any time
 after its own preconditions are met, but it must be VERIFIED before the
 first long training run (phase 2 of the training tier onward).

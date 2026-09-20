@@ -35,7 +35,7 @@ failed. Each is corrected in place, with the reasoning kept beside the entry
 rather than summarized away. The code defect is KB-69.
 
 Recording protocol and session-start gate are defined in
-[README.md](../README.md). One GPU consumer at a time applies to the entries
+[protocol.md](../protocol.md). One GPU consumer at a time applies to the entries
 that train; the report and serve viewers are not GPU consumers.
 
 ## Preconditions
