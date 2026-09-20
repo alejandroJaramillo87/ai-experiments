@@ -92,7 +92,7 @@ def check_hubs(generator, root: Path, out: Printer) -> int:
             out.line("  Solution: add the markers and regenerate")
             out.line(f"  Command: python scripts/docs/gen_inventory.py {hub}/README.md")
             status = 1
-        for child in generator.child_dirs(hub_dir):
+        for child in generator.child_dirs(hub_dir, root):
             if not is_documented_unit(child):
                 continue
             label = child.relative_to(root)
@@ -108,10 +108,10 @@ def check_hubs(generator, root: Path, out: Printer) -> int:
     return status
 
 
-def required_kinds(generator, directory: Path) -> set[str]:
+def required_kinds(generator, directory: Path, root: Path) -> set[str]:
     """The tables a documentation directory's README must carry to route one level down."""
     kinds = set()
-    if generator.child_dirs(directory):
+    if generator.child_dirs(directory, root):
         kinds.add("dirs")
     if any(
         entry.suffix == ".md" and entry.name != "README.md"
@@ -131,7 +131,7 @@ def check_docs(generator, root: Path, out: Printer) -> int:
     pending = [docs]
     while pending:
         directory = pending.pop()
-        pending.extend(generator.child_dirs(directory))
+        pending.extend(generator.child_dirs(directory, root))
         label = directory.relative_to(root)
         readme = directory / "README.md"
         if not readme.is_file():
@@ -145,7 +145,9 @@ def check_docs(generator, root: Path, out: Printer) -> int:
             )
             status = 1
             continue
-        missing = required_kinds(generator, directory) - _kinds(generator, readme, root)
+        missing = required_kinds(generator, directory, root) - _kinds(
+            generator, readme, root
+        )
         for kind in sorted(missing):
             out.error(f"inventory: {label}/README.md carries no inventory:{kind} table")
             out.line("  Solution: add the markers and regenerate")

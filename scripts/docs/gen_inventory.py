@@ -20,7 +20,9 @@ the marker so no table of READMEs has to be kept in step:
                                       sentence
     <!-- inventory:dirs:start -->     one row per child directory: a link to
                                       its README and that README's first
-                                      sentence
+                                      sentence; a directory the root
+                                      .gitignore anchors (`/logs/`) is an
+                                      output, not a row
     <!-- inventory:pages:start -->    one row per sibling *.md except the
                                       README: a link and its first sentence
     <!-- inventory:scripts:start -->  one row per *.sh, *.py and *.mjs: the
@@ -458,11 +460,35 @@ def rows_modules(directory: Path, root: Path) -> list[Row]:
     ]
 
 
-def child_dirs(directory: Path) -> list[Path]:
-    """Child directories a hub table lists: not pruned, not hidden, not empty once pruned."""
+def ignored_dirs(root: Path) -> set[Path]:
+    """Directories the root .gitignore anchors and ignores whole, as `/logs/` does.
+
+    Those are outputs a command writes into the checkout (exported transcripts,
+    harness sessions, generated ladder references), never a place a reader is
+    sent, so a hub table lists none of them. Only the anchored, glob-free,
+    trailing-slash form is read: git is absent from a contained sandbox, and a
+    pattern any more general than a path would need git to evaluate.
+    """
+    gitignore = root / ".gitignore"
+    if not gitignore.is_file():
+        return set()
+    ignored = set()
+    for line in gitignore.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not (line.startswith("/") and line.endswith("/")):
+            continue
+        if any(char in line for char in "*?[!"):
+            continue
+        ignored.add(root / line.strip("/"))
+    return ignored
+
+
+def child_dirs(directory: Path, root: Path) -> list[Path]:
+    """Child directories a hub table lists: not pruned, hidden or ignored, not empty once pruned."""
     children = []
+    ignored = ignored_dirs(root)
     for child in sorted(directory.iterdir()):
-        if not child.is_dir() or child.name in PRUNE_DIRS:
+        if not child.is_dir() or child.name in PRUNE_DIRS or child in ignored:
             continue
         if child.name.startswith("."):
             # Tool state and configuration, not a place a reader is sent.
@@ -475,7 +501,7 @@ def child_dirs(directory: Path) -> list[Path]:
 
 def rows_dirs(directory: Path, root: Path) -> list[Row]:
     rows: list[Row] = []
-    for child in child_dirs(directory):
+    for child in child_dirs(directory, root):
         readme = child / "README.md"
         if not readme.is_file():
             raise ValueError(f"{child.relative_to(root)}/ has no README.md")

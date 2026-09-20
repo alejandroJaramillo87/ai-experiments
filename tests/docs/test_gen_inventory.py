@@ -282,6 +282,23 @@ class TestRows:
         (tree / "pkg" / ".cache" / "state").write_text("", encoding="utf-8")
         assert [row[0] for row in mod.rows_dirs(tree / "pkg", tree)] == ["sub"]
 
+    def test_a_directory_the_root_gitignore_anchors_is_not_listed(self, mod, tree):
+        (tree / ".gitignore").write_text(
+            "/pkg/out/\n*.log\n/pkg/sub*/\nscratch/\n", encoding="utf-8"
+        )
+        for name in ("out", "scratch"):
+            (tree / "pkg" / name).mkdir()
+            (tree / "pkg" / name / "run.log").write_text("", encoding="utf-8")
+        # The anchored, glob-free line prunes; the unanchored one and the glob
+        # would need git to evaluate, so scratch/ is still a child to document.
+        with pytest.raises(ValueError, match="pkg/scratch/ has no README.md"):
+            mod.rows_dirs(tree / "pkg", tree)
+        (tree / "pkg" / "scratch").rename(tree / "pkg" / "out2")
+        (tree / "pkg" / "out2" / "README.md").write_text(
+            "# out2\n\nKept.\n", encoding="utf-8"
+        )
+        assert [row[0] for row in mod.rows_dirs(tree / "pkg", tree)] == ["out2", "sub"]
+
     def test_a_child_without_a_readme_is_named(self, mod, tree):
         (tree / "pkg" / "orphan").mkdir()
         (tree / "pkg" / "orphan" / "x.py").write_text("", encoding="utf-8")
