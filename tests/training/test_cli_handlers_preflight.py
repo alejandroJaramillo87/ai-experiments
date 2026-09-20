@@ -291,8 +291,13 @@ class TestPreflightSft:
     def test_explicit_tokenizer_path_is_still_checked(
         self, sft_staged, base_stubbed, capsys
     ):
-        # data.source stays the recipe's (unprepared here), so validate's own
-        # hash check skips and the presence check is what reports the path.
+        # validate's hash check reads data.source and skips only when that
+        # directory has no manifest, so the test names one that exists on no
+        # host: the recipe's own is prepared on the workstation, where leaving
+        # it in place made validate load the tokenizer first and report
+        # `cannot load` before preflight's presence check ran. Preflight
+        # itself skips the shard checks for an SFT recipe, so the override
+        # adds no line of its own.
         dataset_dir, tokenizer_dir = sft_staged
         rc = run_cli(
             [
@@ -300,6 +305,7 @@ class TestPreflightSft:
                 "--config",
                 SFT_RECIPE,
                 f"sft.dataset={dataset_dir}",
+                "data.source=/nonexistent/datasets/unprepared",
                 f"model.hf.id={tokenizer_dir}",
                 "tokenizer.path=/nonexistent/tokenizers/pinned",
             ]
