@@ -72,9 +72,11 @@ scripts/optimizations/copy_to_hugetlbfs
 
 # Tier E ladder references: real-checkpoint captures at a 262144-wide vocab run
 # to tens of megabytes per size, so they are regenerated per run rather than
-# committed. The commands that produce them are in the directory's README,
-# which is tracked.
-/rust-harness/fixtures/reference/e4b/
+# committed. One directory per model: e4b/ by default, e2b/ when a run passes
+# REFERENCE=; the tracked entries under reference/ are all files. The commands
+# that produce them are in the directory's README; `make harness-clean`
+# removes them.
+/rust-harness/fixtures/reference/*/
 
 # Claude Code per-session runtime state. The lock records a live sessionId, pid,
 # and acquisition time; it is regenerated every session and must never be

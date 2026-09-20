@@ -1,6 +1,6 @@
 ##@ Rust harness (separate compose file; interactive tool, never started by `make up`)
 
-.PHONY: harness-build harness-chat harness-run harness-runs harness-serve harness-serve-down
+.PHONY: harness-build harness-chat harness-clean harness-run harness-runs harness-serve harness-serve-down
 
 HARNESS_COMPOSE := docker-compose.rust-harness.yaml
 
@@ -32,3 +32,13 @@ harness-serve-down: ## Stop the serving harness
 	docker compose -f $(HARNESS_COMPOSE) down harness-serve
 	@echo "$(GREEN)harness-serve stopped.$(RESET)"
 
+
+# The container's working directory is sessions/rust-harness (compose
+# working_dir: /work), so its transcripts land there; the workspace's own
+# clean target covers what a run from rust-harness/ leaves. sessions/ itself
+# stays: harness-run pre-creates it user-owned, and recreates it either way.
+harness-clean: ## Remove the harness's run outputs: rust-harness/ run state, profiles, ladder references, and sessions/rust-harness/
+	@$(MAKE) --no-print-directory -C rust-harness clean
+	@if [ -d sessions/rust-harness ]; then \
+	  rm -r sessions/rust-harness; printf '[OK] harness-clean: removed sessions/rust-harness/\n'; \
+	else printf '[INFO] harness-clean: sessions/rust-harness/ absent\n'; fi

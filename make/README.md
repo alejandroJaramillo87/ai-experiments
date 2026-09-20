@@ -21,7 +21,7 @@ fragment defines them; a rule without a `##` comment is internal and is not list
 |----------|---------|---------|
 | `agents.mk` | Agent Tooling (OpenCode / Claude Code parity) | `agent-parity`, `agent-sync`, `command-sync`, `agent-usage`, `agent-preflight`, `agent-versions`, `agent-skeptic-test`, `agent-role-tests`, `worktree-clean`, `worktree-ls`, `agent-run`, `agent-sandbox`, `agent-sandbox-build`, `agent-sandbox-clean`, `agent-export` |
 | `cleanup.mk` | Cleanup & Maintenance | `clean`, `prune`, `rebuild`, `reset` |
-| `harness.mk` | Rust harness (separate compose file; interactive tool, never started by `make up`) | `harness-build`, `harness-run`, `harness-chat`, `harness-runs`, `harness-serve`, `harness-serve-down` |
+| `harness.mk` | Rust harness (separate compose file; interactive tool, never started by `make up`) | `harness-build`, `harness-run`, `harness-chat`, `harness-runs`, `harness-serve`, `harness-serve-down`, `harness-clean` |
 | `help.mk` | Help | `help` |
 | `interp.mk` | Interpretability (interp Phase 0 I1 - separate compose file; GPU inference must be down) | `interp-build`, `interp-up`, `interp-shell`, `interp-smoke`, `interp-runs`, `interp-down`, `interp-dirs`, `steer-extract`, `steer-up`, `steer-down`, `steer-scorecard`, `probe-capture`, `probe-train`, `probe-export`, `probe-eval`, `probe-monitor`, `harvest`, `harvest-check-hooks`, `interp-gc`, `sae-train`, `sae-eval`, `organism-generate`, `organism-verify`, `organism-seal`, `organism-check-seal`, `organism` |
 | `ops.mk` | Monitoring & Debugging | `status`, `logs`, `logs-gpu`, `logs-cpu`, `logs-ui`, `logs-vllm`, `health`, `shell-gpu`, `shell-cpu`, `shell-vllm`, `update-models`, `list-models` |
