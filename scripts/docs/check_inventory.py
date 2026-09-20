@@ -18,9 +18,9 @@ This gate is the reminder, and it asks two things. First, every README carrying
 an inventory marker is regenerated in memory and diffed against what is
 committed, with the difference printed rather than only reported. Second, the
 hubs are complete: under each root in HUB_ROOTS, the root README carries a
-`dirs` table, and every child that is a Python package or a test directory
-carries a README with a `modules` or `tests` table. A new subpackage or test
-directory therefore fails the gate until it is documented. Nothing here needs
+`dirs` table, and every child directory carries a README with an inventory
+table of its own. A new subpackage, test directory or scripts directory
+therefore fails the gate until it is documented. Nothing here needs
 torch, a GPU, or a collected test session, because the inputs are the files'
 ASTs and the READMEs' first paragraphs.
 """
@@ -42,7 +42,7 @@ GENERATOR = Path(__file__).resolve().parent / "gen_inventory.py"
 
 # The directories whose children must each be documented. Adding one here is
 # the whole cost of extending the rule; the generator already renders any README.
-HUB_ROOTS = ("tests", "training")
+HUB_ROOTS = ("tests", "training", "common", "scripts", "interp")
 
 
 def load_generator(path: Path):
@@ -57,8 +57,15 @@ def load_generator(path: Path):
 
 
 def is_documented_unit(directory: Path) -> bool:
-    """A child a hub must document: a Python package or a test directory."""
-    return (directory / "__init__.py").is_file() or any(directory.glob("test_*.py"))
+    """A child a hub must document with a table: one holding more than its README.
+
+    A directory kept for its README and a `.gitkeep`, such as a notebooks
+    directory nothing has been checked into yet, has nothing to list.
+    """
+    return any(
+        entry.name != "README.md" and not entry.name.startswith(".")
+        for entry in directory.iterdir()
+    )
 
 
 def check_hubs(generator, root: Path, out: Printer) -> int:
@@ -82,9 +89,9 @@ def check_hubs(generator, root: Path, out: Printer) -> int:
                 continue
             label = child.relative_to(root)
             child_kinds = _kinds(generator, child / "README.md", root)
-            if not child_kinds & {"tests", "modules"}:
-                out.error(f"inventory: {label}/README.md has no tests or modules table")
-                out.line("  Every package or test directory under a hub is documented.")
+            if not child_kinds:
+                out.error(f"inventory: {label}/README.md has no inventory table")
+                out.line("  Every directory under a hub is documented by a table.")
                 out.line("  Solution: write the README with the markers and regenerate")
                 out.line(
                     f"  Command: python scripts/docs/gen_inventory.py {label}/README.md"

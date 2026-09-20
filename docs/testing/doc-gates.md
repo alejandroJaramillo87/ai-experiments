@@ -33,13 +33,16 @@ real docs live.** A source directory's README is navigation: purpose, entry poin
 traps, and a pointer to the living page. It does not restate the living page.
 
 **Anything that lists files is generated from them.** A table of test modules, of a
-package's modules, of a hub's directories or of a documentation directory's pages is
-rendered by `scripts/docs/gen_inventory.py` from the first sentence each source already
-carries: a module docstring, or the description paragraph under a README's title. The
-table is committed so its reader needs no tooling, and the gate regenerates it in memory
-and diffs. A directory under a hub without a README fails the gate, which is what makes
-the hub tables the rule that everything under them is documented. The same pattern
-renders the site's reference pages from `--help` and from the argparse parser.
+package's modules, of a directory's scripts, of a hub's directories, of a documentation
+directory's pages, of the contracts under `schemas/` or of the agents, commands and skills
+under `.claude/` is rendered by `scripts/docs/gen_inventory.py` from the first sentence
+each source already carries: a module docstring, a script's header comment, a contract's
+`description`, a definition's frontmatter, or the description paragraph under a README's
+title. The table is committed so its reader needs no tooling, and the gate regenerates it
+in memory and diffs. A directory under a hub without a README, or with a README that
+carries no table, fails the gate, which is what makes the hub tables the rule that
+everything under them is documented. The same pattern renders the site's reference pages
+from `--help` and from the argparse parser.
 
 **A rename adds a retired name.** The path gate cannot see a renamed file, because a bare
 filename is not a path claim, so every rename, retirement or moved entry id goes into the
@@ -82,7 +85,7 @@ Each fails the build on its finding and prints the file, the line and the remedy
 | `check_command_prompts.py` | a command block carries a shell prompt marker |
 | `check_site_reference.py` | a generated rust-harness reference page disagrees with the `Flag` literals it came from |
 | `check_site_interp_reference.py` | a generated interp reference page disagrees with the argparse literals it came from |
-| `check_inventory.py` | a generated README table disagrees with the tree, or a package or test directory under a hub has no README with one |
+| `check_inventory.py` | a generated README table disagrees with the tree, or a directory under a hub has no README with one |
 
 Three generators feed them: `gen_site_reference.py` and `gen_site_interp_reference.py`
 through `make site-gen`, and `gen_inventory.py` by hand on the README that changed. Each

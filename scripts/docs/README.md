@@ -64,8 +64,11 @@ the change that touches each:
 | document a `make` target that is absent on purpose | `KNOWN_ABSENT` in `check_make_targets.py`, the same shape |
 | add a Makefile | `MAKEFILES` or `MAKEFILE_GLOBS` in `check_make_targets.py` |
 | add a known-bugs ledger | `LEDGERS` in `check_kb_refs.py` |
-| add a subpackage under `training/` or a directory under `tests/` | a README with an inventory marker pair; the hub rule in `check_inventory.py` names it until one exists |
+| add a directory under `tests/`, `training/`, `common/`, `scripts/` or `interp/` | a README with an inventory marker pair; the hub rule in `check_inventory.py` names it until one exists |
 | add a directory whose children must all be documented | `HUB_ROOTS` in `check_inventory.py` |
+| add a script | nothing here: give it a docstring or a leading header comment; the directory's `scripts` table reads the first sentence |
+| add a contract under `schemas/` | nothing here: its `description`, `writers` and `readers` render the `contracts` row |
+| add an agent, command or skill under `.claude/` | nothing here: its frontmatter `description` renders the roster row in `docs/agents/README.md`; `ROSTER_SOURCES` in `gen_inventory.py` names the three places |
 | add a rust-harness binary or an interp verb | nothing here: both are discovered; run `make site-gen` (and, for a binary, add its page to `site/sidebars.js`) |
 | add a file that legitimately quotes retired names or KB ids | `EXEMPT_FILES` in the gate it trips, with a comment; prefer changing the fixture |
 

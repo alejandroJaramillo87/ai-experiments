@@ -23,6 +23,21 @@ the marker so no table of READMEs has to be kept in step:
                                       sentence
     <!-- inventory:pages:start -->    one row per sibling *.md except the
                                       README: a link and its first sentence
+    <!-- inventory:scripts:start -->  one row per *.sh, *.py and *.mjs: the
+                                      script and the first sentence of its
+                                      header comment or docstring
+    <!-- inventory:contracts:start --> one row per *.json contract: its
+                                      description's first sentence and the
+                                      direction its writers and readers imply
+    <!-- inventory:roles:start -->    one row per .claude/agents/*.md: tools
+                                      and the frontmatter description
+    <!-- inventory:commands:start --> one row per .claude/commands/*.md
+    <!-- inventory:skills:start -->   one row per .claude/skills/*/SKILL.md
+
+The first six read the README's own directory. The three roster kinds read a
+fixed place under the repository root, because the definitions they list live
+in .claude/ and the page that indexes them lives in docs/agents/; the source is
+fixed by the kind the way the hub roots are fixed in check_inventory.py.
 
 Each pair closes with the matching `<!-- inventory:<kind>:end -->`, and a README
 may carry more than one pair. The table is spliced between the markers, leaving
@@ -43,6 +58,7 @@ from __future__ import annotations
 import argparse
 import ast
 import difflib
+import json
 import os
 import re
 import sys
@@ -54,7 +70,17 @@ if str(REPO_ROOT) not in sys.path:
 
 from common.output import Printer  # noqa: E402
 
-KINDS = ("tests", "modules", "dirs", "pages")
+KINDS = (
+    "tests",
+    "modules",
+    "dirs",
+    "pages",
+    "scripts",
+    "contracts",
+    "roles",
+    "commands",
+    "skills",
+)
 MARKER = re.compile(r"<!-- inventory:(\w+):(start|end) -->")
 
 # Directories a walk never enters, the same set the sibling gates prune.
@@ -67,6 +93,30 @@ PRUNE_DIRS = {
     ".ruff_cache",
     ".pytest-tmp",
 }
+
+# The files a scripts table lists, and how each carries its purpose: a docstring
+# for Python, a leading `#` block for shell, a leading `/* */` block for a module.
+SCRIPT_SUFFIXES = (".sh", ".py", ".mjs")
+
+# Where each roster kind reads its definitions, relative to the repository root.
+ROSTER_SOURCES = {
+    "roles": (".claude/agents", "*.md"),
+    "commands": (".claude/commands", "*.md"),
+    "skills": (".claude/skills", "*/SKILL.md"),
+}
+
+# The language a contract's writer or reader path implies. Anything else, such
+# as an upstream config.json or a transcript under docs/, is upstream.
+LANGUAGES = (
+    (re.compile(r"rust-harness\b"), "Rust"),
+    (re.compile(r"(interp|training|common|tests)\b"), "Python"),
+)
+LANGUAGE_ORDER = ("Rust", "Python", "Upstream")
+
+# A header line that is only a filename, or opens with one and a separator: the
+# older scripts name themselves before saying what they do, and a few name a
+# file they were once called.
+FILENAME_LINE = re.compile(r"[\w.-]+\.(sh|py|mjs)\s*(--?|—|:)?\s*")
 
 # A sentence ends at a period followed by whitespace or end of text. The
 # lookahead is what keeps `training/models/head_loss.py:` and `0.5` from ending
@@ -157,6 +207,160 @@ def module_sentence(path: Path, root: Path) -> str:
     return first_sentence(docstring)
 
 
+def header_paragraph(comments: list[str], path: Path, root: Path) -> str:
+    """The first sentence of a script's leading comment block.
+
+    `comments` is the block's text with the comment syntax removed, one entry per
+    line, where a bare comment line is an empty string. The paragraph is the
+    lines up to the first blank one; a line that is only a filename is dropped
+    and a line opening with a filename and a separator loses that prefix, so
+    `guard.sh - single-source guardrail` and a stale `old_name.sh` line above
+    the description both yield the description.
+    """
+    paragraph: list[str] = []
+    for text in comments:
+        if not text.strip():
+            if paragraph:
+                break
+            continue
+        text = text.strip()
+        match = FILENAME_LINE.match(text)
+        if match and match.end() == len(text):
+            continue
+        if match:
+            text = text[match.end() :]
+        paragraph.append(text)
+    if not paragraph:
+        raise ValueError(f"{path.relative_to(root)} has no header comment")
+    sentence = first_sentence(" ".join(paragraph))
+    # A description that followed `name.sh -` on its line starts lowercase.
+    return sentence[0].upper() + sentence[1:]
+
+
+def shell_comments(lines: list[str]) -> list[str]:
+    """The first `#` block of a shell script, after the shebang and any `set`."""
+    block: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("#!"):
+            continue
+        if stripped.startswith("#"):
+            block.append(stripped[1:])
+        elif block or (stripped and not stripped.startswith("set ")):
+            break
+    return block
+
+
+def module_comments(lines: list[str]) -> list[str]:
+    """The text of a JavaScript module's leading `/* */` block."""
+    block: list[str] = []
+    inside = False
+    for line in lines:
+        stripped = line.strip()
+        if not inside:
+            if stripped.startswith("/*"):
+                inside = True
+                stripped = stripped[2:].strip()
+                if stripped:
+                    block.append(stripped)
+            elif stripped:
+                break
+            continue
+        if "*/" in stripped:
+            break
+        block.append(stripped[1:] if stripped.startswith("*") else stripped)
+    return block
+
+
+def script_sentence(path: Path, root: Path) -> str:
+    if path.suffix == ".py":
+        return module_sentence(path, root)
+    lines = path.read_text(encoding="utf-8").splitlines()
+    comments = shell_comments(lines) if path.suffix == ".sh" else module_comments(lines)
+    return header_paragraph(comments, path, root)
+
+
+def rows_scripts(directory: Path, root: Path) -> list[Row]:
+    return [
+        (path.name, script_sentence(path, root))
+        for path in sorted(directory.iterdir())
+        if path.is_file() and path.suffix in SCRIPT_SUFFIXES
+    ]
+
+
+def language(entry: str) -> str:
+    for pattern, name in LANGUAGES:
+        if pattern.match(entry):
+            return name
+    return "Upstream"
+
+
+def who(entries: list[str], verb: str) -> str:
+    """`Rust and Python write`, or `Python reads`: the languages, then the verb."""
+    found = {language(entry) for entry in entries}
+    names = [name for name in LANGUAGE_ORDER if name in found]
+    if len(names) == 1:
+        return f"{names[0]} {verb}s"
+    return f"{', '.join(names[:-1])} and {names[-1]} {verb}"
+
+
+def direction(contract: dict[str, object]) -> str:
+    """`Rust writes, Python reads`, derived from the writers and readers lists."""
+    writers = contract.get("writers") or []
+    readers = contract.get("readers") or []
+    if not isinstance(writers, list) or not writers:
+        raise ValueError("no writers")
+    if not isinstance(readers, list) or not readers:
+        return f"{who(writers, 'write')}, no reader yet"
+    return f"{who(writers, 'write')}, {who(readers, 'read')}"
+
+
+def rows_contracts(directory: Path, root: Path) -> list[Row]:
+    rows: list[Row] = []
+    for path in sorted(directory.glob("*.json")):
+        contract = json.loads(path.read_text(encoding="utf-8"))
+        text = contract.get("description")
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError(f"{path.relative_to(root)} has no description")
+        try:
+            heading = direction(contract)
+        except ValueError as exc:
+            raise ValueError(f"{path.relative_to(root)} has {exc}") from None
+        rows.append((path.name, first_sentence(text), heading))
+    return rows
+
+
+def frontmatter(path: Path) -> dict[str, str]:
+    """The `key: value` lines between a markdown file's opening `---` fences."""
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if not lines or lines[0].strip() != "---":
+        return {}
+    fields: dict[str, str] = {}
+    for line in lines[1:]:
+        if line.strip() == "---":
+            break
+        key, sep, value = line.partition(":")
+        if sep and key.strip():
+            fields[key.strip()] = value.strip()
+    return fields
+
+
+def rows_roster(kind: str, root: Path) -> list[Row]:
+    source, pattern = ROSTER_SOURCES[kind]
+    rows: list[Row] = []
+    for path in sorted((root / source).glob(pattern)):
+        fields = frontmatter(path)
+        text = fields.get("description", "")
+        if not text:
+            raise ValueError(f"{path.relative_to(root)} has no description")
+        name = path.parent.name if kind == "skills" else path.stem
+        if kind == "roles":
+            rows.append((name, fields.get("tools", ""), first_sentence(text)))
+        else:
+            rows.append((name, first_sentence(text)))
+    return rows
+
+
 def rows_tests(directory: Path, root: Path) -> list[Row]:
     rows: list[Row] = []
     for path in sorted(directory.glob("test_*.py")):
@@ -211,6 +415,11 @@ ROWS = {
     "modules": rows_modules,
     "dirs": rows_dirs,
     "pages": rows_pages,
+    "scripts": rows_scripts,
+    "contracts": rows_contracts,
+    "roles": lambda directory, root: rows_roster("roles", root),
+    "commands": lambda directory, root: rows_roster("commands", root),
+    "skills": lambda directory, root: rows_roster("skills", root),
 }
 
 
@@ -225,6 +434,21 @@ def render_table(kind: str, rows: list[Row]) -> str:
     elif kind == "dirs":
         lines = ["| Directory | Holds |", "|-----------|-------|"]
         lines += [f"| [{n}/]({n}/README.md) | {cell(s)} |" for n, s in rows]
+    elif kind == "scripts":
+        lines = ["| Script | Purpose |", "|--------|---------|"]
+        lines += [f"| `{n}` | {cell(s)} |" for n, s in rows]
+    elif kind == "contracts":
+        lines = ["| Contract | Seam | Direction |", "|----------|------|-----------|"]
+        lines += [f"| [{n}]({n}) | {cell(s)} | {d} |" for n, s, d in rows]
+    elif kind == "roles":
+        lines = ["| Role | Tools | Does |", "|------|-------|------|"]
+        lines += [f"| `{n}` | {t} | {cell(s)} |" for n, t, s in rows]
+    elif kind == "commands":
+        lines = ["| Command | Does |", "|---------|------|"]
+        lines += [f"| `/{n}` | {cell(s)} |" for n, s in rows]
+    elif kind == "skills":
+        lines = ["| Skill | Does |", "|-------|------|"]
+        lines += [f"| `{n}` | {cell(s)} |" for n, s in rows]
     else:
         lines = ["| Document | Covers |", "|----------|--------|"]
         lines += [f"| [{n}]({n}) | {cell(s)} |" for n, s in rows]

@@ -8,8 +8,11 @@ ending inside `module.py:` rather than at its period, a test declared inside a
 class, a bold class line standing where the description paragraph goes, a child
 directory with no README -- and the --check mode the quality gate runs, which
 must pass on a freshly written table and fail once the README is edited by hand.
-The gate adds a structural rule, that every package or test directory under a
-hub is documented, and that is pinned on a scratch hub too.
+The gate adds a structural rule, that every directory under a hub is documented
+by a table, and that is pinned on a scratch hub too. The scripts kind reads a
+header comment rather than a docstring, so the shapes those headers take in the
+tree are pinned one each; the contracts kind derives a direction from two path
+lists; the roster kinds read frontmatter from a fixed place under the root.
 
 Fixtures are scratch trees rather than the repository, so the tests do not turn
 red the next time a module is added.
@@ -107,6 +110,32 @@ The pages here.
 
 <!-- inventory:pages:start -->
 <!-- inventory:pages:end -->
+"""
+
+
+SHELL_HEADERS = {
+    "own_name_dash.sh": "#!/bin/bash\n# own_name_dash.sh - Guard the call. Then more.\n",
+    "own_name_double.sh": "#!/bin/bash\n#\n# own_name_double.sh -- purge the driver\n# and reinstall.\n",
+    "bare.sh": "#!/bin/bash\n# Compare the pins. Second.\n",
+    "stale_name.sh": "#!/bin/bash\n\n# old_updater.sh\n# This script updates cuDNN.\n",
+    "set_first.sh": "#!/bin/bash\nset -euo pipefail\n\n# Preflight (I1)\n#\n# Detail.\n",
+    "none.sh": "#!/bin/bash\necho hi\n",
+}
+
+MJS = """/*
+ * check.mjs — real-browser verification for the dashboard.
+ *
+ * Detail.
+ */
+import fs from "node:fs";
+"""
+
+CONTRACT = """{
+  "contract": "%s",
+  "description": "%s",
+  "writers": %s,
+  "readers": %s
+}
 """
 
 
@@ -243,6 +272,146 @@ class TestRows:
             "one.md",
             "two.md",
         ]
+
+
+class TestScripts:
+    @pytest.fixture()
+    def scripts(self, tmp_path):
+        for name, text in SHELL_HEADERS.items():
+            (tmp_path / name).write_text(text, encoding="utf-8")
+        (tmp_path / "check.mjs").write_text(MJS, encoding="utf-8")
+        (tmp_path / "tool.py").write_text('"""Tool. More."""\n', encoding="utf-8")
+        return tmp_path
+
+    @pytest.mark.parametrize(
+        ("name", "sentence"),
+        [
+            ("own_name_dash.sh", "Guard the call."),
+            ("own_name_double.sh", "Purge the driver and reinstall."),
+            ("bare.sh", "Compare the pins."),
+            ("stale_name.sh", "This script updates cuDNN."),
+            ("set_first.sh", "Preflight (I1)."),
+            ("check.mjs", "Real-browser verification for the dashboard."),
+            ("tool.py", "Tool."),
+        ],
+    )
+    def test_each_header_shape_yields_its_description(
+        self, mod, scripts, name, sentence
+    ):
+        assert mod.script_sentence(scripts / name, scripts) == sentence
+
+    def test_a_script_without_a_header_is_named(self, mod, scripts):
+        with pytest.raises(ValueError, match="none.sh has no header comment"):
+            mod.rows_scripts(scripts, scripts)
+
+    def test_rows_list_shell_python_and_modules_only(self, mod, scripts):
+        (scripts / "none.sh").unlink()
+        (scripts / "README.md").write_text("# x\n", encoding="utf-8")
+        (scripts / "package.json").write_text("{}", encoding="utf-8")
+        names = {row[0] for row in mod.rows_scripts(scripts, scripts)}
+        assert names == ({*SHELL_HEADERS} - {"none.sh"}) | {"check.mjs", "tool.py"}
+
+
+class TestContracts:
+    @pytest.fixture()
+    def schemas(self, tmp_path):
+        (tmp_path / "both.json").write_text(
+            CONTRACT
+            % (
+                "both",
+                "A record both sides write. More.",
+                '["common/obs/core.py", "rust-harness/obs/src/lib.rs"]',
+                '["common/obs/catalog.py"]',
+            ),
+            encoding="utf-8",
+        )
+        (tmp_path / "one_sided.json").write_text(
+            CONTRACT % ("one", "Rust only.", '["rust-harness/harness/src/a.rs"]', "[]"),
+            encoding="utf-8",
+        )
+        (tmp_path / "facts.json").write_text(
+            CONTRACT
+            % (
+                "facts",
+                "Values from upstream.",
+                '["google/gemma-4 config.json"]',
+                '["rust-harness/x.rs", "interp (reads width)", "docs/models/a.md"]',
+            ),
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def test_direction_is_derived_from_the_two_lists(self, mod, schemas):
+        rows = {row[0]: row[2] for row in mod.rows_contracts(schemas, schemas)}
+        assert rows["both.json"] == "Rust and Python write, Python reads"
+        assert rows["one_sided.json"] == "Rust writes, no reader yet"
+        assert rows["facts.json"] == "Upstream writes, Rust, Python and Upstream read"
+
+    def test_the_seam_is_the_descriptions_first_sentence(self, mod, schemas):
+        rows = {row[0]: row[1] for row in mod.rows_contracts(schemas, schemas)}
+        assert rows["both.json"] == "A record both sides write."
+
+    def test_a_contract_without_a_description_is_named(self, mod, schemas):
+        (schemas / "bare.json").write_text('{"writers": ["x"]}', encoding="utf-8")
+        with pytest.raises(ValueError, match="bare.json has no description"):
+            mod.rows_contracts(schemas, schemas)
+
+
+class TestRoster:
+    @pytest.fixture()
+    def dot_claude(self, tmp_path):
+        agents = tmp_path / ".claude" / "agents"
+        agents.mkdir(parents=True)
+        agents.joinpath("skeptic.md").write_text(
+            "---\nname: skeptic\ndescription: Adversarial verifier. Invoke to check.\n"
+            "tools: Read, Grep\n---\nBody.\n",
+            encoding="utf-8",
+        )
+        commands = tmp_path / ".claude" / "commands"
+        commands.mkdir()
+        commands.joinpath("task.md").write_text(
+            "---\ndescription: Drive one task\n---\nBody.\n", encoding="utf-8"
+        )
+        skill = tmp_path / ".claude" / "skills" / "bug-bash"
+        skill.mkdir(parents=True)
+        skill.joinpath("SKILL.md").write_text(
+            "---\nname: bug-bash\ndescription: The method contract. Read it.\n---\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def test_each_roster_reads_its_fixed_source(self, mod, dot_claude):
+        assert mod.rows_roster("roles", dot_claude) == [
+            ("skeptic", "Read, Grep", "Adversarial verifier.")
+        ]
+        assert mod.rows_roster("commands", dot_claude) == [("task", "Drive one task.")]
+        assert mod.rows_roster("skills", dot_claude) == [
+            ("bug-bash", "The method contract.")
+        ]
+
+    def test_a_definition_without_a_description_is_named(self, mod, dot_claude):
+        (dot_claude / ".claude" / "agents" / "mute.md").write_text(
+            "---\nname: mute\n---\n", encoding="utf-8"
+        )
+        with pytest.raises(ValueError, match="agents/mute.md has no description"):
+            mod.rows_roster("roles", dot_claude)
+
+    def test_the_kind_ignores_the_readme_directory(self, mod, dot_claude):
+        readme = dot_claude / "docs" / "agents" / "README.md"
+        readme.parent.mkdir(parents=True)
+        readme.write_text(
+            "# Agents\n\nThe roster.\n\n<!-- inventory:roles:start -->\n"
+            "<!-- inventory:roles:end -->\n<!-- inventory:skills:start -->\n"
+            "<!-- inventory:skills:end -->\n",
+            encoding="utf-8",
+        )
+        assert (
+            run(SCRIPT, "--root", str(dot_claude), "docs/agents/README.md").returncode
+            == 0
+        )
+        text = readme.read_text(encoding="utf-8")
+        assert "| `skeptic` | Read, Grep | Adversarial verifier. |" in text
+        assert "| `bug-bash` | The method contract. |" in text
 
 
 class TestRenderTable:
@@ -405,6 +574,25 @@ class TestGate:
         (tree / "training" / "sub" / "leaf.py").write_text(
             '"""Leaf."""\n', encoding="utf-8"
         )
+        # The other hub roots, each with one documented child.
+        for hub, kind, leaf, text in (
+            ("common", "modules", "leaf.py", '"""Leaf."""\n'),
+            ("scripts", "scripts", "leaf.sh", "#!/bin/bash\n# Leaf.\n"),
+            ("interp", "modules", "leaf.py", '"""Leaf."""\n'),
+        ):
+            child = tree / hub / "child"
+            child.mkdir(parents=True)
+            (child / leaf).write_text(text, encoding="utf-8")
+            (child / "README.md").write_text(
+                f"# child\n\nThe child.\n\n<!-- inventory:{kind}:start -->\n"
+                f"<!-- inventory:{kind}:end -->\n",
+                encoding="utf-8",
+            )
+            (tree / hub / "README.md").write_text(
+                f"# {hub}\n\nThe hub.\n\n<!-- inventory:dirs:start -->\n"
+                "<!-- inventory:dirs:end -->\n",
+                encoding="utf-8",
+            )
         assert run(SCRIPT, "--root", str(tree)).returncode == 0
         return tree
 
@@ -432,7 +620,26 @@ class TestGate:
         assert run(SCRIPT, "--root", str(hubs)).returncode == 0
         result = run(GATE, "--root", str(hubs))
         assert result.returncode == 1
-        assert "training/sub/README.md has no tests or modules table" in result.stderr
+        assert "training/sub/README.md has no inventory table" in result.stderr
+
+    def test_a_directory_with_only_a_readme_needs_no_table(self, hubs):
+        (hubs / "interp" / "notebooks").mkdir()
+        (hubs / "interp" / "notebooks" / ".gitkeep").write_text("", encoding="utf-8")
+        (hubs / "interp" / "notebooks" / "README.md").write_text(
+            "# notebooks\n\nNothing yet.\n", encoding="utf-8"
+        )
+        assert run(SCRIPT, "--root", str(hubs)).returncode == 0
+        result = run(GATE, "--root", str(hubs))
+        assert result.returncode == 0, result.stderr
+
+    def test_a_scripts_directory_without_a_table_fails_the_rule(self, hubs):
+        (hubs / "scripts" / "child" / "README.md").write_text(
+            "# child\n\nProse only.\n", encoding="utf-8"
+        )
+        assert run(SCRIPT, "--root", str(hubs)).returncode == 0
+        result = run(GATE, "--root", str(hubs))
+        assert result.returncode == 1
+        assert "scripts/child/README.md has no inventory table" in result.stderr
 
     def test_a_hub_without_a_dirs_table_fails(self, hubs):
         (hubs / "tests" / "README.md").write_text(

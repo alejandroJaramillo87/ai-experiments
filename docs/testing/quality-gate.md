@@ -57,10 +57,12 @@ Eighteen steps, cheapest first, failing on the first error:
     the interpreter.
 17. `scripts/docs/check_inventory.py` — fails when a generated README table disagrees
     with the tree it was rendered from: a test directory's table with its modules'
-    docstrings and test counts, a package's with its modules, a hub's with its children's
-    READMEs, a documentation directory's with its pages. It regenerates each table in
-    memory with `scripts/docs/gen_inventory.py` and prints the diff, and fails when a
-    package or test directory under `tests/` or `training/` has no README with a table.
+    docstrings and test counts, a package's with its modules, a scripts directory's with
+    its header comments, a hub's with its children's READMEs, a documentation directory's
+    with its pages, `schemas/` with its contracts, `docs/agents/` with the definitions
+    under `.claude/`. It regenerates each table in memory with
+    `scripts/docs/gen_inventory.py` and prints the diff, and fails when a directory under
+    `tests/`, `training/`, `common/`, `scripts/` or `interp/` has no README with a table.
 18. `shellcheck --severity=warning` — shell scripts, enumerated with `find`.
 
 Then two chained gates. The rust-harness gate runs when that directory exists,
