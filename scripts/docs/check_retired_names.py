@@ -1030,6 +1030,9 @@ PRUNE_DIRS = {
     # pytest's tmp_path base when the default temp dir is noexec (the agent
     # sandbox; see tests/conftest.py). Generated fixtures, not our text.
     ".pytest-tmp",
+    # Docusaurus's cache under site/, gitignored and rebuilt by every site build;
+    # it carries a JSON copy of each page, including pages since deleted.
+    ".docusaurus",
 }
 
 # Extensions worth reading. Anything textual that can name a file.

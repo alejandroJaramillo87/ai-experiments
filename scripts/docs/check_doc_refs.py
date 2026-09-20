@@ -42,6 +42,9 @@ PRUNE_DIRS = {
     # pytest's tmp_path base when the default temp dir is noexec (the agent
     # sandbox; see tests/conftest.py). Holds generated fixtures, not documents.
     ".pytest-tmp",
+    # Docusaurus's cache under site/, gitignored and rebuilt by every site build;
+    # it carries a JSON copy of each page, including pages since deleted.
+    ".docusaurus",
 }
 
 # Exempt by path component. Investigation and verification write-ups are dated

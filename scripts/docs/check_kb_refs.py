@@ -43,6 +43,9 @@ PRUNE_DIRS = {
     "__pycache__",
     ".ruff_cache",
     ".pytest-tmp",
+    # Docusaurus's cache under site/, gitignored and rebuilt by every site build;
+    # it carries a JSON copy of each page, including pages since deleted.
+    ".docusaurus",
 }
 
 # The two documents that may define an id: the live ledger and the frozen archive

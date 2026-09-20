@@ -95,7 +95,10 @@ Tier T is a tiny Gemma 4 that `transformers` itself constructs and saves,
 the workstation, its artifacts generated per run. The two are not substitutes: Tier T
 catches structure (a transposed weight, a missing scale, a norm convention) on an
 oracle nobody here transcribed; Tier E catches what a handful of dimensions cannot
-distinguish. Their tolerances are one `Tolerance` struct with two constants, so a
+distinguish. Tier T's L5 and L6 artifacts (`long_context.json`, `attention.json` beside
+the fixture) are generated on the workstation like Tier E's and are not committed, so
+in the sandbox those two rungs report `[SKIP]` with the generator command; the gate is
+green with them skipped, which is the reason to read its output. Their tolerances are one `Tolerance` struct with two constants, so a
 caller cannot mix the tiny fixture's cosine floor with the real checkpoint's KL ceiling:
 
 | Field | Rung | `TIER_T` | `TIER_E` |
