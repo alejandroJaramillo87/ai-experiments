@@ -699,8 +699,8 @@ positive, got -1.0`, the command exits 1 and `make` reports `Error 1` and
 that does not gate, and a second problem line is a new finding. The test
 passes its three cases for each E2B recipe (the resolution lands on the
 staged directory, validate passes and refuses, preflight names the dataset
-or nothing) and skips the E4B recipe unless E4B is staged. That paste closes
-KB-79.
+or nothing): 15 cases since FT.e4b-recipe retired the E4B card on 2026-09-20,
+18 while it was in the tree. That paste closes KB-79.
 
 Superseded expected signal, as first written (before FT.smoke-dataset had run): the
 committed recipe's preflight prints `[ERROR] Missing or unusable assets:
@@ -946,6 +946,68 @@ recipe as committed resolves in the offline container and on the host.
 Status: VERIFIED 2026-09-19 on the re-run. Was BLOCKED the same day on
 KB-79 for the two committed-recipe commands after the superseded run above;
 KB-79 was fixed in the tree and the entry re-ran as one, with no override.
+
+Re-ran the test half on 2026-09-20 after FT.e4b-recipe retired the E4B card,
+together with FT.calibrate-qlora's mirror, to see the gates hold without the
+E4B cases (the pull reported `Already up to date` at `634d982`, the head the
+hand-over named):
+
+Observed:
+
+```
+➜  ai-experiments git:(SFT-verification) ✗ set -o pipefail
+cd ~/workspace/ai-experiments
+rm -rf training/calculator
+git pull origin SFT-verification; git log --oneline -1
+uv run --no-sync pytest -m "hw_smoke or hw_full" tests/hardware/test_recipe_gates.py tests/hardware/test_step_qlora.py -v; echo "exit=$?"
+From https://github.com/alejandroJaramillo87/ai-experiments
+ * branch            SFT-verification -> FETCH_HEAD
+Already up to date.
+=============================================================================== test session starts ===============================================================================
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /home/alejandro/workspace/ai-experiments/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/alejandro/workspace/ai-experiments
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, mock-3.15.1, jaxtyping-0.3.11, cov-7.1.0, hydra-core-1.3.2, anyio-4.14.2, xdist-3.8.0, typeguard-4.6.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 16 items
+
+tests/hardware/test_recipe_gates.py::test_the_hub_id_resolves_to_the_staged_directory[false-fact.yaml] PASSED                                                               [  6%]
+tests/hardware/test_recipe_gates.py::test_the_hub_id_resolves_to_the_staged_directory[null.yaml] PASSED                                                                     [ 12%]
+tests/hardware/test_recipe_gates.py::test_the_hub_id_resolves_to_the_staged_directory[taboo.yaml] PASSED                                                                    [ 18%]
+tests/hardware/test_recipe_gates.py::test_the_hub_id_resolves_to_the_staged_directory[continual-gemma4-e2b.yaml] PASSED                                                     [ 25%]
+tests/hardware/test_recipe_gates.py::test_the_hub_id_resolves_to_the_staged_directory[sft-qlora-e2b.yaml] PASSED                                                            [ 31%]
+tests/hardware/test_recipe_gates.py::test_validate_passes_as_committed_and_refuses_a_negative_lr[false-fact.yaml] PASSED                                                    [ 37%]
+tests/hardware/test_recipe_gates.py::test_validate_passes_as_committed_and_refuses_a_negative_lr[null.yaml] PASSED                                                          [ 43%]
+tests/hardware/test_recipe_gates.py::test_validate_passes_as_committed_and_refuses_a_negative_lr[taboo.yaml] PASSED                                                         [ 50%]
+tests/hardware/test_recipe_gates.py::test_validate_passes_as_committed_and_refuses_a_negative_lr[continual-gemma4-e2b.yaml] PASSED                                          [ 56%]
+tests/hardware/test_recipe_gates.py::test_validate_passes_as_committed_and_refuses_a_negative_lr[sft-qlora-e2b.yaml] PASSED                                                 [ 62%]
+tests/hardware/test_recipe_gates.py::test_preflight_reports_the_dataset_never_the_base[false-fact.yaml] PASSED                                                              [ 68%]
+tests/hardware/test_recipe_gates.py::test_preflight_reports_the_dataset_never_the_base[null.yaml] PASSED                                                                    [ 75%]
+tests/hardware/test_recipe_gates.py::test_preflight_reports_the_dataset_never_the_base[taboo.yaml] PASSED                                                                   [ 81%]
+tests/hardware/test_recipe_gates.py::test_preflight_reports_the_dataset_never_the_base[continual-gemma4-e2b.yaml] PASSED                                                    [ 87%]
+tests/hardware/test_recipe_gates.py::test_preflight_reports_the_dataset_never_the_base[sft-qlora-e2b.yaml] PASSED                                                           [ 93%]
+tests/hardware/test_step_qlora.py::test_step_holds_the_counts_and_the_peak PASSED                                                                                           [100%]
+
+================================================================================ warnings summary =================================================================================
+tests/hardware/test_step_qlora.py: 14 warnings
+  /home/alejandro/workspace/ai-experiments/.venv/lib/python3.12/site-packages/torch/jit/_script.py:365: DeprecationWarning: `torch.jit.script_method` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
+
+tests/hardware/test_step_qlora.py::test_step_holds_the_counts_and_the_peak
+  /home/alejandro/workspace/ai-experiments/.venv/lib/python3.12/site-packages/bitsandbytes/backends/cuda/ops.py:213: FutureWarning: _check_is_size will be removed in a future PyTorch release along with guard_size_oblivious.     Use _check(i >= 0) instead.
+    torch._check_is_size(blocksize)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+[TIER] full: torch present, the whole suite was in scope.
+======================================================================== 16 passed, 15 warnings in 10.16s =========================================================================
+exit=0
+```
+
+15 cases, the five recipes by three gates, and the mirror, exit 0 at `[TIER]
+full`: nothing the E4B card verified was lost with it, which is what its
+retirement note claimed. The 15 warnings are the same torch and bitsandbytes
+deprecations the mirror's first run printed.
 
 ## FT.calibrate-qlora Step the QLoRA recipe on the GPU (KB-03)
 
@@ -1520,6 +1582,8 @@ drift is exactly 18,881,440 (the corrected residue plus the 928 KB-82 keeps),
 resident under 7 GB and peak allocated under 14 GB. The 15 warnings are torch
 and bitsandbytes deprecations, not the tree's. This is the entry's re-run and
 its standing mirror: `make quality-full HW=full` repeats it.
+The mirror ran again on 2026-09-20 at `634d982` beside FT.recipe-gates' re-run
+(the paste is recorded there): `16 passed`, exit 0, the mirror unchanged.
 
 Status: VERIFIED 2026-09-20 on the seventh attempt through the mirror. Was
 PENDING through six attempts the same two days: the first two on KB-83 and
