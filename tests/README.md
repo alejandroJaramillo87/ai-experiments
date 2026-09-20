@@ -8,7 +8,7 @@ header transcripts, and a hardware tier that runs only on the workstation.
 
 | Directory | Covers |
 |-----------|--------|
-| `training/` | the training tier; the largest suite, and the one that needs torch |
+| `training/` | the training tier; the largest suite, and the one that needs torch — see [training/README.md](training/README.md) |
 | `interp/` | the interpretability tier |
 | `common/` | the `common/` package: `Printer` and `common/obs/` — see [common/README.md](common/README.md) |
 | `docs/` | the documentation gates in `scripts/docs/` — see [docs/README.md](docs/README.md) |

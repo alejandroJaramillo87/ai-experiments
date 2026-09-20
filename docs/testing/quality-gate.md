@@ -10,7 +10,7 @@ disagrees with it, the recipe is right.
 
 ## What it runs
 
-Fourteen steps, cheapest first, failing on the first error:
+Eighteen steps, cheapest first, failing on the first error:
 
 1. `ruff format --check .` — formatting.
 2. `ruff check .` — lint.
@@ -55,7 +55,12 @@ Fourteen steps, cheapest first, failing on the first error:
     parser: a verb with no page, a page for no verb, or an `add_argument` literal its page
     does not show. Reads the command modules as text, so it needs no Python environment
     beyond the interpreter.
-17. `shellcheck --severity=warning` — shell scripts, enumerated with `find`.
+17. `scripts/docs/check_test_inventory.py` — fails when the generated inventory table
+    in `tests/training/README.md` disagrees with the test files it was rendered from: a
+    module added, renamed, or given a different docstring, or a changed test count. It
+    regenerates the table in memory with `scripts/docs/gen_test_inventory.py` and prints
+    the diff. Reads the files' ASTs, so it needs neither torch nor a collected session.
+18. `shellcheck --severity=warning` — shell scripts, enumerated with `find`.
 
 Note what is absent: **`make quality` does not run pytest.** See
 [The full gate](#the-full-gate) below.
