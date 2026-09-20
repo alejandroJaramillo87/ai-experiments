@@ -21,7 +21,7 @@
  *
  * What it is not. It is not an oracle. We wrote the engine that produced it,
  * so it is evidence of nothing except that behaviour has not changed since it
- * was recorded, exactly as `/rust-harness/README.md` says of the other
+ * was recorded, exactly as `/docs/rust-harness/fixtures.md` says of the other
  * goldens. Its standing comes from elsewhere: the window convention it
  * encodes was checked against transformers at 150 tokens on the Tier T
  * fixture (`runtime/tests/ladder_tiny.rs`), and this file was blessed only

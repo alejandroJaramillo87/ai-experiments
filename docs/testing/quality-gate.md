@@ -62,12 +62,13 @@ Eighteen steps, cheapest first, failing on the first error:
     with its pages, `schemas/` with its contracts, `docs/agents/` with the definitions
     under `.claude/`. It regenerates each table in memory with
     `scripts/docs/gen_inventory.py` and prints the diff, and fails when a directory under
-    `tests/`, `training/`, `common/`, `scripts/` or `interp/` has no README with a table.
+    `tests/`, `training/`, `common/`, `scripts/`, `interp/` or `rust-harness/` has no README
+    with a table, or a directory under `docs/` lacks the table its shape needs.
 18. `shellcheck --severity=warning` — shell scripts, enumerated with `find`.
 
 Then two chained gates. The rust-harness gate runs when that directory exists,
 `make -C rust-harness quality`: five offline steps and the cross-language contract tests,
-documented in [../../rust-harness/README.md](../../rust-harness/README.md) and not repeated
+documented in [../rust-harness/testing.md](../rust-harness/testing.md) and not repeated
 here, with the rule that a green run must be read for `[SKIP]` lines rather than trusted by
 exit code. After it, `make site-build` builds the documentation site under `site/` and skips
 itself with `[SKIP]` when `site/node_modules` is absent, as in a fresh sandbox, where
@@ -139,5 +140,5 @@ the summary, and `make quality-full` refuses the torch-free tier outright
 ## Related
 
 - [README.md](README.md) — the testing strategy this gate is one layer of
-- [../../rust-harness/README.md](../../rust-harness/README.md) — the rust half of the gate
+- [../rust-harness/testing.md](../rust-harness/testing.md) — the rust half of the gate
 - [../agents/README.md](../agents/README.md) — the agent sandbox itself

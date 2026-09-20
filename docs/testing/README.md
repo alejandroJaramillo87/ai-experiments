@@ -31,7 +31,7 @@ Each layer has one command and one owner. Read the owner, not this table.
 | Lockfile and pins | `uv lock --check`, `check_group_pin_parity.py` | `uv.lock` matches `pyproject.toml`; a package pinned twice is pinned once | [quality-gate.md](quality-gate.md) |
 | Documentation gates | `scripts/docs/check_*.py` | every path, target, count, id, entry and generated table in the docs agrees with the tree | [doc-gates.md](doc-gates.md) |
 | Shell | `shellcheck --severity=warning` | every `*.sh` in the tree, enumerated with `find` | [quality-gate.md](quality-gate.md) |
-| Rust gate | `make -C rust-harness quality` | fmt, clippy, the lockfile, rustdoc and `cargo test`, including the cross-language contract tests | [../../rust-harness/README.md](../../rust-harness/README.md) |
+| Rust gate | `make -C rust-harness quality` | fmt, clippy, the lockfile, rustdoc and `cargo test`, including the cross-language contract tests | [../rust-harness/testing.md](../rust-harness/testing.md) |
 | Site build | `make site-build` | every link and anchor on the documentation site resolves | [quality-gate.md](quality-gate.md) |
 | The pytest suite | `make test` | unit and branch tests for `common/`, `training/` and `interp/`, the scripts driven as subprocesses, the model transcripts, the agent tooling, the documentation gates | [test-suite.md](test-suite.md) |
 | Hardware tiers | `make quality-full`, `HW=full`, `HW=e4b` | the workstation halves of the verification entries, on the real GPU, RAM, disk and checkpoints | [hardware-tiers.md](hardware-tiers.md) |

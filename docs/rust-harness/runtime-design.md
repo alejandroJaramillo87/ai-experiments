@@ -131,7 +131,7 @@ rust-harness/
       cli.rs            # one binary's flags as data: --help, usage, unknown-arg rejection
       model/cpu.rs      # hand-rolled CPU backend, tap and steering seams
       model/mock.rs     # scripted backend the sandbox tests run against
-    src/bin/            # the seven utility binaries, rostered in rust-harness/README.md
+    src/bin/            # the seven utility binaries, rostered in rust-harness/runtime/README.md
 ```
 
 `cli.rs` serves `runtime/src/bin/` only. `harness` keeps its own table in

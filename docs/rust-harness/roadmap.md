@@ -1,5 +1,7 @@
 # Harness roadmap
 
+**Parked proposal. A dated menu of unscheduled work: the Status table is edited as items graduate into the living documentation, and the phase bodies are not.**
+
 The scheduled work for the rust harness and its interpretability seam, in five phases plus a
 parallel track. Each entry states what the item is, why it is placed where it is, and what the
 estimate turned out to be worth once the item landed.

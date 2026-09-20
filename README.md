@@ -57,7 +57,7 @@ entry points and its traps.
 | [docs/](docs/README.md) | The knowledge base for changing this repository, organized with agents as its first readers: every topic has one directory that owns it, that directory's README indexes its pages, and the tables that list directories or pages are rendered from the tree so they cannot drift. |
 | [interp/](interp/README.md) | The interpretability tier: activation harvesting to NVMe, sparse autoencoder training and evaluation, linear probes (capture, train, evaluate, export, monitor), steering-vector extraction and steered serving, and model organism generation, verification and sealing. |
 | [make/](make/README.md) | The Makefile fragments, one per subject, that the root `Makefile` includes. |
-| [rust-harness/](rust-harness/README.md) | Single-binary local coding harness with an integrated LLM inference runtime, written in Rust. |
+| [rust-harness/](rust-harness/README.md) | The Rust workspace: a single-binary local coding harness with the Gemma 4 inference runtime linked in as a library crate, and the correctness ladder that holds that runtime to `transformers`. |
 | [schemas/](schemas/README.md) | The contracts the Rust harness (`/rust-harness/`) and the Python tiers (`/interp/`, `/common/`, `/training/`) agree on, one JSON file each, with the tests that enforce it named inside. |
 | [scripts/](scripts/README.md) | Host-side operational tooling: workstation provisioning and updates, the GPU preflight gates, benchmarking, agent-tooling checks, model header transcripts, the documentation gates and one browser check. |
 | [site/](site/README.md) | The user-facing documentation site for the repository's tiers, built with Docusaurus. |

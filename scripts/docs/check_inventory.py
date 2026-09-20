@@ -19,8 +19,8 @@ an inventory marker is regenerated in memory and diffed against what is
 committed, with the difference printed rather than only reported. Second, the
 hubs are complete: under each root in HUB_ROOTS, the root README carries a
 `dirs` table, and every child directory carries a README with an inventory
-table of its own. A new subpackage, test directory or scripts directory
-therefore fails the gate until it is documented. Third, the documentation
+table of its own. A new subpackage, test directory, scripts directory or
+crate therefore fails the gate until it is documented. Third, the documentation
 tree is routed all the way down: every directory under DOCS_ROOT has a README
 that carries a `dirs` table when it has subdirectories and a `pages` table
 when it has pages beside it, which is the README shape
@@ -46,7 +46,7 @@ GENERATOR = Path(__file__).resolve().parent / "gen_inventory.py"
 
 # The directories whose children must each be documented. Adding one here is
 # the whole cost of extending the rule; the generator already renders any README.
-HUB_ROOTS = ("tests", "training", "common", "scripts", "interp")
+HUB_ROOTS = ("tests", "training", "common", "scripts", "interp", "rust-harness")
 
 # The documentation tree, ruled by content rather than by hub: a README lists what
 # sits beside it, so the directory's shape decides which tables it must carry.

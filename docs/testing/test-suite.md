@@ -104,6 +104,10 @@ python scripts/docs/gen_inventory.py tests/interp/README.md
 
 The prose above each table is hand-written once: what the directory covers, what its
 conftest fakes, which tests live there on purpose although their subject is elsewhere.
+The Rust crates under `rust-harness/` carry the same shape: each crate README's `rust`
+and `rust_tests` tables are rendered from the files' leading banners and their test
+attributes, and [../rust-harness/testing.md](../rust-harness/testing.md) is the strategy
+above them.
 
 ## Related
 

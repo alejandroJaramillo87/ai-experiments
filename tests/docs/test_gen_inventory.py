@@ -709,6 +709,22 @@ class TestGate:
                 "<!-- inventory:dirs:end -->\n",
                 encoding="utf-8",
             )
+        # The Rust hub: one crate, documented by its sources table.
+        crate = tree / "rust-harness" / "obs"
+        (crate / "src").mkdir(parents=True)
+        (crate / "src" / "lib.rs").write_text(
+            "/*\n * obs — run records.\n */\n", encoding="utf-8"
+        )
+        (crate / "README.md").write_text(
+            "# obs\n\nThe crate.\n\n<!-- inventory:rust:start -->\n"
+            "<!-- inventory:rust:end -->\n",
+            encoding="utf-8",
+        )
+        (tree / "rust-harness" / "README.md").write_text(
+            "# rust-harness\n\nThe workspace.\n\n<!-- inventory:dirs:start -->\n"
+            "<!-- inventory:dirs:end -->\n",
+            encoding="utf-8",
+        )
         # The documentation tree: a hub with a page and a subdirectory of pages.
         topic = tree / "docs" / "topic"
         (topic / "sub").mkdir(parents=True)

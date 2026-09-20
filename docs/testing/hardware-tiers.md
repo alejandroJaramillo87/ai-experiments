@@ -128,9 +128,8 @@ prefixes of one corpus, so a `deep` run reproduces a `quick` run's number on its
 tokens exactly.
 
 Like `quality-full`, the target refuses in a contained sandbox before doing any work. See
-[../../rust-harness/README.md](../../rust-harness/README.md) for the rungs and
-[../../rust-harness/fixtures/reference/README.md](../../rust-harness/fixtures/reference/README.md)
-for the reference artifacts.
+[../rust-harness/correctness-ladder.md](../rust-harness/correctness-ladder.md) for the rungs
+and the reference artifacts.
 
 ## Related
 
