@@ -186,6 +186,16 @@ class TestDescription:
     def test_a_bold_class_line_is_skipped(self, mod, tree):
         assert mod.description(tree / "docs" / "two.md", tree) == "The second page."
 
+    def test_a_line_opening_with_a_code_span_continues_the_paragraph(self, mod, tree):
+        page = tree / "docs" / "span.md"
+        page.write_text(
+            "# Span\n\nThe directory holds\n`config.json` and more. Tail.\n",
+            encoding="utf-8",
+        )
+        assert mod.description(page, tree) == (
+            "The directory holds `config.json` and more."
+        )
+
     def test_a_page_with_no_paragraph_is_named(self, mod, tree):
         page = tree / "docs" / "bare.md"
         page.write_text("# Bare\n\n## Section\n", encoding="utf-8")

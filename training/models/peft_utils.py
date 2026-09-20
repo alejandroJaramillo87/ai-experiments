@@ -1,4 +1,4 @@
-"""PEFT construction glue (Phase 1 F2): LoRA, QLoRA, DoRA.
+"""PEFT construction glue (Phase 1 F2): LoRA and QLoRA.
 
 Adoption of Hugging Face PEFT and bitsandbytes; the only logic here is
 resolving the recipe's peft group into library objects:

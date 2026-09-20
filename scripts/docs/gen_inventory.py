@@ -137,7 +137,9 @@ def description(page: Path, root: Path) -> str:
             continue
         if in_class_line:
             continue
-        if stripped[0] in "#|-`>" or re.match(r"\d+\. ", stripped):
+        if stripped.startswith(("```", "#", "|", "- ", "> ")) or re.match(
+            r"\d+\. ", stripped
+        ):
             break
         paragraph.append(stripped)
     if not paragraph:
