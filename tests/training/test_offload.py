@@ -1,6 +1,6 @@
 """ZeRO-Offload unit tests (Phase 2 P2-D5): DeepSpeed config generation as a
 pure function of the recipe, the trainable_filter freeze policy on a real
-tiny HF model, the calculator's transformer_stack parameter accounting, and
+tiny HF model, the transformer_stack parameter accounting, and
 the validate() invariants. CPU-only; the engine itself (deepspeed.initialize,
 CPUAdam) is exercised by the host-side tiny-model resume acceptance run, not
 here — the sandbox has no deepspeed."""
@@ -143,13 +143,13 @@ class TestApplyTrainableFilter:
             if id(p) in trainable_ids
         )
 
-    def test_trainable_count_matches_calculator(self, tiny_model):
-        from training.calculator import spec_from_recipe, trainable_param_count
+    def test_trainable_count_matches_the_analytic_count(self, tiny_model):
+        from training.models.architecture import spec_from_recipe, trainable_param_count
 
         recipe = offload_recipe("model.trainable_filter=transformer_stack")
         trainable = apply_trainable_filter(tiny_model, recipe)
         measured = sum(p.numel() for p in trainable)
-        # The tiny HF Llama matches the tiny scratch spec the calculator
+        # The tiny HF Llama matches the tiny scratch spec architecture.py
         # tests pin, so the freeze policy and the memory model must agree.
         spec_recipe = load_recipe(
             TINY_RECIPE,
@@ -185,7 +185,7 @@ class TestApplyTrainableFilter:
 
 
 class TestCalculatorTransformerStack:
-    # Same hand-computed tiny config as test_calculator.py: total 90,432.
+    # Same hand-computed tiny config as test_architecture.py: total 90,432.
     # transformer_stack trainable = layers * (attn + mlp + norms) + final norm
     #   = 2 * (12,288 + 24,576 + 128) + 64 = 74,048
     STACK_PARAMS = 74_048
@@ -199,7 +199,7 @@ class TestCalculatorTransformerStack:
     ]
 
     def test_transformer_stack_param_count(self):
-        from training.calculator import spec_from_recipe, trainable_param_count
+        from training.models.architecture import spec_from_recipe, trainable_param_count
 
         recipe = load_recipe(
             TINY_RECIPE,
@@ -210,8 +210,11 @@ class TestCalculatorTransformerStack:
         )
 
     def test_host_ram_prices_the_frozen_policy(self):
-        from training.calculator import host_ram_bytes, spec_from_recipe
-        from training.calculator.components import OFFLOAD_HOST_BYTES_PER_PARAM
+        from training.models.architecture import (
+            OFFLOAD_HOST_BYTES_PER_PARAM,
+            host_ram_bytes,
+            spec_from_recipe,
+        )
 
         recipe = load_recipe(
             TINY_RECIPE,

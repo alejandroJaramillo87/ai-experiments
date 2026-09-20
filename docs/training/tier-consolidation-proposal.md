@@ -127,7 +127,7 @@ timestamps and hashes; run `tiny-e2e` to a second checkpoint, resume it, and con
 
 ## The inline handlers in the CLI module
 
-`training/cli.py` holds seven handlers inline (`memfit`, `calibrate`, `train`,
+`training/cli.py` holds five handlers inline (`train`,
 `train-sft`, `export`, `eval-holdout`, `eval-lmeval`) while every other verb lives in
 `training/commands/`. Nothing is duplicated; the cost is that a reader looking for a verb
 has two places to look, and the module is the longest in the tier. Moving them is
@@ -139,15 +139,15 @@ rather than land alone.
 
 Each `cmd_*` and its `sub.add_parser(...)` block moves to a module in
 `training/commands/` with the `configure(sub)` shape every other command uses
-(`training/commands/validate_recipe.py` is the template): `memfit.py` (with the estimate
-table and `gb`), `calibrate.py`, `train.py`, `train_sft.py`, `export.py`,
+(`training/commands/validate_recipe.py` is the template; `train_step.py` made the move on
+2026-09-20 when the calculator retired): `train.py`, `train_sft.py`, `export.py`,
 `eval_holdout.py`, `eval_lmeval.py`. `build_parser` becomes the loop over the command
 modules alone. The handler tests reach every handler through `cli.build_parser()` and
 patch the source modules by dotted path (`training.runtime.loop.train`,
 `training.tune.sft.train_sft` and the rest), so they need no edits provided the moved
 handlers keep resolving those names at call time as they do now. The entry-point lists in
-[README.md](README.md) and `training/README.md` point at the new modules, and the FT.e4b-recipe
-implementation line that cites `training/cli.py (cmd_memfit, cmd_calibrate)` follows.
+[README.md](README.md) and `training/README.md` point at the new modules, and the runbook
+implementation lines that cite `training/cli.py` handlers follow.
 Acceptance: the handler test files pass unchanged, `make help` lists the same verbs, and
 each moved verb answers `--help`.
 

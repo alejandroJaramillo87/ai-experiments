@@ -1,8 +1,8 @@
 """Shared model, optimizer, and scheduler builders (Phase 0 D6).
 
-Extracted from training/calculator/calibrate.py (resolved D6 design decision 3)
-so the calibrator and the D6 reference loop instantiate exactly the same model
-for a recipe. Scratch specs build through HF LlamaConfig +
+Shared by the D6 reference loop, the SFT trainer and `python -m training step`
+(training/commands/train_step.py) so every consumer instantiates exactly the
+same model for a recipe. Scratch specs build through HF LlamaConfig +
 AutoModelForCausalLM.from_config; HF hub ids or local paths build through
 from_pretrained. Both paths yield HF models, so the D6 checkpoint layout
 (save_pretrained sharded safetensors) holds for both.
@@ -17,7 +17,7 @@ import sys
 
 from omegaconf import DictConfig
 
-from training.calculator.components import ArchitectureSpec, spec_from_recipe
+from training.models.architecture import ArchitectureSpec, spec_from_recipe
 
 _flash_fallback_warned = False
 

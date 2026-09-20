@@ -6,9 +6,9 @@ merged HF checkpoint, and baseline-versus-tuned evaluation.
 
 Invoked as `python -m training <command>`; `cli.py` dispatches to one handler per verb in
 `commands/`. Runtime concerns are separated deliberately: `runtime/` holds the loop, the
-global run lock, tracking, and the watchdog; `calculator/` prices a run's static VRAM from
-its parameter count, applies the activation rate `calibrate` measured for its profile, and
-warns before a run rather than after an OOM.
+global run lock, tracking, and the watchdog; `models/architecture.py` is the parameter
+accounting the scratch builder, the offload host-RAM budget and `python -m training step`
+read, and the step command measures what a recipe holds on the card before a long run.
 
 ## Relationship to the rest of the tree
 
@@ -35,7 +35,7 @@ against the Rust renderer.
 ```bash
 make train CONFIG=training/recipes/reference/tiny-e2e.yaml
 make train-validate CONFIG=...   # recipe schema check, no GPU
-make memfit CONFIG=...           # VRAM fit estimate (advisory) before committing a run
+make train-step CONFIG=...       # step a recipe on the GPU and read its peak VRAM before committing a run
 make export-hf CHECKPOINT=... ARGS="--name <name>"
 ```
 
@@ -49,7 +49,7 @@ container.
 ## Where the real docs live
 
 [../docs/training/](../docs/training/) holds the living documentation, one document per
-capability: `data_pipeline.md`, `tokenizer_training.md`, `memory_fit.md`,
+capability: `data_pipeline.md`, `tokenizer_training.md`, `train_step.md`,
 `tracking_checkpointing.md`, `eval_wrapper.md`, and the rest. Phase
 verification records are in [../docs/verification/](../docs/verification/), and the frozen
 design investigations in [../docs/training/investigations/](../docs/training/investigations/).

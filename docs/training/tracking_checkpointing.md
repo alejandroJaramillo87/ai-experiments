@@ -133,6 +133,6 @@ cp env.training.example .env.training
 | `training/runtime/loop.py` | Reference training loop |
 | `training/runtime/checkpoint.py` | Atomic save/load, retention, resume resolution |
 | `training/runtime/tracking.py` | Metric sink fan-out |
-| `training/models/model.py` | Shared model/optimizer/scheduler builders (also used by the D4 calibrator) |
+| `training/models/model.py` | Shared model/optimizer/scheduler builders (also used by `python -m training step`) |
 | `tests/training/test_checkpoint.py` | Atomicity, retention, resume-resolution unit tests |
 | `tests/training/test_loop.py` | Deterministic resume and tracking acceptance tests |

@@ -253,13 +253,13 @@ def test_gemma2_width_absent_from_gemma4_code(contract):
     )
 
 
-def test_calculator_models_the_double_wide_mlp(contract):
+def test_architecture_models_the_double_wide_mlp(contract):
     """intermediate_size is not the per-layer truth on E2B.
 
     Twenty of its 35 layers carry a doubled MLP, which a flat
     3*hidden*ffn*layers understates by 0.57B parameters.
     """
-    from training.calculator.components import ArchitectureSpec
+    from training.models.architecture import ArchitectureSpec
 
     for variant, expected in (("E2B", 20), ("E4B", 0)):
         v = contract["variants"][variant]

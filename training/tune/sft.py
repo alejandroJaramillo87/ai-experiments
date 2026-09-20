@@ -7,7 +7,8 @@ D10 watchdog — all attached through training/tune/sft_callbacks.py. The D6
 reference loop is not used for SFT (resolved F3 design decision 1).
 
 Preflight, in order (roadmap F3 interfaces): recipe validate() (the CLI runs
-it), D4 memory-fit check (warn or refuse per force), D9 lock acquisition.
+it), D9 lock acquisition. The memory-fit advisory left with the calculator
+on 2026-09-20; `make train-step` measures a recipe before a long run.
 Running inference containers are not probed; the operator manages containers
 manually. Checkpoints are transformers-native
 checkpoint-<step>/ directories stamped with a D6-style meta.json (see
@@ -157,35 +158,6 @@ class Collator:
 
         padded = collate_padded(batch, self.pad_id)
         return {k: torch.tensor(v, dtype=torch.long) for k, v in padded.items()}
-
-
-# -- preflight ---------------------------------------------------------------
-
-
-def check_memory_fit(recipe: DictConfig) -> tuple[bool, str]:
-    """D4 memory-fit advisory: (ok, message). Never refuses (2026-09-19): an
-    OOM on this machine fails at step one after a minute of model load, so
-    the line is a warning the operator reads, not a gate the run waits on.
-    ok is False for a predicted overflow and for an unmeasured profile."""
-    from training.calculator.estimate import GIB, VRAM_TOTAL_BYTES, estimate
-
-    est = estimate(recipe)
-    reserved_gb = est.reserved_estimate / GIB
-    total_gb = VRAM_TOTAL_BYTES / GIB
-    if est.fits is None:
-        return False, (
-            f"Memory fit: unmeasured for profile {est.profile} "
-            f"({reserved_gb:.2f} GB static lower bound; run train-calibrate)"
-        )
-    if est.fits:
-        return True, (
-            f"Memory fit: {reserved_gb:.2f} GB reserved estimate "
-            f"of {total_gb:.0f} GB VRAM"
-        )
-    return False, (
-        f"Memory fit: predicted {reserved_gb:.2f} GB exceeds the "
-        f"{total_gb:.0f} GB budget (reduce micro_batch/seq_len; proceeding)"
-    )
 
 
 # -- build steps -------------------------------------------------------------
@@ -401,8 +373,7 @@ def train_sft(recipe: DictConfig) -> SftResult:
     """Run the recipe's supervised fine-tune end to end.
 
     Preflight (the sft group, then the lock) precedes any heavy import or
-    model download; the memory-fit line is the caller's to print
-    (check_memory_fit) and never refuses. Running inference containers are
+    model download. Running inference containers are
     not probed: the operator manages containers manually and validates GPU
     exclusivity themselves. WatchdogAbort propagates to the caller after an
     emergency checkpoint is written; the D9 lock releases on every exit path

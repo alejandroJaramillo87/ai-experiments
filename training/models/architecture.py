@@ -1,25 +1,19 @@
-"""Static VRAM component formulas (Phase 0 D4, reduced 2026-09-19).
+"""The dense-transformer parameter accounting a recipe implies.
 
-Every function takes the typed recipe (or the ArchitectureSpec derived from
-it) and returns bytes. The formulas price what is resident before the first
-step: parameters, gradients and optimizer state, from the parameter count of
-the dense transformer family the recipes describe (pre-norm attention with
-GQA, a gated MLP, RMSNorm: the Llama shape HF LlamaConfig builds, plus the
-Gemma 4 extras the spec carries). Activations are not modeled here: their
-per-token cost is measured by calibrate.py and kept in measured.py, keyed by
-the profile() string, because an analytic activation formula is a second
-implementation of the model that drifts with every family and every
-transformers release (the reduction is recorded in docs/training/memory_fit.md).
+ArchitectureSpec resolves a recipe's model block (a scratch spec, or an HF
+config through the Llama-family field mapping plus the Gemma 4 extras) into
+the counts three consumers read: the scratch model builder
+(training/models/model.py), the drift check `python -m training step` makes
+against the built model's torch-reported count (training/commands/train_step.py,
+KB-03, KB-82), and the ZeRO-Offload host-RAM budget (host_ram_bytes) that
+validate's _check_offload_budget and the replay buffer's headroom share.
 
-Unit tests pin these numbers for a hand-computed tiny config and for the two
-Gemma 4 variants against the exact counts in docs/training/gemma-4-training.md,
-so refactors cannot silently change the math.
-
-Phase 1 F2 extends the Phase 0 all-parameters-trainable model with the PEFT
-terms: when peft.enabled, the base is frozen (optionally NF4 4-bit via
-bitsandbytes) and only the LoRA/DoRA adapter carries gradients and optimizer
-state. Calibrated against measurement on the workstation per the F2
-acceptance (QLoRA prediction within 10 percent of measured peak).
+Unit tests pin the counts for a hand-computed tiny config and for the two
+Gemma 4 variants against the exact figures in
+docs/training/gemma-4-training.md, so refactors cannot silently change the
+math. Nothing here prices VRAM: the memory-fit calculator that once did was
+retired on 2026-09-20 (docs/training/train_step.md), and what a recipe holds
+on the card is measured by stepping it.
 """
 
 from __future__ import annotations
@@ -31,30 +25,12 @@ from dataclasses import dataclass
 
 from omegaconf import DictConfig
 
-# Bytes per element for the run precisions the schema can express (bf16 is
-# the only one PRECISION_DTYPES admits; fp32 stays for the master-copy rule).
-DTYPE_BYTES = {"fp32": 4, "bf16": 2}
-
 # Hidden-to-intermediate rounding: ffn = round(ffn_mult * hidden / 64) * 64.
 # Pinned against the source architectures the reference recipes cite:
 # SmolLM2-135M (576 -> 1536 at ffn_mult 2.67) and Llama-3.2-1B (2048 -> 8192
-# at ffn_mult 4.0). The calibration harness builds models from the same spec,
-# so calculator and measured model cannot disagree on this rounding.
+# at ffn_mult 4.0). build_scratch_model builds from the same spec, so the
+# count and the built model cannot disagree on this rounding.
 FFN_ROUND_MULTIPLE = 64
-
-# bitsandbytes 8-bit Adam: two 1-byte states per param plus per-block fp32
-# constants (absmax per state) at the default block size of 256.
-ADAM8BIT_BLOCK_SIZE = 256
-
-# bitsandbytes NF4: 4 bits per weight plus one absmax per 64-weight block.
-# Plain nf4 stores fp32 absmax (4 B / 64); double quantization stores 8-bit
-# absmax (1 B / 64) plus fp32 second-level constants per 256 blocks.
-NF4_BLOCK_SIZE = 64
-NF4_DOUBLE_QUANT_BLOCK_SIZE = 256
-NF4_BYTES_PER_PARAM = 0.5 + 4 / NF4_BLOCK_SIZE
-NF4_DQ_BYTES_PER_PARAM = (
-    0.5 + 1 / NF4_BLOCK_SIZE + 4 / (NF4_BLOCK_SIZE * NF4_DOUBLE_QUANT_BLOCK_SIZE)
-)
 
 # LoRA-targetable linear modules mapped to their (in, out) dimensions as
 # lambdas over the spec. Adapter params per module = rank * (in + out); DoRA
@@ -74,16 +50,19 @@ _TARGET_MODULE_DIMS = {
 # (4 B/param) live in host RAM instead of VRAM.
 OFFLOAD_HOST_BYTES_PER_PARAM = 16
 
+# The workstation's host RAM, the budget the offload check and the replay
+# buffer's derived headroom are measured against.
+HOST_RAM_TOTAL_BYTES = 128 * (1 << 30)
+
 # Host RAM reserved for the page cache serving NVMe shard reads plus CUDA
 # runtime and loader transients when budgeting an offload run (P2-D5
-# resolved decision 3). Unvalidated: calibrate() measures only CUDA and NVML
-# memory, so no host-RAM measurement exists to correct this against. It stays
-# an analytic starting estimate until the offload calibration path lands.
+# resolved decision 3). Unvalidated: the step command measures CUDA and NVML
+# memory only, so no host-RAM measurement exists to correct this against.
 PAGE_CACHE_ALLOWANCE_BYTES = 16 * (1 << 30)
 
 # HF AutoConfig model_type values whose configs carry Llama-family field names
 # and match the dense attention + SwiGLU shape these formulas model. Unknown
-# architectures fail loudly rather than guess (roadmap D4 decision 2).
+# architectures fail loudly rather than guess.
 HF_SUPPORTED_MODEL_TYPES = (
     "llama",
     "mistral",
@@ -107,7 +86,7 @@ class UnknownArchitectureError(ValueError):
 
 @dataclass(frozen=True)
 class ArchitectureSpec:
-    """Resolved architecture: everything the component formulas need."""
+    """Resolved architecture: everything the parameter formulas need."""
 
     layers: int
     hidden: int
@@ -147,7 +126,7 @@ class ArchitectureSpec:
     # summed from the checkpoint header by extra_params_from_checkpoint. Zero
     # for a scratch model or when the base is not a local directory.
     extra_params: int = 0
-    # The HF text model_type, or "scratch": the first component of profile().
+    # The HF text model_type, or "scratch".
     family: str = "scratch"
 
     @property
@@ -221,7 +200,7 @@ class ArchitectureSpec:
         """Per-layer embedding parameters (docs/models/gemma-4.md, Per-layer
         input embeddings): the packed table, the model-level projection and
         its ple_dim norm, and per layer one hidden->ple_dim gate, one
-        ple_dim->hidden projection and one hidden-wide norm. FT.calibrate-qlora's
+        ple_dim->hidden projection and one hidden-wide norm. The step command's
         parameter-count line is what checks this against the built model."""
         if not self.ple_dim:
             return 0
@@ -261,9 +240,7 @@ class ArchitectureSpec:
     def linear_param_count(self) -> int:
         """Parameters in the per-layer linear projections — the population
         bitsandbytes 4-bit quantization covers. Embeddings, norms, an untied
-        lm_head, the PLE terms and the towers stay in the compute dtype
-        (counting PLE and tower linears at full width overestimates, which is
-        the safe direction)."""
+        lm_head, the PLE terms and the towers stay in the compute dtype."""
         norms = 0
         if self.qk_norms:
             norms = 2 * (
@@ -307,8 +284,8 @@ def spec_from_recipe(recipe: DictConfig) -> ArchitectureSpec:
         config = AutoConfig.from_pretrained(
             source,
             revision=recipe.model.hf.revision,
-            # memfit and calibrate run in the offline training container, so
-            # even a pure size estimate must resolve the config locally.
+            # The step command runs in the offline training container, so
+            # even a pure parameter count must resolve the config locally.
             local_files_only=True,
         )
         spec = spec_from_hf_config(config)
@@ -368,7 +345,7 @@ def spec_from_hf_config(config) -> ArchitectureSpec:
         raise UnknownArchitectureError(
             f"HF model_type '{model_type}' is not in the supported mapping table "
             f"{HF_SUPPORTED_MODEL_TYPES}; the analytic formulas would guess. "
-            "Add a verified mapping in training/calculator/components.py."
+            "Add a verified mapping in training/models/architecture.py."
         )
     if model_type == "gemma4" and getattr(config, "text_config", None) is not None:
         config = config.text_config
@@ -380,7 +357,7 @@ def spec_from_hf_config(config) -> ArchitectureSpec:
         raise UnknownArchitectureError(
             "Gemma 4 MoE configs (enable_moe_block=true) are not supported: "
             "the dense-MLP formulas would misprice routed experts. Add a "
-            "verified MoE mapping in training/calculator/components.py."
+            "verified MoE mapping in training/models/architecture.py."
         )
     layer_types = getattr(config, "layer_types", None) or ()
     try:
@@ -432,7 +409,7 @@ def adapter_param_count(spec: ArchitectureSpec, recipe: DictConfig) -> int:
             raise UnknownArchitectureError(
                 f"peft.target_modules entry '{name}' has no dimension mapping in "
                 f"{tuple(_TARGET_MODULE_DIMS)}; the adapter size cannot be "
-                "estimated. Add the mapping in training/calculator/components.py."
+                "counted. Add the mapping in training/models/architecture.py."
             )
         d_in, d_out = dims(spec)
         per_layer += rank * (d_in + d_out) + (d_out if dora else 0)
@@ -449,62 +426,6 @@ def trainable_param_count(spec: ArchitectureSpec, recipe: DictConfig) -> int:
     if recipe.model.get("trainable_filter", "all") == "transformer_stack":
         return spec.transformer_stack_param_count()
     return spec.param_count()
-
-
-def weights_bytes(spec: ArchitectureSpec, recipe: DictConfig) -> int:
-    """Parameter memory: full model in the training dtype, or, under PEFT,
-    the frozen base (NF4-quantized linears for QLoRA) plus the adapter in
-    the peft compute dtype."""
-    if not recipe.peft.enabled:
-        return spec.param_count() * DTYPE_BYTES[recipe.precision.dtype]
-    compute_bytes = {"bf16": 2, "fp16": 2, "fp32": 4}[recipe.peft.compute_dtype]
-    if recipe.peft.quantize_base == "nf4":
-        per_param = (
-            NF4_DQ_BYTES_PER_PARAM if recipe.peft.double_quant else NF4_BYTES_PER_PARAM
-        )
-        linear = int(spec.linear_param_count() * per_param)
-        rest = (spec.param_count() - spec.linear_param_count()) * compute_bytes
-        base = linear + rest
-    else:
-        base = spec.param_count() * DTYPE_BYTES[recipe.precision.dtype]
-    return base + adapter_param_count(spec, recipe) * compute_bytes
-
-
-def grad_bytes(spec: ArchitectureSpec, recipe: DictConfig) -> int:
-    """Gradient memory: trainable parameters in the dtype backward() actually
-    produces — the parameter dtype. No trainer implements separate-dtype
-    gradient accumulation, so a bf16 model carries bf16 gradients (KB-55).
-    Under PEFT the adapter is built in peft.compute_dtype."""
-    params = trainable_param_count(spec, recipe)
-    if recipe.peft.enabled:
-        return params * {"bf16": 2, "fp16": 2, "fp32": 4}[recipe.peft.compute_dtype]
-    return params * DTYPE_BYTES[recipe.precision.dtype]
-
-
-def optimizer_bytes(spec: ArchitectureSpec, recipe: DictConfig) -> int:
-    """VRAM held by optimizer state; zero when the state lives in host RAM.
-
-    adamw: fp32 exp_avg + exp_avg_sq (8 B/param) plus a 4 B/param fp32 master
-    copy when the parameters themselves are lower precision (mixed-precision
-    training with fp32 grad accumulation keeps one). adamw8bit: 1-byte states
-    plus per-block fp32 absmax constants. cpu_adam/zero_offload: reported via
-    host_ram_bytes instead.
-    """
-    # Optimizer state exists only for trainable parameters: the adapter
-    # alone under PEFT (the QLoRA memory win the F2 model must capture).
-    params = trainable_param_count(spec, recipe)
-    if recipe.memory.offload == "zero_offload" or recipe.optimizer.name == "cpu_adam":
-        return 0
-    if recipe.optimizer.name == "adamw":
-        master = 4 * params  # bf16 params carry an fp32 master copy
-        return 8 * params + master
-    if recipe.optimizer.name in ("adamw8bit", "paged_adamw8bit"):
-        # paged_adamw8bit states live in CUDA unified memory and may page to
-        # host under pressure; budgeting them as VRAM-resident (identical to
-        # adamw8bit) is the conservative fit estimate.
-        block_constants = 2 * 4 * (params // ADAM8BIT_BLOCK_SIZE)
-        return 2 * params + block_constants
-    raise ValueError(f"No optimizer memory model for '{recipe.optimizer.name}'")
 
 
 def host_ram_bytes(spec: ArchitectureSpec, recipe: DictConfig) -> int:
@@ -524,19 +445,3 @@ def host_ram_bytes(spec: ArchitectureSpec, recipe: DictConfig) -> int:
     if replay is not None and replay.enabled and replay.max_gb is not None:
         total += int(replay.max_gb * (1 << 30))
     return total
-
-
-def profile(spec: ArchitectureSpec, recipe: DictConfig) -> str:
-    """The key a measured activation rate is filed under (measured.py):
-    family, geometry, training mode and checkpointing, e.g.
-    gemma4_text/35x1536/qlora/ckpt. Two recipes with the same profile share
-    the same per-token activation cost; a recipe outside the table is
-    unmeasured, which the estimate reports rather than guesses."""
-    if not recipe.peft.enabled:
-        mode = "full"
-    elif recipe.peft.quantize_base == "nf4":
-        mode = "qlora"
-    else:
-        mode = "lora"
-    ckpt = "ckpt" if recipe.memory.gradient_checkpointing else "nockpt"
-    return f"{spec.family}/{spec.layers}x{spec.hidden}/{mode}/{ckpt}"

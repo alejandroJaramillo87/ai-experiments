@@ -74,13 +74,62 @@ RETIRED: dict[str, tuple[str, str]] = {
     # activation formula and the binary-search solve left, a measured rate per
     # profile replaced them, and the module that held estimate() and solve()
     # was renamed for what remains.
-    # The flag itself (--solve) is not in this table: FT.memfit in the live
-    # fine-tuning runbook keeps its first pass verbatim as a superseded
-    # observation, and that paste names the flag; the argparse rejection is
-    # asserted by tests/training/test_calculator.py instead.
     "training/calculator/solve.py": (
-        "training/calculator/estimate.py",
-        "solve() left with the analytic activation term it searched over; the module now holds estimate() and the calibrated constants",
+        "training/commands/train_step.py",
+        "solve() left with the analytic activation term it searched over on 2026-09-19, and the estimate it fed left with the calculator on 2026-09-20; what a recipe holds is measured by stepping it",
+    ),
+    # The memory-fit calculator was retired on 2026-09-20. Its measured rate
+    # answered "does this recipe fit" no earlier than the one-minute step it
+    # was calibrated against, on a one-GPU machine, and cost a workstation run
+    # per family, width, mode and checkpointing flag. What survives moved to
+    # where its consumers are: the parameter accounting to
+    # training/models/architecture.py (the scratch builder, the step command's
+    # drift check and the offload host-RAM budget read it), and the
+    # calibration loop to training/commands/train_step.py as `python -m
+    # training step`. Not in this table, because FT.calibrate-qlora keeps its
+    # superseded attempts verbatim and those pastes spell them: `make
+    # train-calibrate`, `python -m training calibrate` and
+    # `training/calculator/calibrate.py`; check_make_targets.py allows the
+    # target for the same reason.
+    "training/calculator/components.py": (
+        "training/models/architecture.py",
+        "the parameter accounting describes the model and moved beside the model builders when the calculator retired",
+    ),
+    "training/calculator/estimate.py": (
+        "training/commands/train_step.py",
+        "the estimate left with the calculator; the step command measures the recipe instead",
+    ),
+    "training/calculator/measured.py": (
+        "training/commands/train_step.py",
+        "the per-profile activation rate table left with the calculator; nothing is transcribed after a step",
+    ),
+    "check_memory_fit": (
+        "make train-step",
+        "the trainer's advisory fit line left with the calculator; a recipe is stepped before a long run",
+    ),
+    "make memfit": (
+        "make train-step",
+        "the estimate left with the calculator; the step command measures the recipe on the GPU",
+    ),
+    "python -m training memfit": (
+        "python -m training step",
+        "the same retirement; see make memfit above",
+    ),
+    "docs/training/memory_fit.md": (
+        "docs/training/train_step.md",
+        "the calculator's document left with it; the step command and the parameter accounting are documented there",
+    ),
+    "tests/training/test_calculator.py": (
+        "tests/training/test_architecture.py",
+        "the parameter-accounting tests kept their pins under the module's new name; the byte and estimate tests left with the calculator",
+    ),
+    "tests/training/test_cli_handlers_memfit.py": (
+        "tests/training/test_cli_handlers_step.py",
+        "the calibrate handler tests became the step handler tests; the memfit ones left with the verb",
+    ),
+    "tests/hardware/test_memfit_sft.py": (
+        "tests/hardware/test_gpu.py",
+        "the memfit hardware mirror left with the calculator; the step measurement on the tiny recipe lives in test_gpu.py",
     ),
     "site/scripts/gen-cli-reference.sh": (
         "scripts/docs/gen_site_reference.py",

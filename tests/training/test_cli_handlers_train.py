@@ -5,8 +5,7 @@ handler, asserting the exit-code contract (0 success, 1 failure), the styled
 [OK]/[WARN]/[ERROR] lines, and --json stdout purity. The GPU pipelines are
 replaced at their home modules (training.runtime.loop / training.tune.sft)
 with fakes returning the real result dataclasses; recipe loading and
-validation execute for real (they are torch-free). check_memory_fit is always faked: the real one
-resolves HF model specs through transformers, absent in the sandbox.
+validation execute for real (they are torch-free).
 """
 
 from __future__ import annotations
@@ -24,12 +23,6 @@ from training.tune.sft import SftPreflightError, SftResult
 
 TINY = os.path.join(REFERENCE_DIR, "tiny-e2e.yaml")
 SFT = os.path.join(REFERENCE_DIR, "sft-qlora-e2b.yaml")
-
-FIT_OK = "Memory fit: 20.61 GB reserved estimate of 32 GB VRAM"
-FIT_OVER = (
-    "Memory fit: predicted 40.00 GB exceeds the 32 GB budget "
-    "(reduce micro_batch/seq_len; proceeding)"
-)
 
 WATCHDOG_LINE = "Watchdog abort: loss_spike value 12.5 crossed threshold 6.25"
 
@@ -64,18 +57,6 @@ def sft_result(**kw) -> SftResult:
     }
     base.update(kw)
     return SftResult(**base)
-
-
-def patch_fit(monkeypatch, message: str = FIT_OK, fits: bool = True) -> list:
-    """Replace training.tune.sft.check_memory_fit; returns the recorded calls."""
-    calls: list = []
-
-    def fake_fit(recipe):
-        calls.append(recipe)
-        return fits, message
-
-    monkeypatch.setattr("training.tune.sft.check_memory_fit", fake_fit)
-    return calls
 
 
 def assert_watchdog_output(out: str) -> None:
@@ -156,22 +137,19 @@ class TestCmdTrain:
 
 class TestCmdTrainSft:
     def test_success_prints_full_report(self, monkeypatch, capsys):
-        patch_fit(monkeypatch)
         monkeypatch.setattr("training.tune.sft.train_sft", lambda recipe: sft_result())
         assert run_cli(["train-sft", "--config", SFT]) == 0
         out = capsys.readouterr().err
         assert "[RUN] Fine-tuning sft-qlora-e2b [trl]: 2000 total steps" in out
-        assert f"[OK] {FIT_OK}" in out
         assert "[OK] Run complete: step 2000 [trl]" in out
         assert "  [INFO] trainable params: 4,096 of 1,000,000" in out
         assert "Final train loss: 1.500000" in out
         assert "Held-out loss:    1.800000" in out
         assert "Run directory: /runs/sft/1" in out
 
-    def test_overflowing_fit_warns_and_the_run_proceeds(self, monkeypatch, capsys):
-        """2026-09-19: the fit line is advisory. An estimate past the budget
-        prints as [WARN] and the run starts; there is no --force to pass."""
-        fit_calls = patch_fit(monkeypatch, message=FIT_OVER, fits=False)
+    def test_resume_prints_only_the_fields_the_result_carries(
+        self, monkeypatch, capsys
+    ):
         train_calls = []
 
         def fake_train(recipe):
@@ -182,12 +160,11 @@ class TestCmdTrainSft:
         assert run_cli(["train-sft", "--config", SFT, "checkpoint.resume=latest"]) == 0
         out = capsys.readouterr().err
         assert "[RUN] Resuming (latest) sft-qlora-e2b [trl]" in out
-        assert f"[WARN] {FIT_OVER}" in out
+        assert "Memory fit" not in out  # the advisory left with the calculator
         # Optional report fields absent: their lines must not print.
         assert "[INFO]" not in out
         assert "Final train loss" not in out
         assert "Held-out loss" not in out
-        assert len(fit_calls) == 1
         assert train_calls == ["sft-qlora-e2b"]
 
     def test_force_flag_is_gone(self, monkeypatch):
@@ -196,7 +173,6 @@ class TestCmdTrainSft:
         assert exc.value.code == 2
 
     def test_preflight_error_exits_1(self, monkeypatch, capsys):
-        patch_fit(monkeypatch)
 
         def failing(recipe):
             raise SftPreflightError("dataset manifest hash mismatch")
@@ -207,7 +183,6 @@ class TestCmdTrainSft:
         assert "[ERROR] Preflight failed: dataset manifest hash mismatch" in out
 
     def test_watchdog_abort_exits_1(self, monkeypatch, capsys):
-        patch_fit(monkeypatch)
 
         def aborting(recipe):
             raise WatchdogAbort("loss_spike", 12.5, 6.25)
@@ -217,7 +192,6 @@ class TestCmdTrainSft:
         assert_watchdog_output(capsys.readouterr().err)
 
     def test_runtime_failure_exits_1_with_solution(self, monkeypatch, capsys):
-        patch_fit(monkeypatch)
 
         def failing(recipe):
             raise FileNotFoundError("no such dataset")
@@ -229,7 +203,6 @@ class TestCmdTrainSft:
         assert "Solution: check sft.dataset" in out
 
     def test_json_stdout_is_pure_json(self, monkeypatch, capsys):
-        patch_fit(monkeypatch)
         monkeypatch.setattr(
             "training.tune.sft.train_sft",
             lambda recipe: sft_result(holdout_loss=None),

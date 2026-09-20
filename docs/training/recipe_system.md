@@ -32,7 +32,7 @@ rather than mid-run. Design record:
 | `optimizer` | name (`adamw`, `adamw8bit`, `paged_adamw8bit`, `cpu_adam`), lr, betas, eps, weight decay | loop, calculator |
 | `schedule` | type (`cosine`, `wsd`), warmup, total steps, WSD decay knobs | loop |
 | `precision` | `dtype`, `bf16` only | loop, calculator |
-| `memory` | gradient checkpointing, offload (`none`, `zero_offload`), compile, ZeRO bucket sizes, `head_chunk_tokens` (positions per chunk of the head loss, KB-87) | loop, calculator, SFT trainer |
+| `memory` | gradient checkpointing, offload (`none`, `zero_offload`), compile, ZeRO bucket sizes, `head_chunk_tokens` (positions per chunk of the head loss, KB-87) | loop, SFT trainer, step |
 | `peft` | LoRA and DoRA settings, NF4 base quantization | SFT, calculator |
 | `sft` | dataset, backend, packing, evaluation cadence | SFT |
 | `organism`, `harvest`, `sae` | interp-tier blocks, documented in `docs/interp/` | interp |

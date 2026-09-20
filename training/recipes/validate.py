@@ -214,12 +214,12 @@ def _check_offload_budget(recipe: DictConfig, problems: list[str]) -> None:
     the same convention as the path-dependent checks."""
     if recipe.memory.offload != "zero_offload" and recipe.optimizer.name != "cpu_adam":
         return
-    from training.calculator.components import (
+    from training.models.architecture import (
+        HOST_RAM_TOTAL_BYTES,
         PAGE_CACHE_ALLOWANCE_BYTES,
         host_ram_bytes,
         spec_from_recipe,
     )
-    from training.calculator.estimate import HOST_RAM_TOTAL_BYTES
 
     try:
         spec = spec_from_recipe(recipe)
@@ -500,7 +500,7 @@ def _check_replay(recipe: DictConfig, problems: list[str]) -> None:
         if r.max_gb <= 0:
             problems.append(f"replay.max_gb: must be positive, got {r.max_gb}")
         else:
-            from training.calculator.estimate import HOST_RAM_TOTAL_BYTES
+            from training.models.architecture import HOST_RAM_TOTAL_BYTES
 
             budget_gb = HOST_RAM_TOTAL_BYTES / 2**30 - recipe.watchdog.ram_floor_gb
             if r.max_gb > budget_gb:

@@ -25,7 +25,7 @@ Host-side, on the workstation:
 make prepare-sft ARGS="--source HuggingFaceH4/ultrachat_200k --split train_sft \
     --model-type gemma4 --tokenizer google/gemma-4-E2B --license mit \
     --out /mnt/ai-data/training/datasets/sft/ultrachat-e2b"
-make memfit CONFIG=training/recipes/reference/sft-qlora-e2b.yaml
+make train-step CONFIG=training/recipes/reference/sft-qlora-e2b.yaml
 make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml
 make train-sft CONFIG=... ARGS="checkpoint.resume=latest"
 ```

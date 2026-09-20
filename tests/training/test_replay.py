@@ -1,7 +1,7 @@
 """P2-D4 replay buffer tests: budget subsampling and refusal, RAM-floor
 refusal against a mocked psutil, permutation uniformity and determinism,
 mixture integration (fraction accounting from source tags, resume draw
-equality), the calculator replay term, and the synthetic generator CLI.
+equality), the host-RAM replay term, and the synthetic generator CLI.
 Sandbox-only: synthetic shards, no GPU or network."""
 
 from __future__ import annotations
@@ -392,7 +392,7 @@ class TestBudgetResolution:
         recipe = self.tiny_recipe(["replay.enabled=true", "replay.max_gb=4"])
         assert resolve_max_bytes(recipe) == 4 * GIB
 
-    def test_unset_max_gb_derives_calculator_headroom(self):
+    def test_unset_max_gb_derives_host_headroom(self):
         from training.continual.replay import resolve_max_bytes
 
         # tiny-e2e: no offload, so headroom = 128GB - watchdog floor (8GB).
@@ -400,7 +400,7 @@ class TestBudgetResolution:
         assert resolve_max_bytes(recipe) == (128 - 8) * GIB
 
     def test_host_ram_bytes_includes_explicit_replay_budget(self):
-        from training.calculator import host_ram_bytes, spec_from_recipe
+        from training.models.architecture import host_ram_bytes, spec_from_recipe
 
         recipe = self.tiny_recipe(["replay.enabled=true", "replay.max_gb=4"])
         assert host_ram_bytes(spec_from_recipe(recipe), recipe) == 4 * GIB
@@ -408,7 +408,7 @@ class TestBudgetResolution:
     def test_host_ram_bytes_ignores_derived_budget(self):
         # Unset max_gb derives FROM the headroom; counting it here would be
         # circular (resolved P2-D4 decision 2).
-        from training.calculator import host_ram_bytes, spec_from_recipe
+        from training.models.architecture import host_ram_bytes, spec_from_recipe
 
         recipe = self.tiny_recipe(["replay.enabled=true"])
         assert host_ram_bytes(spec_from_recipe(recipe), recipe) == 0

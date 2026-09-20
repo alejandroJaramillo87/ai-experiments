@@ -133,7 +133,7 @@ investigations.
 |----------|-------------|
 | [training/data_pipeline.md](training/data_pipeline.md) | Full-scale data pipeline (P2-D1): filter, dedup, decontaminate, shard |
 | [training/tokenizer_training.md](training/tokenizer_training.md) | Byte-level BPE tokenizer training (D3) |
-| [training/memory_fit.md](training/memory_fit.md) | VRAM fit calculator and calibration (D4) |
+| [training/train_step.md](training/train_step.md) | Stepping a recipe on the GPU: resident and peak VRAM, the parameter drift check |
 | [training/tracking_checkpointing.md](training/tracking_checkpointing.md) | Run tracking, checkpoint layout, resume (D6) |
 | [training/train_serve_roundtrip.md](training/train_serve_roundtrip.md) | Export, serve, smoke-evaluate a checkpoint (D7) |
 | [training/heterogeneous_compute.md](training/heterogeneous_compute.md) | Prefetch loader, staging, affinity (D9) |

@@ -224,7 +224,7 @@ later item ids stay stable. There is no work to execute under this id.
 - **Scope**: `common/output.py`; `.styles/PYTHON_OUTPUT_STYLE.md`;
   `tests/common/test_common_output.py`; `tests/utils/test_check_py_deps.py`;
   `tests/utils/README.md`; `tests/training/test_cli_handlers_train.py`;
-  `tests/training/test_cli_handlers_memfit.py`;
+  `tests/training/test_cli_handlers_step.py`;
   `tests/training/test_cli_handlers_export.py`;
   `tests/training/test_cli_handlers_tokenizer.py`;
   `tests/training/test_cli_handlers_prepare.py`;

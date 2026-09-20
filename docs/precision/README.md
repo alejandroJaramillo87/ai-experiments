@@ -119,7 +119,7 @@ and fp32 remain reachable where they are storage or adapter choices rather than 
 precision — the compute dtype of a LoRA adapter over an nf4 base, and the Arrow storage
 dtype of a harvest — and never for the run itself. The two dead branches that the old
 ambiguity left behind (an `fp16` trainer flag in `training/tune/sft.py`, an `!= "fp32"`
-master-copy test in `training/calculator/components.py`) were removed with the field.
+master-copy test in the memory-fit calculator, itself retired on 2026-09-20) were removed with the field.
 
 **What is narrower than 16 bits in a training recipe is storage, not arithmetic.**
 `peft.quantize_base: nf4` holds the frozen base in 4-bit and dequantizes each block to
@@ -191,22 +191,20 @@ underlying asymmetry.
 
 ## Gradients and optimizer state
 
-[`docs/training/memory_fit.md`](../training/memory_fit.md) owns this concern in full: its
-memory-model table prices gradients, optimizer states, and the fp32 logit upcast, and its
-figures are calibrated against measured workstation runs. The three facts to carry away,
-with the detail left where it lives:
+What a recipe holds on the card is measured, not priced, since the memory-fit calculator
+retired on 2026-09-20 ([`docs/training/train_step.md`](../training/train_step.md)). The
+three facts to carry away:
 
 - Gradients are produced in the parameter dtype, not a wider accumulation dtype. No
-  trainer in this repository implements separate-dtype gradient accumulation; the
-  calculator was corrected to match (KB-55).
+  trainer in this repository implements separate-dtype gradient accumulation (KB-55).
 - AdamW keeps fp32 optimizer states, plus an fp32 master copy of the parameters under
   mixed precision. `adamw8bit` is the quantized-state alternative, with per-block fp32
   constants.
-- Logits are upcast to fp32 for the cross-entropy computation, and the upcast is a costed
-  line in the activation inventory rather than a rounding detail.
+- Logits are upcast to fp32 for the cross-entropy computation, one chunk of positions at a
+  time (`training/models/head_loss.py`, KB-87): unchunked, the 262144-wide upcast held
+  24 GB at 4096 tokens per micro-batch.
 
-Read [`training/memory_fit.md`](../training/memory_fit.md) for the byte-level model and the
-calibration record before sizing anything.
+Step the recipe (`make train-step`) before sizing anything.
 
 ## KV cache
 

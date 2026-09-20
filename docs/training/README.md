@@ -24,7 +24,7 @@ both tiers share are in [../models/](../models/).
 | [../sandbox/docker_training_overview.md](../sandbox/docker_training_overview.md) | The training container, its dependency source of truth, and the smoke test (D1) |
 | [data_pipeline.md](data_pipeline.md) | Filter, dedup, decontaminate, and shard the corpus (D2, extended by P2-D1) |
 | [tokenizer_training.md](tokenizer_training.md) | Byte-level BPE training for the from-scratch path only (D3) |
-| [memory_fit.md](memory_fit.md) | Pre-run VRAM estimation against the 32GB card (D4) |
+| [train_step.md](train_step.md) | Stepping a recipe on the GPU before a long run: resident and peak VRAM, the parameter count check |
 | [recipe_system.md](recipe_system.md) | The recipe schema, loader, validation, and run directory convention every consumer shares (D5) |
 | [tracking_checkpointing.md](tracking_checkpointing.md) | The reference loop, atomic resumable checkpoints, metric tracking (D6) |
 | [train_serve_roundtrip.md](train_serve_roundtrip.md) | Export, serve, and smoke-evaluate a trained model (D7) |
@@ -89,7 +89,7 @@ pairing is not always one to one, and the gaps are listed rather than left blank
 | Living document | Deliverable | Design record |
 |-----------------|-------------|---------------|
 | [tokenizer_training.md](tokenizer_training.md) | D3 | [d3_tokenizer_training_investigation.md](investigations/d3_tokenizer_training_investigation.md) |
-| [memory_fit.md](memory_fit.md) | D4 | [d4_memory_fit_investigation.md](investigations/d4_memory_fit_investigation.md) |
+| [train_step.md](train_step.md) | D4 | [d4_memory_fit_investigation.md](investigations/d4_memory_fit_investigation.md) |
 | [recipe_system.md](recipe_system.md) | D5 | [d5_recipe_system_investigation.md](investigations/d5_recipe_system_investigation.md) |
 | [tracking_checkpointing.md](tracking_checkpointing.md) | D6 | [d6_tracking_checkpointing_investigation.md](investigations/d6_tracking_checkpointing_investigation.md) |
 | [train_serve_roundtrip.md](train_serve_roundtrip.md) | D7 | [d7_train_serve_investigation.md](investigations/d7_train_serve_investigation.md) |

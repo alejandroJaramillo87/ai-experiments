@@ -66,13 +66,16 @@ def resolve_max_bytes(recipe) -> int:
     """Total replay byte budget for a recipe (resolved P2-D4 decision 2).
 
     An explicit replay.max_gb is authoritative. When unset, the budget is the
-    D4 calculator's remaining host headroom: 128GB minus offloaded optimizer
+    remaining host headroom: 128GB minus offloaded optimizer
     state minus the watchdog RAM floor.
     """
     if recipe.replay.max_gb is not None:
         return int(recipe.replay.max_gb * GIB)
-    from training.calculator.components import host_ram_bytes, spec_from_recipe
-    from training.calculator.estimate import HOST_RAM_TOTAL_BYTES
+    from training.models.architecture import (
+        HOST_RAM_TOTAL_BYTES,
+        host_ram_bytes,
+        spec_from_recipe,
+    )
 
     floor = int(recipe.watchdog.ram_floor_gb * GIB)
     headroom = (

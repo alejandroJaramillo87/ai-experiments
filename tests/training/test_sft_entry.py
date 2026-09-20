@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 import os
-from types import SimpleNamespace
 
 import pytest
 from support import reference_recipe
@@ -18,7 +17,6 @@ from training.runtime.lock import TrainLockError
 from training.tune.sft import (
     SftPreflightError,
     build_dataset,
-    check_memory_fit,
     chunked_loss_trainer,
     collate_padded,
     compute_chunked_loss,
@@ -404,20 +402,6 @@ class TestPreflight:
         with pytest.raises(SftPreflightError, match="sft.enabled"):
             train_sft(sft_recipe(["sft.enabled=false"]))
 
-    def test_memory_fit_never_refuses(self, monkeypatch):
-        """2026-09-19: the fit line is advisory; train_sft does not read it.
-        An overflowing estimate must not stop the run before the lock."""
-        recipe = sft_recipe()
-        monkeypatch.setattr(
-            "training.tune.sft.check_memory_fit", lambda r: (False, "too big")
-        )
-        lock = os.environ["TRAIN_LOCK_PATH"]
-        with open(lock, "w") as f:
-            json.dump({"pid": os.getpid(), "run": "other"}, f)
-        # The lock is reached (and refuses), which is past the fit check.
-        with pytest.raises(TrainLockError):
-            train_sft(recipe)
-
     def test_refuses_while_lock_held(self, monkeypatch, tmp_path):
         recipe = sft_recipe()
         lock = os.environ["TRAIN_LOCK_PATH"]
@@ -425,37 +409,3 @@ class TestPreflight:
             json.dump({"pid": os.getpid(), "run": "other"}, f)
         with pytest.raises(TrainLockError):
             train_sft(recipe)
-
-    def test_check_memory_fit_is_advisory(self, monkeypatch):
-        import importlib
-
-        estimate_mod = importlib.import_module("training.calculator.estimate")
-        fake = SimpleNamespace(
-            fits=False,
-            reserved_estimate=40 << 30,
-            profile="gemma4_text/35x1536/qlora/ckpt",
-        )
-        monkeypatch.setattr(estimate_mod, "estimate", lambda recipe: fake)
-        ok, message = check_memory_fit(sft_recipe())
-        assert not ok and "exceeds" in message and "proceeding" in message
-        assert "--force" not in message
-        fake = SimpleNamespace(
-            fits=None,
-            reserved_estimate=9 << 30,
-            profile="gemma4_text/35x1536/qlora/ckpt",
-        )
-        monkeypatch.setattr(estimate_mod, "estimate", lambda recipe: fake)
-        ok, message = check_memory_fit(sft_recipe())
-        assert (
-            not ok
-            and "unmeasured for profile gemma4_text/35x1536/qlora/ckpt" in message
-        )
-        assert "9.00 GB static lower bound" in message
-        fake = SimpleNamespace(
-            fits=True,
-            reserved_estimate=20 << 30,
-            profile="gemma4_text/35x1536/qlora/ckpt",
-        )
-        monkeypatch.setattr(estimate_mod, "estimate", lambda recipe: fake)
-        ok, message = check_memory_fit(sft_recipe())
-        assert ok and message == "Memory fit: 20.00 GB reserved estimate of 32 GB VRAM"

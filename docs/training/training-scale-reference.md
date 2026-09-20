@@ -9,8 +9,7 @@ tasks start from settled arithmetic instead of re-deriving it. Items marked
 aspirational are exactly that. Related documents:
 [python-pipeline-optimization-candidates.md](../optimizations/ideation/python-pipeline-optimization-candidates.md)
 (the FP8 Tier A item this document expands),
-[memory_fit.md](memory_fit.md) (the memory-fit calculator these budgets
-feed), and
+[train_step.md](train_step.md) (how a recipe's real footprint is measured), and
 [interp-scale-reference.md](../interp/interp-scale-reference.md)
 (how these conclusions shape the interpretability program).
 
@@ -89,9 +88,9 @@ of parameters is itself nontrivial. Expect step times 2-3x the resident
 case even with transfer-compute overlap; the FP8 compute win largely
 disappears behind transfer time. Offloaded campaigns are planned in days.
 
-These budgets are inputs to the memory-fit calculator
-([memory_fit.md](memory_fit.md)); the per-model-size gradient-checkpointing
-and paged-optimizer choices recorded there apply on top.
+These budgets are arithmetic; what a recipe holds is measured by stepping it
+([train_step.md](train_step.md)). The per-model-size gradient-checkpointing
+and paged-optimizer choices apply on top.
 
 ## The Gemma 4 ladder
 

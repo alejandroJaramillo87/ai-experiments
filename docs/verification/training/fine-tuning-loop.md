@@ -2,9 +2,9 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 4 verified, 0 blocked, 12 pending, of 16.**
+**Entries: 4 verified, 0 blocked, 11 pending, of 15.**
 
-Retired: FT.15 (2026-09-19, scorecard promotion).
+Retired: FT.15 (2026-09-19, scorecard promotion), FT.memfit (2026-09-20, the memory-fit calculator left the tree).
 
 An entry id is a name, not a position: it is assigned once, kept when the
 title changes, and never reused. The Table of Contents is the execution
@@ -53,7 +53,7 @@ builds what it verifies:
   in the section order below and records the output.
 - **The coverage audit** (2026-09-18) checked every entry against
   `make/training.mk`, the two compose files and the CLI parsers, and added
-  FT.image-smoke, FT.recipe-gates and FT.memfit for the targets no entry ran (`train-build`,
+  FT.image-smoke, FT.recipe-gates and FT.memfit (since retired) for the targets no entry ran (`train-build`,
   `train-smoke`, `train-preflight`, `train-validate`, `memfit`). It found two things every container entry now
   carries. First, KB-79: every recipe names the base as the hub id
   `google/gemma-4-E2B`, which the training container cannot resolve (its
@@ -84,16 +84,29 @@ builds what it verifies:
   before FT.recipe-gates, since the preflight gate reads the dataset FT.smoke-dataset prepares.
 - **The calculator decision** (2026-09-19, after FT.memfit first passed) read
   the memory-fit calculator against the Gemma 4 notes and against what the
-  loop needs, and reduced it rather than rip it out or specify it fully
-  ([memory_fit.md](../../training/memory_fit.md)): the static terms and the
-  parameter count stay (the count fixed for Gemma 4's two head widths, its
-  norms, the per-layer embedding projection and the towers, KB-82), the
-  analytic activation formula and `solve` left, activations are a rate
-  `train-calibrate` measures per profile and the operator records in
-  `training/calculator/measured.py`, and `train-sft` warns instead of
-  refusing. FT.memfit's first pass ran under the analytic model and is kept in
-  the entry as a superseded observation; the entry is redefined and now
-  follows FT.calibrate-qlora, which supplies the rate it reads.
+  loop needs, and reduced it rather than rip it out or specify it fully:
+  the static terms and the parameter count stayed (the count fixed for
+  Gemma 4's two head widths, its norms, the per-layer embedding projection
+  and the towers, KB-82), the analytic activation formula and `solve` left,
+  activations became a rate `train-calibrate` measured per profile, and
+  `train-sft` warned instead of refusing. FT.memfit was redefined to follow
+  FT.calibrate-qlora and read the rate it recorded.
+- **The calculator retired** (2026-09-20, after FT.calibrate-qlora's fifth
+  attempt). Three days on it had filed seven ledger rows, two of them
+  calculator defects and five training defects it was the first code to
+  execute; its remaining prediction, a per-token rate needing one workstation
+  run per family, width, mode and checkpointing flag, answered "does this
+  fit" no earlier than the one-minute step it was calibrated against, on a
+  one-GPU machine. The estimate, the rate table, `memfit`, the trainer's
+  advisory line and FT.memfit left (its first pass under the analytic model
+  went with the entry). What stayed moved to where its consumers are: the
+  parameter count to `training/models/architecture.py`, and the calibration
+  loop to `python -m training step` (`make train-step`,
+  [train_step.md](../../training/train_step.md)), which builds the real
+  model, steps it through the trainer's loss, checks the parameter count
+  against the built model and prints the resident and peak figures.
+  FT.calibrate-qlora keeps its slug and is retitled; FT.e4b-recipe drops its
+  fit step; FT.train-resume no longer expects a `Memory fit:` line.
 - **FT.calibrate-qlora's first attempt** (2026-09-19) got past the model load and died
   in the PEFT wrap: the Gemma 4 towers reuse the decoder's projection names
   behind wrappers PEFT cannot adapt (KB-83, fixed in the tree the same day
@@ -152,6 +165,12 @@ builds what it verifies:
   evaluation accumulating full logits across the holdout (KB-88, fixed:
   `prediction_loss_only`). The paste is kept in FT.calibrate-qlora as a
   superseded observation; the entry re-runs as committed.
+- **FT.calibrate-qlora's fifth attempt** (2026-09-20) printed the fourth
+  attempt's figures to the hundredth of a GB after `git pull` reported
+  `Already up to date`: the checkout did not carry the KB-87 fix, whose
+  chunked loss cannot reproduce the unchunked peak. The paste is kept as a
+  superseded observation and says nothing about the fix; the sixth attempt
+  starts by confirming the checkout with `git log`.
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training
@@ -173,9 +192,8 @@ or inference service the entry does not name is active.
 1. [FT.image-smoke Training image and smoke](#ftimage-smoke-training-image-and-smoke)
 1. [FT.smoke-dataset Prepare the smoke SFT dataset](#ftsmoke-dataset-prepare-the-smoke-sft-dataset)
 1. [FT.recipe-gates Recipe gates: preflight and validate](#ftrecipe-gates-recipe-gates-preflight-and-validate)
-1. [FT.calibrate-qlora Calibrate the QLoRA recipe (KB-03)](#ftcalibrate-qlora-calibrate-the-qlora-recipe-kb-03)
-1. [FT.memfit Memory fit: the measured rate reproduces the calibration](#ftmemfit-memory-fit-the-measured-rate-reproduces-the-calibration)
-1. [FT.e4b-recipe The E4B recipe: preflight, fit and calibration](#fte4b-recipe-the-e4b-recipe-preflight-fit-and-calibration)
+1. [FT.calibrate-qlora Step the QLoRA recipe on the GPU (KB-03)](#ftcalibrate-qlora-step-the-qlora-recipe-on-the-gpu-kb-03)
+1. [FT.e4b-recipe The E4B recipe: preflight and step](#fte4b-recipe-the-e4b-recipe-preflight-and-step)
 1. [FT.train-resume Train, interrupt, resume](#fttrain-resume-train-interrupt-resume)
 1. [FT.export-merged Export the merged HF directory and load it in the harness](#ftexport-merged-export-the-merged-hf-directory-and-load-it-in-the-harness)
 1. [FT.heldout-eval Held-out loss and lm-eval on base and merged](#ftheldout-eval-held-out-loss-and-lm-eval-on-base-and-merged)
@@ -909,20 +927,20 @@ Status: VERIFIED 2026-09-19 on the re-run. Was BLOCKED the same day on
 KB-79 for the two committed-recipe commands after the superseded run above;
 KB-79 was fixed in the tree and the entry re-ran as one, with no override.
 
-## FT.calibrate-qlora Calibrate the QLoRA recipe (KB-03)
+## FT.calibrate-qlora Step the QLoRA recipe on the GPU (KB-03)
 
-Implementation: `training/calculator/calibrate.py`,
-`training/calculator/measured.py`, `training/models/model.py`,
-`training/models/peft_utils.py`, `training/cli.py` (`cmd_calibrate`).
+Implementation: `training/commands/train_step.py`,
+`training/models/architecture.py`, `training/models/model.py`,
+`training/models/peft_utils.py`, `training/models/head_loss.py`.
 
 **Fixes to confirm here** (details in [bugs/known-bugs.md](../bugs/known-bugs.md)):
 
-- KB-03 — `calibrate()` once built a scratch Llama model for every recipe, so
-  calibrating a `model.hf` or PEFT recipe measured a model other than the one
-  the estimate priced. The fix routes calibration through the shared
-  `build_model` and the PEFT wrap; this run on the QLoRA recipe is the
-  hardware evidence that closes the row.
-- KB-82 — the calculator's Gemma 4 parameter count missed the seven
+- KB-03 — the calibrate loop once built a scratch Llama model for every
+  recipe, so calibrating a `model.hf` or PEFT recipe measured a model other
+  than the recipe's. The fix routes the build through the shared
+  `build_model` and the PEFT wrap, which `python -m training step` inherits;
+  this run on the QLoRA recipe is the hardware evidence that closes the row.
+- KB-82 — the Gemma 4 parameter count missed the seven
   512-wide full-attention layers, the q and k norms, two of the four block
   norms, the per-layer embedding projection, and the towers `from_pretrained`
   loads. The `Parameter count` line this run prints is the confirmation.
@@ -943,30 +961,38 @@ Implementation: `training/calculator/calibrate.py`,
   per micro-batch beside a 6.37 GB resident model (this entry's fourth
   attempt). `training/models/head_loss.py` now runs the head, softcap and
   cross-entropy per chunk of `memory.head_chunk_tokens` positions under
-  torch checkpointing, in calibrate and in the SFT trainer alike. The
-  measured peak is the confirmation: on the order of 12 to 15 GB at the
-  committed geometry, not 30.
+  torch checkpointing, in the step loop and in the SFT trainer alike. The
+  `Peak allocated:` figure is the confirmation: on the order of 12 to 15 GB
+  at the committed geometry, not 30.
 - KB-88 — the SFT trainer's holdout evaluation left `prediction_loss_only`
   at the Trainer default and would have accumulated every eval batch's
   262144-wide logits across the holdout. Fixed with the KB-87 loss (there
   are no logits to accumulate); confirmed by FT.train-resume's first
   evaluation, not here.
 
-Measures the QLoRA recipe on the `model.hf` plus PEFT path, which the
-archived P0.3 scratch calibration does not exercise: NF4 base pricing,
-adapter gradients and optimizer state, and the activation rate of the
-profile `gemma4_text/35x1536/qlora/ckpt`, which no entry has measured and
-which FT.memfit and FT.train-resume read. It is also the first execution evidence for
-Gemma 4 on the workstation: the gated checkpoint at its pinned revision,
-transformers `gemma4` support, and bitsandbytes NF4 on Blackwell. Existing
-code; depends on FT.preconditions.
+Steps the QLoRA recipe on the `model.hf` plus PEFT path, which the archived
+P0.3 scratch calibration does not exercise: the NF4 base resident on the
+card, adapter gradients and optimizer state, and the peak of five real steps
+at the recipe's geometry, which FT.train-resume launches on. It is also the
+first execution evidence for Gemma 4 on the workstation: the gated checkpoint
+at its pinned revision, transformers `gemma4` support, and bitsandbytes NF4
+on Blackwell. Existing code; depends on FT.preconditions. Until 2026-09-20
+the entry calibrated the memory-fit calculator's activation rate (the five
+superseded attempts below ran `make train-calibrate`); the calculator
+retired that day and the entry became the step it always was.
 
 Command:
 
 ```bash
-make train-calibrate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
-    ARGS="--out /mnt/ai-data/training/verify/calibrate-sft-e2b.json"
+set -o pipefail
+cd ~/workspace/ai-experiments
+git log --oneline -1
+make train-step CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
+    ARGS="--out /mnt/ai-data/training/verify/step-sft-e2b.json"; echo "exit=$?"
 ```
+
+The `git log` line is part of the record since the fifth attempt, which ran
+a checkout that had not received the fix it was meant to confirm.
 
 The base is the recipe's hub id resolved to the staged directory (KB-79,
 fixed 2026-09-19; the superseded attempts below passed it as an override).
@@ -975,36 +1001,27 @@ Attention runs on sdpa: FlashAttention 2 refuses a head dimension above
 `attention_implementation(config)` selects sdpa for every Gemma 4 base
 even though the image ships flash-attn (KB-84, found by the second attempt
 below). A `FlashAttention forward only supports head dimension at most
-256` error here is KB-84 back. The recipe calibrates at its committed
+256` error here is KB-84 back. The recipe steps at its committed
 geometry, 2 x 2048 tokens per micro-batch since the third attempt, through
 the chunked head loss the SFT trainer uses (KB-87, the fourth attempt): the
 head, softcap and cross-entropy run `memory.head_chunk_tokens` positions at
 a time, so the 262144-wide vocabulary is resident one chunk at a time
-whatever the micro-batch. The rate is per token and the chunk term is a
-constant inside it, so a larger micro-batch than the calibrated one is
-over-estimated, never under. Depends on FT.preconditions and FT.image-smoke.
+whatever the micro-batch. Depends on FT.preconditions and FT.image-smoke.
 
 Expected signal: exit 0. `[OK] Parameter count: <p> (analytic matches
 model)`, or a `[WARN] Parameter count drift` whose two figures differ by
 exactly 15,733,760, the shared-KV residue the modeling code does not
 construct (KB-82; any other drift is a finding); no trainable-count drift
-warning. Then `Resident after build:`, `Activation rate: <r> bytes/token`,
-the line `Record: "gemma4_text/35x1536/qlora/ckpt": <r>,` and
-`[INFO] Allocated error: not on file`, since this is the profile's first
-measurement and there is no rate to hold to the bar. Record `<r>`, the
-resident figure and the measured allocated, reserved and NVML figures here,
-then, before FT.memfit:
+warning. Then `Resident after build:` near 6.4 GB (KB-85), `Peak
+allocated:` well under the card (12 to 15 GB is the expectation at this
+geometry with a 1024-token head chunk; 30 GB is KB-87 back), `Peak
+reserved:`, `NVML peak:`, `Tokens per micro-batch: 4,096` and `[OK] Stepped
+5 steps`. Record the four figures here; FT.train-resume launches on this
+geometry and reads nothing else from this entry.
 
-1. Paste the `Record:` line into `RATES` in `training/calculator/measured.py`
-   with a comment naming this entry, the date, the measured allocated and
-   the resident figure it was derived from.
-2. Commit. No image rebuild: the training container bind-mounts
-   `training/`, so the next `make memfit` reads the row.
-
-A second calibrate of the same profile later (after a transformers or TRL
-upgrade) is the drift check: it holds the estimate to the 10 percent bar and
-the reserved estimate to the NVML peak, and a miss there is re-recorded, not
-argued with.
+A later step of the same recipe (after a transformers or TRL upgrade) is the
+drift check: a peak that moved is a finding to read, not a number to argue
+with.
 
 First attempt (2026-09-19, superseded, kept verbatim: the model loaded with
 the KB-79 override, and the PEFT wrap failed on a vision-tower module, which
@@ -1250,67 +1267,27 @@ logits are alive in the forward and again in the backward; the calibration
 loop and the SFT trainer (`compute_chunked_loss`, replacing TRL's
 `compute_loss` and its logits-reading metrics) both go through it, and the
 trainer sets `prediction_loss_only` so evaluation stops accumulating logits
-it never read (KB-88). The geometry stays at 2 x 2048 until the rate this
-run records says what fits. Re-runs as committed.
+it never read (KB-88). The geometry stays at 2 x 2048. Re-runs as committed.
 
-Observed:
-
-```
-```
-
-Status: PENDING
-
-## FT.memfit Memory fit: the measured rate reproduces the calibration
-
-Implementation: `training/cli.py` (`cmd_memfit`, `_print_estimate_table`),
-`training/calculator/estimate.py`, `training/calculator/measured.py` (the
-rate FT.calibrate-qlora records), `training/tune/sft.py` (`check_memory_fit`, the same
-estimate `train-sft` prints as advice).
-
-The estimate as an operator reads it, once FT.calibrate-qlora has measured the recipe's
-activation rate and the rate is on file: once on the recipe, which must fit,
-and once on a geometry that must not. The calculator was reduced on
-2026-09-19 ([memory_fit.md](../../training/memory_fit.md)): activations are
-the measured rate times tokens, `solve` is gone, and `train-sft` warns rather
-than refuses, so the verdict here is the line FT.train-resume prints before it trains.
-CPU-only, no GPU; added 2026-09-18, redefined 2026-09-19; depends on FT.calibrate-qlora.
-
-```bash
-set -o pipefail
-cd ~/workspace/ai-experiments
-make memfit CONFIG=training/recipes/reference/sft-qlora-e2b.yaml; echo "exit=$?"
-make memfit CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="data.micro_batch=64"; echo "exit=$?"
-```
-
-Expected signal: the first run prints `Profile: gemma4_text/35x1536/qlora/ckpt`,
-the component table with an `activations` row equal to FT.calibrate-qlora's rate times
-8,192 tokens (no `unmeasured`), `Total reserved estimate:` within 10 percent
-of FT.calibrate-qlora's measured allocated plus the 2.50 GB overhead, and `[OK] Fits:
-reserved estimate <n> GB within budget 31.00 GB (32 GB minus safety margin)`,
-exit 0. A `[WARN] Activations unmeasured` line here means the `Record:` line
-FT.calibrate-qlora printed was not recorded in `training/calculator/measured.py`. The
-second prints the same rate times 131,072 tokens, `[ERROR] Does not fit:
-reserved estimate <m> GB exceeds budget 31.00 GB`, the two `Solution:` lines,
-and the command exits 1, which `make` reports as
-`make: *** [make/training.mk:50: memfit] Error 1` and `exit=2`. Record `<n>`
-here. The hardware mirror is `tests/hardware/test_memfit_sft.py` in the
-`hw_smoke` tier: the same two verdicts through the calculator the CLI and
-`train-sft`'s advisory share, on the staged base's `config.json` and
-checkpoint header, skipped until the rate is on file.
-
-Superseded observation (2026-09-19, under the analytic activation model the
-reduction replaced, kept verbatim as the record of what that model said:
-21.46 GB reserved at micro-batch 4, a batch solve of 6, no measurement
-behind either figure):
+Fifth attempt (2026-09-20, superseded, kept verbatim: `git pull` reported
+`Already up to date` and the figures are the fourth attempt's to the
+hundredth of a GB, so the checkout did not carry the KB-87 fix; the paste
+says nothing about the fix, and the sixth attempt confirms the checkout
+first):
 
 ```
 ➜  ai-experiments git:(SFT-verification) ✗ set -o pipefail
 cd ~/workspace/ai-experiments
-make memfit CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="model.hf.id=/app/models/hf/gemma-4-E2B"; echo "exit=$?"
-docker compose -f docker-compose.training.yaml run --rm training python -m training memfit --config training/recipes/reference/sft-qlora-e2b.yaml model.hf.id=/app/models/hf/gemma-4-E2B
-WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
-Container ai-experiments-training-run-761a83458a02 Creating
-Container ai-experiments-training-run-761a83458a02 Created
+git pull origin SFT-verification
+make train-calibrate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
+    ARGS="--out /mnt/ai-data/training/verify/calibrate-sft-e2b.json"; echo "exit=$?"
+From https://github.com/alejandroJaramillo87/ai-experiments
+ * branch            SFT-verification -> FETCH_HEAD
+Already up to date.
+docker compose -f docker-compose.training.yaml run --rm training python -m training calibrate --config training/recipes/reference/sft-qlora-e2b.yaml --out /mnt/ai-data/training/verify/calibrate-sft-e2b.json
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up. 
+Container ai-experiments-training-run-89daa469c0c7 Creating 
+Container ai-experiments-training-run-89daa469c0c7 Created 
 === Training container ===
 
 Environment:
@@ -1319,98 +1296,26 @@ Environment:
   Working dir: /app
   GPU: NVIDIA GeForce RTX 5090
 
-[RUN] exec: python -m training memfit --config training/recipes/reference/sft-qlora-e2b.yaml model.hf.id=/app/models/hf/gemma-4-E2B
-=== Memory-fit estimate ===
+[RUN] exec: python -m training calibrate --config training/recipes/reference/sft-qlora-e2b.yaml --out /mnt/ai-data/training/verify/calibrate-sft-e2b.json
+[RUN] Calibrating sft-qlora-e2b: 5 steps on cuda:0
+[model] flash-attn supports head_dim <= 256; this model's widest head is 512, so attention runs on sdpa
+Loading weights:   0%|                                                                                                                                   | 0/1951 [00:00<?, ?it/s]/opt/venv/lib/python3.12/site-packages/bitsandbytes/backends/cuda/ops.py:213: FutureWarning: _check_is_size will be removed in a future PyTorch release along with guard_size_oblivious.     Use _check(i >= 0) instead.
+  torch._check_is_size(blocksize)
+Loading weights: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1951/1951 [00:00<00:00, 2931.24it/s]
+[W920 00:30:59.679843114 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 201326592 bytes (free: 35454976, total: 33668726784).
+[W920 00:30:59.679894561 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 201326592 bytes (free: 35454976, total: 33668726784).
+[ERROR] Calibration ran out of GPU memory at step 1: resident after build 6.37 GB, peak allocated 30.57 GB of 31.36 GB, at 4,096 tokens per micro-batch
+  Solution: lower data.micro_batch (the rate is per token; memfit solves the batch once the rate is on file)
 
-Model parameters: 4,583,959,040
-Micro-batch 4, sequence length 2048
-
-Component            Bytes             Size
-  weights               6,527,114,560     6.08 GB
-  gradients                37,847,040     0.04 GB
-  optimizer state          38,438,400     0.04 GB
-  activations          14,277,672,960    13.30 GB
-  framework overhead    2,684,354,560     2.50 GB
-
-Total allocated estimate: 18.96 GB
-  Peak phase: head_backward — gradient checkpointing makes the
-  total a temporal max over backward phases, below the component sum
-Total reserved estimate:  21.46 GB
-[OK] Fits: reserved estimate 21.46 GB within budget 31.00 GB (32 GB minus safety margin)
-exit=0
-➜  ai-experiments git:(SFT-verification) ✗ make memfit CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="model.hf.id=/app/models/hf/gemma-4-E2B data.micro_batch=64"; echo "exit=$?"
-
-docker compose -f docker-compose.training.yaml run --rm training python -m training memfit --config training/recipes/reference/sft-qlora-e2b.yaml model.hf.id=/app/models/hf/gemma-4-E2B data.micro_batch=64
-WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
-Container ai-experiments-training-run-eeed1399888c Creating
-Container ai-experiments-training-run-eeed1399888c Created
-=== Training container ===
-
-Environment:
-  Python: 3.12.3
-  CUDA arch list: 12.0
-  Working dir: /app
-  GPU: NVIDIA GeForce RTX 5090
-
-[RUN] exec: python -m training memfit --config training/recipes/reference/sft-qlora-e2b.yaml model.hf.id=/app/models/hf/gemma-4-E2B data.micro_batch=64
-=== Memory-fit estimate ===
-
-Model parameters: 4,583,959,040
-Micro-batch 64, sequence length 2048
-
-Component            Bytes             Size
-  weights               6,527,114,560     6.08 GB
-  gradients                37,847,040     0.04 GB
-  optimizer state          38,438,400     0.04 GB
-  activations         228,442,767,360   212.75 GB
-  framework overhead    2,684,354,560     2.50 GB
-
-Total allocated estimate: 211.61 GB
-  Peak phase: head_backward — gradient checkpointing makes the
-  total a temporal max over backward phases, below the component sum
-Total reserved estimate:  214.11 GB
-[ERROR] Does not fit: reserved estimate 214.11 GB exceeds budget 31.00 GB
-  Solution: reduce data.micro_batch or data.seq_len, enable
-  memory.gradient_checkpointing, or switch optimizer to adamw8bit
-
-make: *** [make/training.mk:50: memfit] Error 1
+make: *** [make/training.mk:53: train-calibrate] Error 1
 exit=2
-➜  ai-experiments git:(SFT-verification) ✗ make memfit CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="model.hf.id=/app/models/hf/gemma-4-E2B --solve batch"; echo "exit=$?"
-
-docker compose -f docker-compose.training.yaml run --rm training python -m training memfit --config training/recipes/reference/sft-qlora-e2b.yaml model.hf.id=/app/models/hf/gemma-4-E2B --solve batch
-WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
-Container ai-experiments-training-run-96ea18571c23 Creating
-Container ai-experiments-training-run-96ea18571c23 Created
-=== Training container ===
-
-Environment:
-  Python: 3.12.3
-  CUDA arch list: 12.0
-  Working dir: /app
-  GPU: NVIDIA GeForce RTX 5090
-
-[RUN] exec: python -m training memfit --config training/recipes/reference/sft-qlora-e2b.yaml model.hf.id=/app/models/hf/gemma-4-E2B --solve batch
-=== Memory-fit estimate ===
-
-Model parameters: 4,583,959,040
-Micro-batch 4, sequence length 2048
-
-Component            Bytes             Size
-  weights               6,527,114,560     6.08 GB
-  gradients                37,847,040     0.04 GB
-  optimizer state          38,438,400     0.04 GB
-  activations          14,277,672,960    13.30 GB
-  framework overhead    2,684,354,560     2.50 GB
-
-Total allocated estimate: 18.96 GB
-  Peak phase: head_backward — gradient checkpointing makes the
-  total a temporal max over backward phases, below the component sum
-Total reserved estimate:  21.46 GB
-[OK] Fits: reserved estimate 21.46 GB within budget 31.00 GB (32 GB minus safety margin)
-
-[OK] Solve batch: max micro-batch 6 (reserved estimate 27.88 GB)
-exit=0
 ```
+
+The training container bind-mounts `training/` live, so the code that ran is
+the code the worktree held, and a tree carrying the chunked loss cannot
+reproduce the unchunked peak of 30.57 GB. The same day the memory-fit
+calculator retired and this entry became the step it always was
+(`make train-step`, above); re-runs as committed, `git log` first.
 
 Observed:
 
@@ -1419,18 +1324,16 @@ Observed:
 
 Status: PENDING
 
-## FT.e4b-recipe The E4B recipe: preflight, fit and calibration
+## FT.e4b-recipe The E4B recipe: preflight and step
 
-Implementation: `training/commands/preflight.py`, `training/cli.py`
-(`cmd_memfit`, `cmd_calibrate`), `training/calculator/calibrate.py`,
+Implementation: `training/commands/preflight.py`,
+`training/commands/train_step.py`,
 `training/recipes/reference/sft-qlora-gemma-e4b.yaml`.
 
-E2B and E4B are the two subjects this repository trains, and FT.recipe-gates, FT.calibrate-qlora
-and FT.memfit run on E2B alone. The E4B recipe is the same QLoRA shape at 4096
-context and a larger base, which is a different profile
-(`gemma4_text/42x2560/qlora/ckpt`) with no rate on file: calibrate measures
-it first, the operator records it as FT.calibrate-qlora did, and memfit then prices the
-recipe. Same three gates as the E2B entries, the hub id resolved to E4B's
+E2B and E4B are the two subjects this repository trains, and FT.recipe-gates
+and FT.calibrate-qlora run on E2B alone. The E4B recipe is the same QLoRA
+shape at 4096 context and a larger base, so its resident and peak figures are
+a second point beside E2B's. Same two gates as the E2B entries, the hub id resolved to E4B's
 staged directory the same way (KB-79), and the same composite base, so its PEFT wrap is the
 second confirmation of KB-83 (the adapter confined to
 `model.language_model.`).
@@ -1449,30 +1352,19 @@ test -d /mnt/ai-data/training/datasets/sft/ultrachat-gemma-e4b || \
     --tokenizer /mnt/ai-data/models/hf/gemma-4-E4B --model-type gemma4 \
     --max-seq-len 4096 --out /mnt/ai-data/training/datasets/sft/ultrachat-gemma-e4b"
 make train-preflight CONFIG=$R; echo "exit=$?"
-make train-calibrate CONFIG=$R ARGS="--out /mnt/ai-data/training/verify/calibrate-sft-e4b.json"
+make train-step CONFIG=$R ARGS="--out /mnt/ai-data/training/verify/step-sft-e4b.json"
 echo "exit=$?"
-python3 -c 'import json; r=json.load(open("/mnt/ai-data/training/verify/calibrate-sft-e4b.json")); print({k: r[k] for k in sorted(r) if "error" in k or "peak" in k or "rate" in k or "static" in k})'
-```
-
-Then record the `Record:` line in `training/calculator/measured.py` as FT.calibrate-qlora
-did, commit, and:
-
-```bash
-make memfit CONFIG=$R; echo "exit=$?"
 ```
 
 Expected signal: the prepare, when it runs, exits 0 and writes the
 manifest as FT.smoke-dataset's did (record it here); preflight exits 0 with `[OK] All
-referenced assets are present and verified`. `train-calibrate` exits 0 with
+referenced assets are present and verified`. `train-step` exits 0 with
 the E4B parameter-count line matching the built model (or drifting by the
 E4B shared-KV residue alone, 18 layers of `k_proj`, `v_proj` and `k_norm`;
-KB-82), `Activation rate:` and the `Record:` line for
-`gemma4_text/42x2560/qlora/ckpt`, and `[INFO] Allocated error: not on
-file`. `memfit`, once the rate is on file, prints `[OK] Fits:` with the
-reserved estimate within 10 percent of the measured allocated plus 2.50 GB,
-and exit 0. Record both rates beside each other: E2B's and E4B's per-token
-figures are the two points that say whether activation cost grows with the
-base the way the geometry says it should.
+KB-82), `Resident after build:`, `Peak allocated:` under the card at
+1 x 4096, and `[OK] Stepped 5 steps`. Record the figures beside E2B's: the
+two points say whether the footprint grows with the base the way the
+geometry says it should.
 
 Observed:
 
@@ -1484,13 +1376,13 @@ Status: PENDING
 ## FT.train-resume Train, interrupt, resume
 
 Implementation: `training/cli.py` (`cmd_train_sft`), `training/tune/sft.py`
-(`resolve_sft_resume`, `check_memory_fit`), `training/tune/sft_callbacks.py`,
+(`resolve_sft_resume`), `training/tune/sft_callbacks.py`,
 `training/runtime/checkpoint.py`, `training/runtime/lock.py` (the D9 GPU
 lock), `training/models/peft_utils.py`.
 
 Three runs of the same recipe: a short straight run, a run interrupted after
 its first checkpoint, and the resume of that run from the named
-`checkpoint-<step>` directory. Existing code; depends on FT.smoke-dataset and FT.memfit.
+`checkpoint-<step>` directory. Existing code; depends on FT.smoke-dataset and FT.calibrate-qlora.
 
 One override beyond the step counts, because the recipe's own value would
 leave a criterion unobservable. `sft.eval_steps=30`: the recipe evaluates
@@ -1527,9 +1419,9 @@ The checkpoints sit directly under `<output_root>/<run.name>/checkpoints/`
 recipe snapshot and the run's sinks, not the weights.
 
 Expected signal, per run. The straight run prints `[RUN] Fine-tuning
-ft3-straight [trl]: 60 total steps`, then `[OK] Memory fit:` (the advisory
-line FT.memfit verified; a `[WARN]` here is a finding, not a stop, since
-`train-sft` no longer refuses on it), then `[OK] Run complete: step 60 [trl]`, a `Final
+ft3-straight [trl]: 60 total steps` (no `Memory fit:` line: the advisory
+left with the calculator on 2026-09-20, and FT.calibrate-qlora is the fit
+evidence), then `[OK] Run complete: step 60 [trl]`, a `Final
 train loss:` line, a `Held-out loss:` line and exit 0; `checkpoint-30` and
 `checkpoint-60` each carry `meta.json` with `checkpoint_format: trl`,
 `adapter_only: true`, the base identity including the pinned

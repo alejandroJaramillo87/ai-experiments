@@ -1,5 +1,5 @@
 """GPU/VRAM hardware suite (WI-3): sm_120 presence and bf16 compute at the
-smoke tier; near-capacity allocation, the calibrate measurement on the tiny
+smoke tier; near-capacity allocation, the step measurement on the tiny
 recipe, tolerance-based resume, family-registry loads, and the harvest hook
 smoke at the full tier.
 """
@@ -100,14 +100,12 @@ class TestGpuFull:
         del probe
         cuda.cuda.empty_cache()
 
-    def test_calibrate_measures_the_tiny_recipe(self, cuda, tmp_path, train_lock):
-        """The D4 calculator's measurement path on the tiny recipe: calibrate
-        builds the model, records what it holds resident, and derives an
-        activation rate that reproduces the measured peak by construction
-        (the 10 percent bar for a real recipe is the FT.calibrate-qlora runbook entry)."""
+    def test_step_measures_the_tiny_recipe(self, cuda, tmp_path, train_lock):
+        """`python -m training step` on the tiny recipe: builds the model,
+        records what it holds resident, steps twice, and the counts match
+        (the real recipes are the FT.calibrate-qlora runbook entry)."""
         from tests.hardware.conftest import REPO_ROOT
-        from training.calculator.calibrate import calibrate
-        from training.calculator.estimate import estimate
+        from training.commands.train_step import step
         from training.recipes import load_recipe
 
         recipe = load_recipe(
@@ -116,20 +114,12 @@ class TestGpuFull:
             ),
             ["data.seq_len=64"],
         )
-        record = calibrate(recipe, steps=2)
-        est = estimate(recipe)
-        assert record.profile == est.profile == "scratch/2x64/full/nockpt"
-        assert record.static_measured > 0
-        assert record.activation_rate >= 0
-        tokens = recipe.data.micro_batch * recipe.data.seq_len
-        reproduced = (
-            record.static_measured
-            + est.grads
-            + est.optimizer
-            + record.activation_rate * tokens
-        )
-        # Floor division in the rate loses under one token's worth.
-        assert reproduced <= record.measured_allocated < reproduced + tokens + 1
+        record = step(recipe, steps=2)
+        assert record.steps == 2
+        assert record.model_param_count == record.analytic_param_count
+        assert record.model_trainable_params == record.analytic_trainable_params
+        assert record.tokens_per_micro_batch == recipe.data.micro_batch * 64
+        assert 0 < record.static_measured <= record.measured_allocated
         assert record.measured_reserved >= record.measured_allocated
 
     def test_resume_loss_curve_within_tolerance(self, cuda, tmp_path, train_lock):

@@ -12,7 +12,7 @@ no code path here.
 - [Provenance and the revisions to pin](#provenance-and-the-revisions-to-pin)
 - [Architecture ingestion](#architecture-ingestion)
 - [Parameter accounting](#parameter-accounting)
-- [What the calculator counts](#what-the-calculator-counts)
+- [What the parameter count counts](#what-the-parameter-count-counts)
 - [Memory](#memory)
 - [Tensor names the freeze patterns depend on](#tensor-names-the-freeze-patterns-depend-on)
 - [Dispatch, identity, and export](#dispatch-identity-and-export)
@@ -31,7 +31,7 @@ no code path here.
 **Every Gemma 4 recipe whose `model.hf.id` or `harvest.model_id` is a hub id pins the
 block's `revision` to the commit above**, and `/tests/training/test_recipe_pins.py` holds each
 pin equal to `/schemas/gemma4_facts.json` across the reference, organism, and interp recipes. The field has two live consumers —
-`/training/calculator/components.py:301-308` passes it to `AutoConfig.from_pretrained`, and
+`/training/models/architecture.py` (`spec_from_recipe`) passes it to `AutoConfig.from_pretrained`, and
 `/training/export/merge.py:148-160` passes it to `AutoModelForCausalLM.from_pretrained` — so
 pinning costs nothing and is required by the pin-then-fix-then-update rule in `/AGENTS.md`.
 A recipe whose id is a local export directory has no hub revision to pin.
@@ -64,7 +64,7 @@ Three consequences:
 ## Architecture ingestion
 
 All architecture reads happen in one function, `spec_from_hf_config`
-(`/training/calculator/components.py:351-395`). It descends into `text_config` only when the
+(`/training/models/architecture.py`). It descends into `text_config` only when the
 **top-level** `model_type` is `gemma4`, then builds an `ArchitectureSpec`.
 
 | `ArchitectureSpec` field | `config.json` source | E2B | E4B |
@@ -88,7 +88,7 @@ Two fields are read but are not what their names suggest:
 - **`head_dim` is not the head dimension of every layer.** Sliding layers use 256; the seven
   full-attention layers use `global_head_dim`, which is 512 in both variants. The spec reads the
   `layer_types` array and prices each layer at its own width. See
-  [What the calculator counts](#what-the-calculator-counts).
+  [What the parameter count counts](#what-the-parameter-count-counts).
 - **`vocab_size_per_layer_input` is populated even where the feature is disabled.** Gate on
   `hidden_size_per_layer_input`, which is the field that determines whether per-layer embeddings
   exist. Both are populated on E2B and E4B, so this matters only if a variant without the
@@ -101,9 +101,9 @@ Two fields are read but are not what their names suggest:
 
 Exact counts, summed from the safetensors tensor shapes. `ArchitectureSpec.param_count()`
 reproduces the language-model row to the parameter (minus the `layer_scalar` buffers, which
-are not parameters), pinned by `tests/training/test_calculator.py`; the tower row is read from
-the checkpoint header. `/training/calculator/calibrate.py:172-196` compares the sum against
-the torch-reported count of the built model.
+are not parameters), pinned by `tests/training/test_architecture.py`; the tower row is read from
+the checkpoint header. `python -m training step` (`/training/commands/train_step.py`) compares
+the sum against the torch-reported count of the built model.
 
 | Quantity | E2B | E4B |
 |----------|-----|-----|
@@ -148,16 +148,16 @@ use `2 * intermediate_size` and the remainder use `intermediate_size`. On E2B
 E4B sets the flag false and has uniform widths of 10240 across all 42 layers, despite also
 having a shared-KV tail. The compensation is not implied by KV sharing; it requires the flag.
 
-## What the calculator counts
+## What the parameter count counts
 
 Until 2026-09-19 `ArchitectureSpec.param_count()` assumed one feed-forward width, one head
 dimension and two normalizations per layer, and undercounted E2B by 13.5 percent (629,721,891
 parameters) and E4B by 1.6 percent. The double-wide feed-forward rule was fixed first; the
-rest landed with the calculator's reduction to measured activations, and the count now
+rest landed with the memory-fit calculator's 2026-09-19 reduction (the calculator retired on 2026-09-20; the count stayed, in `training/models/architecture.py`), and the count now
 matches the language-model row above exactly for both variants
-(`tests/training/test_calculator.py`,
+(`tests/training/test_architecture.py`,
 `test_language_model_count_matches_the_checkpoint_exactly`). What each former cause maps to
-in `spec_from_hf_config` (`/training/calculator/components.py:351-395`):
+in `spec_from_hf_config` (`/training/models/architecture.py`):
 
 | Cause | Now |
 |-------|-----|
@@ -174,17 +174,16 @@ Two deltas remain by design, and FT.calibrate-qlora's `Parameter count` line is 
   as the checkpoint stores them. The pinned `transformers` guards those modules on the 20
   shared layers (`docs/models/gemma-4.md`, the shared-KV weight conflict), so the built model
   may report 15,733,760 fewer parameters. A drift warning of exactly that size is the
-  modeling code's reading, not a calculator defect.
+  modeling code's reading, not a counting defect.
 - **Towers.** `from_pretrained` loads the vision and audio towers with the language model, so
   they are resident and must be in the weights term. They are not modeled: `spec_from_recipe`
   reads the `model.safetensors` header of a local base directory and sums every tensor
   outside `model.language_model.` into `extra_params` (475,729,088 on E2B). A hub id resolved
   through a cache prices them at zero and says nothing.
 
-The calculator has no key-value cache term and no activation formula at all: activations
-are measured per profile by `calibrate` and recorded in `/training/calculator/measured.py`
-(see [memory_fit.md](memory_fit.md)), so `num_kv_shared_layers`, `layer_types` and the
-sliding window have no consumer in the estimate beyond the parameter count.
+Nothing in the tree prices activations or a key-value cache: what a recipe holds is
+measured by stepping it (see [train_step.md](train_step.md)), so `num_kv_shared_layers`,
+`layer_types` and the sliding window have no consumer beyond the parameter count.
 
 ## Memory
 
@@ -347,7 +346,7 @@ citations; `docs/models/gemma4-upstream.txt` is the committed transcript they ci
   `nn.Buffer(torch.ones(1))` and multiplies the whole layer output by it as the final
   operation, after all three residual updates. It is initialised to ones and has no
   `config.json` field. Because it is a buffer rather than a parameter, it is not trainable
-  under the `transformer_stack` filter and the calculator is right not to count it. The
+  under the `transformer_stack` filter and the count is right not to include it. The
   released checkpoints **do** store values other than 1.0 — 0.0186 to 0.879 on E2B — so the
   multiplication is not a no-op, though it remains outside the optimizer's reach.
 - **The per-layer embedding gate is multiplicative, and joins after the feed-forward block.**
