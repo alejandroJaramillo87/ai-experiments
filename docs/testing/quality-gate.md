@@ -55,11 +55,14 @@ Eighteen steps, cheapest first, failing on the first error:
     parser: a verb with no page, a page for no verb, or an `add_argument` literal its page
     does not show. Reads the command modules as text, so it needs no Python environment
     beyond the interpreter.
-17. `scripts/docs/check_test_inventory.py` — fails when the generated inventory table
-    in `tests/training/README.md` disagrees with the test files it was rendered from: a
-    module added, renamed, or given a different docstring, or a changed test count. It
-    regenerates the table in memory with `scripts/docs/gen_test_inventory.py` and prints
-    the diff. Reads the files' ASTs, so it needs neither torch nor a collected session.
+17. `scripts/docs/check_inventory.py` — fails when a generated README table disagrees
+    with the tree it was rendered from: a test directory's table with its modules'
+    docstrings and test counts, a package's with its modules, a hub's with its children's
+    READMEs, a documentation directory's with its pages. It regenerates each table in
+    memory with `scripts/docs/gen_inventory.py` and prints the diff, and fails when a
+    package or test directory under `tests/` or `training/` has no README with a table.
+    Reads the files' ASTs and the READMEs' first paragraphs, so it needs neither torch
+    nor a collected session.
 18. `shellcheck --severity=warning` — shell scripts, enumerated with `find`.
 
 Note what is absent: **`make quality` does not run pytest.** See

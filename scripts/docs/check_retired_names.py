@@ -924,6 +924,21 @@ RETIRED: dict[str, tuple[str, str]] = {
         "only TransformerLens-supported subject the SAEBench cross-check had; "
         "that cross-check left with the family",
     ),
+    # The inventory generator grew from one kind (test directories) to four on
+    # 2026-09-20 and dropped "test" from its name; the marker pair moved from
+    # `test-inventory` to `inventory:<kind>` in the same change.
+    "scripts/docs/gen_test_inventory.py": (
+        "scripts/docs/gen_inventory.py",
+        "the generator renders modules, directories and pages as well as tests since 2026-09-20",
+    ),
+    "scripts/docs/check_test_inventory.py": (
+        "scripts/docs/check_inventory.py",
+        "the gate covers every README carrying an inventory marker since 2026-09-20",
+    ),
+    "tests/docs/test_gen_test_inventory.py": (
+        "tests/docs/test_gen_inventory.py",
+        "renamed with the generator on 2026-09-20",
+    ),
 }
 
 # Runbook entry ids became slugs on 2026-09-19 (docs/verification/README.md,

@@ -124,15 +124,18 @@ format: ## Format code with ruff
 # gate for the interp verbs under site/docs/interp/reference/, reading the argparse
 # literals in interp/commands/ instead of the Rust Flag literals.
 #
-# check_test_inventory.py is the same generated-artifact pattern applied to a test
-# directory. The table in tests/training/README.md lists every test_*.py with its test
-# count and the first sentence of its module docstring, rendered by
-# scripts/docs/gen_test_inventory.py from the files' ASTs. The description is not written
-# twice: the docstring already sits at the top of the test file, and the table quotes it.
-# A hand-kept inventory would be true on the day it was written and silently wrong after
-# the next module is added or renamed, so the gate regenerates in memory and diffs against
-# what is committed, printing the difference rather than only reporting one. It needs no
-# torch and no collected session, so it runs in the sandbox.
+# check_inventory.py is the same generated-artifact pattern applied to the navigation
+# READMEs. Each table between an inventory marker pair is rendered by
+# scripts/docs/gen_inventory.py from the tree the README describes: a test directory's
+# from its modules' docstrings and test counts, a package's from its modules' docstrings,
+# a hub's from its children's READMEs, a documentation directory's from its pages. The
+# description is not written twice: it already sits at the top of the file, and the table
+# quotes it. A hand-kept inventory would be true on the day it was written and silently
+# wrong after the next module is added or renamed, so the gate regenerates in memory and
+# diffs against what is committed, printing the difference rather than only reporting
+# one. It also holds the hubs complete: under tests/ and training/ every package or test
+# directory carries a README with a table, so a new one fails the gate until it is
+# documented. It needs no torch and no collected session, so it runs in the sandbox.
 #
 # The site build is last, after the rust gate, and skips itself with [SKIP] when
 # site/node_modules is absent -- a fresh sandbox has none, because installing them needs
@@ -151,7 +154,7 @@ format: ## Format code with ruff
 # dies on a missing tool -- and the gate has to be followed by `make install` to
 # undo what it did. Checking first turns that into a named error that changes
 # nothing. Skipped in a sandbox, which has no .venv by design.
-quality: ## Run the full quality gate (format check, lint, mypy, lock check, doc refs, retired names, make targets, doc counts, KB refs, pin parity, command prompts, site reference, site interp reference, test inventory, shellcheck, rust gate, site build)
+quality: ## Run the full quality gate (format check, lint, mypy, lock check, doc refs, retired names, make targets, doc counts, KB refs, pin parity, command prompts, site reference, site interp reference, inventory, shellcheck, rust gate, site build)
 ifndef AI_SANDBOX
 	@if [ ! -x .venv/bin/ruff ] || [ ! -e "$$(readlink -f .venv/bin/python 2>/dev/null)" ]; then \
 	  printf '[ERROR] .venv is missing, incomplete, or points at an interpreter that no longer exists\n'; \
@@ -186,7 +189,7 @@ endif
 	$(RUN_PY) python scripts/docs/check_command_prompts.py
 	$(RUN_PY) python scripts/docs/check_site_reference.py
 	$(RUN_PY) python scripts/docs/check_site_interp_reference.py
-	$(RUN_PY) python scripts/docs/check_test_inventory.py
+	$(RUN_PY) python scripts/docs/check_inventory.py
 	@files=$$(find . -name '*.sh' -type f \
 	    -not -path './.git/*' -not -path './.venv/*' \
 	    -not -path './node_modules/*' -not -path '*/target/*' \

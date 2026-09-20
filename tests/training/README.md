@@ -34,14 +34,14 @@ The table below is generated from the first sentence of each module's docstring 
 `def test_` functions it declares. Do not edit it by hand: run
 
 ```bash
-python scripts/docs/gen_test_inventory.py
+python scripts/docs/gen_inventory.py tests/training/README.md
 ```
 
-`make quality` holds it to the files through `scripts/docs/check_test_inventory.py`, so a
+`make quality` holds it to the files through `scripts/docs/check_inventory.py`, so a
 module added, renamed, or given a sharper docstring fails the gate until the table is
 regenerated.
 
-<!-- test-inventory:start -->
+<!-- inventory:tests:start -->
 
 | File | Tests | Covers |
 |------|-------|--------|
@@ -101,4 +101,4 @@ regenerated.
 | `test_watchdog.py` | 18 | Unit tests for the D10 operational watchdogs. |
 | `test_watchdog_branches.py` | 16 | Branch tests for the D10 watchdog fail-soft paths. |
 
-<!-- test-inventory:end -->
+<!-- inventory:tests:end -->
