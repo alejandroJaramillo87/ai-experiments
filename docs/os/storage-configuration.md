@@ -68,7 +68,7 @@ AI data drive specifications:
 
 **Note**: The interface generation and sequential-read figures above are vendor claims
 carried over from earlier revisions of this document, not measurements taken on this
-machine. They conflict with [Hardware Build Documentation](../hardware/README.md#storage-layout),
+machine. They conflict with [Hardware Build Documentation](../hardware/hardware-build.md#storage-layout),
 which states PCIe 5.0 x4 and 12,400 MB/s for the AI data drive. Only the model names,
 device nodes, capacities, and mount points are confirmed, from `lsblk` and
 `blkid -L AIENGINEERING`. Resolve the throughput figures with a measurement before
@@ -462,7 +462,7 @@ Exclude from backups:
 
 ## Cross-references
 
-- Hardware specifications: [Hardware Build Documentation](../hardware/README.md#storage-layout)
+- Hardware specifications: [Hardware Build Documentation](../hardware/hardware-build.md#storage-layout)
 - Backup strategies: [Backup and Recovery Guide](backup_and_recovery.md)
 - Automation script: [setup_data_ssd.sh](/scripts/setup/setup_data_ssd.sh)
 - Python environment: [Python Setup Guide](python/setup_python.md)

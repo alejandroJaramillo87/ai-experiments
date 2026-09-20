@@ -21,8 +21,8 @@ and `AGENTS.md` says which to read for what.
 | Directory | Holds |
 |-----------|-------|
 | [agents/](agents/README.md) | How agents work in this repository: the tooling under `.claude/`, the roles, commands and skills it defines, the escalation ladder that says which to reach for, and the workflows for running a session. |
-| [bios/](bios/README.md) | BIOS setup and configuration guide for the AMD Ryzen 9950X + RTX 5090 AI engineering workstation, focusing on system stability, memory optimization, and diagnostic capabilities for sustained AI workloads on the Gigabyte X870E Aorus Elite WiFi motherboard. |
-| [hardware/](hardware/README.md) | Hardware specification and configuration guide for the AMD Ryzen 9950X + RTX 5090 AI engineering workstation, optimized for running multiple models simultaneously across both GPU (VRAM) and CPU/RAM configurations with emphasis on thermal management and power efficiency. |
+| [bios/](bios/README.md) | The UEFI firmware setup of the workstation's Gigabyte X870E Aorus Elite WiFi board under the AMD Ryzen 9950X and RTX 5090: the update procedure, POST-code diagnostics and the EXPO memory profile, chosen for stability rather than speed. |
+| [hardware/](hardware/README.md) | The workstation's component build and the reasoning behind each part: board, CPU and cooling, GPU, memory, storage layout, power and case, with the installation notes that follow from them. |
 | [inference/](inference/README.md) | The inference engines running on this workstation (AMD Ryzen 9950X, RTX 5090), how they are tuned, and what each parameter was measured to do. |
 | [interp/](interp/README.md) | Living documentation for the interp tier: the `python -m interp` CLI, the write-back path on the Rust harness, the activation and SAE tooling, and the Gemma 4 facts the tier consumes. |
 | [models/](models/README.md) | Architecture references for the model families this workstation serves, and the raw header transcripts that verify them. |
