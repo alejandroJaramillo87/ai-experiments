@@ -32,7 +32,7 @@ rather than mid-run. Design record:
 | `optimizer` | name (`adamw`, `adamw8bit`, `paged_adamw8bit`, `cpu_adam`), lr, betas, eps, weight decay | loop, calculator |
 | `schedule` | type (`cosine`, `wsd`), warmup, total steps, WSD decay knobs | loop |
 | `precision` | `dtype`, `bf16` only | loop, calculator |
-| `memory` | gradient checkpointing, offload (`none`, `zero_offload`), compile, ZeRO bucket sizes | loop, calculator |
+| `memory` | gradient checkpointing, offload (`none`, `zero_offload`), compile, ZeRO bucket sizes, `head_chunk_tokens` (positions per chunk of the head loss, KB-87) | loop, calculator, SFT trainer |
 | `peft` | LoRA and DoRA settings, NF4 base quantization | SFT, calculator |
 | `sft` | dataset, backend, packing, evaluation cadence | SFT |
 | `organism`, `harvest`, `sae` | interp-tier blocks, documented in `docs/interp/` | interp |
@@ -74,7 +74,7 @@ calls it before allocating on the GPU. The checks, by the helper that owns each:
 | `_check_optimizer` | an unknown name; a non-positive lr; `cpu_adam` without `memory.offload: zero_offload` |
 | `_check_schedule`, `_check_wsd` | an unknown type; warmup beyond total steps; WSD fractions out of range |
 | `_check_precision` | a dtype other than `bf16` |
-| `_check_memory`, `_check_offload_budget` | an unknown offload mode; an offload configuration whose host RAM estimate exceeds the machine |
+| `_check_memory`, `_check_offload_budget` | an unknown offload mode; a non-positive bucket size or `head_chunk_tokens`; an offload configuration whose host RAM estimate exceeds the machine |
 | `_check_peft`, `_check_sft`, `_check_organism` | inconsistent adapter, fine-tuning, and organism blocks |
 | `_check_data`, `_check_mixture`, `_check_replay` | non-positive geometry; a `prefetch_factor` below 1; a mixture or replay block with non-positive weights, duplicate source names, or a `data.source` it should replace |
 | `_check_checkpoint`, `_check_watchdog` | non-positive intervals and thresholds |

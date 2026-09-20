@@ -137,6 +137,21 @@ builds what it verifies:
   the base, so the two reference SFT recipes halve their micro-batch and
   double `grad_accum`. The paste is kept in FT.calibrate-qlora as a
   superseded observation; the entry re-runs as committed.
+- **FT.calibrate-qlora's fourth attempt** (2026-09-20, as committed)
+  confirmed KB-85 (6.37 GB resident after build, against the 6.08 GB
+  `weights` row) and KB-86 (the new OOM line printed), and ran out of memory
+  again at 4096 tokens per micro-batch: 30.57 GB peak, 24 GB above the
+  resident model. That is the head: the tree's loss path held six copies of
+  the `tokens x 262144` logits (bf16 through Gemma 4's softcap, fp32 through
+  transformers' cross-entropy, their gradients back), about 6 bytes per
+  vocabulary entry per token, outside every checkpointed block, and TRL's
+  trainer read them twice more for metrics (KB-87, fixed the same day: the
+  decoder runs once and the head, softcap and cross-entropy run per chunk of
+  `memory.head_chunk_tokens` positions under torch checkpointing, in both
+  calibrate and the SFT trainer). The same reading found the holdout
+  evaluation accumulating full logits across the holdout (KB-88, fixed:
+  `prediction_loss_only`). The paste is kept in FT.calibrate-qlora as a
+  superseded observation; the entry re-runs as committed.
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training
@@ -922,18 +937,20 @@ Implementation: `training/calculator/calibrate.py`,
   512 wide, above the kernel's 256 cap (this entry's second attempt). The
   `[model] ... attention runs on sdpa` note the third attempt printed is the
   confirmation; the row closes with this run.
-- KB-85 — PEFT's `prepare_model_for_kbit_training` upcast every non-4-bit
-  bf16 parameter to fp32, the embedding tables included (2.75 B parameters
-  on E2B, about 5.5 GB), and enabled gradient checkpointing whatever the
-  recipe said. `build_peft_model` now prepares the base itself: norms to
-  fp32, tables at the load dtype, checkpointing the recipe's call. The
-  `Resident after build:` figure is the confirmation: near the 6.08 GB
-  `weights` row the calculator prices, not 11 GB and above.
-- KB-86 — calibrate reported a CUDA out-of-memory as `Calibration failed`
-  with the no-GPU remedy (this entry's third attempt). It now names the step,
-  the resident and peak figures and the tokens per micro-batch, with
-  `data.micro_batch` as the remedy. Confirmed by absence on a passing run,
-  or by the new line if the recipe still does not fit.
+- KB-87 — the loss materialized the full `micro_batch x seq_len x 262144`
+  logits and held six copies of them through Gemma 4's softcap,
+  transformers' fp32 cross-entropy and the backward, 24 GB at 4096 tokens
+  per micro-batch beside a 6.37 GB resident model (this entry's fourth
+  attempt). `training/models/head_loss.py` now runs the head, softcap and
+  cross-entropy per chunk of `memory.head_chunk_tokens` positions under
+  torch checkpointing, in calibrate and in the SFT trainer alike. The
+  measured peak is the confirmation: on the order of 12 to 15 GB at the
+  committed geometry, not 30.
+- KB-88 — the SFT trainer's holdout evaluation left `prediction_loss_only`
+  at the Trainer default and would have accumulated every eval batch's
+  262144-wide logits across the holdout. Fixed with the KB-87 loss (there
+  are no logits to accumulate); confirmed by FT.train-resume's first
+  evaluation, not here.
 
 Measures the QLoRA recipe on the `model.hf` plus PEFT path, which the
 archived P0.3 scratch calibration does not exercise: NF4 base pricing,
@@ -959,12 +976,13 @@ Attention runs on sdpa: FlashAttention 2 refuses a head dimension above
 even though the image ships flash-attn (KB-84, found by the second attempt
 below). A `FlashAttention forward only supports head dimension at most
 256` error here is KB-84 back. The recipe calibrates at its committed
-geometry, 2 x 2048 tokens per micro-batch since the third attempt: the head
-materializes `micro_batch x seq_len x 262144` logits and the loss holds
-them in fp32 through backward, a term gradient checkpointing does not reach
-and label masking does not shrink, and 4 x 2048 did not fit beside the
-base. The rate is per token, so the geometry does not change what is
-recorded. Depends on FT.preconditions and FT.image-smoke.
+geometry, 2 x 2048 tokens per micro-batch since the third attempt, through
+the chunked head loss the SFT trainer uses (KB-87, the fourth attempt): the
+head, softcap and cross-entropy run `memory.head_chunk_tokens` positions at
+a time, so the 262144-wide vocabulary is resident one chunk at a time
+whatever the micro-batch. The rate is per token and the chunk term is a
+constant inside it, so a larger micro-batch than the calibrated one is
+over-estimated, never under. Depends on FT.preconditions and FT.image-smoke.
 
 Expected signal: exit 0. `[OK] Parameter count: <p> (analytic matches
 model)`, or a `[WARN] Parameter count drift` whose two figures differ by
@@ -1171,7 +1189,69 @@ geometry, not a defect: `sft-qlora-e2b.yaml` now runs 2 x 2048 with
 Gemma 4 recipe to 4096 tokens per micro-batch. Last, the failure landed in
 calibrate's generic arm with the no-GPU remedy (KB-86, fixed the same day:
 `CalibrationOutOfMemory` carries the resident and peak figures and the CLI
-names `data.micro_batch`). Re-runs as committed.
+names `data.micro_batch`). The geometry reading was incomplete: the fourth
+attempt measured the head's term at 4096 tokens and it is KB-87, below.
+
+Fourth attempt (2026-09-20, superseded, kept verbatim: as committed after
+KB-85 and KB-86; both confirmed, and the head's logits term ran the first
+step out of memory, which is KB-87):
+
+```
+➜  ai-experiments git:(SFT-verification) ✗ set -o pipefail
+cd ~/workspace/ai-experiments
+make train-calibrate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
+    ARGS="--out /mnt/ai-data/training/verify/calibrate-sft-e2b.json"
+echo "exit=$?"
+docker compose -f docker-compose.training.yaml run --rm training python -m training calibrate --config training/recipes/reference/sft-qlora-e2b.yaml --out /mnt/ai-data/training/verify/calibrate-sft-e2b.json
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up. 
+Container ai-experiments-training-run-86c7aafbe27f Creating 
+Container ai-experiments-training-run-86c7aafbe27f Created 
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training calibrate --config training/recipes/reference/sft-qlora-e2b.yaml --out /mnt/ai-data/training/verify/calibrate-sft-e2b.json
+[RUN] Calibrating sft-qlora-e2b: 5 steps on cuda:0
+[model] flash-attn supports head_dim <= 256; this model's widest head is 512, so attention runs on sdpa
+Loading weights:   0%|                                                                                                                                   | 0/1951 [00:00<?, ?it/s]/opt/venv/lib/python3.12/site-packages/bitsandbytes/backends/cuda/ops.py:213: FutureWarning: _check_is_size will be removed in a future PyTorch release along with guard_size_oblivious.     Use _check(i >= 0) instead.
+  torch._check_is_size(blocksize)
+Loading weights: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1951/1951 [00:00<00:00, 2953.83it/s]
+[W920 00:15:29.007096531 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 201326592 bytes (free: 27066368, total: 33668726784).
+[W920 00:15:29.007153478 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 201326592 bytes (free: 27066368, total: 33668726784).
+[ERROR] Calibration ran out of GPU memory at step 1: resident after build 6.37 GB, peak allocated 30.57 GB of 31.36 GB, at 4,096 tokens per micro-batch
+  Solution: lower data.micro_batch (the rate is per token; memfit solves the batch once the rate is on file)
+
+make: *** [make/training.mk:53: train-calibrate] Error 1
+exit=2
+```
+
+`Resident after build 6.37 GB` is the KB-85 confirmation: the calculator's
+`weights` row is 6.08 GB, the adapter and the CUDA workspaces are the rest,
+and the 5.5 GB upcast is gone. The line itself is the KB-86 confirmation.
+The peak, 30.57 GB, is 24.2 GB above the resident model at 4096 tokens per
+micro-batch, and that is the head, not geometry. One `4096 x 262144` copy
+is 2.15 GB in bf16 and 4.3 GB in fp32; the tree's loss path
+(`Gemma4ForConditionalGeneration.forward`, transformers' `ForCausalLMLoss`)
+kept the `lm_head` output, the softcap's `tanh` output and product, the
+`.float()` copy and the saved log-softmax alive for the backward, and the
+backward added the fp32 logit gradient and its bf16 chain: about 6 bytes
+per vocabulary entry per token, 24 GB, outside every checkpointed decoder
+block; in `train-sft` TRL's `compute_loss` read the same logits twice more
+for its entropy and accuracy metrics. Halving the micro-batch again would
+have fit E2B and not E4B (one 4096-token sequence is the same 4096 tokens).
+Fixed the same day: `training/models/head_loss.py` runs the decoder once
+and then the head, softcap and cross-entropy over `memory.head_chunk_tokens`
+positions (1024) at a time under `torch.utils.checkpoint`, so one chunk's
+logits are alive in the forward and again in the backward; the calibration
+loop and the SFT trainer (`compute_chunked_loss`, replacing TRL's
+`compute_loss` and its logits-reading metrics) both go through it, and the
+trainer sets `prediction_loss_only` so evaluation stops accumulating logits
+it never read (KB-88). The geometry stays at 2 x 2048 until the rate this
+run records says what fits. Re-runs as committed.
 
 Observed:
 

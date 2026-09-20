@@ -251,6 +251,14 @@ class TestValidate:
         )
         assert_problem(recipe, "memory.offload")
 
+    def test_head_chunk_defaults_and_must_be_positive(self):
+        recipe = load_recipe(os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"))
+        assert recipe.memory.head_chunk_tokens == 1024
+        recipe = load_recipe(
+            os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"), ["memory.head_chunk_tokens=0"]
+        )
+        assert_problem(recipe, "memory.head_chunk_tokens")
+
     def test_nonpositive_batch_geometry(self):
         recipe = load_recipe(
             os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"), ["data.micro_batch=0"]

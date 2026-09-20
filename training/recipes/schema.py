@@ -252,11 +252,16 @@ class MemoryConfig:
     staging buffers (DeepSpeed default 2e8 elements, tuned at calibration)
     and offload_pin_memory pins the host-side optimizer partitions for
     faster PCIe transfers (distinct from data.pin_memory, the dataloader's
-    flag)."""
+    flag). head_chunk_tokens bounds the live logits term: the head, softcap
+    and cross-entropy run over that many token positions at a time under
+    torch checkpointing (training/models/head_loss.py, KB-87), so the
+    micro-batch no longer sets how much of the 262144-wide vocabulary is
+    resident at once."""
 
     gradient_checkpointing: bool = False
     offload: str = "none"  # one of OFFLOAD_MODES
     compile: bool = False
+    head_chunk_tokens: int = 1024  # token positions per head/loss chunk
     allgather_bucket_size: float = 2e8  # elements; zero_offload only
     reduce_bucket_size: float = 2e8  # elements; zero_offload only
     offload_pin_memory: bool = True  # pin host optimizer state; zero_offload only

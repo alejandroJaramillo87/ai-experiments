@@ -15,7 +15,8 @@ under-predicting the NVML peak. With no rate on file the run is the
 measurement, and the bar is reported as not on file.
 
 The loop here is deliberately private to calibration: a few optimizer steps
-over synthetic batches, no checkpointing, tracking, or resume. It is not the
+over synthetic batches through the chunked head loss the SFT trainer uses
+(training/models/head_loss.py, KB-87), no checkpointing, tracking, or resume. It is not the
 D6 reference trainer (training/runtime/loop.py), which owns those facilities.
 
 The model is built through the shared builders in training/models/model.py
@@ -44,6 +45,7 @@ from omegaconf import DictConfig
 
 from training.calculator.components import spec_from_recipe
 from training.calculator.estimate import Estimate, estimate
+from training.models.head_loss import causal_lm_loss
 from training.models.model import (
     build_model,
     build_optimizer,  # noqa: F401  (re-export; extracted in D6)
@@ -210,7 +212,11 @@ def calibrate(recipe: DictConfig, steps: int = DEFAULT_STEPS) -> CalibrationReco
             0, spec.vocab, (recipe.data.micro_batch, recipe.data.seq_len), device=device
         )
         try:
-            loss = model(input_ids=batch, labels=batch).loss
+            # The trainer's loss path, not the HF forward with labels: the
+            # head and cross-entropy run per chunk of positions (KB-87).
+            loss = causal_lm_loss(
+                model, batch, batch, chunk_tokens=recipe.memory.head_chunk_tokens
+            )
             loss.backward()
             optimizer.step()
         except torch.cuda.OutOfMemoryError as exc:

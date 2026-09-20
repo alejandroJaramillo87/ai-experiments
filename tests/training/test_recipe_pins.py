@@ -75,11 +75,12 @@ class TestGemma4RecipePins:
         )
 
 
-# The head materializes micro_batch x seq_len x vocab logits, and the causal
-# LM loss holds them in fp32 through backward; gradient checkpointing does not
-# reach it. With Gemma 4's 262144-token vocabulary, 8192 tokens per micro-batch
-# ran the RTX 5090 out of memory beside the NF4 E2B base (FT.calibrate-qlora's
-# third attempt, 2026-09-19, KB-85); 4096 is the ceiling the recipes hold.
+# The unchunked head held micro_batch x seq_len x 262144 logits through the
+# loss, about 6 bytes per vocabulary entry per token: 4096 tokens per
+# micro-batch was 24 GB beside the NF4 E2B base (FT.calibrate-qlora's third
+# and fourth attempts, KB-85 then KB-87). The loss is chunked since KB-87, so
+# this ceiling is held until a measured rate says what fits, not because the
+# head sets it.
 MAX_TOKENS_PER_MICRO_BATCH = 4096
 # Both reference SFT recipes train on 32 sequences per optimizer step.
 EFFECTIVE_BATCH = 32

@@ -197,7 +197,7 @@ def _check_memory(recipe: DictConfig, problems: list[str]) -> None:
         problems.append(
             f"memory.offload: {recipe.memory.offload!r} not in {OFFLOAD_MODES}"
         )
-    for name in ("allgather_bucket_size", "reduce_bucket_size"):
+    for name in ("allgather_bucket_size", "reduce_bucket_size", "head_chunk_tokens"):
         if recipe.memory[name] <= 0:
             problems.append(
                 f"memory.{name}: must be positive, got {recipe.memory[name]}"

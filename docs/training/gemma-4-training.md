@@ -237,7 +237,7 @@ an inert one. It does not. See
 | Top-level `model_type` | `gemma4` | `components.py:361,368`; `/interp/families.py:49-57` |
 | Text `model_type` | `gemma4_text` | same |
 | `architectures[0]` | `Gemma4ForConditionalGeneration` | `/rust-harness/runtime/src/checkpoint.rs` (declines the towers under `--text-only`) |
-| `final_logit_softcapping` | 30.0 | no training reader since distillation left the tree; the rust harness applies it |
+| `final_logit_softcapping` | 30.0 | `training/models/head_loss.py` applies it per chunk inside the training loss (KB-87); the rust harness applies it |
 | `dtype` | `bfloat16` | — |
 | `transformers_version` | `5.5.0.dev0` | — |
 

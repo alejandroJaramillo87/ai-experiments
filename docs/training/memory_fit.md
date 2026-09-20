@@ -166,11 +166,19 @@ DeepSpeed ZeRO engine).
 A step that runs the GPU out of memory is a geometry finding, not a failure to
 diagnose: calibrate prints the step, the resident-after-build and peak allocated
 figures against the card's capacity, and the tokens per micro-batch, with
-`data.micro_batch` as the remedy (KB-86). The head's `micro_batch x seq_len x
-vocab` logits, held in fp32 through the loss, are the term that grows with the
-micro-batch and that checkpointing does not touch; with Gemma 4's 262144-token
-vocabulary the recipes hold 4096 tokens per micro-batch
-(`tests/training/test_recipe_pins.py`).
+`data.micro_batch` as the remedy (KB-86).
+
+The loss the loop measures is the trainer's, `training/models/head_loss.py`
+(KB-87): the decoder runs once, then the head, Gemma 4's logit softcap and the
+cross-entropy run over `memory.head_chunk_tokens` positions at a time under
+torch checkpointing. Unchunked, the `micro_batch x seq_len x 262144` logits
+were held in about six copies through the loss and the backward, 24 GB at 4096
+tokens on the fourth FT.calibrate-qlora attempt, a term outside every
+checkpointed block. Chunked, that term is one chunk's worth whatever the
+micro-batch, so inside the measured rate it is a constant divided by the
+calibrated tokens: a larger micro-batch than the calibrated one is
+over-estimated, never under. The recipes hold 4096 tokens per micro-batch
+(`tests/training/test_recipe_pins.py`) until a recorded rate says otherwise.
 
 ## Tests
 

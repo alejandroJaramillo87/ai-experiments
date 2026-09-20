@@ -19,7 +19,9 @@ from training.tune.sft import (
     SftPreflightError,
     build_dataset,
     check_memory_fit,
+    chunked_loss_trainer,
     collate_padded,
+    compute_chunked_loss,
     pack_examples,
     resolve_sft_resume,
     sft_config_kwargs,
@@ -176,6 +178,9 @@ class TestSftConfigKwargs:
         assert kwargs["packing"] is False
         assert kwargs["dataset_kwargs"] == {"skip_prepare_dataset": True}
         assert kwargs["report_to"] == []
+        # KB-88: the chunked loss returns no logits, and eval must not
+        # accumulate 262144-wide logits across the holdout.
+        assert kwargs["prediction_loss_only"] is True
 
     def test_holdout_eval_wiring(self):
         kwargs = sft_config_kwargs(sft_recipe(), "/ckpt", has_holdout=True)
@@ -193,6 +198,60 @@ class TestSftConfigKwargs:
             sft_config_kwargs(
                 sft_recipe(["optimizer.name=cpu_adam"]), "/ckpt", has_holdout=False
             )
+
+
+# -- the chunked loss on the trainer (KB-87) ----------------------------------
+
+
+class TestChunkedLossTrainer:
+    def test_compute_loss_routes_through_head_loss_with_the_recipe_chunk(
+        self, monkeypatch
+    ):
+        calls = []
+
+        def fake_loss(model, input_ids, labels, **kwargs):
+            calls.append((model, input_ids, labels, kwargs))
+            return "loss"
+
+        monkeypatch.setattr("training.tune.sft.causal_lm_loss", fake_loss)
+
+        class FakeSFTTrainer:
+            pass
+
+        trainer_class = chunked_loss_trainer(FakeSFTTrainer, 512)
+        assert issubclass(trainer_class, FakeSFTTrainer)
+        trainer = trainer_class()
+        inputs = {
+            "input_ids": "ids",
+            "labels": "labels",
+            "attention_mask": "mask",
+            "position_ids": "pos",
+        }
+        loss, outputs = trainer.compute_loss(
+            "model", inputs, return_outputs=True, num_items_in_batch=32
+        )
+        assert (loss, outputs) == ("loss", {"loss": "loss"})
+        assert trainer.compute_loss("model", inputs) == "loss"
+        assert calls[0] == (
+            "model",
+            "ids",
+            "labels",
+            {
+                "chunk_tokens": 512,
+                "attention_mask": "mask",
+                "position_ids": "pos",
+                "num_items_in_batch": 32,
+            },
+        )
+
+    def test_inputs_without_mask_or_positions(self, monkeypatch):
+        monkeypatch.setattr(
+            "training.tune.sft.causal_lm_loss",
+            lambda model, ids, labels, **kw: kw,
+        )
+        kw = compute_chunked_loss(1024, "model", {"input_ids": 1, "labels": 2})
+        assert kw["attention_mask"] is None and kw["position_ids"] is None
+        assert kw["num_items_in_batch"] is None
 
 
 # -- checkpoint meta, retention, latest ---------------------------------------

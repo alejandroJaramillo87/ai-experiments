@@ -34,6 +34,7 @@ from omegaconf import DictConfig
 
 from common.obs import set_run_dir
 from training.data.sft import IGNORE_INDEX, load_sft_dataset
+from training.models.head_loss import causal_lm_loss
 from training.recipes import create_run_dir, tokenizer_source
 from training.runtime.lock import run_lock
 from training.runtime.loop import snapshot_hash
@@ -317,6 +318,10 @@ def sft_config_kwargs(recipe: DictConfig, ckpt_root: str, has_holdout: bool) -> 
         "dataloader_num_workers": recipe.data.workers,
         "dataloader_pin_memory": recipe.data.pin_memory,
         "report_to": [],  # the D6 Tracker owns metric fan-out
+        # Evaluation keeps the loss only: the chunked loss returns no logits,
+        # and the Trainer default would otherwise accumulate every eval
+        # batch's 262144-wide logits across the holdout (KB-88).
+        "prediction_loss_only": True,
     }
     if has_holdout and recipe.sft.eval_steps > 0:
         kwargs["eval_strategy"] = "steps"
@@ -339,6 +344,54 @@ def resolve_sft_resume(ckpt_root: str, resume: str) -> str:
     if not os.path.isdir(resume):
         raise SftPreflightError(f"checkpoint.resume path not found: {resume}")
     return resume
+
+
+# -- loss --------------------------------------------------------------------
+
+
+def compute_chunked_loss(
+    chunk_tokens: int,
+    model,
+    inputs: dict,
+    return_outputs: bool = False,
+    num_items_in_batch=None,
+):
+    """The SFT loss through training/models/head_loss.py (KB-87), in the
+    shape Trainer.compute_loss returns.
+
+    Replaces TRL's compute_loss, which runs the HF forward with labels (the
+    full micro_batch x seq_len x vocab logits through softcap, fp32 upcast
+    and cross-entropy) and then reads those logits twice more for its
+    entropy and token-accuracy metrics. Neither metric is kept: the tracker
+    and SftResult read the loss. outputs carries only the loss, which is why
+    sft_config_kwargs sets prediction_loss_only (KB-88).
+    """
+    loss = causal_lm_loss(
+        model,
+        inputs["input_ids"],
+        inputs["labels"],
+        chunk_tokens=chunk_tokens,
+        attention_mask=inputs.get("attention_mask"),
+        position_ids=inputs.get("position_ids"),
+        num_items_in_batch=num_items_in_batch,
+    )
+    return (loss, {"loss": loss}) if return_outputs else loss
+
+
+def chunked_loss_trainer(base, chunk_tokens: int):
+    """SFTTrainer subclass whose compute_loss is compute_chunked_loss with
+    the recipe's memory.head_chunk_tokens. base is passed in because trl is
+    imported lazily, at the one call site that has it."""
+
+    class ChunkedLossSFTTrainer(base):
+        def compute_loss(
+            self, model, inputs, return_outputs=False, num_items_in_batch=None
+        ):
+            return compute_chunked_loss(
+                chunk_tokens, model, inputs, return_outputs, num_items_in_batch
+            )
+
+    return ChunkedLossSFTTrainer
 
 
 # -- orchestration -----------------------------------------------------------
@@ -422,7 +475,10 @@ def _train_locked(recipe: DictConfig) -> SftResult:
         from trl import SFTConfig, SFTTrainer
 
         kwargs = sft_config_kwargs(recipe, ckpt_root, bool(holdout_samples))
-        trainer = SFTTrainer(
+        trainer_class = chunked_loss_trainer(
+            SFTTrainer, recipe.memory.head_chunk_tokens
+        )
+        trainer = trainer_class(
             model=model,
             args=SFTConfig(**kwargs),
             train_dataset=Dataset.from_list(train_samples),
