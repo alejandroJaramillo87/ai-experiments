@@ -1,8 +1,8 @@
 # Cross-language artifact contracts
 
-Eleven contracts. Eight cross the boundary between the Rust harness
-(`/rust-harness/`) and the Python training and interpretability pipelines
-(`/interp/`, `/common/`, `/training/`). Six of those are artifact formats:
+The contracts the Rust harness (`/rust-harness/`) and the Python tiers (`/interp/`,
+`/common/`, `/training/`) agree on, one JSON file each, with the tests that enforce it
+named inside. Eight cross the language boundary. Six of those are artifact formats:
 each has a writer and a reader in different languages, so no compiler and no
 type system connects the two sides. The seventh, `gemma4_facts.json`, is not a
 format but a set of architecture values that all three tiers held private
@@ -10,18 +10,18 @@ copies of, which is the same problem one level up. The eighth,
 `harness_chat_endpoint.json`, is not a file at all: it is the HTTP request and
 response shape the harness serves under `--serve` and `common/serving.py`
 calls, which is the same problem again with the bytes in flight rather than at
-rest. This directory holds the contract each pair agrees on, and every contract
-names the tests that enforce it.
+rest.
 
 Two more, `alignment.json` and `attention_capture.manifest.json`, have a Rust
-writer and no reader in either language yet. They are here rather than in
-prose beside their writers because the analysis each exists for will be
-Python, and a contract written before the second side arrives is what keeps
-the format from being settled unilaterally by whichever reader is written
-first. Both `readers` lists are empty and both sets of notes say so; that is a
-stated gap, not the pattern to copy. A one-sided contract is the weaker kind,
-because only a second implementation can catch a shared misunderstanding of
-the format.
+writer and no analysis reader yet. They are here rather than in prose beside
+their writers because the analysis each exists for will be Python, and a
+contract written before the second side arrives is what keeps the format from
+being settled unilaterally by whichever reader is written first.
+`alignment.json` has one Python reader so far, the hardware test that decodes
+every row against the real vocabulary; `attention_capture.manifest.json` has
+none, and its notes say so. That is a stated gap, not the pattern to copy. A
+one-sided contract is the weaker kind, because only a second implementation
+can catch a shared misunderstanding of the format.
 
 The eleventh, `hf_export.manifest.json`, is written and read by Python alone.
 It is here because the `model_hash` it records is the digest the Rust
@@ -38,7 +38,7 @@ them with set logic; no validator dependency is involved.
 
 - [Why these exist](#why-these-exist)
 - [The contracts](#the-contracts)
-- [Not the report envelope](#not-the-report-envelope)
+- [The report envelope, and where it meets these contracts](#the-report-envelope-and-where-it-meets-these-contracts)
 - [How enforcement works](#how-enforcement-works)
 - [Changing a contract](#changing-a-contract)
 
@@ -81,19 +81,29 @@ re-specified in prose.
 
 ## The contracts
 
-| File | Seam | Direction |
-|------|------|-----------|
-| `activation_capture.manifest.json` | Capture directory: `manifest.json`, `examples.jsonl`, `shard_NNNNN.npz` | Both write, Python reads |
-| `control_vector_artifact.json` | A control vector: a safetensors image of per-block directions plus a sibling manifest | Python writes, Rust reads |
-| `probe_artifact.json` | A probe: safetensors parameter vectors plus a JSON sidecar of scalars | Python writes, Rust reads |
-| `obs_record.json` | Run-level JSONL: event file and run catalog | Both write, Python reads |
-| `run_metrics.json` | A run's `metrics.jsonl`: the report-envelope header and the per-step records the dashboard charts | Both write, Python reads |
-| `chat_template.json` | The Gemma 4 chat template: the prompt string a conversation renders to | Both write, both read |
-| `gemma4_facts.json` | Gemma 4 architecture values: layer counts, head dimensions, the attention schedule, RoPE regimes | Google writes, all three tiers read |
-| `harness_chat_endpoint.json` | The harness `--serve` HTTP surface: `/v1/chat/completions` and `/v1/health` | Rust serves, Python calls |
-| `alignment.json` | Per-position byte spans and probe scores for one run | Rust writes, no reader yet |
-| `attention_capture.manifest.json` | Attention-capture directory: `manifest.json` and `attention.npz` | Rust writes, no reader yet |
-| `hf_export.manifest.json` | An exported checkpoint: `manifest.json` beside `hf/`, carrying `model_hash` | Python writes, Python reads |
+The table is rendered from the files: the seam is each contract's `description`, and the
+direction is derived from its `writers` and `readers` lists, where a path under
+`rust-harness/` is Rust, one under the Python tiers or `tests/` is Python, and anything
+else (an upstream `config.json`, a transcript under `docs/`) is upstream. A contract that
+gains a reader gets a true row without anyone editing prose.
+
+<!-- inventory:contracts:start -->
+
+| Contract | Seam | Direction |
+|----------|------|-----------|
+| [activation_capture.manifest.json](activation_capture.manifest.json) | manifest.json at the root of an activation-capture directory, beside examples.jsonl and shard_NNNNN.npz. | Rust and Python write, Python reads |
+| [alignment.json](alignment.json) | alignment.jsonl written by --alignment-out: one header line, then one line per position of the run. | Rust writes, Python reads |
+| [attention_capture.manifest.json](attention_capture.manifest.json) | manifest.json at the root of an attention-capture directory, beside attention.npz. | Rust writes, no reader yet |
+| [chat_template.json](chat_template.json) | The Gemma 4 chat template: the byte string a conversation renders to before tokenization, shared by the training tier and the rust-harness prompt builders. | Rust and Python write, Rust and Python read |
+| [control_vector_artifact.json](control_vector_artifact.json) | The control vector the Python interp exporter writes and the Rust runtime steers with: an artifact directory holding a safetensors image of per-block f32 directions, plus a manifest.json beside it. | Python writes, Rust and Python read |
+| [gemma4_facts.json](gemma4_facts.json) | Gemma 4 architecture facts: the values rust-harness, interp, and training each hold private copies of. | Upstream writes, Rust and Python read |
+| [harness_chat_endpoint.json](harness_chat_endpoint.json) | the OpenAI-shaped HTTP surface the rust harness serves under --serve, and that common/serving.py calls. | Rust writes, Python reads |
+| [hf_export.manifest.json](hf_export.manifest.json) | The manifest python -m training export writes beside every exported checkpoint directory (<out_root>/<name>/manifest.json next to <out_root>/<name>/hf/): where the weights came from, how they were produced, and model_hash, the sha256 of the written model.safetensors. | Python writes, Python reads |
+| [obs_record.json](obs_record.json) | Run-level observability JSONL under ${OBS_LOG_DIR}/<cli>/: one event file per run plus an appended run catalog. | Rust and Python write, Python reads |
+| [probe_artifact.json](probe_artifact.json) | The probe the Python interp exporter writes and the Rust runtime scores with: a safetensors image of three f32 vectors, plus a JSON sidecar beside it at the same path with a .json extension. | Python writes, Rust reads |
+| [run_metrics.json](run_metrics.json) | A run's per-step metrics file: one shared report-envelope header record followed by one record per step. | Rust and Python write, Python reads |
+
+<!-- inventory:contracts:end -->
 
 Each file carries a `guarded_by` list naming the tests that assert it, and a
 `notes` object recording the divergences that are intentional. A field listed
@@ -136,15 +146,24 @@ the readers are permissive by design and absorb drift silently.
   their crate root. When the file is absent — as in the container build, whose
   context is `rust-harness/` alone — they report `[SKIP]` and pass, rather than
   failing on an environment difference.
-- **Python side.** Tests under `/tests/interp/` and `/tests/common/` assert the
-  same key sets against the Python writers.
+- **Python side.** Tests under `/tests/interp/`, `/tests/common/`,
+  `/tests/training/`, `/tests/models/` and `/tests/hardware/` assert the same
+  key sets against the Python writers; each contract's `guarded_by` names its
+  own.
 - **End to end.** Two tests run the real code on the other side of the seam:
   `python_exporter_contract.rs` invokes the actual `interp` exporters and parses
   the result with the Rust loaders, and `activation_capture.rs` pipes a
   Rust-written capture through `interp.probes.capture.load_capture`.
 
-The end-to-end tests need a `python3` on `PATH` that can import numpy and gguf,
-and need the parent tree present. They skip cleanly without either.
+The end-to-end tests need a `python3` on `PATH` that can import numpy and
+safetensors, and need the parent tree present. They skip cleanly without
+either.
+
+`harness_chat_endpoint.json` is the one contract no test reads. Its
+`guarded_by` tests pin the request and response shapes in code on both sides,
+so the file is the document the two were checked against by hand rather than a
+fixture either loads; a change to the endpoint edits it in the same commit for
+the same reason as the rest.
 
 Adding a key to one writer alone now fails that writer's contract test.
 Updating the contract to accept it fails the other writer's test until it
