@@ -10,17 +10,23 @@ This documentation covers system setup from OS installation through GPU accelera
 
 This README is the walkthrough; the documents below own their topics in detail.
 
-| Document | Description |
-|----------|-------------|
-| [storage-configuration.md](storage-configuration.md) | Dual-SSD architecture and the `/mnt/ai-data` layout |
-| [backup_and_recovery.md](backup_and_recovery.md) | Backup system configuration and recovery procedures |
-| [gpu-stack/README.md](gpu-stack/README.md) | The three-layer GPU stack: driver, CUDA, cuDNN |
-| [gpu-stack/nvidia-drivers.md](gpu-stack/nvidia-drivers.md) | NVIDIA driver installation and configuration |
-| [gpu-stack/cuda.md](gpu-stack/cuda.md) | CUDA toolkit installation and configuration |
-| [gpu-stack/cudnn.md](gpu-stack/cudnn.md) | cuDNN deep learning acceleration library |
-| [python/setup_python.md](python/setup_python.md) | Python 3.12 installation via uv |
-| [python/uv-dependencies.md](python/uv-dependencies.md) | The annotated reference for every dependency pin — the owner of those facts |
-| [python/pytorch_cuda_update_guide.md](python/pytorch_cuda_update_guide.md) | PyTorch installation against the CUDA 13.0 index |
+<!-- inventory:dirs:start -->
+
+| Directory | Holds |
+|-----------|-------|
+| [gpu-stack/](gpu-stack/README.md) | Understanding the NVIDIA GPU software stack that powers our AI experiments workstation. |
+| [python/](python/README.md) | The uv-managed Python environment: how it is installed, the annotated reference for every dependency pin, and how the PyTorch CUDA build is changed. |
+
+<!-- inventory:dirs:end -->
+
+<!-- inventory:pages:start -->
+
+| Document | Covers |
+|----------|--------|
+| [backup_and_recovery.md](backup_and_recovery.md) | Imaging the OS drive with Clonezilla and restoring it, with the data drive kept out of every operation. |
+| [storage-configuration.md](storage-configuration.md) | Dual-SSD architecture configuration for AI workstation with dedicated OS and data drives optimized for model loading and inference workloads. |
+
+<!-- inventory:pages:end -->
 
 ## Table of Contents
 

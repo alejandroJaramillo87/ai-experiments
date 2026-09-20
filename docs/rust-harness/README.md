@@ -10,13 +10,17 @@ harness live in `/docs/verification/`, not here.
 
 ## Design
 
-| Document | Description |
-|----------|-------------|
-| [roadmap.md](roadmap.md) | The R-numbered work items in five phases, the `IF-` interp feature specifications, and what each estimate turned out to be worth |
-| [runtime-design.md](runtime-design.md) | Harness and runtime architecture: agent loop, the library-crate runtime, and the implementation roadmap |
-| [observability.md](observability.md) | Observability and debuggability as first-class code, in three phases preceding the CUDA backend |
-| [observation-frames.md](observation-frames.md) | What the agent loop and chat mode contribute to the training and interpretability programs, and the acceptance bar for new features |
-| [live-events.md](live-events.md) | Watching a run in progress: what the record stream already carries, and the unbuilt serve mode and polling view |
+<!-- inventory:pages:start -->
+
+| Document | Covers |
+|----------|--------|
+| [live-events.md](live-events.md) | Design for live visibility into a harness run in progress: the harness emits run-state events as JSONL through the existing observability contract, and the parent repository's observability tooling gains a small serve mode plus an HTML view that polls the event file. |
+| [observability.md](observability.md) | Design for building observability and debuggability into the `rust-harness` runtime as first-class code, rather than attaching external debuggers after the fact. |
+| [observation-frames.md](observation-frames.md) | A reference for what the harness's two interaction modes — the agent loop and chat mode — contribute to the training and interpretability programs, and for the feature bar that follows. |
+| [roadmap.md](roadmap.md) | The scheduled work for the rust harness and its interpretability seam, in five phases plus a parallel track. |
+| [runtime-design.md](runtime-design.md) | Design for a single-binary local coding harness written in Rust, with the LLM inference runtime linked in as a library crate rather than accessed over HTTP. |
+
+<!-- inventory:pages:end -->
 
 ## Forward looking
 

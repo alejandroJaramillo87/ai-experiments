@@ -22,14 +22,18 @@ This README covers the architecture and the reasoning. Each document below walks
 Dockerfile or compose file line by line; where any of them disagrees with the file it
 describes, the file is correct and the document is the bug.
 
-| Document | Description |
-|----------|-------------|
-| [docker_compose_overview.md](docker_compose_overview.md) | `docker-compose.inference.yaml`: the seven services, their networks, volumes, and profiles |
-| [docker_llama_cpu_overview.md](docker_llama_cpu_overview.md) | `docker/llama-cpu/Dockerfile.cpu`: Zen 5 compilation and the hugepage optimizer |
-| [docker_llama_gpu_overview.md](docker_llama_gpu_overview.md) | `docker/llama-gpu/Dockerfile.llama-gpu`: the Blackwell `sm_120a` build |
-| [docker_vllm_gpu_overview.md](docker_vllm_gpu_overview.md) | `docker/vllm-gpu/Dockerfile.vllm-gpu`: vLLM, FlashInfer, and the cu130 wheel |
-| [docker_training_overview.md](docker_training_overview.md) | `docker-compose.training.yaml`: the training stack and its one-door-to-the-hub network split |
-| [agent-sandbox.md](agent-sandbox.md) | The contained agent sandbox: image, mounts, pinned tooling, and the egress allowlist |
+<!-- inventory:pages:start -->
+
+| Document | Covers |
+|----------|--------|
+| [agent-sandbox.md](agent-sandbox.md) | Guide for running coding agents (OpenCode and Claude Code) safely on the AMD Ryzen 9950X + RTX 5090 workstation. |
+| [docker_compose_overview.md](docker_compose_overview.md) | Explanation of the multi-service AI inference orchestration implemented in docker-compose.inference.yaml, detailing security sandboxing, resource isolation, and defense-in-depth strategies for the AMD Ryzen 9950X + RTX 5090 AI experiments. |
+| [docker_llama_cpu_overview.md](docker_llama_cpu_overview.md) | Explanation of the AMD Zen 5 optimized Dockerfile for CPU-based AI model inference on the AMD Ryzen 9950X workstation, detailing the multi-stage build process, zen5_optimizer integration, and AVX-512 performance optimizations. |
+| [docker_llama_gpu_overview.md](docker_llama_gpu_overview.md) | Explanation of the RTX 5090 Blackwell optimized Dockerfile for GPU-accelerated AI model inference on the AI workstation, detailing the multi-stage build process, CUDA 13.0.2 integration, and Blackwell architecture compilation. |
+| [docker_training_overview.md](docker_training_overview.md) | Explanation of the Phase 0 training container (`docker/training/Dockerfile.training`), the reproducible GPU environment where the training tier runs. |
+| [docker_vllm_gpu_overview.md](docker_vllm_gpu_overview.md) | Explanation of the RTX 5090 Blackwell optimized vLLM Dockerfile for GPU-accelerated model inference on the AI workstation, detailing the single-stage image build, the vLLM 0.25.0 official cu130 wheel install, and Blackwell architecture settings. |
+
+<!-- inventory:pages:end -->
 
 ## Table of Contents
 

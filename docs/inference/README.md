@@ -12,14 +12,14 @@ repository and the results that justify them. Container and compose details live
 
 ## Inference Engines
 
-### Core Documentation
-- **[engines/inference-engines.md](engines/inference-engines.md)** - Understanding what inference engines are and why they're needed
-- **[engines/llama-cpp.md](engines/llama-cpp.md)** - Deep technical dive into llama.cpp architecture and optimizations
-- **[engines/vllm.md](engines/vllm.md)** - High-throughput GPU inference with vLLM
+<!-- inventory:dirs:start -->
 
-### Parameter Tuning
-- **[parameters/llama-cpp-parameters.md](parameters/llama-cpp-parameters.md)** - Tested llama.cpp parameters and findings
-- **[parameters/vllm-parameters.md](parameters/vllm-parameters.md)** - vLLM configuration and throughput optimization
+| Directory | Holds |
+|-----------|-------|
+| [engines/](engines/README.md) | What the two inference engines are and how each works: llama.cpp for latency on CPU and GPU, vLLM for throughput on the GPU. |
+| [parameters/](parameters/README.md) | The runtime parameters each engine is served with, and what each was measured to do on this workstation. |
+
+<!-- inventory:dirs:end -->
 
 ### Forward Looking
 - **[future-optimizations.md](../optimizations/ideation/future-inference-optimizations.md)** - Parked survey of custom kernel and runtime work, with the conditions gating it

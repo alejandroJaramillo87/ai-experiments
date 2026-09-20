@@ -7,6 +7,9 @@ check this directory, so a stale reference here fails the gate. The exception is
 [archive/](archive/), which holds the frozen records — read, never executed, and never
 updated, and exempt from both gates for that reason.**
 
+The manual verification campaign: the recording protocol, the phase order, the state of
+every runbook, and the defect ledger the entries cross-reference.
+
 ## How this directory is laid out
 
 One folder per tier, and the folder name is the tier: [training/](training/),

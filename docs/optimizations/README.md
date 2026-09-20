@@ -51,11 +51,15 @@ Both llama.cpp services optimize for minimum first-token latency and consistent 
 
 System optimizations are organized by component:
 
-- **bios/** - BIOS firmware settings and benchmark results
-- **os/** - Operating system and memory optimizations
-- **ideation/** - Parked proposals: recorded menus of optimization work that is
-  not scheduled. Items graduate into the documents above once measured. See
-  [Parked proposals](#parked-proposals) below.
+<!-- inventory:dirs:start -->
+
+| Directory | Holds |
+|-----------|-------|
+| [bios/](bios/README.md) | The firmware settings measured for LLM inference on the Gigabyte X870E board, and the raw CPU benchmark results before and after them: `cpu_benchmark_results_no_bios.json` and `cpu_benchmark_results_final_bios.json` are the captured data behind the figures the parent README states. |
+| [ideation/](ideation/README.md) | Parked proposals: recorded menus of optimization work that is not scheduled, dated at authoring and edited only as items graduate into the living pages each names. |
+| [os/](os/README.md) | The host operating system tuning applied for containerized inference: governor, huge pages, swap, CPU pinning, and what each was measured to do. |
+
+<!-- inventory:dirs:end -->
 
 ## Files
 
@@ -76,18 +80,9 @@ System optimizations are organized by component:
 
 ### Parked proposals
 
-Recorded menus under `ideation/`. Nothing in them is scheduled or implemented; each item
-requires host-side verification with before/after numbers before it graduates into the
-documents above.
-
-- **[ideation/os-optimization-candidates.md](ideation/os-optimization-candidates.md)** -
-  Host-level OS and GPU candidates (2026-07-30); graduate into `os/os-optimizations.md`
-- **[ideation/python-pipeline-optimization-candidates.md](ideation/python-pipeline-optimization-candidates.md)** -
-  Training and interp Python pipeline candidates (2026-07-30)
-- **[ideation/rust-harness-optimization-candidates.md](ideation/rust-harness-optimization-candidates.md)** -
-  x86 CPU backend candidates (2026-07-30); blocked on runbook entry RH.1
-- **[ideation/future-inference-optimizations.md](ideation/future-inference-optimizations.md)** -
-  Parked custom CUDA and C++ findings (2026-07-27); gating conditions not met
+Recorded menus under [ideation/](ideation/README.md), indexed there. Nothing in them is
+scheduled or implemented; each item requires host-side verification with before/after
+numbers before it graduates into the documents above.
 
 ## Implementation Status
 

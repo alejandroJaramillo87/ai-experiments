@@ -1,5 +1,8 @@
 # Complete System Backup and Recovery with Clonezilla
 
+Imaging the OS drive with Clonezilla and restoring it, with the data drive kept out of
+every operation.
+
 **Warning!** `/dev/nvme1n1` is the AI data drive (Samsung 990 PRO 2TB); its partition
 `/dev/nvme1n1p2` carries the `AIENGINEERING` filesystem mounted at `/mnt/ai-data`. Never
 select it as a restore target. The OS drive is `/dev/nvme0n1` (Samsung 990 EVO Plus 1TB).
