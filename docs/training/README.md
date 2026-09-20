@@ -15,16 +15,20 @@ model-side facts about Gemma 4 that both tiers share are in [../models/](../mode
 
 ## Layout
 
-One directory for what every rung shares, then one per rung, in the order the tier
-climbs them. Each directory's README is its index.
+One directory for what every rung shares, then one per rung, then the frozen records.
+Each directory's README is its index, and this table is generated from them.
 
-| Directory | Covers |
-|-----------|--------|
-| [base/](base/README.md) | What every rung runs: the recipe system, stepping a recipe on the GPU, the loop with its checkpoints and tracking, the watchdogs, the data pipeline, heterogeneous compute, the export, and the Gemma 4 and scale references |
-| [fine-tuning/](fine-tuning/README.md) | Supervised fine-tuning: the data preparation, the trainer, the teacher corpus harness, and the evaluators the organism pipeline reads |
-| [continual/](continual/README.md) | Continual pretraining: the corpus pipeline, mixtures, the warmup-stable-decay schedule, the replay buffer and optimizer offload |
-| [from-scratch/](from-scratch/README.md) | Training from scratch: tokenizer training and the reference loop on the pretrain recipes |
-| [investigations/](investigations/README.md) | The frozen design records, one per deliverable |
+<!-- inventory:dirs:start -->
+
+| Directory | Holds |
+|-----------|-------|
+| [base/](base/README.md) | The substrate under fine-tuning, continual pretraining and training from scratch. |
+| [continual/](continual/README.md) | The second rung: full-parameter continual pretraining of a Gemma 4 base on a mixed corpus, with a replay buffer against forgetting and the optimizer state offloaded to host RAM. |
+| [fine-tuning/](fine-tuning/README.md) | The first rung: supervised fine-tuning of a Gemma 4 base into an organism, a model with a known implant the interp tier then recovers. |
+| [from-scratch/](from-scratch/README.md) | The third rung: a model trained from random weights on this workstation, the one case where the lab holds the whole history of a model's weights. |
+| [investigations/](investigations/README.md) | One record per training deliverable, written while that deliverable was being implemented. |
+
+<!-- inventory:dirs:end -->
 
 Two parked proposals sit at this level: [continuous-learning-proposal.md](continuous-learning-proposal.md)
 (the rung after the three, with the design problems it has to clear first) and

@@ -6,9 +6,13 @@ where the lab holds the whole history of a model's weights. It runs the referenc
 `pretrain-150m` and `pretrain-1b` recipes over shards the data pipeline wrote
 ([../base/data_pipeline.md](../base/data_pipeline.md)), with a tokenizer trained here.
 
+<!-- inventory:pages:start -->
+
 | Document | Covers |
 |----------|--------|
-| [tokenizer_training.md](tokenizer_training.md) | Byte-level BPE tokenizer training and its evaluation, for this rung only (D3) |
+| [tokenizer_training.md](tokenizer_training.md) | Trains and evaluates byte-level BPE tokenizers for Phase 3 from-scratch models. |
+
+<!-- inventory:pages:end -->
 
 Budgets for the sub-1B shapes, batch and sequence sizing and wall-clock expectations are
 in [../base/training-scale-reference.md](../base/training-scale-reference.md). The Phase 0

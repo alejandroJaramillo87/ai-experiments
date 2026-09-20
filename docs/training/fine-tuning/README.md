@@ -6,12 +6,16 @@ in `make/interp.mk`, which prints its stages; the training half of it is documen
 the organism half in [../../interp/](../../interp/README.md). Verified by
 [../../verification/training/fine-tuning-loop.md](../../verification/training/fine-tuning-loop.md).
 
+<!-- inventory:pages:start -->
+
 | Document | Covers |
 |----------|--------|
-| [sft_data.md](sft_data.md) | Chat and instruction data preparation: the record format, the chat-template registry, the assistant-span mask, the materialized dataset and its held-out split (F1) |
-| [sft_entry_point.md](sft_entry_point.md) | The supervised fine-tuning trainer, full and QLoRA, on TRL (F3); the PEFT options of the recipe schema (F2) are in [../base/recipe_system.md](../base/recipe_system.md) |
-| [teacher_synthetic_data.md](teacher_synthetic_data.md) | The teacher corpus harness through the inference services, the organism generator's transport (F4) |
-| [eval_wrapper.md](eval_wrapper.md) | Held-out loss and lm-eval records on the base and the fine-tune, the locality inputs of `organism-verify` (F7) |
+| [eval_wrapper.md](eval_wrapper.md) | Runs the two evaluators, held-out loss and lm-evaluation-harness, on a baseline and a fine-tuned checkpoint with one command, and writes one record per evaluator per side (Phase 1 F7). |
+| [sft_data.md](sft_data.md) | Turns chat and instruction datasets into tokenized, loss-masked training examples for the supervised fine-tuning trainer (Phase 1 F1). |
+| [sft_entry_point.md](sft_entry_point.md) | Operation of the Phase 1 F3 SFT trainer: one command takes a recipe and runs a supervised fine-tune on TRL's `SFTTrainer`, supporting full fine-tuning and QLoRA, wired into the Phase 0 tracking, checkpointing, lock, and watchdog machinery. |
+| [teacher_synthetic_data.md](teacher_synthetic_data.md) | Batch-generates teacher responses through the inference services, producing the messages-format JSONL dataset an organism is fine-tuned on (Phase 1 F4). |
+
+<!-- inventory:pages:end -->
 
 In order, one fine-tune runs: `organism-generate` (the teacher corpus), `prepare-sft`
 (the tokenized, masked dataset), `train-step` then `train-sft` on

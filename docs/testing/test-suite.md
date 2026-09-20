@@ -1,11 +1,10 @@
 # The test suite
 
 The pytest suite as `pyproject.toml` configures it. This page covers what `make test`
-collects, the two
-environment tiers and the line that names which one ran, the markers, the traps in the
-configuration, the coverage floor, and how each test directory's README is generated. The
-suite's layout is [../../tests/README.md](../../tests/README.md), rendered from the
-directories themselves.
+collects, the two environment tiers and the line that names which one ran, the markers,
+the traps in the configuration, the coverage floor, and how each test directory's README
+is generated. The suite's layout is [../../tests/README.md](../../tests/README.md),
+rendered from the directories themselves.
 
 ## What runs
 
