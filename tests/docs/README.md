@@ -18,21 +18,30 @@ the host-environment reporters in `scripts/utils/`.
 
 ## Test index
 
-| Test file | Covers | Approach |
-|-----------|--------|----------|
-| `test_doc_refs.py` | `scripts/docs/check_doc_refs.py` | unit tests for `looks_like_path`, `extract_refs`, `extract_links`, `resolves`, `is_exempt`, each naming the real token that motivated the rule; then the full-tree gate |
-| `test_retired_names.py` | `scripts/docs/check_retired_names.py` | `pattern_for` precision, `RETIRED` table invariants, `find_retired` line numbers, `wants_scan`, `is_exempt`; then the full-tree gate |
-| `test_make_targets.py` | `scripts/docs/check_make_targets.py` | `extract_refs` separating commands from the English verb, `target_exists` pattern-rule matching, `collect_targets` across all three Makefiles, `KNOWN_ABSENT` invariants; then the full-tree gate |
-| `test_doc_counts.py` | `scripts/docs/check_doc_counts.py` | `find_sections` heading classification and section extent, `count_body` table-versus-list rules, `is_year`; then the full-tree gate |
-| `test_doc_tallies.py` | `scripts/docs/check_doc_counts.py`, its second pattern | `find_tallies` and `count_statuses` against the four shapes that defeat a naive count — a bolded inline status mid-paragraph, a parent entry with no status of its own, non-contiguous entry numbering, and a kind followed by a date and a parenthetical — plus the empty-set guard |
-| `test_runbook_entries.py` | `scripts/docs/check_runbook_entries.py` | `find_entries`, `has_evidence` and `find_citations` against the four shapes that defeated the first implementation — a parent entry heading children with their own statuses, an `Observed (` parenthetical whose colon is on a later line, a gate-backed entry with no Observed block at all, and a cited test class rather than a function — plus the empty-set guard |
-| `test_runbook_ids.py` | `scripts/docs/check_runbook_ids.py` | the two id shapes (`is_slug`, `is_legacy`, and the `config.json` heading that must be neither), `entry_headings` past fenced output, `toc_rows` across nesting, the `Retired:` line's leading ids, `dependencies` under the runbook's own prefix; then one failing fixture and a passing twin per finding, the frozen-record exemption and the empty-set guard |
-| `test_surface_census.py` | `scripts/docs/check_surface_census.py` | `surface` enumeration and the `--help` exclusion, whole-word binary matching so prose about layers does not satisfy `layer-diff`, and the empty-set guard, which matters more here than anywhere: an enumeration that collects nothing reports every element as covered |
-| `test_kb_refs.py` | `scripts/docs/check_kb_refs.py` | `extract_citations` including the reserved next identifier, `collect_defined` across both ledgers, `is_exempt`; then the full-tree gate |
-| `test_command_prompts.py` | `scripts/docs/check_command_prompts.py` | `find_prompts` against the constructs that start a line with `$` or `#` without being a prompt — a variable, a substitution, a comment, a commented-out command, a non-shell block, a `console` transcript — the Observed exemption and where it ends, `is_exempt` for frozen records; then the full-tree gate |
-| `test_check_site_reference.py` | `scripts/docs/check_site_reference.py` | `surface` enumeration including `harness`, the generated-marker classification that keeps hand-written reference pages out of the check, the three findings (a binary with no page, a page for no binary, a flag absent from its page) with whole-flag matching so `--control-vector-scale` does not satisfy `--control-vector`, and the empty-set guard; then the full-tree gate |
-| `test_gen_site_reference.py` | `scripts/docs/gen_site_reference.py` | the `--help` parser against a grouped harness-shaped fixture and a flat Spec-shaped fixture (section order, wrapped descriptions rejoined, prose split into summary and trailing), the rendered page (marker line, one fenced usage block, `\|` escaping of placeholders, escaped angle brackets, the binaries table linking siblings and not itself), and binary discovery |
-| `test_gen_inventory.py` | `scripts/docs/gen_inventory.py` and `scripts/docs/check_inventory.py` | `first_sentence` against the periods that do not end a sentence (`head_loss.py:`) and a wrapped docstring, `description` reading the paragraph under a title past a bold class line, `count_tests` counting a class-nested test and not a function nested inside one, the four row kinds on a scratch tree, the rendered tables and their `\|` escaping, malformed marker pairs, regeneration replacing the previous table, a module with no docstring and a child with no README named in the error, the empty-set guard, `--check` passing on a fresh table and failing on a hand-edited one, and the gate's hub rule on a scratch hub; then the real gate over the repository |
+Generated from each module's docstring; see [../README.md](../README.md).
+
+<!-- inventory:tests:start -->
+
+| File | Tests | Covers |
+|------|-------|--------|
+| `test_check_site_interp_reference.py` | 9 | Tests for scripts/docs/check_site_interp_reference.py. |
+| `test_check_site_reference.py` | 10 | Tests for scripts/docs/check_site_reference.py. |
+| `test_command_prompts.py` | 16 | Tests for scripts/docs/check_command_prompts.py. |
+| `test_doc_counts.py` | 12 | Tests for scripts/docs/check_doc_counts.py. |
+| `test_doc_refs.py` | 14 | Tests for scripts/docs/check_doc_refs.py. |
+| `test_doc_tallies.py` | 16 | Tests for the runbook-tally half of scripts/docs/check_doc_counts.py. |
+| `test_gen_inventory.py` | 34 | Tests for scripts/docs/gen_inventory.py and its gate. |
+| `test_gen_site_interp_reference.py` | 8 | Tests for scripts/docs/gen_site_interp_reference.py. |
+| `test_gen_site_reference.py` | 13 | Tests for scripts/docs/gen_site_reference.py. |
+| `test_group_pin_parity.py` | 7 | Tests for scripts/docs/check_group_pin_parity.py. |
+| `test_kb_refs.py` | 14 | Tests for scripts/docs/check_kb_refs.py. |
+| `test_make_targets.py` | 14 | Tests for scripts/docs/check_make_targets.py. |
+| `test_retired_names.py` | 15 | Tests for scripts/docs/check_retired_names.py. |
+| `test_runbook_entries.py` | 13 | Tests for scripts/docs/check_runbook_entries.py. |
+| `test_runbook_ids.py` | 26 | Tests for scripts/docs/check_runbook_ids.py. |
+| `test_surface_census.py` | 7 | Tests for scripts/docs/check_surface_census.py. |
+
+<!-- inventory:tests:end -->
 
 ## Notes
 

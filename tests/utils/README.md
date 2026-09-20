@@ -11,10 +11,16 @@ The scope is `scripts/utils/` alone. The sibling `tests/common/` suite covers th
 
 ## Test index
 
-| Test file | Covers | Approach |
-|-----------|--------|----------|
-| `test_bash_output_contract.py` | `find_pythons.sh`, `dependency_check.sh`, `storage_check.sh` | run each script, assert exit 0, no ANSI under `NO_COLOR`, only `[OK]/[WARN]/[ERROR]/[INFO]/[SKIP]` tags, expected headers |
-| `test_check_py_deps.py` | `check_py_deps_install.py` | unit tests for `Printer`, `_pkg_version`, `quiet_import`; end-to-end `--json` (pure JSON stdout) and human-mode contract (status on stderr) |
+Generated from each module's docstring; see [../README.md](../README.md).
+
+<!-- inventory:tests:start -->
+
+| File | Tests | Covers |
+|------|-------|--------|
+| `test_bash_output_contract.py` | 3 | Output-contract tests for the scripts/utils/ bash reporters. |
+| `test_check_py_deps.py` | 8 | Tests for scripts/utils/check_py_deps_install.py. |
+
+<!-- inventory:tests:end -->
 
 ## Notes
 
