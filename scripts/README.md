@@ -2,7 +2,8 @@
 
 Host-side operational tooling: one-time workstation provisioning, GPU and Python stack
 updates, preflight gates, benchmarking, agent-tooling checks, and model header transcripts.
-Almost entirely shell; the two Python files live in `utils/`.
+Almost entirely shell, apart from the documentation gates in `docs/` and two reporters in
+`utils/`.
 
 Nothing here is imported by the Python packages. Scripts are wired in from the `Makefile`
 and driven as subprocesses by `tests/`, through the `run_script` fixture in
@@ -18,6 +19,7 @@ and driven as subprocesses by `tests/`, through the `run_script` fixture in
 | `interp/` | preflight checks for the interp stack | no — GPU gate |
 | `models/` | model download and header transcripts | transcripts only |
 | `agents/` | guard hook, preflight scan, role acceptance, version checks | yes |
+| `docs/` | the documentation gates `make quality` runs and the generators of committed reference pages and README tables — see [docs/README.md](docs/README.md) | yes |
 | `utils/` | host-environment reporters (`find_pythons.sh`, `dependency_check.sh`, …) | yes |
 
 The sandbox-runnable half is exactly the half with test coverage, which is not a coincidence:
