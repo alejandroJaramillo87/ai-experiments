@@ -76,12 +76,16 @@ is written down in [doc-gates.md](doc-gates.md).
 
 ## Frozen records
 
-| Location | Contents |
-|----------|----------|
-| [investigations/](investigations/) | [test_coverage_investigation.md](investigations/test_coverage_investigation.md) — an audit of the training and interp suites at 2026-07-16, commit 8316e5e |
+<!-- inventory:dirs:start -->
 
-That audit describes coverage as it stood on its date and is never updated. Read it for
-what was deliberately left untested and why, not for the current state of the suite.
+| Directory | Holds |
+|-----------|-------|
+| [investigations/](investigations/README.md) | The frozen audit of the sandbox test suite: what the training and interp packages were covered by, and what was deliberately left untested, on the day it was written. |
+
+<!-- inventory:dirs:end -->
+
+The audit there describes coverage as it stood on its date and is never updated. Read it
+for what was deliberately left untested and why, not for the current state of the suite.
 
 ## Related documentation
 

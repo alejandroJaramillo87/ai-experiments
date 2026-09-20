@@ -30,10 +30,17 @@ Each directory's README is its index, and this table is generated from them.
 
 <!-- inventory:dirs:end -->
 
-Two parked proposals sit at this level: [continuous-learning-proposal.md](continuous-learning-proposal.md)
-(the rung after the three, with the design problems it has to clear first) and
-[tier-consolidation-proposal.md](tier-consolidation-proposal.md) (the refactors the
-three-rung trimming left for later, with the condition under which each starts).
+Two parked proposals sit at this level: the rung after the three, and the refactors the
+three-rung trimming left for later.
+
+<!-- inventory:pages:start -->
+
+| Document | Covers |
+|----------|--------|
+| [continuous-learning-proposal.md](continuous-learning-proposal.md) | The long-term goal of this repository's training tier is a model that learns over time: weights that move as the model reads, at more than one rate, rather than static weights updated by a separate training run. |
+| [tier-consolidation-proposal.md](tier-consolidation-proposal.md) | When the tier was trimmed to its three rungs (SFT, continual pretraining, training from scratch; see [README.md](README.md)), the survey that guided the trimming also found duplication that a removal cannot fix, because both copies are load-bearing. |
+
+<!-- inventory:pages:end -->
 
 ## Progression
 

@@ -4,8 +4,9 @@
 
 **Entries: 8 verified, 2 blocked, 17 pending, of 27.**
 
-Retired: I.2 (2026-09-18, Neuronpedia harness removed); I.6b (2026-09-18, merged
-into I.served-request-log).
+Host verification of the interpretability tier, entry by entry: the workbench, the
+organisms, activation harvesting and its captures, SAE training, probes, the
+served-request log and steering on the rust harness.
 
 The 27 entries are the headings below. An entry id is a name, not a
 position: assigned once, kept when the title changes, never reused; the Table
@@ -51,6 +52,9 @@ was added on 2026-09-19: E4B is the second training subject, and its
 activation magnitudes had never been measured, which the precision policy
 requires before any fp16 harvest of it. A tally
 over this file counts `Status:` lines, not entry numbers.
+
+Retired: I.2 (2026-09-18, Neuronpedia harness removed); I.6b (2026-09-18, merged
+into I.served-request-log).
 
 Three of the entries below are gate-backed rather than operator-run: their
 expected signal is asserted by a named test function, and the named function is

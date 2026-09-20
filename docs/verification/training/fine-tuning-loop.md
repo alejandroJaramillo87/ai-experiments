@@ -4,13 +4,17 @@
 
 **Entries: 5 verified, 0 blocked, 9 pending, of 14.**
 
-Retired: FT.15 (2026-09-19, scorecard promotion), FT.memfit (2026-09-20, the memory-fit calculator left the tree), FT.e4b-recipe (2026-09-20, the E4B recipe card left the tree: no organism and no make target ran it, and the Phase 1 audit found nothing it verified that FT.calibrate-qlora does not).
+Host verification of the fine-tuning loop, the first rung of the training tier: train
+a Gemma 4 E2B with a known change, then recover it through the rust harness and the
+interp tier.
 
 An entry id is a name, not a position: it is assigned once, kept when the
 title changes, and never reused. The Table of Contents is the execution
 order, and `scripts/docs/check_runbook_ids.py` holds the sections to it. The
 entries carried numbers until 2026-09-19, when every live one took a slug; the old numbers are in the retired-names table of
 `scripts/docs/check_retired_names.py`, and the frozen records keep them.
+
+Retired: FT.15 (2026-09-19, scorecard promotion), FT.memfit (2026-09-20, the memory-fit calculator left the tree), FT.e4b-recipe (2026-09-20, the E4B recipe card left the tree: no organism and no make target ran it, and the Phase 1 audit found nothing it verified that FT.calibrate-qlora does not).
 
 The fine-tuning loop is the first rung of the training tier and the loop the
 lab runs: train a Gemma 4 E2B with a known change, then recover the change

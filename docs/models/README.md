@@ -5,10 +5,16 @@ transcripts that verify them.
 
 ## Documents
 
-| Document | Contents |
-|----------|----------|
-| [gemma-4.md](gemma-4.md) | Gemma 4 dense family (E2B, E4B, 12B, 31B): general architecture reference, and the citation target of [../verification/archive/gemma-4-conformance_investigation.md](../verification/archive/gemma-4-conformance_investigation.md) |
+<!-- inventory:pages:start -->
 
+| Document | Covers |
+|----------|--------|
+| [gemma-4.md](gemma-4.md) | Architecture reference for the Gemma 4 dense models, written so that a session working on `rust-harness`, `training`, or `interp` does not have to infer model internals. |
+
+<!-- inventory:pages:end -->
+
+`gemma-4.md` is the citation target of
+[../verification/archive/gemma-4-conformance_investigation.md](../verification/archive/gemma-4-conformance_investigation.md).
 Each tier keeps its own scoped Gemma 4 document, covering what that tier's code consumes:
 [../training/base/gemma-4-training.md](../training/base/gemma-4-training.md) for training and
 [../interp/gemma-4-interp.md](../interp/gemma-4-interp.md) for interp. The runtime has none:

@@ -30,15 +30,17 @@ in the same way they check this directory.
 ## Frozen records
 
 Two subdirectories hold documents that are never edited after the day they were written.
-Drift against the current tree is expected and correct in both.
+Drift against the current tree is expected and correct in both; each README is the living
+index over its records.
 
-| Location | Contents |
-|----------|----------|
-| [investigations/](investigations/) | I1, P4, and PS deliverable investigations — what was decided at implementation time (8 documents, 2026-07-14 to 2026-07-15) — and the 2026-09-18 Neuronpedia replacement investigation that retired the PS deliverables (9 documents in all) |
-| [experiments/](experiments/) | Experiment post-mortems, one file per experiment, immutable after the verdict |
+<!-- inventory:dirs:start -->
 
-[experiments/README.md](experiments/README.md) is the exception: it is the living convention
-for writing the entries beside it, including the `YYYY-MM-DD-<slug>.md` filename format.
+| Directory | Holds |
+|-----------|-------|
+| [experiments/](experiments/README.md) | Post-mortems for interpretability mini-projects and experiments. |
+| [investigations/](investigations/README.md) | One record per interp deliverable, written while that deliverable was being implemented, plus the 2026-09-18 investigation that retired the Neuronpedia deliverables. |
+
+<!-- inventory:dirs:end -->
 
 Because these records name the tree as it stood, several still reference this directory under
 its former, longer name. That is accurate history rather than drift, and both gates exempt

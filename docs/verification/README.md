@@ -12,22 +12,28 @@ every runbook, and the defect ledger the entries cross-reference.
 
 ## How this directory is laid out
 
-One folder per tier, and the folder name is the tier: [training/](training/),
-[interp/](interp/), [rust-harness/](rust-harness/),
-[observability/](observability/), [hardware/](hardware/),
-[bugs/](bugs/).
+One folder per tier, and the folder name is the tier; the ledger and the frozen records
+each have a folder of their own. Every tier gets a folder, including the ones holding a
+single runbook today: a root mixing folders with loose files is the thing that is hard
+to scan, and a tier with one runbook is the one most likely to gain a second.
 
-Every tier gets a folder, including the ones holding a single document today.
-A root mixing folders with loose files is the thing that is actually hard to
-scan — the loose files read as leftovers — and a tier with one runbook is the
-one most likely to gain a second.
+<!-- inventory:dirs:start -->
 
-One file stays at the root: **[README.md](README.md)**, this index.
+| Directory | Holds |
+|-----------|-------|
+| [archive/](archive/README.md) | The runbooks, campaign logs and ledger history the verification campaign has closed: read for what was observed on a date, never executed again and never updated. |
+| [bugs/](bugs/README.md) | The live ledger of defects the hardware verification campaign has hit, indexed by the runbook step that surfaces each one, with its fix state. |
+| [hardware/](hardware/README.md) | The runbook for the workstation's firmware stability gate: the BIOS undervolt and overclock stack under sustained load, executed once and re-executed when the settings change. |
+| [interp/](interp/README.md) | The runbook for the interp tier on the workstation: the workbench image, activation harvesting, probes, sparse autoencoders and the write-back path on the rust harness, entry by entry. |
+| [observability/](observability/README.md) | The runbook for the observability stack on the workstation: the logging core, tracing, run records and the dashboards, phase by phase. |
+| [rust-harness/](rust-harness/README.md) | The two runbooks for `rust-harness`: the CPU-backend verification executed against the workstation, and the quality-assurance campaign a contained agent session runs without a GPU. |
+| [training/](training/README.md) | The runbook for the training tier on the workstation, organised by capability: the fine-tuning loop from the container smoke through the train-and-serve round trip. |
 
-[archive/](archive/) also sits at the root, because a frozen record belongs
-with the other frozen records rather than with the tier it came from: the
-closed step-zero and sandbox-executable runbooks, the QA campaign logs, the
-ledger's closed history and the Gemma 4 conformance audit are there.
+<!-- inventory:dirs:end -->
+
+One file stays at the root: **[README.md](README.md)**, this index. A frozen record
+belongs with the other frozen records rather than with the tier it came from, which is
+why [archive/](archive/README.md) sits here.
 
 ## What is live and what is frozen
 
