@@ -33,8 +33,10 @@ the marker so no table of READMEs has to be kept in step:
                                       and the frontmatter description
     <!-- inventory:commands:start --> one row per .claude/commands/*.md
     <!-- inventory:skills:start -->   one row per .claude/skills/*/SKILL.md
+    <!-- inventory:fragments:start --> one row per *.mk: its `##@` section
+                                      title and the targets `make help` lists
 
-The first six read the README's own directory. The three roster kinds read a
+The first six and the last read the README's own directory. The three roster kinds read a
 fixed place under the repository root, because the definitions they list live
 in .claude/ and the page that indexes them lives in docs/agents/; the source is
 fixed by the kind the way the hub roots are fixed in check_inventory.py.
@@ -80,6 +82,7 @@ KINDS = (
     "roles",
     "commands",
     "skills",
+    "fragments",
 )
 MARKER = re.compile(r"<!-- inventory:(\w+):(start|end) -->")
 
@@ -112,6 +115,12 @@ LANGUAGES = (
     (re.compile(r"(interp|training|common|tests)\b"), "Python"),
 )
 LANGUAGE_ORDER = ("Rust", "Python", "Upstream")
+
+# A make fragment's section title, and a rule `make help` lists: the awk in
+# make/help.mk prints a rule when its recipe line carries `##`, so the table
+# reads the same two comment shapes and nothing else.
+SECTION_LINE = re.compile(r"^##@\s*(.+?)\s*$")
+HELP_RULE = re.compile(r"^([a-zA-Z0-9_][a-zA-Z0-9_-]*)\s*:.*?##")
 
 # A header line that is only a filename, or opens with one and a separator: the
 # older scripts name themselves before saying what they do, and a few name a
@@ -361,6 +370,31 @@ def rows_roster(kind: str, root: Path) -> list[Row]:
     return rows
 
 
+def fragment_row(path: Path, root: Path) -> Row:
+    """The section title and help-listed targets of one make fragment."""
+    section = None
+    targets: list[str] = []
+    for line in path.read_text().splitlines():
+        if section is None:
+            if not line.strip():
+                continue
+            match = SECTION_LINE.match(line)
+            if match is None:
+                raise ValueError(f"{path.relative_to(root)}: no ##@ section line")
+            section = match.group(1)
+            continue
+        match = HELP_RULE.match(line)
+        if match is not None:
+            targets.append(match.group(1))
+    if section is None:
+        raise ValueError(f"{path.relative_to(root)}: no ##@ section line")
+    return (path.name, section, ", ".join(f"`{name}`" for name in targets))
+
+
+def rows_fragments(directory: Path, root: Path) -> list[Row]:
+    return [fragment_row(path, root) for path in sorted(directory.glob("*.mk"))]
+
+
 def rows_tests(directory: Path, root: Path) -> list[Row]:
     rows: list[Row] = []
     for path in sorted(directory.glob("test_*.py")):
@@ -423,6 +457,7 @@ ROWS = {
     "roles": lambda directory, root: rows_roster("roles", root),
     "commands": lambda directory, root: rows_roster("commands", root),
     "skills": lambda directory, root: rows_roster("skills", root),
+    "fragments": rows_fragments,
 }
 
 
@@ -452,6 +487,9 @@ def render_table(kind: str, rows: list[Row]) -> str:
     elif kind == "skills":
         lines = ["| Skill | Does |", "|-------|------|"]
         lines += [f"| `{n}` | {cell(s)} |" for n, s in rows]
+    elif kind == "fragments":
+        lines = ["| Fragment | Section | Targets |", "|----------|---------|---------|"]
+        lines += [f"| `{n}` | {cell(s)} | {t} |" for n, s, t in rows]
     else:
         lines = ["| Document | Covers |", "|----------|--------|"]
         lines += [f"| [{n}]({n}) | {cell(s)} |" for n, s in rows]

@@ -317,6 +317,55 @@ class TestScripts:
         assert names == ({*SHELL_HEADERS} - {"none.sh"}) | {"check.mjs", "tool.py"}
 
 
+MK_TARGETS = """\
+##@ Rust harness (separate compose file)
+
+.PHONY: harness-build harness-run
+
+harness-build: ## Build the image
+\tdocker compose build
+
+harness-run: ## Run a one-shot task
+\tdocker compose run --rm harness $(ARGS)
+
+_internal:
+\t@true
+
+harness-serve: ## Serve the model
+\tdocker compose up -d
+"""
+
+MK_NO_SECTION = """\
+.PHONY: demo
+
+demo: ## Run the demo
+\t@true
+"""
+
+
+class TestFragments:
+    @pytest.fixture()
+    def fragments(self, tmp_path):
+        (tmp_path / "harness.mk").write_text(MK_TARGETS, encoding="utf-8")
+        (tmp_path / "README.md").write_text("# x\n", encoding="utf-8")
+        return tmp_path
+
+    def test_the_section_and_help_targets_make_the_row(self, mod, fragments):
+        rows = mod.rows_fragments(fragments, fragments)
+        assert rows == [
+            (
+                "harness.mk",
+                "Rust harness (separate compose file)",
+                "`harness-build`, `harness-run`, `harness-serve`",
+            )
+        ]
+
+    def test_a_fragment_without_a_section_line_is_named(self, mod, fragments):
+        (fragments / "quickstart.mk").write_text(MK_NO_SECTION, encoding="utf-8")
+        with pytest.raises(ValueError, match="quickstart.mk: no ##@ section line"):
+            mod.rows_fragments(fragments, fragments)
+
+
 class TestContracts:
     @pytest.fixture()
     def schemas(self, tmp_path):
