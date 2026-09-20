@@ -261,6 +261,11 @@ class TestRows:
             ("sub", "The subpackage's own description.")
         ]
 
+    def test_hidden_directories_are_not_listed(self, mod, tree):
+        (tree / "pkg" / ".cache").mkdir()
+        (tree / "pkg" / ".cache" / "state").write_text("", encoding="utf-8")
+        assert [row[0] for row in mod.rows_dirs(tree / "pkg", tree)] == ["sub"]
+
     def test_a_child_without_a_readme_is_named(self, mod, tree):
         (tree / "pkg" / "orphan").mkdir()
         (tree / "pkg" / "orphan" / "x.py").write_text("", encoding="utf-8")

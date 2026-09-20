@@ -107,9 +107,13 @@ Each topic has one owner. Read the owner, not a summary of it.
 | The agent sandbox and tooling parity | [docs/agents/README.md](docs/agents/README.md) |
 | Everything else | [docs/README.md](docs/README.md) — the documentation index |
 
-Each top-level source directory carries its own README covering purpose, what it consumes and
-what consumes it, entry points, and the traps. They are indexed in
-[docs/README.md](docs/README.md).
+Beyond that table, route by the kind of question. A question about a topic starts at
+[docs/README.md](docs/README.md), whose table names the directory that owns the topic; that
+directory's README indexes its pages. A question about code starts at the directory's own
+README, which says what it holds, what consumes it, its entry points and its traps; the
+root [README.md](README.md) lists them. Every README's tables of directories, modules,
+scripts or pages are rendered from the tree and held to it by `make quality`, so each
+routes one level further and none can be stale.
 
 ## Tooling conventions
 

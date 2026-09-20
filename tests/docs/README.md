@@ -30,7 +30,7 @@ Generated from each module's docstring; see [../README.md](../README.md).
 | `test_doc_counts.py` | 12 | Tests for scripts/docs/check_doc_counts.py. |
 | `test_doc_refs.py` | 14 | Tests for scripts/docs/check_doc_refs.py. |
 | `test_doc_tallies.py` | 16 | Tests for the runbook-tally half of scripts/docs/check_doc_counts.py. |
-| `test_gen_inventory.py` | 45 | Tests for scripts/docs/gen_inventory.py and its gate. |
+| `test_gen_inventory.py` | 46 | Tests for scripts/docs/gen_inventory.py and its gate. |
 | `test_gen_site_interp_reference.py` | 8 | Tests for scripts/docs/gen_site_interp_reference.py. |
 | `test_gen_site_reference.py` | 13 | Tests for scripts/docs/gen_site_reference.py. |
 | `test_group_pin_parity.py` | 7 | Tests for scripts/docs/check_group_pin_parity.py. |

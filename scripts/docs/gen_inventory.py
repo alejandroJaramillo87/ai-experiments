@@ -381,10 +381,13 @@ def rows_modules(directory: Path, root: Path) -> list[Row]:
 
 
 def child_dirs(directory: Path) -> list[Path]:
-    """Child directories a hub table lists: not pruned, and not empty once pruned."""
+    """Child directories a hub table lists: not pruned, not hidden, not empty once pruned."""
     children = []
     for child in sorted(directory.iterdir()):
         if not child.is_dir() or child.name in PRUNE_DIRS:
+            continue
+        if child.name.startswith("."):
+            # Tool state and configuration, not a place a reader is sent.
             continue
         if not any(entry.name not in PRUNE_DIRS for entry in child.iterdir()):
             continue
