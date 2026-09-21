@@ -118,8 +118,12 @@ endif
 # The generators need the parent tree's torch environment. `uv run` discovers
 # the project by walking up from here, so this is the workstation venv rather
 # than whichever python is on PATH -- the first Tier E attempt ran a bare
-# python without transformers and wrote nothing (RH.1b).
-LADDER_PY ?= uv run python
+# python without transformers and wrote nothing (RH.1b). --no-sync because a
+# bare `uv run` first syncs the venv to the lock, and when the two disagree
+# on flash-attn that is a from-source nvcc build fanned out over every core:
+# on 2026-09-20 its compilers exhausted 123 GB of host RAM and the OOM killer
+# took the full quality gate, and the terminal, down with them.
+LADDER_PY ?= uv run --no-sync python
 
 # One artifact per generator, named as runtime/src/bin/ladder.rs joins them
 # onto --reference. `ladder` depends on these as files, so a missing one is

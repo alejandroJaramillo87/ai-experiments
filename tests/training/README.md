@@ -62,7 +62,7 @@ regenerated.
 | `test_entrypoint.py` | 4 | docker/training/entrypoint.sh: the environment echo and the D9 LD_PRELOAD slot. |
 | `test_eval_ft.py` | 2 | eval-ft's container phase: the compared sides reach the training container in its own spelling of the models tree. |
 | `test_eval_runner.py` | 6 | F7 runner pieces: checkpoint identity and the lm-eval task pins. |
-| `test_export.py` | 44 | Tests for the exporter's pure-logic paths. |
+| `test_export.py` | 45 | Tests for the exporter's pure-logic paths. |
 | `test_export_common_branches.py` | 13 | Branch coverage for export seams and common probes, all torch-free. |
 | `test_export_harness.py` | 4 | The exporter's output, read by the consumer it exists for. |
 | `test_head_loss.py` | 13 | training/models/head_loss.py: the chunked head loss (KB-87), driven against a fake torch the way test_peft_utils.py fakes it. |

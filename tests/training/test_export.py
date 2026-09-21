@@ -254,6 +254,27 @@ def test_meta_consistency_rejects_base_disagreement(tmp_path):
         merge_mod.check_meta_consistency(meta, str(adapter))
 
 
+def test_meta_consistency_accepts_a_staged_id_for_its_directory(tmp_path, monkeypatch):
+    """The trainer loads the base from the staged directory (KB-79), so the
+    adapter records that path while meta.json keeps the pinned id; the two
+    spellings name one base. The workstation full gate failed here at 39b35e9
+    after ten real QLoRA steps."""
+    from training.models import staged
+
+    root = tmp_path / "models" / "hf"
+    base_dir = root / "base"
+    base_dir.mkdir(parents=True)
+    write_json(str(base_dir / "config.json"), {"model_type": "x"})
+    monkeypatch.setattr(staged, "STAGED_ROOTS", (str(root),))
+    adapter = make_adapter(tmp_path, base=str(base_dir))
+    meta = {"adapter_only": True, "base_model": "org/base"}
+    merge_mod.check_meta_consistency(meta, str(adapter))
+    with pytest.raises(ExportError, match="disagreement"):
+        merge_mod.check_meta_consistency(
+            {"adapter_only": True, "base_model": "org/other"}, str(adapter)
+        )
+
+
 def test_stage_model_runs_meta_cross_check(tmp_path):
     ckpt = make_full_checkpoint(tmp_path)
     with pytest.raises(ExportError, match="adapter_only"):

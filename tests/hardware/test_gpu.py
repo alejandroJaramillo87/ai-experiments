@@ -211,6 +211,7 @@ class TestGpuFull:
         when weights are absent."""
         from omegaconf import OmegaConf
 
+        from interp.families import hook_name
         from interp.harvest import check_hook_dims, resolve_model_meta, run_harvest
         from training.recipes.schema import Recipe
 
@@ -243,7 +244,10 @@ class TestGpuFull:
         recipe.harvest.out_root = str(tmp_path / "activations")
         manifest = run_harvest(recipe)
         assert manifest["model_type"] == "gemma4_text"
-        assert manifest["hooks"] == ["model.layers.2"]
+        # The pin is the composite checkpoint, whose decoder sits under
+        # model.language_model; the registry owns the spelling, so the test
+        # asks it rather than pinning the flat path a bare text config takes.
+        assert manifest["hooks"] == [hook_name(spec, 2)]
         assert manifest["d_model"] == d_model
 
 

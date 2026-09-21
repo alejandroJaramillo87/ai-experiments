@@ -205,9 +205,11 @@ dimensions cannot distinguish.
 ### Generating the Tier E artifacts
 
 Workstation only: every generator needs the real checkpoint and a torch environment,
-and `LADDER_PY` is `uv run python` so the workstation venv is used rather than whichever
-python is on `PATH` (the first Tier E attempt ran a bare python without `transformers`
-and wrote nothing). The six artifacts are file prerequisites of `make ladder`, so the
+and `LADDER_PY` is `uv run --no-sync python` so the workstation venv is used rather than
+whichever python is on `PATH` (the first Tier E attempt ran a bare python without
+`transformers` and wrote nothing) and is used as it stands: a bare `uv run` resyncs it to
+the lock first, and a resync that rebuilds `flash-attn` from source fans nvcc out over
+every core, which is what OOM-killed the full gate on 2026-09-20. The six artifacts are file prerequisites of `make ladder`, so the
 ordinary way to generate them is to climb: a missing one is written first, a present one
 is left alone. To rewrite all six after a checkpoint or `transformers` change that make
 cannot see under an existing directory:

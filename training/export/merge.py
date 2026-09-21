@@ -153,8 +153,15 @@ def check_meta_consistency(meta: dict | None, adapter: str | None) -> None:
 
     A disagreement between meta.json and the files on disk marks a corrupt
     or hand-edited checkpoint; export refuses rather than guessing.
+
+    The base is compared after staged resolution (KB-79): meta.json records
+    the recipe's pinned hub id, while peft records the path the trainer
+    loaded, which on a host with the base staged is the train-download
+    directory. One base, two spellings; only a different base is a
+    disagreement.
     """
     from training.export.errors import ExportError
+    from training.models.staged import resolve_model_source
 
     if meta is None or "adapter_only" not in meta:
         return  # plain HF dir or pre-F3 checkpoint: nothing to check against
@@ -168,7 +175,9 @@ def check_meta_consistency(meta: dict | None, adapter: str | None) -> None:
     if adapter is not None:
         meta_base = meta.get("base_model")
         config_base = adapter_base_model(adapter)
-        if meta_base is not None and meta_base != config_base:
+        if meta_base is not None and resolve_model_source(
+            meta_base
+        ) != resolve_model_source(config_base):
             raise ExportError(
                 f"Base model disagreement: meta.json records {meta_base}, "
                 f"{ADAPTER_CONFIG} records {config_base}\n  Solution: the "
