@@ -95,7 +95,10 @@ which reads the `AI_SANDBOX` marker the sandbox image sets:
 - **Workstation** — tools come from `.venv` via `uv run --no-sync`, which runs what is already
   provisioned rather than re-resolving, so no step touches the network. A preflight refuses
   the run when `.venv` is missing or points at an interpreter that no longer exists, because
-  `uv --no-sync` would otherwise recreate it empty.
+  `uv --no-sync` would otherwise recreate it empty. The preflight proves the interpreter
+  exists, not that the installed set is the locked set: `--no-sync` never reconciles the two,
+  and the hardware smoke tier's `test_venv_lock.py` is what names a package the lock has
+  dropped.
 - **Sandbox** — tools are invoked from `PATH`. The image builds `/opt/pyenv` with
   `uv sync --frozen --only-group dev --only-group sandbox` against `uv.lock`, so the versions
   are the workstation's by construction rather than by transcription. There is no `.venv` to
@@ -127,8 +130,9 @@ hardware.**
 
 ## Provisioning
 
-`make install` is the full provision (`--all-groups --all-extras`). A bare `uv sync` is a safe
-repair: `pyproject.toml` names all four dependency groups in `[tool.uv] default-groups`
+`make install` is the full provision (`--all-groups --all-extras`), and the repair whenever
+the smoke tier reports drift: sync removes what the lock no longer lists. A bare `uv sync` is
+a safe repair: `pyproject.toml` names all four dependency groups in `[tool.uv] default-groups`
 precisely so the reflexive command cannot strip an environment down.
 
 Provision a worktree with `make worktree-<name> TIER=full` when it will run the training suite
