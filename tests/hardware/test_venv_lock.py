@@ -1,6 +1,6 @@
 """Environment drift suite (WI-3): every distribution installed in the
-interpreter's prefix is one uv.lock names at a locked version, at the smoke
-tier. `uv run --no-sync` runs what is there and never reconciles it with the
+interpreter's site-packages is one uv.lock names at a locked version, at the
+smoke tier. `uv run --no-sync` runs what is there and never reconciles it with the
 lock, so a pin that leaves the lock stays installed until `make install`;
 this is the check that names the stray before a real model load hits it.
 """
@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.metadata
 import sys
+import sysconfig
 import tomllib
 from pathlib import Path
 
@@ -36,17 +37,23 @@ def locked_versions() -> dict[str, set[str]]:
     return versions
 
 
-def installed_in_prefix() -> dict[str, str]:
-    """Canonical name to version for distributions under sys.prefix.
+def installed_in_site_packages() -> dict[str, str]:
+    """Canonical name to version for distributions in the site-packages dirs.
 
-    The prefix filter is what scopes this to the provisioned environment
-    rather than to whatever else the interpreter can see.
+    The filter is an exact match on the directories uv installs into, not
+    "anywhere under sys.prefix": setuptools ships its vendored dependencies
+    as dist-info directories inside setuptools/_vendor and appends that path
+    to sys.path on import, so a prefix test would count autocommand, the
+    jaraco packages, tomli and wheel as installed when they are private
+    copies the lock never names.
     """
-    prefix = Path(sys.prefix).resolve()
+    site_dirs = {
+        Path(sysconfig.get_paths()[key]).resolve() for key in ("purelib", "platlib")
+    }
     found: dict[str, str] = {}
     for dist in importlib.metadata.distributions():
-        location = dist.locate_file("")
-        if not Path(str(location)).resolve().is_relative_to(prefix):
+        location = Path(str(dist.locate_file(""))).resolve()
+        if location not in site_dirs:
             continue
         found.setdefault(canonicalize_name(dist.metadata["Name"]), dist.version)
     return found
@@ -60,11 +67,13 @@ def test_every_installed_distribution_is_locked():
 
     The 2026-09-21 instance: torchao 0.14.0 survived its pin leaving the lock,
     and peft's LoRA dispatcher raised on the stale version ten minutes into
-    the fine-tuning loop's export, after training had already passed.
+    the fine-tuning loop's export, after training had already passed. The
+    first gate run of this check then named the ten-package closure of the
+    2026-09-18 interp dependency cut, still installed for the same reason.
     """
     locked = locked_versions()
-    installed = installed_in_prefix()
-    assert installed, f"no distributions found under {sys.prefix}"
+    installed = installed_in_site_packages()
+    assert installed, f"no distributions found in the site-packages of {sys.prefix}"
     drift = []
     for name, version in sorted(installed.items()):
         if name not in locked:
