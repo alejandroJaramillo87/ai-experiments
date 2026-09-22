@@ -14,9 +14,11 @@ torch so sandbox collection stays clean; heavy imports live inside tests.
 
 from __future__ import annotations
 
+import gc
 import json
 import os
 import sys
+import warnings
 from pathlib import Path
 
 import pytest
@@ -130,10 +132,29 @@ def torch():
 @pytest.fixture()
 def cuda(torch):
     """torch with a CUDA device, failing loudly when absent: an hw test
-    running on a GPU-less host is a misconfiguration, not a skip."""
+    running on a GPU-less host is a misconfiguration, not a skip.
+
+    The tier runs every hw_full module in one process, so a model an
+    earlier test left in a reference cycle (HF models under accelerate
+    hooks, the SAELens store) is still on the card when the next test
+    measures or allocates. The fixture collects and empties the cache
+    first, then warns with the bytes still live: pytest lists the warning
+    under the test that inherited them, which names the test before it as
+    the one holding a reference. A test's own bounds measure against what
+    remains, not against zero (test_step_qlora.py).
+    """
     assert torch.cuda.is_available(), (
         "CUDA unavailable; hardware tests run on the workstation (RTX 5090) only"
     )
+    gc.collect()
+    torch.cuda.empty_cache()
+    live = torch.cuda.memory_allocated()
+    if live:
+        warnings.warn(
+            f"{live} bytes of CUDA tensors survive from an earlier test in this "
+            "process after a collection; the previous GPU test holds a reference",
+            stacklevel=1,
+        )
     return torch
 
 

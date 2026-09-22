@@ -21,6 +21,12 @@ counts against the facts contract) and tests/training/test_cli_handlers_step.py
 (the handler with the loop faked). It skips when the pinned base is not
 staged (FT.preconditions) and fails on everything else. GPU-only, and a GPU
 consumer: one at a time.
+
+The two memory bounds are held on the step's delta over the process baseline,
+not on the record's figures as printed: those are torch.cuda.memory_allocated
+for the whole process, which is the model alone under `make train-step` (a
+fresh process) and the model plus whatever survived the 23 hw_full modules
+that run before this one in the tier's single pytest process.
 """
 
 from __future__ import annotations
@@ -69,7 +75,17 @@ def test_step_holds_the_counts_and_the_peak(cuda, train_lock):
     except ExportError as exc:
         pytest.skip(f"pinned base not staged (FT.preconditions): {exc}")
 
+    # The record's resident and peak figures are process-wide (train_step.py
+    # reads torch.cuda.memory_allocated as is), so they are the model's only
+    # in the fresh process `make train-step` runs in. The first full-tier run
+    # to reach this test (2026-09-22, cd8b3f3) read 21.07 GB resident: the
+    # 6.37 GB model over 14.70 GB inherited from the modules before it. The
+    # bounds below are therefore held on the delta over what this process
+    # holds when the step starts; the cuda fixture has already collected.
+    baseline = cuda.cuda.memory_allocated()
     record = step(recipe, steps=2)
+    resident = record.static_measured - baseline
+    peak_allocated = record.measured_allocated - baseline
 
     assert record.tokens_per_micro_batch == 4096
     assert record.model_trainable_params == record.analytic_trainable_params, (
@@ -81,11 +97,13 @@ def test_step_holds_the_counts_and_the_peak(cuda, train_lock):
         f"parameter drift {drift:,}, expected {MEASURED_DRIFT:,} "
         f"({SHARED_KV_RESIDUE:,} shared-KV residue plus 928; KB-82)"
     )
-    assert 0 < record.static_measured <= RESIDENT_CEILING, (
-        f"resident after build {record.static_measured / GIB:.2f} GB (KB-85)"
+    assert 0 < resident <= RESIDENT_CEILING, (
+        f"resident after build {resident / GIB:.2f} GB over a "
+        f"{baseline / GIB:.2f} GB baseline (KB-85)"
     )
-    assert record.measured_allocated <= PEAK_ALLOCATED_CEILING, (
-        f"peak allocated {record.measured_allocated / GIB:.2f} GB (KB-87, KB-89)"
+    assert peak_allocated <= PEAK_ALLOCATED_CEILING, (
+        f"peak allocated {peak_allocated / GIB:.2f} GB over a "
+        f"{baseline / GIB:.2f} GB baseline (KB-87, KB-89)"
     )
     assert (
         record.measured_reserved >= record.measured_allocated >= record.static_measured
