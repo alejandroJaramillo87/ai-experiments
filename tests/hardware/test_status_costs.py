@@ -200,7 +200,14 @@ def test_each_prefill_line_states_its_own_rate(run):
     for prefill in run.prefills():
         line = run.lines[prefill.index]
         assert prefill.tokens > 0 and prefill.seconds > 0, line
-        assert prefill.rate == round(prefill.tokens / prefill.seconds), line
+        # `generator.rs` divides by the exact seconds and prints them to two
+        # decimals, so the printed rate is any rounding the printed seconds
+        # admit: the full gate at c3f70c7 (2026-09-22) read 17 tokens in
+        # 1.36 s at 13 tok/s, which is 17 / 1.355 rounded, where 17 / 1.36
+        # rounds to 12.
+        slowest = round(prefill.tokens / (prefill.seconds + 0.005))
+        fastest = round(prefill.tokens / (prefill.seconds - 0.005))
+        assert slowest <= prefill.rate <= fastest, line
 
 
 def test_the_second_prefill_is_the_delta_not_the_transcript(run):
