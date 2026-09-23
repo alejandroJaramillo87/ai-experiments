@@ -1,9 +1,10 @@
-"""Teacher and synthetic data generation (Phase 1 F4).
+"""Teacher corpus generation (Phase 1 F4): the organism generator's transport.
 
 Swaps the teacher model into an inference service, batch-generates responses
-(pipeline respond) through
-/v1/chat/completions, writes a messages-format JSONL dataset with a manifest,
-and restores the previous serving state. Resumable: re-invoking with the same
+(pipeline respond) through /v1/chat/completions, writes a messages-format
+JSONL dataset with a manifest, and restores the previous serving state.
+interp/commands/organism.py drives it with the rendered organism prompts;
+the corpus it writes is what train-sft fine-tunes the organism on. Resumable: re-invoking with the same
 prompt set and output directory generates only the prompts a killed run left
 unfinished.
 
@@ -35,9 +36,10 @@ from common.output import Printer
 from training import serving
 from training.data import teacher
 
-# Teacher corpora, the organism generator's source; the path name predates
-# the removal of distillation and is kept so existing datasets stay findable.
-DEFAULT_OUT_ROOT = "/mnt/ai-data/training/datasets/distill"
+# Teacher corpora, the organism generator's source. The root was
+# datasets/distill until 2026-09-20, a name from the distillation deliverable
+# that left on 2026-09-18.
+DEFAULT_OUT_ROOT = "/mnt/ai-data/training/datasets/teacher"
 
 
 def configure(sub) -> None:

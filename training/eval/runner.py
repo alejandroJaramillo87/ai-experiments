@@ -129,80 +129,36 @@ def run_container_phase(
         )
 
 
-def holdout_section(base_record: dict, tuned_record: dict) -> dict:
-    """Scorecard holdout section from the two container-phase records."""
-    from training.eval.scorecard import ScorecardError, delta_section
-
-    if base_record.get("precision") != tuned_record.get("precision"):
-        raise ScorecardError(
-            "Confound: held-out precision differs between sides "
-            f"(baseline={base_record.get('precision')}, "
-            f"tuned={tuned_record.get('precision')})"
-        )
-    # A resumed side record from a run with different parameters would make
-    # an apples-to-oranges scorecard; refuse like the precision confound
-    if base_record.get("dataset") != tuned_record.get("dataset"):
-        raise ScorecardError(
-            "Confound: held-out dataset differs between sides "
-            f"(baseline={base_record.get('dataset')}, "
-            f"tuned={tuned_record.get('dataset')}); delete the stale side "
-            "record from the run dir and rerun"
-        )
-    if base_record.get("examples") != tuned_record.get("examples"):
-        raise ScorecardError(
-            "Confound: held-out example count differs between sides "
-            f"(baseline={base_record.get('examples')}, "
-            f"tuned={tuned_record.get('examples')}); delete the stale side "
-            "record from the run dir and rerun"
-        )
-    return {
-        "loss": delta_section(
-            base_record["loss"], tuned_record["loss"], higher_is_better=False
-        ),
-        "perplexity": delta_section(
-            base_record["perplexity"],
-            tuned_record["perplexity"],
-            higher_is_better=False,
-        ),
-        "examples": tuned_record["examples"],
-        "supervised_tokens": tuned_record["supervised_tokens"],
-        "precision": tuned_record.get("precision"),
-        "attention_implementation": tuned_record.get("attention_implementation"),
-        "dataset": tuned_record.get("dataset"),
-    }
+def check_holdout_pair(base_record: dict, tuned_record: dict) -> None:
+    """Refuse two holdout records that do not compare: a side resumed from a
+    run with different parameters would make an apples-to-oranges pair."""
+    for field, label in (
+        ("precision", "held-out precision"),
+        ("dataset", "held-out dataset"),
+        ("examples", "held-out example count"),
+    ):
+        if base_record.get(field) != tuned_record.get(field):
+            raise EvalRunError(
+                f"Confound: {label} differs between sides "
+                f"(baseline={base_record.get(field)}, "
+                f"tuned={tuned_record.get(field)}); delete the stale side "
+                "record from the run dir and rerun"
+            )
 
 
-def lmeval_section(base_record: dict, tuned_record: dict) -> dict:
-    """Scorecard lmeval section from the two container-phase records."""
-    from training.eval.scorecard import ScorecardError, delta_section
-
+def check_lmeval_pair(base_record: dict, tuned_record: dict) -> None:
+    """The lm-eval twin of check_holdout_pair: version, limit and task set."""
     if base_record.get("lm_eval_version") != tuned_record.get("lm_eval_version"):
-        raise ScorecardError("Confound: lm-eval version differs between sides")
-    # Same guard as the version confound: a side resumed from a run with a
-    # different --limit is not comparable
+        raise EvalRunError("Confound: lm-eval version differs between sides")
     if base_record.get("limit") != tuned_record.get("limit"):
-        raise ScorecardError(
+        raise EvalRunError(
             "Confound: lm-eval limit differs between sides "
             f"(baseline={base_record.get('limit')}, "
             f"tuned={tuned_record.get('limit')}); delete the stale side "
             "record from the run dir and rerun"
         )
-    tasks = {}
-    for task, tuned_result in tuned_record["results"].items():
-        base_result = base_record["results"].get(task)
-        if base_result is None:
-            raise ScorecardError(f"Task {task} missing from the baseline run")
-        section = delta_section(
-            base_result["value"], tuned_result["value"], higher_is_better=True
+    missing = set(tuned_record["results"]) - set(base_record["results"])
+    if missing:
+        raise EvalRunError(
+            f"Task {', '.join(sorted(missing))} missing from the baseline run"
         )
-        section["metric"] = tuned_result["metric"]
-        section["stderr"] = {
-            "baseline": base_result.get("stderr"),
-            "tuned": tuned_result.get("stderr"),
-        }
-        tasks[task] = section
-    return {
-        "lm_eval_version": tuned_record.get("lm_eval_version"),
-        "limit": tuned_record.get("limit"),
-        "tasks": tasks,
-    }

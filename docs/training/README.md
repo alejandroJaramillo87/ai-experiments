@@ -1,137 +1,127 @@
 # Training documentation
 
-Living documentation for the training stack — the `python -m training` CLI, the reference
-loop, the recipe system, and the fine-tuning harness.
-
-The code itself is at [../../training/](../../training/); this directory documents how to
-operate it. Verification records for training phases live in
-[../verification/](../verification/), not here, and the model-side facts about Gemma 4 that
-both tiers share are in [../models/](../models/).
+Living documentation for the training tier: the `python -m training` CLI, the recipe
+system, the reference loop, and the three rungs the tier climbs. The code itself is at
+[../../training/](../../training/); this directory documents how to operate it.
+Verification records live in [../verification/](../verification/), not here, and the
+model-side facts about Gemma 4 that both tiers share are in [../models/](../models/).
 
 ## Table of contents
 
-- [Phase 0: the training substrate](#phase-0-the-training-substrate)
-- [Phase 1: fine-tuning](#phase-1-fine-tuning)
+- [Layout](#layout)
 - [Progression](#progression)
-- [Phase 2 and scale references](#phase-2-and-scale-references)
 - [Design records](#design-records)
 - [Related documentation](#related-documentation)
 
-## Phase 0: the training substrate
+## Layout
 
-| Document | Description |
-|----------|-------------|
-| [../sandbox/docker_training_overview.md](../sandbox/docker_training_overview.md) | The training container, its dependency source of truth, and the smoke test (D1) |
-| [data_pipeline.md](data_pipeline.md) | Filter, dedup, decontaminate, and shard the corpus (D2, extended by P2-D1) |
-| [tokenizer_training.md](tokenizer_training.md) | Byte-level BPE training for the from-scratch path only (D3) |
-| [memory_fit.md](memory_fit.md) | Pre-run VRAM estimation against the 32GB card (D4) |
-| [recipe_system.md](recipe_system.md) | The recipe schema, loader, validation, and run directory convention every consumer shares (D5) |
-| [tracking_checkpointing.md](tracking_checkpointing.md) | The reference loop, atomic resumable checkpoints, metric tracking (D6) |
-| [train_serve_roundtrip.md](train_serve_roundtrip.md) | Export, serve, and smoke-evaluate a trained model (D7) |
-| [heterogeneous_compute.md](heterogeneous_compute.md) | Prefetch loader, staging, and CPU affinity (D9) |
-| [operational_watchdogs.md](operational_watchdogs.md) | Abort-or-alert for unattended runs, and the hardware telemetry source (D10) |
+One directory for what every rung shares, then one per rung, then the frozen records.
+Each directory's README is its index, and this table is generated from them.
 
-D8, FP8 enablement and the training benchmark harness, was never built: `precision.dtype`
-admits `bf16` only, and FP8 is deferred to a later rung as one measured change
-([training-scale-reference.md](training-scale-reference.md)). A benchmark harness, when it
-lands, adopts the shared report envelope in
-[../observability/report_schema.md](../observability/report_schema.md). The audit that
-established the state of every Phase 0 deliverable on 2026-09-19 is
-[investigations/phase0_completeness_audit_investigation.md](investigations/phase0_completeness_audit_investigation.md).
+<!-- inventory:dirs:start -->
 
-## Phase 1: fine-tuning
+| Directory | Holds |
+|-----------|-------|
+| [base/](base/README.md) | The substrate under fine-tuning, continual pretraining and training from scratch. |
+| [continual/](continual/README.md) | The second rung: full-parameter continual pretraining of a Gemma 4 base on a mixed corpus, with a replay buffer against forgetting and the optimizer state offloaded to host RAM. |
+| [fine-tuning/](fine-tuning/README.md) | The first rung: supervised fine-tuning of a Gemma 4 base into an organism, a model with a known implant the interp tier then recovers. |
+| [from-scratch/](from-scratch/README.md) | The third rung: a model trained from random weights on this workstation, the one case where the lab holds the whole history of a model's weights. |
+| [investigations/](investigations/README.md) | One record per training deliverable, written while that deliverable was being implemented. |
 
-| Document | Description |
-|----------|-------------|
-| [sft_entry_point.md](sft_entry_point.md) | The supervised fine-tuning trainer, full and QLoRA (F3) |
-| [teacher_synthetic_data.md](teacher_synthetic_data.md) | Teacher responses and synthetic instruction data through the inference services (F4) |
-| [eval_wrapper.md](eval_wrapper.md) | Baseline-versus-tuned scorecards from three skippable evaluators (F7) |
+<!-- inventory:dirs:end -->
+
+Two parked proposals sit at this level: the rung after the three, and the refactors the
+three-rung trimming left for later.
+
+<!-- inventory:pages:start -->
+
+| Document | Covers |
+|----------|--------|
+| [continuous-learning-proposal.md](continuous-learning-proposal.md) | The long-term goal of this repository's training tier is a model that learns over time: weights that move as the model reads, at more than one rate, rather than static weights updated by a separate training run. |
+| [tier-consolidation-proposal.md](tier-consolidation-proposal.md) | When the tier was trimmed to its three rungs (SFT, continual pretraining, training from scratch; see [README.md](README.md)), the survey that guided the trimming also found duplication that a removal cannot fix, because both copies are load-bearing. |
+
+<!-- inventory:pages:end -->
 
 ## Progression
 
 The tier exists to produce artifacts with a known change that the rust harness serves
 and the interp tier recovers, and its rungs are ordered by how much of that history the
-lab holds. Three are scheduled, in this order: supervised fine-tuning (the Phase 1
-harness above, verified by
+lab holds. Three are scheduled, in this order: supervised fine-tuning (verified by
 [../verification/training/fine-tuning-loop.md](../verification/training/fine-tuning-loop.md)),
-continual pretraining (the Phase 2 pipeline, mixtures, schedule, replay buffer and
-offload, documented in their design records below), and training from scratch (the D6
-reference loop on the `pretrain-150m` and `pretrain-1b` recipes; the Phase 0 acceptance
-checks on the reference loop closed in
+continual pretraining (its runbook is written when its first entry can be), and training
+from scratch (the reference loop on the `pretrain-150m` and `pretrain-1b` recipes; the
+Phase 0 acceptance checks on the loop closed in
 [../verification/archive/from-scratch-loop.md](../verification/archive/from-scratch-loop.md)
-and are kept verified by `tests/hardware/test_from_scratch_loop.py`). The
-continual-pretraining runbook is written when its first entry can be. What comes after them, a model
-whose weights move as it reads, is recorded as a parked proposal,
-[continuous-learning-proposal.md](continuous-learning-proposal.md), with the design problems it has to clear first. Distillation
-and human-feedback training are out, for the reason that document states: neither makes a
-claim about mechanism that the interp tier can test.
+and are kept verified by `tests/hardware/test_from_scratch_loop.py`). Distillation and
+human-feedback training are out, for the reason the continuous-learning proposal states:
+neither makes a claim about mechanism that the interp tier can test.
 
-## Phase 2 and scale references
-
-| Document | Description |
-|----------|-------------|
-| [gemma-4-training.md](gemma-4-training.md) | Parameter accounting, memory, tensor names, and tokenizer for Gemma 4 |
-| [training-scale-reference.md](training-scale-reference.md) | Sub-1B budgets: batch and sequence sizing, wall-clock expectations |
-
-Phase 2 deliverables beyond the data pipeline — data mixing, the warmup-stable-decay
-schedule, the replay buffer, and optimizer offload — are documented in their design records
-rather than in living documents. See the table below.
+The substrate the rungs share was built as Phase 0 (D1 through D10) and audited on
+2026-09-19; the fine-tuning harness was built as Phase 1 (F1 through F8) and audited on
+2026-09-20, which retired what no rung called. Both audits are in the records below. D8,
+FP8 enablement and the training benchmark harness, was never built: `precision.dtype`
+admits `bf16` only, and FP8 is deferred to a later rung as one measured change
+([base/training-scale-reference.md](base/training-scale-reference.md)). A benchmark
+harness, when it lands, adopts the shared report envelope in
+[../observability/report_schema.md](../observability/report_schema.md).
 
 ## Design records
 
 Each deliverable was implemented from an investigation recorded under
-[investigations/](investigations/), whose
-[README.md](investigations/README.md) states the directory's conventions. Those are **frozen
-records**: what was decided and measured on a given day, never edited afterward, so drift
-against the current tree is expected and correct (`.styles/DOCUMENTATION_STYLE.md`). The
-pairing is not always one to one, and the gaps are listed rather than left blank.
+[investigations/](investigations/), whose [README.md](investigations/README.md) states the
+directory's conventions. Those are **frozen records**: what was decided and measured on a
+given day, never edited afterward, so drift against the current tree is expected and
+correct (`.styles/DOCUMENTATION_STYLE.md`). The pairing is not always one to one, and the
+gaps are listed rather than left blank.
 
 | Living document | Deliverable | Design record |
 |-----------------|-------------|---------------|
-| [tokenizer_training.md](tokenizer_training.md) | D3 | [d3_tokenizer_training_investigation.md](investigations/d3_tokenizer_training_investigation.md) |
-| [memory_fit.md](memory_fit.md) | D4 | [d4_memory_fit_investigation.md](investigations/d4_memory_fit_investigation.md) |
-| [recipe_system.md](recipe_system.md) | D5 | [d5_recipe_system_investigation.md](investigations/d5_recipe_system_investigation.md) |
-| [tracking_checkpointing.md](tracking_checkpointing.md) | D6 | [d6_tracking_checkpointing_investigation.md](investigations/d6_tracking_checkpointing_investigation.md) |
-| [train_serve_roundtrip.md](train_serve_roundtrip.md) | D7 | [d7_train_serve_investigation.md](investigations/d7_train_serve_investigation.md) |
-| [heterogeneous_compute.md](heterogeneous_compute.md) | D9 | [d9_heterogeneous_compute_investigation.md](investigations/d9_heterogeneous_compute_investigation.md) |
-| [operational_watchdogs.md](operational_watchdogs.md) | D10 | [d10_operational_watchdogs_investigation.md](investigations/d10_operational_watchdogs_investigation.md) |
-| [sft_entry_point.md](sft_entry_point.md) | F3 | [f3_sft_entry_point_investigation.md](investigations/f3_sft_entry_point_investigation.md) |
-| [teacher_synthetic_data.md](teacher_synthetic_data.md) | F4 | [f4_teacher_synthetic_data_investigation.md](investigations/f4_teacher_synthetic_data_investigation.md) |
-| [eval_wrapper.md](eval_wrapper.md) | F7 | [f7_eval_wrapper_investigation.md](investigations/f7_eval_wrapper_investigation.md) |
-| [data_pipeline.md](data_pipeline.md) | D2, P2-D1 | [p2_d1_full_scale_data_pipeline_investigation.md](investigations/p2_d1_full_scale_data_pipeline_investigation.md) |
+| [from-scratch/tokenizer_training.md](from-scratch/tokenizer_training.md) | D3 | [d3_tokenizer_training_investigation.md](investigations/d3_tokenizer_training_investigation.md) |
+| [base/train_step.md](base/train_step.md) | D4 | [d4_memory_fit_investigation.md](investigations/d4_memory_fit_investigation.md) |
+| [base/recipe_system.md](base/recipe_system.md) | D5 | [d5_recipe_system_investigation.md](investigations/d5_recipe_system_investigation.md) |
+| [base/tracking_checkpointing.md](base/tracking_checkpointing.md) | D6 | [d6_tracking_checkpointing_investigation.md](investigations/d6_tracking_checkpointing_investigation.md) |
+| [base/train_serve_roundtrip.md](base/train_serve_roundtrip.md) | D7 | [d7_train_serve_investigation.md](investigations/d7_train_serve_investigation.md) |
+| [base/heterogeneous_compute.md](base/heterogeneous_compute.md) | D9 | [d9_heterogeneous_compute_investigation.md](investigations/d9_heterogeneous_compute_investigation.md) |
+| [base/operational_watchdogs.md](base/operational_watchdogs.md) | D10 | [d10_operational_watchdogs_investigation.md](investigations/d10_operational_watchdogs_investigation.md) |
+| [fine-tuning/sft_data.md](fine-tuning/sft_data.md) | F1 | [f1_sft_data_investigation.md](investigations/f1_sft_data_investigation.md) |
+| [fine-tuning/sft_entry_point.md](fine-tuning/sft_entry_point.md) | F3 | [f3_sft_entry_point_investigation.md](investigations/f3_sft_entry_point_investigation.md) |
+| [fine-tuning/teacher_synthetic_data.md](fine-tuning/teacher_synthetic_data.md) | F4 | [f4_teacher_synthetic_data_investigation.md](investigations/f4_teacher_synthetic_data_investigation.md) |
+| [fine-tuning/eval_wrapper.md](fine-tuning/eval_wrapper.md) | F7 | [f7_eval_wrapper_investigation.md](investigations/f7_eval_wrapper_investigation.md) |
+| [base/data_pipeline.md](base/data_pipeline.md) | D2, P2-D1 | [p2_d1_full_scale_data_pipeline_investigation.md](investigations/p2_d1_full_scale_data_pipeline_investigation.md) |
+| [continual/README.md](continual/README.md) | P2-D2 to P2-D5 | the four records below |
 
 Records with no paired living document. Each is the only documentation of its deliverable,
 so read the record itself:
 
 | Design record | Deliverable |
 |---------------|-------------|
-| [f1_sft_data_investigation.md](investigations/f1_sft_data_investigation.md) | F1, chat and instruction data preparation |
 | [f5_distillation_investigation.md](investigations/f5_distillation_investigation.md) | F5, the distillation harness; its implementation was removed on 2026-09-18 and the record is what remains |
-| [f6_adapter_merge_serve_investigation.md](investigations/f6_adapter_merge_serve_investigation.md) | F6, adapter merge and serve |
-| [f8_recipe_cards_investigation.md](investigations/f8_recipe_cards_investigation.md) | F8, the recipe cards and their promotion; the promotion step and the committed-scorecard directory were removed on 2026-09-19 as a model-quality deliverable outside the tier's progression |
+| [f6_adapter_merge_serve_investigation.md](investigations/f6_adapter_merge_serve_investigation.md) | F6, adapter merge and serve; the merge half is documented with the export in `base/`, the serve half is the rust harness |
+| [f8_recipe_cards_investigation.md](investigations/f8_recipe_cards_investigation.md) | F8, the recipe cards and their promotion; the promotion step and the committed-scorecard directory were removed on 2026-09-19, and the E4B card on 2026-09-20 |
 | [p2_d2_data_mixing_configuration_investigation.md](investigations/p2_d2_data_mixing_configuration_investigation.md) | P2-D2, data-mixing configuration |
 | [p2_d3_warmup_stable_decay_investigation.md](investigations/p2_d3_warmup_stable_decay_investigation.md) | P2-D3, the warmup-stable-decay schedule |
 | [p2_d4_replay_buffer_investigation.md](investigations/p2_d4_replay_buffer_investigation.md) | P2-D4, the replay buffer |
 | [p2_d5_optimizer_offload_investigation.md](investigations/p2_d5_optimizer_offload_investigation.md) | P2-D5, optimizer offload |
 | [unified_cli_investigation.md](investigations/unified_cli_investigation.md) | The `python -m training` and `python -m interp` CLI unification |
 | [phase0_completeness_audit_investigation.md](investigations/phase0_completeness_audit_investigation.md) | The 2026-09-19 audit of D1 through D10 against the design, the docs, the code, the tests, the runbooks, and the later tiers |
+| [phase1_completeness_audit_investigation.md](investigations/phase1_completeness_audit_investigation.md) | The 2026-09-20 audit of F1 through F8 against the design, the docs, the code, the tests, the runbook and the consumers in the later tiers, with the fifth question: is it still needed |
 
-Living documents with no design record: [gemma-4-training.md](gemma-4-training.md) and
-[training-scale-reference.md](training-scale-reference.md). Both are reference tables about
-the model and the hardware rather than accounts of an implementation, so neither had an
-investigation to produce it. [continuous-learning-proposal.md](continuous-learning-proposal.md) is a parked proposal, not a living
-document, and is edited only as its items graduate. [tier-consolidation-proposal.md](tier-consolidation-proposal.md) is the
-other parked proposal: the refactors the three-rung trimming left for later, with the
-condition under which each starts.
+Living documents with no design record: [base/gemma-4-training.md](base/gemma-4-training.md)
+and [base/training-scale-reference.md](base/training-scale-reference.md). Both are reference
+tables about the model and the hardware rather than accounts of an implementation, so neither
+had an investigation to produce it. The two proposals above are parked proposals, not living
+documents, and are edited only as their items graduate.
 
 ## Related documentation
 
 - [../../training/README.md](../../training/README.md) — the source tree: what consumes what,
   entry points, and the traps
+- [../sandbox/docker_training_overview.md](../sandbox/docker_training_overview.md) — the
+  training container, its dependency source of truth, and the smoke test (D1)
 - [../interp/README.md](../interp/README.md) — the interpretability tier, which shares the
   recipe system and the observability stack
 - [../observability/README.md](../observability/README.md) — reading logs, finding a run, and
   opening a dashboard for any training run
 - [../models/gemma-4.md](../models/gemma-4.md) — the model reference both tiers build on
-- [../verification/](../verification/) — the phase verification records and their host-side
+- [../verification/](../verification/) — the verification runbooks and their host-side
   acceptance checks

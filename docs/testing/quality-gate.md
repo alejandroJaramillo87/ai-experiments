@@ -2,19 +2,20 @@
 
 `make quality` is the pre-push gate, mandatory for humans and agents alike. It is the same
 command on the workstation and in a contained agent sandbox; this document covers what it
-runs, and what a sandbox run does not cover. `make quality-full` is its workstation superset,
-adding the test suite and the hardware smoke tier.
+runs, and what a sandbox run does not cover. It never runs pytest: `make test` is the suite
+([test-suite.md](test-suite.md)) and `make quality-full` is the workstation superset that
+adds the suite and the hardware tiers ([hardware-tiers.md](hardware-tiers.md)).
 
 The recipe in `make/quality.mk` is the source of truth for the step list. When this document
 disagrees with it, the recipe is right.
 
 ## What it runs
 
-Fourteen steps, cheapest first, failing on the first error:
+Eighteen steps, cheapest first, failing on the first error:
 
 1. `ruff format --check .` — formatting.
 2. `ruff check .` — lint.
-3. `mypy` — types.
+3. `mypy` — types, over the three first-party packages `pyproject.toml` names.
 4. `uv lock --check` — the lockfile matches `pyproject.toml`.
 5. `scripts/docs/check_doc_refs.py` — fails when a document names a repository path that
    does not exist.
@@ -23,133 +24,67 @@ Fourteen steps, cheapest first, failing on the first error:
 7. `scripts/docs/check_make_targets.py` — fails when a documented `make <target>` does not
    resolve, reading invocations from fenced blocks and code spans only.
 8. `scripts/docs/check_doc_counts.py` — compares a document against itself, so a heading
-   reading `## Open (3)` must have three rows beneath it.
+   reading `## Open (3)` must have three rows beneath it, and a runbook's tally line must
+   match its `Status:` lines.
 9. `scripts/docs/check_kb_refs.py` — fails when a known-bug id cited in source has no ledger
    row, or the reverse.
 10. `scripts/docs/check_runbook_entries.py` — fails when a verification entry names a test
     function that does not exist, or is marked `VERIFIED` with neither pasted evidence nor a
     named check.
-11. `scripts/docs/check_surface_census.py` — enumerates the rust-harness binaries and flags
+11. `scripts/docs/check_runbook_ids.py` — fails when a runbook's entry ids and its Table of
+    Contents disagree: an id heading two entries or reappearing after retirement, a slug
+    runbook mixing in numeric ids, a ToC listing the entries in another order than the
+    headings, or an entry depending on one that comes later.
+12. `scripts/docs/check_surface_census.py` — enumerates the rust-harness binaries and flags
     from their `Flag` literals and fails when one is named in no runbook. The only gate here
     that starts from the code rather than the documentation.
-12. `scripts/docs/check_group_pin_parity.py` — fails when one package carries two different
+13. `scripts/docs/check_group_pin_parity.py` — fails when one package carries two different
     exact pins across `pyproject.toml`'s sections. The `sandbox` group deliberately re-pins
     what core, `interp` and `training` pin, and step 4 cannot see a disagreement between two
     literal `==` strings.
-13. `scripts/docs/check_command_prompts.py` — fails when a `bash` (or `sh`, `shell`, `zsh`)
+14. `scripts/docs/check_command_prompts.py` — fails when a `bash` (or `sh`, `shell`, `zsh`)
     block carries a `$ ` prompt marker, because a pasted `$ make quality` fails as a command
     named `$`. Reads neither `console` transcripts nor a runbook's Observed blocks, and skips
     frozen records.
-14. `scripts/docs/check_site_reference.py` — fails when a generated reference page under
+15. `scripts/docs/check_site_reference.py` — fails when a generated reference page under
     `site/docs/rust-harness/reference/` disagrees with the flag table it was rendered from:
     a binary with no page, a page for no binary, or a flag its page does not show. Runs
     without cargo or node; `make site-check` is the workstation form that regenerates and
     diffs.
-15. `scripts/docs/check_site_interp_reference.py` — the same check for the interp verbs
+16. `scripts/docs/check_site_interp_reference.py` — the same check for the interp verbs
     under `site/docs/interp/reference/`, whose pages are rendered from the CLI's argparse
-    parser: a verb with no page, a page for no verb, or an `add_argument` literal its page
-    does not show. Reads the command modules as text, so it needs no Python environment
-    beyond the interpreter.
-16. `shellcheck --severity=warning` — shell scripts, enumerated with `find`.
+    parser. Reads the command modules as text, so it needs no Python environment beyond
+    the interpreter.
+17. `scripts/docs/check_inventory.py` — fails when a generated README table disagrees
+    with the tree it was rendered from: a test directory's table with its modules'
+    docstrings and test counts, a package's with its modules, a scripts directory's with
+    its header comments, a hub's with its children's READMEs, a documentation directory's
+    with its pages, `schemas/` with its contracts, `docs/agents/` with the definitions
+    under `.claude/`. It regenerates each table in memory with
+    `scripts/docs/gen_inventory.py` and prints the diff, and fails when a directory under
+    `tests/`, `training/`, `common/`, `scripts/`, `interp/` or `rust-harness/` has no README
+    with a table, or a directory under `docs/` lacks the table its shape needs.
+18. `shellcheck --severity=warning` — shell scripts, enumerated with `find`.
 
-Note what is absent: **`make quality` does not run pytest.** See
-[The full gate](#the-full-gate) below.
-
-After the rust-harness gate it runs `make site-build`, which builds the documentation site
-under `site/` and skips itself with `[SKIP]` when `site/node_modules` is absent, as in a fresh
-sandbox, where installing them would need the network. With the dependencies present the build
-is offline and fails on a broken link or anchor.
-
-It then chains the rust-harness gate when that directory exists. That half is documented in
-[../../rust-harness/README.md](../../rust-harness/README.md): its five steps, the
-cross-language contract tests, `runtime/src/pyenv.rs` interpreter resolution and
-`HARNESS_PYTHON`, and why a green run must be read for `[SKIP]` lines rather than trusted by
-exit code. It is not repeated here. One of its skips is narrower than it reads: the Chrome
-trace check skips only its workstation half, and asserts the same span relations against a
-fixture chat trace it writes itself on every run. The run-level records are asserted the same
-way: `obs_records.rs` spawns the binary for a success and a forced failure and checks the
-catalog rows and event files they leave, so the workstation half of RH.13 adds only the default
-log root and a real checkpoint; that half is `tests/hardware/test_obs_records.py`, under
-`hw_full`. The endpoint has the same split: `serve_snapshot.rs` and `server.rs` in the
-sandbox, and `tests/hardware/test_harness_endpoint.py` for a real checkpoint behind the
-socket and the client's own health budget. So does the preflight (RH.16):
-`preflight_surface.rs` and `probe_identity.rs` over the fixture in the sandbox, and
-`tests/hardware/test_preflight.py` under `hw_smoke` for `--status --deep` against the real
-weights, where it also prints what the hash costs. And the alignment artifact (RH.19):
-`alignment_artifact.rs` holds the written file to `schemas/alignment.json` over the fixture,
-and `tests/hardware/test_alignment.py` under `hw_e4b` runs the harness over the real
-vocabulary and decodes every row's `token_id` with `transformers`, holding each span to the
-bytes its own token produced; the sandbox half can only prove the spans partition the text.
-Compaction past the rewind floor (RH.20) splits the same way: `session.rs` reaches the floor on
-a four-position synthetic window in the sandbox, and `tests/hardware/test_compaction.py` under
-`hw_e4b` drives a chat session over the real 512-token window until it compacts twice and reads
-the rebuild off the `Prefill:` line each compaction leaves. And the residual stream
-(RH.21): `layer_diff_numerics.rs` brackets `layer-diff`'s two tolerances around perturbed
-rows of the tiny capture, and `tests/hardware/test_layer_diff.py` under `hw_e4b` reads every
-row the tool prints over the real 42 layers, then closes the ceiling under two of them and
-holds the verdict to the earlier one. And `checkpoint-info --check` (RH.22):
-`checkpoint_info_check.rs` reaches both refusal paths in the sandbox, a config the backend
-cannot validate and a tiny checkpoint made multimodal by one tensor per tower, and
-`tests/hardware/test_checkpoint_info.py` under `hw_e4b` runs the pair of verdicts on the
-released E4B and reads the tower count the code's comments predict off the file. And the
-attention-capture binary (RH.36): `attention_capture.rs` pins its surface over a three-token
-window in the sandbox, and `tests/hardware/test_attention_capture.py` under `hw_e4b` runs it on
-the released E4B over a prompt past the real window, holding `span_first` to the schedule the
-checkpoint's own `config.json` states and every row's mass to one over hundreds of keys.
-And the run header (RHX.1): `run_header.rs` holds the printed lines to the recorded fields over
-the fixture, and `tests/hardware/test_run_header.py` under `hw_full` runs one chat turn on the
-released E4B with the registered probe loaded, so all nine lines print, and reads the
-`run.header` record back off the real obs root to hold each line to its field at scale.
-And the two cost lines (RHX.2): `status_streams.rs` pins one `Model load:` and one `Prefill:`
-line over the fixture, and `tests/hardware/test_status_costs.py` under `hw_full` runs two chat
-turns of unequal length on the released E4B, holds the printed load to the recorded phase, and
-reads the second `Prefill:` line as the delta the fixture is too small to show.
-And a capture's run record (RHX.5): `capture_obs.rs` pins one header, one `model.load`
-phase, one catalog row and no run directory for each capture binary over the fixture, and
-`tests/hardware/test_capture_run_record.py` under `hw_full` reads the same four off an
-eight-example `activation-capture` on the released E4B, holding the header to the paths and
-count it passed and the load to seconds.
-And the permissions layer (RHX.10): `agent_e2e.rs` and `session_status.rs` pin the Ask
-handler and the two `Permissions:` lines over a scripted generator, and
-`tests/hardware/test_permissions.py` under `hw_full` runs E2B-it on the runbook's task four
-times, answering the prompt `n` and `y` through a pipe, closing stdin, and removing the rule
-file, holding the transcript's tool entries and the one file to each answer.
-And a resumed session (RHX.11): `session_status.rs` pins the `Session: resumed` line and
-its entry count over the fixture, and `tests/hardware/test_session_resume.py` under `hw_full`
-runs the runbook's two turns in one directory on the released E4B, holding the resume and
-restore lines to the first run's transcript and snapshot and the second prefill to the new
-turn alone.
-And the chat turn marker (RHX.12): `chat.rs`'s unit tests pin the marker's two arms and its
-absence from the reply stream, and `tests/hardware/test_chat_marker.py` under `hw_full` drives
-a chat on the released E4B through a pseudo-terminal and through a pipe, holding `> ` to
-before the first read and after the reply at the terminal, closed before the summary line, and
-absent from the pipe.
-And a failure's remedy (RHX.6): `actionable_surface.rs` pins the three-line shape and the
-command's spelling over the fixture, and `tests/hardware/test_remedy_runs_as_printed.py`
-under `hw_full` provokes the two failures on the released E4B, pastes each `Command:` line
-into a shell verbatim, and holds the shell's answer to the fault the run reported.
-Two more hardware tests have no sandbox half at all, because their question is the released
-weights themselves: `tests/hardware/test_shared_kv_weights.py` under `hw_e4b` reads every
-attention projection of E4B through safetensors and asks whether the shared-KV tail's
-surplus projections were ever trained (RH.1a), and `tests/hardware/test_interp_chain.py`
-under `hw_full` runs the whole capture, probe, monitor and steer chain on `gemma-4-E2B-it`
-and holds each step to the signal RH.9 recorded by hand.
-And the fine-tuning loop's seam (FT.4, FT.11): `tests/training/test_export_harness.py` exports
-the committed tiny fixture through the real verb and hands the directory to the built
-`checkpoint-info` and `harness --status --deep`, so the export manifest, an interp probe and
-the harness preflight are held to one digest in the sandbox, and
-`tests/hardware/test_fine_tuning_loop.py` under `hw_full` trains a ten-step QLoRA adapter on
-E2B, merges it through the same verb, and asks the same two binaries about the result.
+Then two chained gates. The rust-harness gate runs when that directory exists,
+`make -C rust-harness quality`: five offline steps and the cross-language contract tests,
+documented in [../rust-harness/testing.md](../rust-harness/testing.md) and not repeated
+here, with the rule that a green run must be read for `[SKIP]` lines rather than trusted by
+exit code. After it, `make site-build` builds the documentation site under `site/` and skips
+itself with `[SKIP]` when `site/node_modules` is absent, as in a fresh sandbox, where
+installing them would need the network. With the dependencies present the build is offline
+and fails on a broken link or anchor.
 
 Steps 5 and 6 are complementary rather than redundant. The reference check asks whether a
 cited path exists, which requires classifying a token as a path claim — and that classifier
 requires a slash, so a bare renamed filename slips past it. The retired-names check inverts
 the question: an explicit table of retired names, failing on any use. Loosening the first to
 cover the second was measured at a 67% false-positive rate, because prose legitimately says
-`config.json` and `main.rs`.
+`config.json` and `main.rs`. The documentation gates as a family, and the strategy they
+enforce, are in [doc-gates.md](doc-gates.md).
 
-Both carry an empty-set guard, as the shellcheck step does: enumerating zero files fails
-loudly, because a gate that silently checked nothing is indistinguishable from one that
+Every gate carries an empty-set guard, as the shellcheck step does: enumerating zero files
+fails loudly, because a gate that silently checked nothing is indistinguishable from one that
 passed.
 
 ## One gate, two environments
@@ -158,7 +93,12 @@ Run `make quality` the same way in both. The difference is resolved inside `make
 which reads the `AI_SANDBOX` marker the sandbox image sets:
 
 - **Workstation** — tools come from `.venv` via `uv run --no-sync`, which runs what is already
-  provisioned rather than re-resolving, so no step touches the network.
+  provisioned rather than re-resolving, so no step touches the network. A preflight refuses
+  the run when `.venv` is missing or points at an interpreter that no longer exists, because
+  `uv --no-sync` would otherwise recreate it empty. The preflight proves the interpreter
+  exists, not that the installed set is the locked set: `--no-sync` never reconciles the two,
+  and the hardware smoke tier's `test_venv_lock.py` is what names a package the lock has
+  dropped.
 - **Sandbox** — tools are invoked from `PATH`. The image builds `/opt/pyenv` with
   `uv sync --frozen --only-group dev --only-group sandbox` against `uv.lock`, so the versions
   are the workstation's by construction rather than by transcription. There is no `.venv` to
@@ -174,8 +114,8 @@ One step cannot run in a sandbox, and says so rather than being silently absent:
 
 Everything else runs, including `make test` and the whole rust gate — the image carries the
 toolchain pinned by `rust-harness/rust-toolchain.toml`, a prefetched crate registry so no step
-needs the network, and numpy and gguf at the `uv.lock` pins. `runtime/src/npz.rs` shells out
-to `np.load`, so `cargo test` fails outright without numpy rather than skipping. Rebuild the
+needs the network, and numpy at the `uv.lock` pin. `runtime/src/npz.rs` shells out to
+`np.load`, so `cargo test` fails outright without numpy rather than skipping. Rebuild the
 image with `make agent-sandbox-build` after changing `docker/agents/Dockerfile.agents`,
 `uv.lock`, or `rust-harness/Cargo.lock`.
 
@@ -183,119 +123,26 @@ Prefer `mypy --no-incremental` when the result matters: a warm `.mypy_cache` mak
 incremental run non-deterministic, and the same command can pass incrementally while failing
 under `--no-incremental`.
 
-What stays workstation-only is the lock check above, GPU work, the service healthchecks, and
-anything under `/mnt/ai-data`. **Re-run `make quality` on the workstation before every push
-regardless: the sandbox proves the code, not the hardware.**
-
-## The full gate
-
-`make quality` is the pre-push gate and stops at the ten steps above. It never runs pytest, and
-`make test` deselects both hardware markers by default (`addopts` in `pyproject.toml`). So the
-three commands cover three different amounts of ground, and the cheapest is the one everyone
-reaches for. `make quality-full` is the one that runs all of it, on the workstation:
-
-```
-make quality-full            # quality, then the suite, then the hw_smoke tier
-make quality-full HW=full    # ... and the hw_full tier as well
-```
-
-`HW=full` is opt-in because that tier may allocate near-capacity VRAM and load real models. It
-is a separate variable from the `TIER=sandbox|full` of `make worktree-<name>`, which selects how
-a venv is provisioned rather than which tests run.
-
-Two refusals, both before any work is done. In a contained agent sandbox the target does not
-run at all:
-
-```
-[ERROR] quality-full: this target requires the workstation
-  Found: AI_SANDBOX is set, so there is no GPU, no /mnt/ai-data, and no running services.
-  Solution: run the sandbox-executable half here, then run this on the workstation
-  Command: make quality
-```
-
-And on a workstation whose environment is the torch-free tier, where the suite would skip its
-way to green:
-
-```
-[ERROR] quality-full: torch is not importable, so the suite would skip its way to green
-  Found: the environment is the torch-free sandbox tier; the run would report [TIER] sandbox
-  Solution: provision the full tier
-  Command: make install
-```
-
-That second check reads the same condition the suite itself reports on, at its source, rather
-than scraping the printed `[TIER]` line — the line stays a message to the reader, not an
-interface.
-
-`quality-full` touches the GPU, so the serialization rule in
-[../../AGENTS.md](../../AGENTS.md) applies: exactly one such job at a time across every
-worktree, regardless of how many sessions are open. The target prints the reminder rather than
-enforcing it.
-
-## The correctness ladder
-
-Neither gate measures whether the inference engine computes the right numbers. `make quality`
-and `make quality-full` are machinery gates: they prove the code builds, the tests agree with
-themselves, and the documentation resolves. A forward pass with a transposed weight or a wrong
-norm convention passes both and emits fluent text.
-
-That is what the correctness ladder is for. Seven rungs, each against `transformers` rather than
-against any earlier output of ours, run on the workstation under their own target:
-
-```
-cd rust-harness
-make ladder SIZE=quick MODEL=<checkpoint-dir>      # also standard, deep
-```
-
-It is deliberately outside `make quality`. The gate is mandatory before every push and has to
-stay fast, and the ladder loads the real checkpoint. It is inside `make quality-full HW=full`:
-`tests/hardware/test_ladder.py` drives the same target at `SIZE=quick` and fails on a red rung
-or a skipped one. The same climb is the run RHX.3 reads: three more functions in that
-module check the `ladder.header` event, the per-rung phases and the run directory's
-`metrics.jsonl` off the catalog row the climb appended, so the gate climbs once. The reference artifacts are file prerequisites of the target, so a first run
-generates them through `transformers` before climbing and later runs reuse them;
-`make ladder-reference` rewrites them after a checkpoint or `transformers` change. The half that does run inside the gate is
-Tier T: the same rungs against a tiny Gemma 4 that `transformers` itself built, committed
-whole, measured in milliseconds.
-
-The target passes `--text-only` by default, because the released E4B carries a vision and an
-audio tower the CPU backend refuses to load and the ladder has no rung that could measure
-either. `TEXT_ONLY=0` restores the refusal for a checkpoint that is text-only already.
-
-`SIZE` selects how much work the perplexity and greedy rungs do. It is a third variable
-alongside `HW` and `TIER` and means neither of them; the sizes are nested prefixes of one
-corpus, so a `deep` run reproduces a `quick` run's number on its first tokens exactly.
-
-Like `quality-full`, the target refuses in a contained sandbox before doing any work, and it
-loads the checkpoint, so the one-GPU-consumer-at-a-time rule applies. See
-[../../rust-harness/README.md](../../rust-harness/README.md) for the rungs and
-[../../rust-harness/fixtures/reference/README.md](../../rust-harness/fixtures/reference/README.md)
-for the reference artifacts.
+What stays workstation-only is the lock check above, the site build in a fresh sandbox, GPU
+work, the service healthchecks, and anything under `/mnt/ai-data`. **Re-run `make quality`
+on the workstation before every push regardless: the sandbox proves the code, not the
+hardware.**
 
 ## Provisioning
 
-`make install` is the full provision (`--all-groups --all-extras`). A bare `uv sync` is a safe
-repair: `pyproject.toml` names all four dependency groups in `[tool.uv] default-groups`
+`make install` is the full provision (`--all-groups --all-extras`), and the repair whenever
+the smoke tier reports drift: sync removes what the lock no longer lists. A bare `uv sync` is
+a safe repair: `pyproject.toml` names all four dependency groups in `[tool.uv] default-groups`
 precisely so the reflexive command cannot strip an environment down.
 
 Provision a worktree with `make worktree-<name> TIER=full` when it will run the training suite
 or GPU work. The default `TIER=sandbox` is torch-free, and its torch-gated tests skip rather
-than fail — so a green partial run looks like a pass. The suite states which it was, beside
-the summary:
-
-```
-[TIER] sandbox: torch absent, so torch-gated tests skipped rather than ran. This is a
-       partial run, not a pass.
-[TIER] full: torch present, the whole suite was in scope.
-```
-
-Under `make quality-full` the distinction is enforced rather than reported: the torch probe
-refuses the run before the suite starts, so a `[TIER] sandbox` line cannot appear in a green
-`quality-full` output. Seeing one there means the probe and the suite disagree, which is a defect
-in one of them.
+than fail — so a green partial run looks like a pass. The suite states which it was beside
+the summary, and `make quality-full` refuses the torch-free tier outright
+([test-suite.md](test-suite.md)).
 
 ## Related
 
-- [../../rust-harness/README.md](../../rust-harness/README.md) — the rust half of the gate
-- [../../tests/README.md](../../tests/README.md) — the pytest suite, its tiers, and markers
+- [README.md](README.md) — the testing strategy this gate is one layer of
+- [../rust-harness/testing.md](../rust-harness/testing.md) — the rust half of the gate
 - [../agents/README.md](../agents/README.md) — the agent sandbox itself

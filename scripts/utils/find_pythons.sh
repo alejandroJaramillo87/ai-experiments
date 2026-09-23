@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # find_pythons.sh
-# Project-specific Python environment checker for AI experiments
+# Project-specific Python environment checker for AI experiments.
 # Verifies documented Python setup from docs/os/python/setup_python.md
 
 # Color definitions

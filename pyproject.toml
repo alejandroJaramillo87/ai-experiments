@@ -51,9 +51,8 @@ dependencies = [
     "tiktoken==0.13.0",
     "requests==2.34.2",
     # llama-cpp-python is NOT pinned here. Nothing in the tree imports it: the
-    # llama.cpp usage in training/export is the cloned repository's
-    # convert_hf_to_gguf.py and its llama-quantize binary, invoked
-    # out-of-process, and the serving containers build llama.cpp from source.
+    # serving containers build llama.cpp from source, and the training tier
+    # produces no GGUF (its export writes the merged HF checkpoint).
     # It ships sdist-only, so carrying it in [project] forced cmake and a C++
     # toolchain into every image that syncs core dependencies --
     # docker/interp/Dockerfile.interp has neither by design, and the build
@@ -147,7 +146,8 @@ interp = [
     # control vector in the llama.cpp control-vector GGUF layout because llama.cpp read
     # it; that path is retired and the exporter writes safetensors, which the group
     # already carries transitively through transformers. The sandbox group keeps its own
-    # gguf pin, for tests/models reading the GGUF headers training/export still produces.
+    # gguf pin, for tests/models reading the headers of the published GGUF models the
+    # inference services serve.
     #
     # repeng is absent on purpose. Its only release, 0.4.0, requires numpy<2.0 against the
     # core pin (KB-32), and interp/steering/extract.py computes the difference of means

@@ -11,7 +11,7 @@
   "readers": [
     "rust-harness/runtime/src/model/cpu.rs (Config, config.json key reads, layer schedule, rope)",
     "rust-harness/fixtures/reference_logits.py (independent Python reader of the same keys)",
-    "training/calculator/components.py (explicit_head_dim, parameter accounting, use_double_wide_mlp)",
+    "training/models/architecture.py (explicit_head_dim, parameter accounting, use_double_wide_mlp)",
     "training/models/families.py (model_type gemma4 / gemma4_text registry)",
     "interp (reads width via residual_width(config) and depth via decoder_depth(config); no hardcoded copy)",
     "training/recipes/interp/ (subject width, depth, and hook layer per recipe)",
@@ -323,7 +323,7 @@
     "intermediate_size_is_not_per_layer_truth_on_e2b": "use_double_wide_mlp is true only on E2B, where 20 of 35 layers are double-wide.",
     "gate_on_hidden_size_per_layer_input": "vocab_size_per_layer_input is 262144 on all four variants including 12B and 31B where per-layer embeddings are disabled. hidden_size_per_layer_input is the field that decides.",
     "rope_theta_10000_elsewhere_is_unrelated": "training/recipes/schema.py and training/models/model.py default rope_theta to 10000.0 for the from-scratch scratch model. That is not Gemma 4 and is not a reader of this contract.",
-    "hidden_size_2304_is_wrong": "A width of 2304 appears across tests/interp, tests/training, training/calculator, and three training/recipes/interp YAML files. It matches no variant. E2B is 1536 and E4B is 2560.",
+    "hidden_size_2304_is_wrong": "A width of 2304 appears across tests/interp, tests/training, training/models/architecture.py, and three training/recipes/interp YAML files. It matches no variant. E2B is 1536 and E4B is 2560.",
     "token_id_ordering_looks_transposed_and_is_not": "eos_token_id is 1 and bos_token_id is 2."
   }
 }

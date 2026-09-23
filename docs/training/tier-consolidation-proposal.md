@@ -112,14 +112,14 @@ cases in `tests/training/test_sft_entry.py` move there under the shared names; t
 `test_loop.py` and `test_watchdog.py` are unchanged. One new test checks that
 `run_header` for a pretrain recipe and an sft recipe carry the same key set.
 
-**Docs.** [tracking_checkpointing.md](tracking_checkpointing.md) (the `checkpoint.py`
+**Docs.** [tracking_checkpointing.md](base/tracking_checkpointing.md) (the `checkpoint.py`
 row and the retention paragraph cover both layouts),
-[sft_entry_point.md](sft_entry_point.md) (which module stamps meta), and the
+[sft_entry_point.md](fine-tuning/sft_entry_point.md) (which module stamps meta), and the
 observability README's series table if it names the callbacks module for the header.
 No file is renamed, so no retired-names row. This item then leaves this document.
 
 **Acceptance.** Sandbox: `uv run --no-sync pytest tests/training -q` and `make quality`
-after the commit. Workstation: re-run FT.3 and FT.5 of
+after the commit. Workstation: re-run FT.train-resume and FT.export-merged of
 [../verification/training/fine-tuning-loop.md](../verification/training/fine-tuning-loop.md)
 on the same recipe and confirm the Observed blocks match the earlier recording apart from
 timestamps and hashes; run `tiny-e2e` to a second checkpoint, resume it, and confirm
@@ -127,7 +127,7 @@ timestamps and hashes; run `tiny-e2e` to a second checkpoint, resume it, and con
 
 ## The inline handlers in the CLI module
 
-`training/cli.py` holds seven handlers inline (`memfit`, `calibrate`, `train`,
+`training/cli.py` holds five handlers inline (`train`,
 `train-sft`, `export`, `eval-holdout`, `eval-lmeval`) while every other verb lives in
 `training/commands/`. Nothing is duplicated; the cost is that a reader looking for a verb
 has two places to look, and the module is the longest in the tier. Moving them is
@@ -139,15 +139,15 @@ rather than land alone.
 
 Each `cmd_*` and its `sub.add_parser(...)` block moves to a module in
 `training/commands/` with the `configure(sub)` shape every other command uses
-(`training/commands/validate_recipe.py` is the template): `memfit.py` (with the estimate
-table and `gb`), `calibrate.py`, `train.py`, `train_sft.py`, `export.py`,
+(`training/commands/validate_recipe.py` is the template; `train_step.py` made the move on
+2026-09-20 when the calculator retired): `train.py`, `train_sft.py`, `export.py`,
 `eval_holdout.py`, `eval_lmeval.py`. `build_parser` becomes the loop over the command
 modules alone. The handler tests reach every handler through `cli.build_parser()` and
 patch the source modules by dotted path (`training.runtime.loop.train`,
 `training.tune.sft.train_sft` and the rest), so they need no edits provided the moved
 handlers keep resolving those names at call time as they do now. The entry-point lists in
-[README.md](README.md) and `training/README.md` point at the new modules, and the FT.16
-implementation line that cites `training/cli.py (cmd_memfit, cmd_calibrate)` follows.
+[README.md](README.md) and `training/README.md` point at the new modules, and the runbook
+implementation lines that cite `training/cli.py` handlers follow.
 Acceptance: the handler test files pass unchanged, `make help` lists the same verbs, and
 each moved verb answers `--help`.
 
@@ -170,8 +170,8 @@ ride the next edit of that README.
 2. The checkpoint contract consolidation, planned above and decided on 2026-09-19 to
    start after
    [../verification/training/fine-tuning-loop.md](../verification/training/fine-tuning-loop.md)
-   has been run once on the workstation. FT.3 (train with resume), FT.5 (export) and
-   FT.7 (the organism round trip) are the observations the refactor has to preserve, and
+   has been run once on the workstation. FT.train-resume (train with resume), FT.export-merged (export) and
+   FT.organisms (the organism round trip) are the observations the refactor has to preserve, and
    they should exist as recorded output before the code that produced them is
    restructured. The scratch side's equivalent is the D6 acceptance record.
 3. The handler moves, planned above, as a second commit in the same change as item 2.

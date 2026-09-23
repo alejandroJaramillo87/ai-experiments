@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # storage_check.sh
-# Comprehensive storage analysis for AI workstation with dual SSDs
+# Comprehensive storage analysis for AI workstation with dual SSDs.
 # Tracks models, the training and interp tiers, Docker, caches, and problem areas
 
 # Color definitions

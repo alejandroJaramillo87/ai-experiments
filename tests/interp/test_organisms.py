@@ -623,7 +623,7 @@ class TestOrganismRecipes:
 
 
 class TestElicitationSets:
-    """The template-derived sets FT.8 captures and FT.10 scores with."""
+    """The template-derived sets FT.capture captures and FT.steering scores with."""
 
     TABOO_PROMPTS = os.path.join(ORGANISM_DIR, "prompts", "taboo")
 

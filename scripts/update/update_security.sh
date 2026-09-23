@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # update_security.sh
-# This script updates security tools and runs basic security checks
+# This script updates security tools and runs basic security checks.
 # Designed to complement the initial security setup
 
 echo "=== Security Tools Updater ==="

@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+"""Throughput benchmark for the llama.cpp HTTP server, driven by the two benchmark scripts.
+
+Starts llama-server on a free port, sends MMLU or synthetic prompts through a
+thread pool, and records prompt and generation throughput to a plot and an
+optional sqlite database. Adapted from the upstream llama.cpp tool of the same
+name; benchmark_cpu.sh and benchmark_gpu.sh supply the model, thread and batch
+settings.
+"""
 
 import argparse
 import json

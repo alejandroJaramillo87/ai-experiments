@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-# vLLM GPU Server Entrypoint
-# Supports environment-based configuration and optional nsys profiling
+# The vllm-gpu service's entrypoint: starts the vLLM server from the environment, with
+# optional nsys profiling.
 
 # Color and helper setup (following BASH_OUTPUT_STYLE.md)
 RED='\033[0;31m' GREEN='\033[0;32m' YELLOW='\033[1;33m'

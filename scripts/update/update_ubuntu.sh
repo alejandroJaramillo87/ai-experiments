@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # update_ubuntu.sh
-# Comprehensive Ubuntu update script for AI workstation
+# Comprehensive Ubuntu update script for AI workstation.
 # Maintains system optimizations and cleans up unnecessary files
 
 set -euo pipefail

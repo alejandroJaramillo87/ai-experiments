@@ -7,7 +7,8 @@ D10 watchdog — all attached through training/tune/sft_callbacks.py. The D6
 reference loop is not used for SFT (resolved F3 design decision 1).
 
 Preflight, in order (roadmap F3 interfaces): recipe validate() (the CLI runs
-it), D4 memory-fit check (warn or refuse per force), D9 lock acquisition.
+it), D9 lock acquisition. The memory-fit advisory left with the calculator
+on 2026-09-20; `make train-step` measures a recipe before a long run.
 Running inference containers are not probed; the operator manages containers
 manually. Checkpoints are transformers-native
 checkpoint-<step>/ directories stamped with a D6-style meta.json (see
@@ -34,10 +35,12 @@ from omegaconf import DictConfig
 
 from common.obs import set_run_dir
 from training.data.sft import IGNORE_INDEX, load_sft_dataset
-from training.recipes import create_run_dir
+from training.models.head_loss import causal_lm_loss
+from training.recipes import create_run_dir, tokenizer_source
 from training.runtime.lock import run_lock
 from training.runtime.loop import snapshot_hash
 from training.tune.sft_callbacks import (
+    _attention_implementation,
     build_callbacks,
     checkpoint_dir_name,
     latest_trl_checkpoint,
@@ -157,37 +160,19 @@ class Collator:
         return {k: torch.tensor(v, dtype=torch.long) for k, v in padded.items()}
 
 
-# -- preflight ---------------------------------------------------------------
-
-
-def check_memory_fit(recipe: DictConfig, force: bool) -> tuple[bool, str]:
-    """D4 memory-fit gate: (proceed, message). force downgrades refuse to warn."""
-    from training.calculator.solve import GIB, VRAM_TOTAL_BYTES, estimate
-
-    est = estimate(recipe)
-    reserved_gb = est.reserved_estimate / GIB
-    total_gb = VRAM_TOTAL_BYTES / GIB
-    if est.fits:
-        return True, (
-            f"Memory fit: {reserved_gb:.2f} GB reserved estimate "
-            f"of {total_gb:.0f} GB VRAM"
-        )
-    message = (
-        f"Memory fit: predicted {reserved_gb:.2f} GB exceeds the "
-        f"{total_gb:.0f} GB budget"
-    )
-    if force:
-        return True, message + " (--force: proceeding anyway)"
-    return False, message + " (reduce micro_batch/seq_len, or pass --force)"
-
-
 # -- build steps -------------------------------------------------------------
 
 
 def build_dataset(recipe: DictConfig) -> tuple[list[dict], list[dict]]:
-    """Load the prepared F1 dataset (hash-verified) and apply packing."""
+    """Load the prepared F1 dataset (hash-verified) and apply packing.
+
+    The hash check reads the tokenizer the base directory ships unless the
+    recipe pins another (tokenizer_source), the same file prepare-sft was
+    given, so an unstaged tokenizer.path cannot fail a run whose base is
+    present (KB-80).
+    """
     train, holdout = load_sft_dataset(
-        recipe.sft.dataset, tokenizer=recipe.tokenizer.path
+        recipe.sft.dataset, tokenizer=tokenizer_source(recipe)
     )
     if recipe.sft.packing:
         train = pack_examples(train, recipe.data.seq_len)
@@ -202,18 +187,20 @@ def build_model_and_tokenizer(recipe: DictConfig):
     Loads through transformers (with F2's bitsandbytes config for QLoRA)
     and wraps with PEFT.
     """
+    from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+
+    from training.models.model import attention_implementation, torch_dtype
     from training.models.peft_utils import (
         bnb_quantization_config,
         build_peft_model,
         resolve_target_modules,
         trainable_parameter_report,
     )
+    from training.models.staged import resolve_model_source
 
-    model_id = recipe.model.hf.id
+    # The staged directory when one exists, else the id (KB-79).
+    model_id = resolve_model_source(recipe.model.hf.id)
     revision = recipe.model.hf.revision
-    from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
-
-    from training.models.model import attention_implementation, torch_dtype
 
     # local_files_only: training runs offline (see training/models/model.py).
     config = AutoConfig.from_pretrained(
@@ -230,11 +217,14 @@ def build_model_and_tokenizer(recipe: DictConfig):
         quantization_config=bnb_quantization_config(recipe.peft),
         # Explicit request with the flash->sdpa fallback (WI-7): the
         # transformers default never selects flash-attn on its own.
-        attn_implementation=attention_implementation(),
+        # Resolved against the config's head width (KB-84).
+        attn_implementation=attention_implementation(config),
     )
     if recipe.peft.enabled:
         resolve_target_modules(recipe, config.model_type)
-        model = build_peft_model(model, recipe.peft)
+        model = build_peft_model(
+            model, recipe.peft, recipe.memory.gradient_checkpointing
+        )
     return model, tokenizer, trainable_parameter_report(model)
 
 
@@ -300,6 +290,10 @@ def sft_config_kwargs(recipe: DictConfig, ckpt_root: str, has_holdout: bool) -> 
         "dataloader_num_workers": recipe.data.workers,
         "dataloader_pin_memory": recipe.data.pin_memory,
         "report_to": [],  # the D6 Tracker owns metric fan-out
+        # Evaluation keeps the loss only: the chunked loss returns no logits,
+        # and the Trainer default would otherwise accumulate every eval
+        # batch's 262144-wide logits across the holdout (KB-88).
+        "prediction_loss_only": True,
     }
     if has_holdout and recipe.sft.eval_steps > 0:
         kwargs["eval_strategy"] = "steps"
@@ -324,27 +318,72 @@ def resolve_sft_resume(ckpt_root: str, resume: str) -> str:
     return resume
 
 
+# -- loss --------------------------------------------------------------------
+
+
+def compute_chunked_loss(
+    chunk_tokens: int,
+    model,
+    inputs: dict,
+    return_outputs: bool = False,
+    num_items_in_batch=None,
+):
+    """The SFT loss through training/models/head_loss.py (KB-87), in the
+    shape Trainer.compute_loss returns.
+
+    Replaces TRL's compute_loss, which runs the HF forward with labels (the
+    full micro_batch x seq_len x vocab logits through softcap, fp32 upcast
+    and cross-entropy) and then reads those logits twice more for its
+    entropy and token-accuracy metrics. Neither metric is kept: the tracker
+    and SftResult read the loss. outputs carries only the loss, which is why
+    sft_config_kwargs sets prediction_loss_only (KB-88).
+    """
+    loss = causal_lm_loss(
+        model,
+        inputs["input_ids"],
+        inputs["labels"],
+        chunk_tokens=chunk_tokens,
+        attention_mask=inputs.get("attention_mask"),
+        position_ids=inputs.get("position_ids"),
+        num_items_in_batch=num_items_in_batch,
+    )
+    return (loss, {"loss": loss}) if return_outputs else loss
+
+
+def chunked_loss_trainer(base, chunk_tokens: int):
+    """SFTTrainer subclass whose compute_loss is compute_chunked_loss with
+    the recipe's memory.head_chunk_tokens. base is passed in because trl is
+    imported lazily, at the one call site that has it."""
+
+    class ChunkedLossSFTTrainer(base):
+        def compute_loss(
+            self, model, inputs, return_outputs=False, num_items_in_batch=None
+        ):
+            return compute_chunked_loss(
+                chunk_tokens, model, inputs, return_outputs, num_items_in_batch
+            )
+
+    return ChunkedLossSFTTrainer
+
+
 # -- orchestration -----------------------------------------------------------
 
 
-def train_sft(recipe: DictConfig, force: bool = False) -> SftResult:
+def train_sft(recipe: DictConfig) -> SftResult:
     """Run the recipe's supervised fine-tune end to end.
 
-    Preflight (memory fit, then lock) precedes any heavy import or model
-    download. Running inference containers are not probed: the operator
-    manages containers manually and validates GPU exclusivity themselves.
-    WatchdogAbort propagates to the caller after an emergency checkpoint is
-    written; the D9 lock releases on every exit path via the context manager.
+    Preflight (the sft group, then the lock) precedes any heavy import or
+    model download. Running inference containers are
+    not probed: the operator manages containers manually and validates GPU
+    exclusivity themselves. WatchdogAbort propagates to the caller after an
+    emergency checkpoint is written; the D9 lock releases on every exit path
+    via the context manager.
     """
     if not recipe.sft.enabled:
         raise SftPreflightError(
             "sft.enabled is false; train-sft needs an sft-enabled recipe "
             "(the reference is training/recipes/reference/sft-qlora-e2b.yaml)"
         )
-
-    fits, fit_message = check_memory_fit(recipe, force)
-    if not fits:
-        raise SftPreflightError(fit_message)
 
     with run_lock(recipe.run.name):
         return _train_locked(recipe)
@@ -407,7 +446,10 @@ def _train_locked(recipe: DictConfig) -> SftResult:
         from trl import SFTConfig, SFTTrainer
 
         kwargs = sft_config_kwargs(recipe, ckpt_root, bool(holdout_samples))
-        trainer = SFTTrainer(
+        trainer_class = chunked_loss_trainer(
+            SFTTrainer, recipe.memory.head_chunk_tokens
+        )
+        trainer = trainer_class(
             model=model,
             args=SFTConfig(**kwargs),
             train_dataset=Dataset.from_list(train_samples),
@@ -464,6 +506,7 @@ def _train_locked(recipe: DictConfig) -> SftResult:
                     base_revision=getattr(base_identity, "revision", None),
                     base_config_sha256=getattr(base_identity, "config_sha256", None),
                     emergency=True,
+                    attention_implementation=_attention_implementation(trainer.model),
                 )
             except Exception as exc:
                 print(

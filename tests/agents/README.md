@@ -21,11 +21,34 @@ Each test runs `make -f <repo>/Makefile` inside a throwaway git repository under
 `tmp_path`, so worktrees are created and removed in temp siblings and the real repository
 is never touched. It covers argument forms (name, `NAME=`, `task/<name>` branch, worktree
 path, suffix target), exit codes on failure, and creation idempotence.
+`test_harness_clean.py` is the second: it copies `make/harness.mk` and the
+`rust-harness/Makefile` into a scratch tree, plants every run output the two clean
+targets claim to remove beside the files they must keep, and drives `make harness-clean`
+against it.
 
 `test_sandbox_seed.py` covers the `agent-sandbox` target's Claude Code config seeding
 (`~/.claude.json` and `~/.claude/settings.json`) with a stubbed `docker` on PATH that
 prints the container command instead of running it. Never exercise this target with
 `make -n`: the recipe contains `$(MAKE)`, which GNU make executes even under `-n`.
+
+## Test index
+
+Generated from each module's docstring; see [../README.md](../README.md).
+
+<!-- inventory:tests:start -->
+
+| File | Tests | Covers |
+|------|-------|--------|
+| `test_check_agent_versions.py` | 4 | Tests for scripts/agents/check-agent-versions.sh — npm pin drift check. |
+| `test_guard.py` | 14 | Tests for scripts/agents/guard.sh — the tool-call guardrail. |
+| `test_harness_clean.py` | 4 | Tests for the make targets that remove the rust harness's run outputs. |
+| `test_preflight.py` | 4 | Tests for scripts/agents/preflight-scan.sh — agent supply-chain scan. |
+| `test_runpod_idle.py` | 6 | Tests for scripts/agents/runpod-idle-check.sh — warm-worker spend guardrail. |
+| `test_sandbox_seed.py` | 5 | Tests for the Claude Code config seeded by `make agent-sandbox`. |
+| `test_settings.py` | 4 | Tests for the permission policy in .claude/settings.json. |
+| `test_worktree_make.py` | 12 | Tests for the Makefile worktree targets (create and clean). |
+
+<!-- inventory:tests:end -->
 
 ## Fixture index
 

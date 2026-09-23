@@ -43,6 +43,9 @@ PRUNE_DIRS = {
     "__pycache__",
     ".ruff_cache",
     ".pytest-tmp",
+    # Docusaurus's cache under site/, gitignored and rebuilt by every site build;
+    # it carries a JSON copy of each page, including pages since deleted.
+    ".docusaurus",
 }
 
 # Files that define targets. rust-harness/ has its own Makefile whose targets
@@ -102,6 +105,22 @@ KNOWN_ABSENT = {
     # swapped a training GGUF into llama-gpu, left with nothing to serve. These
     # frozen records describe the pipeline as it was.
     ("docs/testing/investigations/test_coverage_investigation.md", "export-gguf"),
+    # The memory-fit calculator retired on 2026-09-20: memfit left and
+    # train-calibrate became train-step. FT.calibrate-qlora keeps its five
+    # superseded attempts verbatim and each paste names the target it ran; the
+    # KB-86 ledger row quotes the old remedy line it was filed against; the
+    # frozen records below describe the calculator as it was.
+    ("docs/verification/training/fine-tuning-loop.md", "train-calibrate"),
+    ("docs/verification/bugs/known-bugs.md", "train-calibrate"),
+    ("docs/training/investigations/d4_memory_fit_investigation.md", "memfit"),
+    ("docs/training/investigations/d4_memory_fit_investigation.md", "train-calibrate"),
+    ("docs/training/investigations/f5_distillation_investigation.md", "memfit"),
+    ("docs/training/investigations/f8_recipe_cards_investigation.md", "memfit"),
+    ("docs/verification/archive/gemma-4-conformance_investigation.md", "memfit"),
+    ("docs/verification/archive/training-phase0.md", "memfit"),
+    ("docs/verification/archive/training-phase0.md", "train-calibrate"),
+    ("docs/verification/archive/training-phase1.md", "memfit"),
+    ("docs/verification/archive/training-phase1.md", "train-calibrate"),
     # Distillation left the training tier on 2026-09-18 (train-distill and
     # distill-cache with it; see docs/training/continuous-learning-proposal.md
     # for what the tier is for). These frozen records describe it as it was.

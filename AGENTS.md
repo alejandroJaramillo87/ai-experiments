@@ -91,30 +91,21 @@ These are standing instructions for anyone (human or agent) making changes in th
 
 ## Where things are
 
-Each topic has one owner. Read the owner, not a summary of it.
+Route by the kind of question. Every README's tables of directories, modules, scripts or
+pages are rendered from the tree and held to it by `make quality`, so each hub routes one
+level further.
 
-| Topic | Owner |
-|-------|-------|
-| Available commands | `make help` (generated from `make/*.mk`; the include order in `Makefile` sets the section order) |
-| Services, ports, profiles, cpusets | `docker-compose.inference.yaml`, and the per-service overviews in [docs/sandbox/](docs/sandbox/) |
-| Other stacks | `docker-compose.{training,interp,agents,rust-harness}.yaml` |
-| Hardware | [docs/hardware/README.md](docs/hardware/README.md) |
-| Validated optimizations and their measurements | [docs/optimizations/README.md](docs/optimizations/README.md) |
-| The quality gate, and what a sandbox run does not cover | [docs/testing/quality-gate.md](docs/testing/quality-gate.md) |
-| The rust harness and its gate | [rust-harness/README.md](rust-harness/README.md) |
-| The test suite, its tiers and markers | [tests/README.md](tests/README.md) |
-| The agent sandbox and tooling parity | [docs/agents/README.md](docs/agents/README.md) |
-| Everything else | [docs/README.md](docs/README.md) — the documentation index |
-
-Each top-level source directory carries its own README covering purpose, what it consumes and
-what consumes it, entry points, and the traps. They are indexed in
-[docs/README.md](docs/README.md).
+| Question about | Start at |
+|----------------|----------|
+| A topic: how something works, what was measured, what is verified | [docs/README.md](docs/README.md), whose table names the directory that owns it |
+| Code: what a directory holds, what consumes it, its entry points and traps | [README.md](README.md), whose table names every top-level directory |
 
 ## Tooling conventions
 
 - Use the `gh` CLI for all GitHub operations (pull requests, issues, checks, releases)
   instead of raw git remotes or the web API.
-- Prefer `make` targets (`make status`, `make logs`) over raw docker commands.
+- Prefer `make` targets (`make status`, `make logs`) over raw docker commands; `make help`
+  lists them, generated from `make/*.mk`.
 
 ## Git and GitHub conventions
 

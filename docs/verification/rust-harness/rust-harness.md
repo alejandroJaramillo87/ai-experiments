@@ -80,7 +80,7 @@ matter how correct the backend, and closing them needs an `-it` variant.
 The E2B one, `gemma-4-E2B-it`, arrived on the workstation on 2026-09-05 and
 closed RH.8; RH.9d and RH.11 closed on it.
 
-Recording protocol: the [runbook README](../../README.md) rules apply. The human
+Recording protocol: the [protocol page](../protocol.md) rules apply. The human
 runs each command on the workstation and pastes command plus output
 verbatim into the Observed block; expected signals are never edited to
 match observations; one GPU consumer at a time (the CPU backend uses no
@@ -2189,7 +2189,7 @@ with `read dataset ... No such file or directory`, which cost a round trip
 on 2026-09-05.
 
 Second run, 2026-09-05, on `gemma-4-E2B-it` at every layer, so that one
-capture feeds RH.9b, the RH.9d vector, and the interp runbook's I.3:
+capture feeds RH.9b, the RH.9d vector, and the interp runbook's I.control-vector:
 
 ```bash
 cd rust-harness
@@ -2485,7 +2485,7 @@ Status: VERIFIED 2026-08-14; re-run 2026-09-05 on gemma-4-E2B-it in chat mode
 ### RH.9d Steering on real weights
 
 The vector is the difference of class means over the RH.9a capture, exported
-by `steer-extract` (I.3 in the interp runbook); its manifest carries the
+by `steer-extract` (I.control-vector in the interp runbook); its manifest carries the
 capture's `model_hash`, which is the served checkpoint's, so the harness
 loads it under its identity check with no `[WARN]`. The subject is
 `gemma-4-E2B-it`: the refusal set is what RH.9a captured, and a refusal
@@ -2528,7 +2528,7 @@ replies.
 Observed (2026-09-05, first pass at scale 1.0 and -1.0, otherwise the command above):
 
 ```
-(steer-extract, recorded in full under I.3)
+(steer-extract, recorded in full under I.control-vector)
 [INFO] Classes: 129 positive, 129 negative; model_hash 2db5482b20d746879bb3ef79b5203e9075a2e2b98f54ec7c2f281c1477ddc550
 [OK] Layers: 35, width: 1536
 [OK] Vector xxhash: d66c1d6da0b70309
@@ -6757,7 +6757,7 @@ is a decision rather than an oversight.
 | Colour helper as a pure function | `rust-harness/runtime/tests/status_python_parity.rs` |
 | The `Permissions:` line naming the rule source, and the `Session: resumed` line on a second run in one directory (RHX.10, RHX.11) | `rust-harness/harness/tests/session_status.rs` |
 | The exhausted turn budget as a typed error carrying a `--chat` remedy | `rust-harness/harness/tests/agent_e2e.rs::exceeding_max_turns_is_an_error_not_a_hang`, `rust-harness/harness/src/actionable.rs::every_command_is_runnable_as_printed` |
-| `--interp-log` on the host binary: one record per served request, none without the flag. Every command block above leaves it unset (the `[SKIP] interp log directory` preflight line is the only trace), and the real-weights run is the container's, through `HARNESS_INTERP_LOG` in [I.7](../interp/interp.md) | `rust-harness/harness/tests/serve_interp_log.rs` |
+| `--interp-log` on the host binary: one record per served request, none without the flag. Every command block above leaves it unset (the `[SKIP] interp log directory` preflight line is the only trace), and the real-weights run is the container's, through `HARNESS_INTERP_LOG` in [I.probe-monitor](../interp/interp.md) | `rust-harness/harness/tests/serve_interp_log.rs` |
 | Per-request sampling overrides on `/v1/chat/completions` (`seed`, `temperature`, `top_k`, `top_p`, `max_tokens`); RH.14 sends only temperature and max_tokens | `rust-harness/harness/src/server.rs::a_request_seed_overrides_the_server_default` and the `sampling_of` tests beside it |
 | Each of the six tools (`read`, `write`, `edit`, `bash`, `glob`, `todo`) executing as specified: the caps, the timeout, the single-match edit, the hidden-directory skip. Which tool a real-weights run calls is the model's choice, and RH.8 observed `write` and `read` alone | `rust-harness/harness/src/tools.rs` (`write_then_read_round_trips` through `todo_renders_numbered_list`) |
 | Subagent fork and interleave, the library half: fork without re-prefill and tool-generation overlap over the scripted model. The wired path is RH.40, blocked on implementation | `rust-harness/harness/tests/subagents.rs`, `rust-harness/harness/tests/tracing_spans.rs` |
@@ -6797,7 +6797,7 @@ reasons an entry qualifies:
   because that is what the stream-hygiene tests are for. The branch that emits colour is
   exercised by unit tests over a pure function and by nothing that has ever attached to a TTY.
 
-Recording protocol and status vocabulary are defined in [README.md](../README.md).
+Recording protocol and status vocabulary are defined in [protocol.md](../protocol.md).
 
 **No entry here is a GPU consumer** — the harness is the CPU backend — so the one-at-a-time
 rule does not apply. A different constraint does: RHX.1 through RHX.5 each resident-load about

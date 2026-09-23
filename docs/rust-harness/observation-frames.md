@@ -107,7 +107,7 @@ is a reproducible experiment log for an entire behavioral episode, and is
 the property no other local stack offers in any form.
 
 **Phase 5 depends on the loop structurally.** The continual-learning loop
-in the [training scale reference](../../docs/training/training-scale-reference.md#phase-5-continual-learning)
+in the [training scale reference](../../docs/training/base/training-scale-reference.md#phase-5-continual-learning)
 uses the harness as its trajectory generator. Agent trajectories with tool
 calls are the data that generation-over-generation preference tuning wants;
 strip the agent loop and phase 5 collapses to fine-tuning on chat logs, a

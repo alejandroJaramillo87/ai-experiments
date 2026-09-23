@@ -73,3 +73,40 @@ class TestGemma4RecipePins:
             f"{os.path.basename(path)} pins {revision!r}; "
             f"{FACTS} records {commits[model_id]} for {model_id}"
         )
+
+
+# The unchunked head held micro_batch x seq_len x 262144 logits through the
+# loss, about 6 bytes per vocabulary entry per token: 4096 tokens per
+# micro-batch was 24 GB beside the NF4 E2B base (FT.calibrate-qlora's third
+# and fourth attempts, KB-85 then KB-87). The loss is chunked since KB-87, so
+# this ceiling is held until a measured rate says what fits, not because the
+# head sets it.
+MAX_TOKENS_PER_MICRO_BATCH = 4096
+# Both reference SFT recipes train on 32 sequences per optimizer step.
+EFFECTIVE_BATCH = 32
+
+
+def training_recipes() -> list[str]:
+    return [
+        path
+        for path in hub_recipes()
+        if not path.startswith(INTERP_DIR) and load_recipe(path).model.hf is not None
+    ]
+
+
+class TestGemma4Geometry:
+    @pytest.mark.parametrize(
+        "path",
+        training_recipes(),
+        ids=[os.path.basename(p) for p in training_recipes()],
+    )
+    def test_tokens_per_micro_batch_fit_the_head(self, path):
+        data = load_recipe(path).data
+        assert data.micro_batch * data.seq_len <= MAX_TOKENS_PER_MICRO_BATCH, (
+            f"{os.path.basename(path)}: {data.micro_batch} x {data.seq_len} tokens "
+            f"per micro-batch; the 262144-wide head fits {MAX_TOKENS_PER_MICRO_BATCH}"
+        )
+
+    def test_reference_sft_keeps_its_effective_batch(self):
+        data = load_recipe(os.path.join(REFERENCE_DIR, "sft-qlora-e2b.yaml")).data
+        assert data.micro_batch * data.grad_accum == EFFECTIVE_BATCH

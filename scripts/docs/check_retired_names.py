@@ -70,6 +70,67 @@ RETIRED: dict[str, tuple[str, str]] = {
         "nothing",
         "the staging root it named is gone; see --staging-root",
     ),
+    # The memory-fit calculator was reduced on 2026-09-19: the analytic
+    # activation formula and the binary-search solve left, a measured rate per
+    # profile replaced them, and the module that held estimate() and solve()
+    # was renamed for what remains.
+    "training/calculator/solve.py": (
+        "training/commands/train_step.py",
+        "solve() left with the analytic activation term it searched over on 2026-09-19, and the estimate it fed left with the calculator on 2026-09-20; what a recipe holds is measured by stepping it",
+    ),
+    # The memory-fit calculator was retired on 2026-09-20. Its measured rate
+    # answered "does this recipe fit" no earlier than the one-minute step it
+    # was calibrated against, on a one-GPU machine, and cost a workstation run
+    # per family, width, mode and checkpointing flag. What survives moved to
+    # where its consumers are: the parameter accounting to
+    # training/models/architecture.py (the scratch builder, the step command's
+    # drift check and the offload host-RAM budget read it), and the
+    # calibration loop to training/commands/train_step.py as `python -m
+    # training step`. Not in this table, because FT.calibrate-qlora keeps its
+    # superseded attempts verbatim and those pastes spell them: `make
+    # train-calibrate`, `python -m training calibrate` and
+    # `training/calculator/calibrate.py`; check_make_targets.py allows the
+    # target for the same reason.
+    "training/calculator/components.py": (
+        "training/models/architecture.py",
+        "the parameter accounting describes the model and moved beside the model builders when the calculator retired",
+    ),
+    "training/calculator/estimate.py": (
+        "training/commands/train_step.py",
+        "the estimate left with the calculator; the step command measures the recipe instead",
+    ),
+    "training/calculator/measured.py": (
+        "training/commands/train_step.py",
+        "the per-profile activation rate table left with the calculator; nothing is transcribed after a step",
+    ),
+    "check_memory_fit": (
+        "make train-step",
+        "the trainer's advisory fit line left with the calculator; a recipe is stepped before a long run",
+    ),
+    "make memfit": (
+        "make train-step",
+        "the estimate left with the calculator; the step command measures the recipe on the GPU",
+    ),
+    "python -m training memfit": (
+        "python -m training step",
+        "the same retirement; see make memfit above",
+    ),
+    "docs/training/memory_fit.md": (
+        "docs/training/base/train_step.md",
+        "the calculator's document left with it; the step command and the parameter accounting are documented there",
+    ),
+    "tests/training/test_calculator.py": (
+        "tests/training/test_architecture.py",
+        "the parameter-accounting tests kept their pins under the module's new name; the byte and estimate tests left with the calculator",
+    ),
+    "tests/training/test_cli_handlers_memfit.py": (
+        "tests/training/test_cli_handlers_step.py",
+        "the calibrate handler tests became the step handler tests; the memfit ones left with the verb",
+    ),
+    "tests/hardware/test_memfit_sft.py": (
+        "tests/hardware/test_gpu.py",
+        "the memfit hardware mirror left with the calculator; the step measurement on the tiny recipe lives in test_gpu.py",
+    ),
     "site/scripts/gen-cli-reference.sh": (
         "scripts/docs/gen_site_reference.py",
         "the site's reference generator moved from a bash script that pasted --help into a fenced block to a Python script beside the gate that checks its output, because the pages became a usage line plus one table per help section and that parse deserved a unit test under tests/docs/",
@@ -159,11 +220,11 @@ RETIRED: dict[str, tuple[str, str]] = {
     ),
     "docs/verification/reference-captures.md": (
         "docs/verification/interp/interp.md",
-        "the tier-folder move, then folded into interp.md as I.9c and I.9d on 2026-09-18",
+        "the tier-folder move, then folded into interp.md as I.false-fact-capture and I.gemma2-calibration-capture on 2026-09-18",
     ),
     "docs/verification/interp/reference-captures.md": (
         "docs/verification/interp/interp.md",
-        "folded into interp.md as entries I.9c and I.9d on 2026-09-18; the two reference "
+        "folded into interp.md as entries I.false-fact-capture and I.gemma2-calibration-capture on 2026-09-18; the two reference "
         "captures sit beside the smoke-scale harvest entries they scale up",
     ),
     "docs/verification/investigations/gemma-4-conformance_investigation.md": (
@@ -490,6 +551,23 @@ RETIRED: dict[str, tuple[str, str]] = {
         "llama.cpp and repeng number from 1. The prefix changed with the "
         "floor so a pre-R10 image fails to load rather than loading",
     ),
+    "scripts/verify/obs_browser": (
+        "scripts/obs",
+        "the browser check of the run dashboard was the only thing under "
+        "scripts/verify/, two levels deep for three files; every other "
+        "scripts directory is one level and named for its domain, and this "
+        "one is named for the package it checks, common/obs",
+    ),
+    "scripts/verify": (
+        "scripts/obs",
+        "the directory held one child, the dashboard browser check, and the "
+        "name collided with docs/verification/ and the verify-host skill",
+    ),
+    "obs_browser": (
+        "scripts/obs",
+        "the directory name went with the move; the package.json name "
+        "obs-browser-verify is npm metadata, not a path",
+    ),
     "gguf-info": (
         "checkpoint-info",
         "the inspection tool follows the format the backend loads; it echoes "
@@ -685,8 +763,84 @@ RETIRED: dict[str, tuple[str, str]] = {
         "the Qwen3-1.7B QLoRA twin of the Gemma 4 E2B reference recipe",
     ),
     "sft-qlora-qwen3-4b.yaml": (
-        "training/recipes/reference/sft-qlora-gemma-e4b.yaml",
+        "nothing; its Gemma 4 replacement was itself retired on 2026-09-20",
         "the Qwen3-4B QLoRA twin of the Gemma 4 E4B recipe card",
+    ),
+    # The Phase 1 completeness audit (2026-09-20,
+    # docs/training/investigations/phase1_completeness_audit_investigation.md)
+    # retired what no rung and no consumer called: the E4B recipe card, the
+    # DoRA method, the scorecard over eval-ft's records, and the teacher
+    # corpus root named after distillation.
+    "training/recipes/reference/sft-qlora-gemma-e4b.yaml": (
+        "training/recipes/reference/sft-qlora-e2b.yaml",
+        "the E4B card was the Phase 1 scope document's artifact; every organism and every runbook step runs on E2B, no make target named it, and its runbook entry (FT.e4b-recipe) verified nothing FT.calibrate-qlora does not",
+    ),
+    "use_dora": (
+        "nothing; peft.method is lora",
+        "DoRA was schema-complete and unexercised: no recipe set it, no test reached the build path with it, no runbook entry named it",
+    ),
+    "training/eval/scorecard.py": (
+        "the four per-side records eval-ft writes (holdout_<side>.json, lmeval_<side>.json), read by interp organism-verify",
+        "the scorecard assembled over the records had no reader; the base-versus-organism judgement is organism-verify's locality check",
+    ),
+    # docs/training/ gained one directory per rung on 2026-09-20 (base/ for what
+    # every rung shares, then fine-tuning/, continual/, from-scratch/); the
+    # living pages moved, the proposals and investigations/ stayed.
+    "docs/training/recipe_system.md": (
+        "docs/training/base/recipe_system.md",
+        "docs/training gained one directory per rung on 2026-09-20; the page moved under base/",
+    ),
+    "docs/training/train_step.md": (
+        "docs/training/base/train_step.md",
+        "docs/training gained one directory per rung on 2026-09-20; the page moved under base/",
+    ),
+    "docs/training/tracking_checkpointing.md": (
+        "docs/training/base/tracking_checkpointing.md",
+        "docs/training gained one directory per rung on 2026-09-20; the page moved under base/",
+    ),
+    "docs/training/operational_watchdogs.md": (
+        "docs/training/base/operational_watchdogs.md",
+        "docs/training gained one directory per rung on 2026-09-20; the page moved under base/",
+    ),
+    "docs/training/heterogeneous_compute.md": (
+        "docs/training/base/heterogeneous_compute.md",
+        "docs/training gained one directory per rung on 2026-09-20; the page moved under base/",
+    ),
+    "docs/training/data_pipeline.md": (
+        "docs/training/base/data_pipeline.md",
+        "docs/training gained one directory per rung on 2026-09-20; the page moved under base/",
+    ),
+    "docs/training/train_serve_roundtrip.md": (
+        "docs/training/base/train_serve_roundtrip.md",
+        "docs/training gained one directory per rung on 2026-09-20; the page moved under base/",
+    ),
+    "docs/training/gemma-4-training.md": (
+        "docs/training/base/gemma-4-training.md",
+        "docs/training gained one directory per rung on 2026-09-20; the page moved under base/",
+    ),
+    "docs/training/training-scale-reference.md": (
+        "docs/training/base/training-scale-reference.md",
+        "docs/training gained one directory per rung on 2026-09-20; the page moved under base/",
+    ),
+    "docs/training/sft_entry_point.md": (
+        "docs/training/fine-tuning/sft_entry_point.md",
+        "docs/training gained one directory per rung on 2026-09-20; the page moved under fine-tuning/",
+    ),
+    "docs/training/teacher_synthetic_data.md": (
+        "docs/training/fine-tuning/teacher_synthetic_data.md",
+        "docs/training gained one directory per rung on 2026-09-20; the page moved under fine-tuning/",
+    ),
+    "docs/training/eval_wrapper.md": (
+        "docs/training/fine-tuning/eval_wrapper.md",
+        "docs/training gained one directory per rung on 2026-09-20; the page moved under fine-tuning/",
+    ),
+    "docs/training/tokenizer_training.md": (
+        "docs/training/from-scratch/tokenizer_training.md",
+        "docs/training gained one directory per rung on 2026-09-20; the page moved under from-scratch/",
+    ),
+    "training/datasets/distill": (
+        "training/datasets/teacher",
+        "the teacher corpus root was named after distillation, which left on 2026-09-18; the corpora are the organism generator's",
     ),
     "distill-qwen3.yaml": (
         "nothing; its Gemma 4 replacement was itself retired with distillation on 2026-09-18",
@@ -787,7 +941,83 @@ RETIRED: dict[str, tuple[str, str]] = {
         "only TransformerLens-supported subject the SAEBench cross-check had; "
         "that cross-check left with the family",
     ),
+    # The inventory generator grew from one kind (test directories) to four on
+    # 2026-09-20 and dropped "test" from its name; the marker pair moved from
+    # `test-inventory` to `inventory:<kind>` in the same change.
+    "scripts/docs/gen_test_inventory.py": (
+        "scripts/docs/gen_inventory.py",
+        "the generator renders modules, directories and pages as well as tests since 2026-09-20",
+    ),
+    "scripts/docs/check_test_inventory.py": (
+        "scripts/docs/check_inventory.py",
+        "the gate covers every README carrying an inventory marker since 2026-09-20",
+    ),
+    "tests/docs/test_gen_test_inventory.py": (
+        "tests/docs/test_gen_inventory.py",
+        "renamed with the generator on 2026-09-20",
+    ),
 }
+
+# Runbook entry ids became slugs on 2026-09-19 (docs/verification/protocol.md,
+# "Entry identifiers"): a number handed out in writing order read as an
+# execution order it was not, once sections were reordered by dependency. The
+# id is a name and the Table of Contents is the order; each old number maps to
+# the slug its entry took. Ids retired before that day (FT.15, I.2, I.6b) had
+# no live entry and so no slug, and stay as they are in the ledger.
+SLUGGED_ENTRY_IDS: dict[str, str] = {
+    "FT.0": "FT.preconditions",
+    "FT.1": "FT.calibrate-qlora",
+    "FT.2": "FT.smoke-dataset",
+    "FT.3": "FT.train-resume",
+    "FT.4": "FT.export-merged",
+    "FT.5": "FT.heldout-eval",
+    "FT.6": "FT.eval-ft",
+    "FT.7": "FT.organisms",
+    "FT.8": "FT.capture",
+    "FT.9": "FT.probe",
+    "FT.10": "FT.steering",
+    "FT.11": "FT.hardware-test",
+    "FT.12": "FT.image-smoke",
+    "FT.13": "FT.recipe-gates",
+    "FT.14": "FT.memfit",
+    "FT.16": "FT.e4b-recipe",
+    "I.1": "I.workbench-smoke",
+    "I.3": "I.control-vector",
+    "I.4": "I.steered-scorecard",
+    "I.5": "I.probe-loop",
+    "I.6": "I.served-request-log",
+    "I.7": "I.probe-monitor",
+    "I.8": "I.organisms",
+    "I.9": "I.harvest",
+    "I.9b": "I.harvest-crash-recovery",
+    "I.9c": "I.false-fact-capture",
+    "I.9d": "I.gemma2-calibration-capture",
+    "I.10": "I.capture-gc",
+    "I.11": "I.sae-train-eval",
+    "I.12": "I.saebench-env",
+    "I.13": "I.workbench-build",
+    "I.14": "I.run-browser",
+    "I.15": "I.probe-export-contract",
+    "I.16": "I.traced-dispatch",
+    "I.17": "I.sae-row-steering",
+    "I.18": "I.harvest-disk-floor",
+    "I.19": "I.gpu-preflight",
+    "I.20": "I.steer-up-down",
+    "I.21": "I.sae-manifest-mismatch",
+    "I.22": "I.probe-unchecked-load",
+    "I.23": "I.hook-layer-gate",
+    "I.24": "I.storage-tree",
+    "I.25": "I.activation-magnitude",
+}
+RETIRED.update(
+    {
+        old: (
+            new,
+            "runbook entry ids became slugs on 2026-09-19; the id is a name, the Table of Contents is the order",
+        )
+        for old, new in SLUGGED_ENTRY_IDS.items()
+    }
+)
 
 # Directories holding no text of ours.
 PRUNE_DIRS = {
@@ -800,6 +1030,9 @@ PRUNE_DIRS = {
     # pytest's tmp_path base when the default temp dir is noexec (the agent
     # sandbox; see tests/conftest.py). Generated fixtures, not our text.
     ".pytest-tmp",
+    # Docusaurus's cache under site/, gitignored and rebuilt by every site build;
+    # it carries a JSON copy of each page, including pages since deleted.
+    ".docusaurus",
 }
 
 # Extensions worth reading. Anything textual that can name a file.

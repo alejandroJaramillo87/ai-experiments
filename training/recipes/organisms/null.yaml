@@ -43,9 +43,6 @@ data:
   workers: 2
   pin_memory: true
 
-tokenizer:
-  path: /mnt/ai-data/training/tokenizers/gemma-4-e2b
-
 peft:
   enabled: true
   method: lora

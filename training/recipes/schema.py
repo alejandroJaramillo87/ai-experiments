@@ -30,7 +30,7 @@ from omegaconf import MISSING
 DEFAULT_OUTPUT_ROOT = "/mnt/ai-data/training/runs"
 
 OPTIMIZER_NAMES = ("adamw", "adamw8bit", "paged_adamw8bit", "cpu_adam")
-PEFT_METHODS = ("lora", "dora")
+PEFT_METHODS = ("lora",)
 SFT_BACKENDS = ("trl",)
 QUANTIZE_BASE_MODES = ("none", "nf4")
 COMPUTE_DTYPES = ("bf16", "fp16", "fp32")
@@ -199,9 +199,18 @@ class AffinityConfig:
 
 @dataclass
 class TokenizerConfig:
-    # Must hash-match the data shards' manifest; validate() enforces when the
-    # source is a prepared shard directory.
-    path: str = MISSING
+    """Where the recipe's tokenizer is read from.
+
+    Required for a scratch model, which has no base tokenizer. Optional for an
+    HF base: a fine-tune or continual run reuses the tokenizer the base
+    directory ships, so validate, preflight and train-sft resolve it from
+    model.hf.id when path is unset (training/recipes/validate.py:
+    tokenizer_source). Set it only to pin a different tokenizer than the base
+    ships. Either way it must hash-match the shards' or SFT dataset's
+    manifest; validate() enforces when the source is prepared on this machine.
+    """
+
+    path: str | None = None
 
 
 @dataclass
@@ -243,11 +252,16 @@ class MemoryConfig:
     staging buffers (DeepSpeed default 2e8 elements, tuned at calibration)
     and offload_pin_memory pins the host-side optimizer partitions for
     faster PCIe transfers (distinct from data.pin_memory, the dataloader's
-    flag)."""
+    flag). head_chunk_tokens bounds the live logits term: the head, softcap
+    and cross-entropy run over that many token positions at a time under
+    torch checkpointing (training/models/head_loss.py, KB-87), so the
+    micro-batch no longer sets how much of the 262144-wide vocabulary is
+    resident at once."""
 
     gradient_checkpointing: bool = False
     offload: str = "none"  # one of OFFLOAD_MODES
     compile: bool = False
+    head_chunk_tokens: int = 1024  # token positions per head/loss chunk
     allgather_bucket_size: float = 2e8  # elements; zero_offload only
     reduce_bucket_size: float = 2e8  # elements; zero_offload only
     offload_pin_memory: bool = True  # pin host optimizer state; zero_offload only
@@ -255,11 +269,14 @@ class MemoryConfig:
 
 @dataclass
 class PeftConfig:
-    """Parameter-efficient fine-tuning (Phase 1 F2): LoRA, QLoRA, DoRA.
+    """Parameter-efficient fine-tuning (Phase 1 F2): LoRA and QLoRA.
 
     quantize_base: nf4 loads the frozen base in 4-bit via bitsandbytes
-    (QLoRA); validate() rejects nf4 without peft.enabled. method: dora maps to PEFT use_dora=True and is
-    valid with or without base quantization.
+    (QLoRA); validate() rejects nf4 without peft.enabled. method names the
+    adapter: lora is the one method. A dora option (PEFT's magnitude-decomposed
+    variant) existed
+    until 2026-09-20 and left unexercised: no recipe set it, no test reached
+    the build path with it, and no runbook entry named it.
 
     target_modules is either an explicit module-name list or "auto", which
     resolves per model family through training/models/families.py. Entry points

@@ -225,7 +225,7 @@ docker, docs, and YAML:
 | `interp/steering/scorecard.py:75` | `ScorecardConfig.extra` | Never populated or read; report writer enumerates fields explicitly. |
 | `training/distill.py:271-303` | `DistillTrainer.last_ce`/`last_kl` | Write-only. Either log train/ce and train/kl through the tracking callback (useful distillation diagnostics) or delete. |
 | `training/sft.py:71` | `SftResult.packed_examples` | Write-only; both CLI outputs enumerate fields without it. Surface it or delete. |
-| `training/loop.py:74` | `TrainResult.data_wait_ms_mean` | Computed but never emitted, although `docs/training/heterogeneous_compute.md:99` documents it as the D9 acceptance metric carried by the summary. Surface it in `cmd_train` output (preferred) or correct the doc. |
+| `training/loop.py:74` | `TrainResult.data_wait_ms_mean` | Computed but never emitted, although `docs/training/base/heterogeneous_compute.md:99` documents it as the D9 acceptance metric carried by the summary. Surface it in `cmd_train` output (preferred) or correct the doc. |
 | `training/calculator/calibrate.py:38` | `build_model` alias | Zero consumers; the module itself calls `build_scratch_model`. |
 | `scripts/eval/eval_ft.py:51` | `DEFAULT_TASKS` | Never read; the real default is `training/eval/lmeval.py:19`. |
 | `training/data/contamination.py:168` | `ContaminationIndex.hash` | Write-only attribute recomputed per pipeline worker. |
@@ -455,7 +455,7 @@ already listed:
    alongside B2. Add the ##@ Training targets to `.PHONY` (currently none are listed).
    Stale doc lines recorded during the audit: `docs/interpretability/writeback.md:7`
    (CLIs moved to `interp/commands/`), `docs/unified_cli_investigation.md:28-49`
-   (describes the migration as not started), `docs/training/data_pipeline.md:86`
+   (describes the migration as not started), `docs/training/base/data_pipeline.md:86`
    ("until the D3 tokenizer trainer lands" — it landed),
    `docs/sandbox/docker_compose_overview.md:499-541` (documents the dead
    `LLAMA_MODEL`), plus the hugepage wrapper path above.

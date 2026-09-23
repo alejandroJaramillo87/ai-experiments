@@ -16,7 +16,7 @@ sources and is explicitly suspect - never use it as corroboration.
 **Why:** the spec is regenerated from Hugging Face `config.json` and safetensors headers at
 pinned revisions; the other documents were written before those artifacts were read. E2B and
 E4B get deep coverage because they are the only variants that fit continual pretraining in
-32GB (`docs/training/training-scale-reference.md`); 12B and 31B divergences are recorded but
+32GB (`docs/training/base/training-scale-reference.md`); 12B and 31B divergences are recorded but
 not pursued.
 
 **How to apply:** when a repo value disagrees with the spec, the repo is the bug. Two

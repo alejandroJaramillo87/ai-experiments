@@ -2,7 +2,7 @@
 #
 # Phase 0 reference recipe (roadmap D5): ~135M-parameter scratch pretrain used for
 # D4 calculator calibration and envelope validation. The shape is the Gemma 4
-# block at reduced scale, as docs/training/training-scale-reference.md phase 4
+# block at reduced scale, as docs/training/base/training-scale-reference.md phase 4
 # specifies: E2B's 8:1 head-to-KV-head ratio, its 4x feed-forward multiplier,
 # its global RoPE base, and the Gemma tokenizer's 262144-entry vocabulary (the
 # tied table is most of the parameter count). The scratch builder still emits a

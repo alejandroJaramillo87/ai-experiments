@@ -31,8 +31,8 @@ seams, so the same three capabilities become in-band:
 1. **Tap**: activations are recorded from the serving path itself, so the
    capture and the served forward pass are the same computation rather than two
    that resemble each other.
-2. **Steer**: control vectors load from the same GGUF artifact
-   `interp/steering` already exports, applied inside the forward pass.
+2. **Steer**: control vectors load from the safetensors image
+   `interp/steering` exports, applied inside the forward pass.
 3. **Monitor**: a probe dot-product per position is one `Tap` implementation,
    with no proxy or log-replay machinery.
 
@@ -48,8 +48,9 @@ in-band, and it is the same code path that serves. But a probe trained on rust
 captures is no longer studying a different model from one trained on a bf16
 workbench, and any claim resting on that distinction is void.
 
-The llama.cpp path above remains quantized, so the gap is real there. It is the
-reason not to treat the two backends' captures as interchangeable.
+The llama.cpp path was quantized, so the gap was real there while it served the
+write-back path. It was the reason not to treat the two backends' captures as
+interchangeable, and it ended with R10 and R11 rather than being instrumented.
 
 ### Reaching the harness over HTTP
 
@@ -440,12 +441,13 @@ version bump may legitimately change header key order, and the probe sidecar
 and the vector manifest carry a timestamp and a git sha that differ on every
 regeneration.
 
-The layer numbering is what made this worth closing. `probe.layer` is 0-based
-and `direction.<N>` is 1-based; each side enforced its own rule and nothing
-checked that the two compose. They do — a fixture writing `direction.1` and
-`direction.3` lands at blocks 1 and 3 with block 2 unsteered.
+The layer numbering is what made this worth closing. `probe.layer` was 0-based
+and the pre-R10 vector tensors were 1-based; each side enforced its own rule
+and nothing checked that the two compose. Both are 0-based now, and the test
+still pins the composition: a fixture writing `block.1` and `block.3` lands at
+blocks 1 and 3 with block 2 unsteered.
 
-Both cross-tree tests need `python3` with numpy and gguf plus the parent tree,
+Both cross-tree tests need `python3` with numpy and safetensors plus the parent tree,
 and report `[SKIP]` without them. Runbook entries RH.9c and RH.9d remain the
 workstation check against a real checkpoint; what they no longer carry alone
 is the format contract.

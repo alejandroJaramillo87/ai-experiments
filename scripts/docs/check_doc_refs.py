@@ -42,6 +42,9 @@ PRUNE_DIRS = {
     # pytest's tmp_path base when the default temp dir is noexec (the agent
     # sandbox; see tests/conftest.py). Holds generated fixtures, not documents.
     ".pytest-tmp",
+    # Docusaurus's cache under site/, gitignored and rebuilt by every site build;
+    # it carries a JSON copy of each page, including pages since deleted.
+    ".docusaurus",
 }
 
 # Exempt by path component. Investigation and verification write-ups are dated
@@ -138,11 +141,11 @@ KNOWN_ABSENT = {
     ("docs/sandbox/agent-sandbox.md", ".opencode/plugin/evil.ts"),
     ("docs/agents/tooling-parity.md", ".opencode/plugin/evil.ts"),
     # Written at run time by the usage ledger; .gitignore excludes .agent-state/.
-    ("docs/agents/README.md", ".agent-state/usage.jsonl"),
+    ("docs/agents/workflows.md", ".agent-state/usage.jsonl"),
     # Per-checkout Claude Code settings; .gitignore excludes it, and the passage
     # citing it says so outright ("Only the first is version-controlled"). Its
     # absence from a fresh clone is the property being documented.
-    ("docs/agents/README.md", ".claude/settings.local.json"),
+    ("docs/agents/roles.md", ".claude/settings.local.json"),
     ("docs/agents/tooling-parity.md", ".agent-state/usage.jsonl"),
     # Evaluation output directory, created by the run that writes into it.
     (".claude/skills/training-runs/SKILL.md", "logs/eval/"),

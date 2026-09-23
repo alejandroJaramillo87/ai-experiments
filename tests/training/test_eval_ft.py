@@ -2,7 +2,7 @@
 in its own spelling of the models tree. The container mounts the host models
 root at /app/models only (docker-compose.training.yaml), so a host path passed
 through verbatim fails at from_pretrained inside it, hours after the run
-started. Serving and the container are stubbed; the live phases are the FT.6
+started. Serving and the container are stubbed; the live phases are the FT.eval-ft
 host entry."""
 
 from __future__ import annotations
@@ -47,7 +47,7 @@ def test_container_phase_passes_container_paths(tmp_path, monkeypatch):
             json.dump({"loss": 1.0, "perplexity": 2.7, "tasks": {}}, f)
 
     monkeypatch.setattr(runner, "run_container_phase", fake_phase)
-    monkeypatch.setattr(runner, "holdout_section", lambda b, t: {"b": b, "t": t})
+    monkeypatch.setattr(runner, "check_holdout_pair", lambda b, t: None)
     args = SimpleNamespace(
         base=HOST_BASE,
         tuned=HOST_TUNED,

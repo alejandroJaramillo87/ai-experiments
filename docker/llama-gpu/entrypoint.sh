@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# The llama-gpu service's entrypoint: starts llama-server from the environment, with
+# optional nsys profiling.
+
 # Default values (can be overridden by environment variables)
 SERVER_PORT=${SERVER_PORT:-8002}
 MODEL_PATH=${MODEL_PATH:-"/app/models/gguf/gpt-oss-20b-GGUF/gpt-oss-20b-UD-Q8_K_XL.gguf"}

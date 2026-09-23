@@ -51,10 +51,15 @@ def resolve_base_identity(
 ) -> BaseIdentity:
     """Resolve a base model's identity from its config.json.
 
-    Local directories are read directly; hub ids resolve through the HF
-    cache (downloading only when local_files_only is false — export always
-    passes true, per the cache-first policy).
+    Local directories are read directly; a hub id with a staged directory
+    (training/models/staged.py, KB-79) is read as that directory; any other
+    hub id resolves through the HF cache (downloading only when
+    local_files_only is false — export always passes true, per the
+    cache-first policy).
     """
+    from training.models.staged import resolve_model_source
+
+    model = resolve_model_source(model)
     if os.path.isdir(model):
         config_path = os.path.join(model, CONFIG_NAME)
         if not os.path.isfile(config_path):

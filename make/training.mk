@@ -1,9 +1,9 @@
 ##@ Training (Phase 0 D1 - separate compose file; never runs with inference)
 
 .PHONY: build-contamination eval-ft export-build export-hf generate-teacher
-.PHONY: memfit prepare-corpus prepare-data prepare-sft train
-.PHONY: train-build train-calibrate train-download train-preflight train-sft
-.PHONY: train-shell train-smoke train-tokenizer train-validate
+.PHONY: prepare-corpus prepare-data prepare-sft train
+.PHONY: train-build train-download train-preflight train-sft train-shell
+.PHONY: train-smoke train-step train-tokenizer train-validate
 
 TRAIN_COMPOSE := docker-compose.training.yaml
 
@@ -46,11 +46,8 @@ train-preflight: ## Prove every asset a recipe needs is already local (Prelude C
 train-validate: ## Validate a recipe (Phase 0 D5): make train-validate CONFIG=training/recipes/reference/tiny-e2e.yaml ARGS="optimizer.lr=1e-4"
 	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training validate $(CONFIG) $(ARGS)
 
-memfit: ## Estimate VRAM fit for a recipe (Phase 0 D4): make memfit CONFIG=training/recipes/reference/pretrain-1b.yaml ARGS="--solve batch"
-	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training memfit --config $(CONFIG) $(ARGS)
-
-train-calibrate: ## Measure real peak VRAM for a recipe (Phase 0 D4, GPU): make train-calibrate CONFIG=... ARGS="--out record.json"
-	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training calibrate --config $(CONFIG) $(ARGS)
+train-step: ## Run a few optimizer steps of a recipe on the GPU and report resident and peak VRAM: make train-step CONFIG=... ARGS="--out record.json"
+	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training step --config $(CONFIG) $(ARGS)
 
 train: ## Run the reference training loop (Phase 0 D6): make train CONFIG=training/recipes/reference/tiny-e2e.yaml ARGS="checkpoint.resume=latest"
 	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training train --config $(CONFIG) $(ARGS)
@@ -66,7 +63,7 @@ export-build: ## Build the export image (CPU-only adapter merge; writes the merg
 export-hf: ## Export a checkpoint as the merged HF directory the harness loads: make export-hf CHECKPOINT=/mnt/ai-data/training/runs/<run>/checkpoints/checkpoint-<step> ARGS="--name <name> --tokenizer ..."
 	docker compose -f $(TRAIN_COMPOSE) run --rm export python -m training export --checkpoint $(CHECKPOINT) $(ARGS)
 
-eval-ft: ## Baseline-versus-tuned scorecard (Phase 1 F7, host-run): make eval-ft ARGS="--base <hf dir> --tuned <hf dir> --dataset ..."
+eval-ft: ## Held-out loss and lm-eval records on a base and a fine-tune (Phase 1 F7, host-run): make eval-ft ARGS="--base <hf dir> --tuned <hf dir> --dataset ..."
 	python3 -m training eval-ft $(ARGS)
 
 generate-teacher: ## Batch-generate teacher data through the serving stack (Phase 1 F4, host-run): make generate-teacher ARGS="--pipeline respond --prompts ... --teacher ... --out ..."

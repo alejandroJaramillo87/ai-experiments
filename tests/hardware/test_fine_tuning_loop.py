@@ -1,7 +1,7 @@
-"""FT.11, the fine-tuning loop's seam, as one test the hw_full tier runs.
+"""FT.hardware-test, the fine-tuning loop's seam, as one test the hw_full tier runs.
 
 The fine-tuning loop runbook (docs/verification/training/fine-tuning-loop.md)
-walks FT.3 and FT.4 by hand: train a QLoRA adapter on Gemma 4 E2B, export the
+walks FT.train-resume and FT.export-merged by hand: train a QLoRA adapter on Gemma 4 E2B, export the
 merged HF directory, and load it in the harness. This module runs those three
 steps in one function on the smoke recipe and holds them to the signals the
 entries record: a stamped checkpoint is written, the export is one
@@ -19,9 +19,10 @@ The training run is in-process, as tests/hardware/test_gpu.py runs the
 scratch loop, so the run lock, the memory-fit preflight and the checkpoint
 callbacks are the real ones. Ten steps at a checkpoint interval of ten
 leaves exactly one checkpoint-10 directory with meta.json beside it, which
-the export then merges. It skips when the prepared dataset (FT.2) or the
-pinned base (FT.0) is absent, and fails, rather than skips, when a release
-binary is.
+the export then merges. It skips when the prepared dataset (FT.smoke-dataset) or the
+pinned base (FT.preconditions) is absent, and fails, rather than skips, when a release
+binary is, or when the prepared dataset's manifest carries a chat template
+version or tokenizer hash other than the pinned base renders today.
 """
 
 from __future__ import annotations
@@ -46,7 +47,7 @@ RECIPE = os.path.join(
 )
 
 # Ten steps: enough to write one checkpoint through the real callback and
-# little enough that the run is minutes, not the hour FT.3 spends.
+# little enough that the run is minutes, not the hour FT.train-resume spends.
 TOTAL_STEPS = 10
 # E2B is about 5 GB in bf16; a hash of it is seconds, a preflight is under a
 # minute on 2026-09-11 (RH.16 on the 15 GB E4B took 80 s for two passes).
@@ -90,15 +91,37 @@ def test_fine_tuning_loop(cuda, tmp_path, train_lock):
         ],
     )
     if not os.path.isdir(recipe.sft.dataset):
-        pytest.skip(f"prepared dataset not on disk at {recipe.sft.dataset} (FT.2)")
+        pytest.skip(
+            f"prepared dataset not on disk at {recipe.sft.dataset} (FT.smoke-dataset)"
+        )
     try:
         base = resolve_base_identity(
             recipe.model.hf.id, revision=recipe.model.hf.revision, local_files_only=True
         )
     except ExportError as exc:
-        pytest.skip(f"pinned base not in the local HF cache (FT.0): {exc}")
+        pytest.skip(f"pinned base not staged (FT.preconditions): {exc}")
+    # FT.smoke-dataset: the prepared directory on disk is the one this code
+    # would render today. The loader refuses both mismatches too, but from
+    # inside train_sft; asserting here names the stale artifact and the entry
+    # that re-renders it instead of surfacing a loader exception mid-run.
+    from training.data.prepare import load_tokenizer
+    from training.models.families import CHAT_TEMPLATE_VERSION
 
-    # FT.3: one stamped checkpoint from the real trainer.
+    with open(os.path.join(recipe.sft.dataset, "manifest.json")) as f:
+        dataset = json.load(f)
+    assert dataset["chat_template_version"] == CHAT_TEMPLATE_VERSION, (
+        f"{recipe.sft.dataset} was rendered with chat_template_version="
+        f"{dataset['chat_template_version']!r}, this code renders "
+        f"{CHAT_TEMPLATE_VERSION}; re-run FT.smoke-dataset"
+    )
+    # base.model is the staged directory the id resolved to (KB-79).
+    tokenizer_hash = load_tokenizer(base.model).content_hash
+    assert dataset["tokenizer_hash"] == tokenizer_hash, (
+        f"{recipe.sft.dataset} was tokenized with {dataset['tokenizer_hash']}, "
+        f"the pinned base {recipe.model.hf.id} hashes to {tokenizer_hash}; "
+        "re-run FT.smoke-dataset against the pinned base"
+    )
+    # FT.train-resume: one stamped checkpoint from the real trainer.
     result = train_sft(recipe)
     assert result.final_step == TOTAL_STEPS
     ckpt = tmp_path / "runs" / "ft11-loop" / "checkpoints" / f"checkpoint-{TOTAL_STEPS}"
@@ -109,7 +132,7 @@ def test_fine_tuning_loop(cuda, tmp_path, train_lock):
     assert meta["base_revision"] == base.revision
     assert meta["base_config_sha256"] == base.config_sha256
 
-    # FT.4: the merged HF directory, through the real verb.
+    # FT.export-merged: the merged HF directory, through the real verb.
     from training import cli
 
     out_root = tmp_path / "trained"

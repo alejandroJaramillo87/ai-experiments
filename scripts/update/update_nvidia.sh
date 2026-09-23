@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# nvidia_driver_updater_simple.sh
+# update_nvidia.sh
 # This script automatically checks for and applies updates for the installed
 # nvidia-driver-*-open package, whichever branch that is. The file name is not
 # hardcoded here: the branch is read from dpkg, or set with

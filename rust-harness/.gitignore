@@ -22,3 +22,12 @@ target/
 # after themselves; this is only ever the real binary having been run.
 /session.jsonl
 /probe-flags.jsonl
+
+# Profiling and debugging outputs, all written into this directory by the
+# targets in the Makefile: perf and cargo-flamegraph (`make flame`) leave
+# perf.data, perf.data.old and flamegraph.svg; gdb under `make debug-replay`
+# leaves its command history. `make clean` removes them.
+/perf.data
+/perf.data.old
+/flamegraph.svg
+/.gdb_history

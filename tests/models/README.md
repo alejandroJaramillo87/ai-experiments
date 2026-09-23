@@ -33,13 +33,19 @@ and `test_recognized_naming_does_not_trip_the_guard` exist to fail in that case.
 
 ## Test index
 
-| Test file | Covers | Approach |
-|-----------|--------|----------|
-| `test_gemma4_header_transcript.py` | `scripts/models/gemma4_header_transcript.sh` | Spec round-trip, defect regressions, mutation matrix, robustness, output contract |
-| `test_gguf_header_transcript.py` | `scripts/models/gguf_header_transcript.sh` | Independent-reader cross-check, spec round-trip, refusal detection with negative controls, robustness |
-| `test_gemma4_facts_contract.py` | the committed artifacts, not the scripts | `schemas/gemma4_facts.json` against `docs/models/gemma-4.md`, both header transcripts, the canonical chat template, and every line-number citation |
-| `test_audit_recording.py` | `rust-harness/fixtures/audit_recording.py`, the half that runs without a checkpoint | sequence reconstruction from the recorder's own line shapes, the two-branch and gap refusals, and the L2 measures on rows with known answers; the teacher-forced pass itself needs the workstation |
-| `specbuild.py` | neither (helper) | Not named `test_*` so pytest does not collect it |
+Generated from each module's docstring; see [../README.md](../README.md).
+
+<!-- inventory:tests:start -->
+
+| File | Tests | Covers |
+|------|-------|--------|
+| `test_audit_recording.py` | 10 | The recording audit's parsing and measures, on synthetic recordings. |
+| `test_gemma4_facts_contract.py` | 22 | Asserts the committed Gemma 4 artifacts against ``schemas/gemma4_facts.json``. |
+| `test_gemma4_facts_propagation.py` | 13 | Asserts live Gemma 4 consumers against ``schemas/gemma4_facts.json``. |
+| `test_gemma4_header_transcript.py` | 34 | Tests for scripts/models/gemma4_header_transcript.sh. |
+| `test_gguf_header_transcript.py` | 20 | Tests for scripts/models/gguf_header_transcript.sh. |
+
+<!-- inventory:tests:end -->
 
 **`test_gemma4_facts_contract.py` is the one module that reads recorded transcripts**, which
 the rule above forbids the other two. The distinction is deliberate: they test what the

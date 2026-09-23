@@ -20,6 +20,7 @@ from training.recipes import (
     load_snapshot,
     register_schema,
     resolved_yaml,
+    tokenizer_source,
     validate,
     write_snapshot,
 )
@@ -46,7 +47,6 @@ class TestLoading:
             "pretrain-1b.yaml",
             "tiny-e2e.yaml",
             "sft-qlora-e2b.yaml",
-            "sft-qlora-gemma-e4b.yaml",
             "continual-gemma4-e2b.yaml",
         } <= names
 
@@ -250,6 +250,14 @@ class TestValidate:
         )
         assert_problem(recipe, "memory.offload")
 
+    def test_head_chunk_defaults_and_must_be_positive(self):
+        recipe = load_recipe(os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"))
+        assert recipe.memory.head_chunk_tokens == 1024
+        recipe = load_recipe(
+            os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"), ["memory.head_chunk_tokens=0"]
+        )
+        assert_problem(recipe, "memory.head_chunk_tokens")
+
     def test_nonpositive_batch_geometry(self):
         recipe = load_recipe(
             os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"), ["data.micro_batch=0"]
@@ -340,6 +348,106 @@ class TestTokenizerHashInvariant:
         )
 
 
+class TestTokenizerSource:
+    """KB-80: an HF recipe reads the tokenizer its base directory ships.
+
+    Until 2026-09-19 every SFT and organism recipe named a tokenizers
+    directory nothing staged, and preflight, validate and train-sft each
+    read that field on their own. One resolver now answers all three:
+    tokenizer.path when set, else model.hf.id, else nothing for a scratch
+    model, which must name one.
+    """
+
+    def test_hf_recipe_defaults_to_the_base_directory(self, monkeypatch):
+        from training.models import staged
+
+        monkeypatch.setattr(staged, "STAGED_ROOTS", ())
+        recipe = load_recipe(os.path.join(REFERENCE_DIR, "sft-qlora-e2b.yaml"))
+        assert recipe.tokenizer.path is None
+        assert tokenizer_source(recipe) == recipe.model.hf.id
+        validate(recipe)
+
+    def test_hf_recipe_resolves_to_the_staged_directory(self, tmp_path, monkeypatch):
+        """KB-79: the id stays the pin; the source is the staged directory."""
+        from training.models import staged
+
+        root = tmp_path / "hf"
+        base = root / "gemma-4-E2B"
+        base.mkdir(parents=True)
+        (base / "config.json").write_text("{}")
+        monkeypatch.setattr(staged, "STAGED_ROOTS", (str(root),))
+        recipe = load_recipe(os.path.join(REFERENCE_DIR, "sft-qlora-e2b.yaml"))
+        assert recipe.model.hf.id == "google/gemma-4-E2B"
+        assert tokenizer_source(recipe) == str(base)
+
+    def test_unstaged_id_is_not_fetched_by_the_hash_check(
+        self, jsonl_path, tokenizer_dir, tmp_path, monkeypatch
+    ):
+        """FT.recipe-gates 2026-09-19: a prepared data.source plus a hub id made
+        validate reach for the hub. A source that is not a directory is left
+        to preflight."""
+        from training.data import prepare as prepare_mod
+        from training.models import staged
+
+        monkeypatch.setattr(staged, "STAGED_ROOTS", ())
+        shards = tmp_path / "shards"
+        prepare_mod.prepare(
+            source=jsonl_path, out_dir=str(shards), tokenizer_source=tokenizer_dir
+        )
+        base = os.path.join(REFERENCE_DIR, "sft-qlora-e2b.yaml")
+        validate(load_recipe(base, [f"data.source={shards}"]))
+
+    def test_explicit_path_wins(self):
+        recipe = load_recipe(
+            os.path.join(REFERENCE_DIR, "sft-qlora-e2b.yaml"),
+            ["tokenizer.path=/elsewhere/tok"],
+        )
+        assert tokenizer_source(recipe) == "/elsewhere/tok"
+
+    def test_scratch_recipe_must_name_one(self, tiny_recipe):
+        assert tokenizer_source(tiny_recipe) == tiny_recipe.tokenizer.path
+        recipe = load_recipe(
+            os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"), ["tokenizer.path=null"]
+        )
+        assert tokenizer_source(recipe) is None
+        assert_problem(recipe, "tokenizer.path: required for a scratch model")
+
+    def test_no_hf_recipe_ships_a_tokenizer_block(self):
+        # The convention is stated once, in sft-qlora-e2b.yaml; a recipe that
+        # re-adds the field re-opens KB-80 for whoever copies it next.
+        for path in REFERENCE_RECIPES + sorted(
+            glob.glob(os.path.join(REFERENCE_DIR, "..", "organisms", "*.yaml"))
+        ):
+            recipe = load_recipe(path)
+            if recipe.model.hf is not None:
+                assert recipe.tokenizer.path is None, path
+
+    def test_shard_hash_check_reads_the_base_directory(
+        self, jsonl_path, tokenizer_dir, tmp_path_factory, tmp_path
+    ):
+        from support import build_bpe_tokenizer
+
+        from training.data import prepare as prepare_mod
+
+        shards = tmp_path / "shards"
+        prepare_mod.prepare(
+            source=jsonl_path, out_dir=str(shards), tokenizer_source=tokenizer_dir
+        )
+        base = os.path.join(REFERENCE_DIR, "sft-qlora-e2b.yaml")
+        validate(
+            load_recipe(base, [f"data.source={shards}", f"model.hf.id={tokenizer_dir}"])
+        )
+        other = build_bpe_tokenizer(
+            str(tmp_path_factory.mktemp("other_tok")),
+            ["completely other text"] * 8,
+            ["<|eos|>"],
+        )
+        assert_problem(
+            load_recipe(base, [f"data.source={shards}", f"model.hf.id={other}"]),
+            "tokenizer: hash",
+        )
+
+
 class TestPeftInvariants:
     """F2: peft group field domains and QLoRA combination rules."""
 
@@ -355,12 +463,11 @@ class TestPeftInvariants:
     def test_qlora_recipe_valid(self):
         validate(self.tiny(["peft.enabled=true", "peft.quantize_base=nf4"]))
 
-    def test_dora_recipe_valid_with_and_without_quantization(self):
-        validate(self.tiny(["peft.enabled=true", "peft.method=dora"]))
-        validate(
-            self.tiny(
-                ["peft.enabled=true", "peft.method=dora", "peft.quantize_base=nf4"]
-            )
+    def test_dora_is_refused(self):
+        # DoRA left on 2026-09-20 unexercised; a recipe asking for it is a
+        # schema error, not a silent LoRA.
+        assert_problem(
+            self.tiny(["peft.enabled=true", "peft.method=dora"]), "peft.method"
         )
 
     def test_unknown_method(self):

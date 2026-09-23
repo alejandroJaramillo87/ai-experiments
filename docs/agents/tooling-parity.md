@@ -63,27 +63,9 @@ OpenCode side may do so by deleting the generated-by marker from its frontmatter
 generator then reports it as forked and leaves it alone, mirroring what `command-sync` does
 for `cost.md`.
 
-| Role | Purpose | Writes? |
-|------|---------|---------|
-| skeptic | Adversarial verification of one claim | no |
-| bench-runner | Host-side service benchmarks, via human-reported output | no |
-| doc-writer | Documentation prose | yes |
-| bug-hunter | Defect discovery along one assigned dimension | memory only |
-| triage-agent | Dedupe, severity, and packaging of a findings ledger | memory only |
-| remediator | Implementing one verified finding, with red-before evidence | yes |
-| integrator | Gate-running a merged batch and finding the seams | no |
-| perf-auditor | Runtime and memory cost of repo-local code, in the sandbox | no |
-| doc-auditor | Documentation drift detection | memory only |
-| feature-implementer | Net-new work from a stated requirement, style-guide first | yes |
-
-The six QA roles (`bug-hunter` through `doc-auditor`) share one method contract, the
-`bug-bash` skill, and are driven by `/bugbash`. `skeptic` is the verification stage of
-that same ladder. See `.claude/skills/bug-bash/SKILL.md`.
-
-Two roles are deliberately kept unable to write. `integrator` is the independent check
-between a batch and a commit, and `skeptic` adjudicates claims: an agent that can patch
-what it finds stops being either. This is also why neither carries `memory` on the Claude
-side — enabling it auto-grants Read, Write, and Edit.
+The roster, with each role's tools and purpose, is rendered from `.claude/agents/` in
+[README.md](README.md); what each role is for and why some cannot write is in
+[roles.md](roles.md).
 
 Two roles were removed once the QA roster landed, both for the same reason: nothing
 referenced them. `explorer` duplicated Claude Code's built-in `Explore`, which provides the
@@ -202,16 +184,12 @@ Divergent commands are forked deliberately: break the symlink and author a real 
 `/cost` is the current example — OpenCode-only (`.opencode/commands/cost.md`, shell-injects
 `` !`make agent-usage` ``) because Claude Code already ships a built-in `/usage`.
 
-| Command | Shared? | OpenCode routing |
-|---------|---------|------------------|
-| `/task <roadmap> <id>` | shared | primary (implement → acceptance → skeptic pipeline) |
-| `/audit-docs <path>` | shared | `agent: doc-auditor`, `subtask: true` |
-| `/bench <service>` | shared | primary (owns the human handshake; delegates only the reduction to `bench-runner`) |
-| `/verify-host <claim>` | shared | primary (a subagent has no channel to the human) |
-| `/bugbash <scope>` | shared | primary (drives the phase ladder, spawns the QA roles) |
-| `/postmortem [sprint]` | shared | primary (structured writing) |
-| `/pins` | shared | primary (grep audit) |
-| `/cost` | **forked, OpenCode-only** | primary (`make agent-usage`) |
+The shared commands are rendered from `.claude/commands/` in [README.md](README.md).
+`/audit-docs` is the one that routes to a subagent in OpenCode (`agent: doc-auditor`,
+`subtask: true`); every other shared command runs in the primary, either because it owns
+the human handshake (`/bench`, `/verify-host`), drives the ladder itself (`/task`,
+`/bugbash`), or is structured writing or a grep audit (`/postmortem`, `/pins`). `/cost` is
+the forked one and appears in no shared roster.
 
 ## Skills (Phase 3)
 
@@ -228,7 +206,7 @@ Caveat: Claude-only keys such as `allowed-tools` are silently ignored by OpenCod
 rely on skill frontmatter for safety** in OpenCode sessions — that is the job of the Phase 1
 permissions and the Phase 4 hooks.
 
-Current skills: `benchmarking`, `bug-bash`, `docker-debug`, `training-runs`.
+The current skills are rendered from `.claude/skills/` in [README.md](README.md).
 
 A `runpod-ops` skill was removed: it described commands that do not exist and said so in
 its own status note. The RunPod guardrail below is unaffected — it is a script plus two

@@ -26,6 +26,13 @@ meant to be its workspace.
 Serve mode writes neither `session.jsonl` nor `session.kv`: a server's requests are unrelated
 callers, and there is no conversation to resume.
 
+`make harness-clean` at the repository root removes what a run started from `rust-harness/`
+left in that directory (the three files above, plus the profiling outputs and the generated
+ladder references) and the container's transcripts under the repository's `sessions`
+directory. It
+leaves the cargo build output and the records under the observability log root, and it does
+not look for the files a `--record`, `--trace-chrome` or `--alignment-out` flag named.
+
 ## Under the observability log root
 
 Every `harness` run, and every run of `activation-capture`, `attention-capture`, `layer-diff`,

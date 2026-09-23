@@ -8,8 +8,10 @@ and export services sit on an internal network and cannot reach the hub at all.
 
 The download lands as a plain directory tree under /mnt/ai-data/models/hf, which
 every other service mounts read-only, rather than as a hub blob cache. Recipes
-then name that directory instead of a hub id, so a training run resolves nothing
-over the network.
+keep naming the hub id and its revision; every reader resolves the id to this
+directory through training/models/staged.py (KB-79), so a training run resolves
+nothing over the network. The layout there is this module's DEFAULT_ROOT plus the
+id's basename; change one and change the other.
 
 --revision is required. An unpinned download is the problem this command exists
 to solve: it makes a run irreproducible and lets the base drift between training
@@ -103,9 +105,10 @@ def cmd(args: argparse.Namespace) -> int:
 
     out.ok(f"Downloaded to {path}")
     out.line()
-    out.line("Set this in the recipe so the run is reproducible:")
+    out.line("Pin this in the recipe so the run is reproducible:")
     out.line("  model:")
     out.line("    hf:")
-    out.line(f"      id: {path}")
+    out.line(f"      id: {args.model}")
     out.line(f"      revision: {args.revision}")
+    out.line("(every reader resolves the id to the staged directory)")
     return 0

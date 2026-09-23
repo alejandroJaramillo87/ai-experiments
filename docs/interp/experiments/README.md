@@ -4,6 +4,16 @@ Post-mortems for interpretability mini-projects and experiments. This directory 
 log convention the interp roadmap refers to as the experiments log; the Phase 2 PS5
 commissioning mini-project is its first required entry.
 
+## Entries
+
+<!-- inventory:pages:start -->
+
+| Document | Covers |
+|----------|--------|
+| [2026-07-16-hidden-objective-organism-deferral.md](2026-07-16-hidden-objective-organism-deferral.md) | Deferral record promised by resolved decision 3 of the P4-D1 model-organisms investigation ([investigations/p4_d1_model_organisms_investigation.md](../investigations/p4_d1_model_organisms_investigation.md)). |
+
+<!-- inventory:pages:end -->
+
 ## Entry naming
 
 One file per experiment: `YYYY-MM-DD-short-slug.md` (date the experiment concluded,

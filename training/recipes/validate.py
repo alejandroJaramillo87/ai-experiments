@@ -59,11 +59,35 @@ def _check_missing(recipe: DictConfig, problems: list[str]) -> None:
         problems.append(f"{key}: required field is not set")
 
 
+def tokenizer_source(recipe: DictConfig) -> str | None:
+    """Where the recipe's tokenizer is read from: tokenizer.path when set,
+    else the base model directory (a fine-tune reuses the base tokenizer),
+    else None for a scratch model that names no tokenizer.
+
+    The one resolver every reader shares (validate, preflight, train-sft's
+    dataset hash check), so a recipe cannot name the base in one field and a
+    tokenizer nothing stages in another (KB-80). A hub id is returned as the
+    directory train-download staged when one exists (KB-79); the hash checks
+    below read a directory only, and leave an unstaged id to preflight, so
+    validate never reaches for the hub."""
+    from training.models.staged import resolve_model_source
+
+    if recipe.tokenizer.path is not None:
+        return recipe.tokenizer.path
+    if recipe.model.hf is not None and not OmegaConf.is_missing(recipe.model.hf, "id"):
+        return resolve_model_source(recipe.model.hf.id)
+    return None
+
+
 def _check_model(recipe: DictConfig, problems: list[str]) -> None:
     has_hf = recipe.model.hf is not None
     has_scratch = recipe.model.scratch is not None
     if has_hf == has_scratch:
         problems.append("model: exactly one of model.hf or model.scratch must be set")
+    if has_scratch and not has_hf and recipe.tokenizer.path is None:
+        problems.append(
+            "tokenizer.path: required for a scratch model (no base tokenizer to reuse)"
+        )
     if has_scratch and not has_hf:
         s = recipe.model.scratch
         if not OmegaConf.is_missing(s, "heads") and not OmegaConf.is_missing(
@@ -173,7 +197,7 @@ def _check_memory(recipe: DictConfig, problems: list[str]) -> None:
         problems.append(
             f"memory.offload: {recipe.memory.offload!r} not in {OFFLOAD_MODES}"
         )
-    for name in ("allgather_bucket_size", "reduce_bucket_size"):
+    for name in ("allgather_bucket_size", "reduce_bucket_size", "head_chunk_tokens"):
         if recipe.memory[name] <= 0:
             problems.append(
                 f"memory.{name}: must be positive, got {recipe.memory[name]}"
@@ -190,12 +214,12 @@ def _check_offload_budget(recipe: DictConfig, problems: list[str]) -> None:
     the same convention as the path-dependent checks."""
     if recipe.memory.offload != "zero_offload" and recipe.optimizer.name != "cpu_adam":
         return
-    from training.calculator.components import (
+    from training.models.architecture import (
+        HOST_RAM_TOTAL_BYTES,
         PAGE_CACHE_ALLOWANCE_BYTES,
         host_ram_bytes,
         spec_from_recipe,
     )
-    from training.calculator.solve import HOST_RAM_TOTAL_BYTES
 
     try:
         spec = spec_from_recipe(recipe)
@@ -435,16 +459,16 @@ def _check_mixture(recipe: DictConfig, problems: list[str]) -> None:
             f"mixture: sources carry mismatched tokenizer hashes ({detail}); "
             "all sources must be tokenized identically"
         )
-    elif len(hashes) == 1 and not OmegaConf.is_missing(recipe.tokenizer, "path"):
+    elif len(hashes) == 1 and (source := tokenizer_source(recipe)) is not None:
+        if _left_to_preflight(recipe, source):
+            return
         manifest_hash = next(iter(hashes))
         from training.data.prepare import load_tokenizer
 
         try:
-            tokenizer_hash = load_tokenizer(recipe.tokenizer.path).content_hash
+            tokenizer_hash = load_tokenizer(source).content_hash
         except Exception as exc:
-            problems.append(
-                f"tokenizer.path: cannot load {recipe.tokenizer.path}: {exc}"
-            )
+            problems.append(f"tokenizer.path: cannot load {source}: {exc}")
             return
         if tokenizer_hash != manifest_hash:
             problems.append(
@@ -476,7 +500,7 @@ def _check_replay(recipe: DictConfig, problems: list[str]) -> None:
         if r.max_gb <= 0:
             problems.append(f"replay.max_gb: must be positive, got {r.max_gb}")
         else:
-            from training.calculator.solve import HOST_RAM_TOTAL_BYTES
+            from training.models.architecture import HOST_RAM_TOTAL_BYTES
 
             budget_gb = HOST_RAM_TOTAL_BYTES / 2**30 - recipe.watchdog.ram_floor_gb
             if r.max_gb > budget_gb:
@@ -607,13 +631,23 @@ def _check_watchdog(recipe: DictConfig, problems: list[str]) -> None:
         )
 
 
+def _left_to_preflight(recipe: DictConfig, source: str) -> bool:
+    """True when the tokenizer source is the base's hub id with no staged
+    directory: loading it would reach for the hub, which validate never does
+    (FT.recipe-gates, 2026-09-19). Preflight reports the unstaged base as
+    `model.hf:` with the train-download remedy. An explicit tokenizer.path is
+    always loaded, so a path nothing staged is still validate's problem."""
+    return recipe.tokenizer.path is None and not os.path.isdir(source)
+
+
 def _check_tokenizer_matches_shards(recipe: DictConfig, problems: list[str]) -> None:
     """When data.source is a prepared D2 shard directory, the tokenizer must
     hash-match the manifest. Skipped when no manifest is present (HF dataset id
     or shards not yet prepared on this machine)."""
-    if OmegaConf.is_missing(recipe.data, "source") or OmegaConf.is_missing(
-        recipe.tokenizer, "path"
-    ):
+    tokenizer = tokenizer_source(recipe)
+    if OmegaConf.is_missing(recipe.data, "source") or tokenizer is None:
+        return
+    if _left_to_preflight(recipe, tokenizer):
         return
     source = recipe.data.source
     manifest_path = os.path.join(source, "manifest.json")
@@ -630,9 +664,9 @@ def _check_tokenizer_matches_shards(recipe: DictConfig, problems: list[str]) -> 
         return
     manifest_hash = manifest.get("tokenizer_hash")
     try:
-        tokenizer_hash = load_tokenizer(recipe.tokenizer.path).content_hash
+        tokenizer_hash = load_tokenizer(tokenizer).content_hash
     except Exception as exc:
-        problems.append(f"tokenizer.path: cannot load {recipe.tokenizer.path}: {exc}")
+        problems.append(f"tokenizer.path: cannot load {tokenizer}: {exc}")
         return
     if manifest_hash != tokenizer_hash:
         problems.append(

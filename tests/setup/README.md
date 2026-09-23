@@ -10,9 +10,15 @@ exception: it touches nothing, so it is the part the suite can hold to the style
 
 ## Test index
 
-| Test file | Covers | Approach |
-|-----------|--------|----------|
-| `test_setup_help_contract.py` | all eight `scripts/setup/*.sh` | run `--help`, assert exit 0, no ANSI under `NO_COLOR`, a `Usage: <script>` first line, documented `--help` and `--no-color` flags, and only style-guide status tags; run an unknown flag and assert exit 2 with a message on stderr |
+Generated from each module's docstring; see [../README.md](../README.md).
+
+<!-- inventory:tests:start -->
+
+| File | Tests | Covers |
+|------|-------|--------|
+| `test_setup_help_contract.py` | 2 | Help-text contract tests for the provisioning scripts in scripts/setup/. |
+
+<!-- inventory:tests:end -->
 
 ## Notes
 

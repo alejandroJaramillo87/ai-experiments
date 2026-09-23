@@ -1,6 +1,7 @@
 """GPU/VRAM hardware suite (WI-3): sm_120 presence and bf16 compute at the
-smoke tier; near-capacity allocation, memfit-versus-measured, tolerance-based
-resume, family-registry loads, and the harvest hook smoke at the full tier.
+smoke tier; near-capacity allocation, the step measurement on the tiny
+recipe, tolerance-based resume, family-registry loads, and the harvest hook
+smoke at the full tier.
 """
 
 from __future__ import annotations
@@ -99,40 +100,27 @@ class TestGpuFull:
         del probe
         cuda.cuda.empty_cache()
 
-    def test_memfit_estimate_never_underpredicts_measured(
-        self, cuda, tmp_path, train_lock
-    ):
-        """The D4 calculator contract: reserved_estimate must not
-        under-predict a real run's peak allocation (tiny recipe; the 10%
-        closeness bar for real recipes is the calibrate runbook entry)."""
-        from support import make_shard_dir
-
+    def test_step_measures_the_tiny_recipe(self, cuda, tmp_path, train_lock):
+        """`python -m training step` on the tiny recipe: builds the model,
+        records what it holds resident, steps twice, and the counts match
+        (the real recipes are the FT.calibrate-qlora runbook entry)."""
         from tests.hardware.conftest import REPO_ROOT
-        from training.calculator.solve import estimate
+        from training.commands.train_step import step
         from training.recipes import load_recipe
-        from training.runtime.loop import train
 
         recipe = load_recipe(
             os.path.join(
                 REPO_ROOT, "training", "recipes", "reference", "tiny-e2e.yaml"
             ),
-            [
-                f"data.source={make_shards(tmp_path, make_shard_dir)}",
-                f"run.output_root={tmp_path / 'runs'}",
-                "data.seq_len=64",
-                "schedule.total_steps=4",
-                "schedule.warmup_steps=1",
-                "checkpoint.interval_steps=4",
-            ],
+            ["data.seq_len=64"],
         )
-        predicted = estimate(recipe)
-        cuda.cuda.reset_peak_memory_stats()
-        train(recipe)
-        measured = cuda.cuda.max_memory_allocated()
-        assert measured <= predicted.reserved_estimate, (
-            f"measured {measured} bytes exceeds the calculator's "
-            f"reserved_estimate {predicted.reserved_estimate}"
-        )
+        record = step(recipe, steps=2)
+        assert record.steps == 2
+        assert record.model_param_count == record.analytic_param_count
+        assert record.model_trainable_params == record.analytic_trainable_params
+        assert record.tokens_per_micro_batch == recipe.data.micro_batch * 64
+        assert 0 < record.static_measured <= record.measured_allocated
+        assert record.measured_reserved >= record.measured_allocated
 
     def test_resume_loss_curve_within_tolerance(self, cuda, tmp_path, train_lock):
         """Straight N+M steps versus N steps + checkpoint + resume + M steps
@@ -223,6 +211,7 @@ class TestGpuFull:
         when weights are absent."""
         from omegaconf import OmegaConf
 
+        from interp.families import hook_name
         from interp.harvest import check_hook_dims, resolve_model_meta, run_harvest
         from training.recipes.schema import Recipe
 
@@ -255,7 +244,10 @@ class TestGpuFull:
         recipe.harvest.out_root = str(tmp_path / "activations")
         manifest = run_harvest(recipe)
         assert manifest["model_type"] == "gemma4_text"
-        assert manifest["hooks"] == ["model.layers.2"]
+        # The pin is the composite checkpoint, whose decoder sits under
+        # model.language_model; the registry owns the spelling, so the test
+        # asks it rather than pinning the flat path a bare text config takes.
+        assert manifest["hooks"] == [hook_name(spec, 2)]
         assert manifest["d_model"] == d_model
 
 

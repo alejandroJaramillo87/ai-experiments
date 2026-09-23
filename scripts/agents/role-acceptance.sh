@@ -1,10 +1,11 @@
 #!/bin/bash
 #
-# role-acceptance.sh [role ...]
+# role-acceptance.sh - LLM acceptance tests for the QA subagent roles.
 #
-# LLM acceptance tests for the QA subagent roles. Each case invokes one agent
-# against a fixture under tests/agents/ and asserts a required property of the
-# result. These spend tokens and are nondeterministic by design, so they are
+# Usage: role-acceptance.sh [role ...]
+#
+# Each case invokes one agent against a fixture under tests/agents/ and asserts
+# a required property of the result. These spend tokens and are nondeterministic by design, so they are
 # kept out of pytest and `make test`; see tests/agents/README.md.
 #
 # With no arguments every role runs. Exit 0 when every case passes or skips.

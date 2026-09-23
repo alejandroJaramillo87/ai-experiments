@@ -1,6 +1,6 @@
 """ZeRO-Offload unit tests (Phase 2 P2-D5): DeepSpeed config generation as a
 pure function of the recipe, the trainable_filter freeze policy on a real
-tiny HF model, the calculator's transformer_stack parameter accounting, and
+tiny HF model, the transformer_stack parameter accounting, and
 the validate() invariants. CPU-only; the engine itself (deepspeed.initialize,
 CPUAdam) is exercised by the host-side tiny-model resume acceptance run, not
 here — the sandbox has no deepspeed."""
@@ -143,13 +143,13 @@ class TestApplyTrainableFilter:
             if id(p) in trainable_ids
         )
 
-    def test_trainable_count_matches_calculator(self, tiny_model):
-        from training.calculator import spec_from_recipe, trainable_param_count
+    def test_trainable_count_matches_the_analytic_count(self, tiny_model):
+        from training.models.architecture import spec_from_recipe, trainable_param_count
 
         recipe = offload_recipe("model.trainable_filter=transformer_stack")
         trainable = apply_trainable_filter(tiny_model, recipe)
         measured = sum(p.numel() for p in trainable)
-        # The tiny HF Llama matches the tiny scratch spec the calculator
+        # The tiny HF Llama matches the tiny scratch spec architecture.py
         # tests pin, so the freeze policy and the memory model must agree.
         spec_recipe = load_recipe(
             TINY_RECIPE,
@@ -185,7 +185,7 @@ class TestApplyTrainableFilter:
 
 
 class TestCalculatorTransformerStack:
-    # Same hand-computed tiny config as test_calculator.py: total 90,432.
+    # Same hand-computed tiny config as test_architecture.py: total 90,432.
     # transformer_stack trainable = layers * (attn + mlp + norms) + final norm
     #   = 2 * (12,288 + 24,576 + 128) + 64 = 74,048
     STACK_PARAMS = 74_048
@@ -199,7 +199,7 @@ class TestCalculatorTransformerStack:
     ]
 
     def test_transformer_stack_param_count(self):
-        from training.calculator import spec_from_recipe, trainable_param_count
+        from training.models.architecture import spec_from_recipe, trainable_param_count
 
         recipe = load_recipe(
             TINY_RECIPE,
@@ -210,8 +210,11 @@ class TestCalculatorTransformerStack:
         )
 
     def test_host_ram_prices_the_frozen_policy(self):
-        from training.calculator import host_ram_bytes, spec_from_recipe
-        from training.calculator.components import OFFLOAD_HOST_BYTES_PER_PARAM
+        from training.models.architecture import (
+            OFFLOAD_HOST_BYTES_PER_PARAM,
+            host_ram_bytes,
+            spec_from_recipe,
+        )
 
         recipe = load_recipe(
             TINY_RECIPE,
@@ -442,3 +445,74 @@ class TestAttentionFallbackWarning:
         monkeypatch.setattr(model_mod, "_flash_fallback_warned", False)
         assert model_mod.attention_implementation() == "sdpa"
         assert capsys.readouterr().err == ""
+
+
+class TestAttentionHeadWidth:
+    """KB-84: FlashAttention 2 refuses a head dimension above 256, and Gemma 4's
+    full-attention layers are 512 wide, so a config declaring one takes sdpa
+    even where flash-attn imports (FT.calibrate-qlora's second attempt died in
+    the kernel with `head dimension at most 256`)."""
+
+    @staticmethod
+    def _cuda_with_flash(monkeypatch):
+        import sys
+        import types
+
+        from training.models import model as model_mod
+
+        monkeypatch.setitem(
+            sys.modules,
+            "torch",
+            types.SimpleNamespace(
+                cuda=types.SimpleNamespace(is_available=lambda: True)
+            ),
+        )
+        monkeypatch.setitem(sys.modules, "flash_attn", types.ModuleType("flash_attn"))
+        monkeypatch.setattr(model_mod, "_flash_fallback_warned", False)
+        monkeypatch.setattr(model_mod, "_head_dim_note_printed", False)
+        return model_mod
+
+    @staticmethod
+    def _config(**fields):
+        import types
+
+        return types.SimpleNamespace(**fields)
+
+    def test_no_config_keeps_flash(self, monkeypatch):
+        model_mod = self._cuda_with_flash(monkeypatch)
+        assert model_mod.attention_implementation() == "flash_attention_2"
+
+    def test_a_head_within_the_cap_keeps_flash(self, monkeypatch, capsys):
+        model_mod = self._cuda_with_flash(monkeypatch)
+        config = self._config(head_dim=256)
+        assert model_mod.attention_implementation(config) == "flash_attention_2"
+        assert capsys.readouterr().err == ""
+
+    def test_gemma4_global_head_takes_sdpa_and_notes_once(self, monkeypatch, capsys):
+        model_mod = self._cuda_with_flash(monkeypatch)
+        # The composite checkpoint keeps the decoder under text_config.
+        config = self._config(
+            model_type="gemma4",
+            text_config=self._config(head_dim=256, global_head_dim=512),
+        )
+        assert model_mod.max_head_dim(config) == 512
+        assert model_mod.attention_implementation(config) == "sdpa"
+        note = capsys.readouterr().err
+        assert "head_dim <= 256" in note and "512" in note and "sdpa" in note
+        assert model_mod.attention_implementation(config) == "sdpa"
+        assert capsys.readouterr().err == ""
+
+    def test_a_config_naming_no_head_keeps_flash(self, monkeypatch):
+        model_mod = self._cuda_with_flash(monkeypatch)
+        assert model_mod.max_head_dim(self._config(hidden_size=64)) is None
+        assert model_mod.attention_implementation(self._config()) == "flash_attention_2"
+
+    def test_the_stamp_reads_the_loaded_model(self):
+        import types
+
+        from training.tune.sft_callbacks import _attention_implementation
+
+        model = types.SimpleNamespace(
+            config=types.SimpleNamespace(_attn_implementation="sdpa")
+        )
+        assert _attention_implementation(model) == "sdpa"

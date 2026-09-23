@@ -1,4 +1,4 @@
-# Export Dockerfile - the merged HF checkpoint exporter
+# The merged HF checkpoint exporter, a CPU-only image kept separate from the training image.
 #
 # Separate from Dockerfile.training by design decision: the image that trains a model is
 # not reused to prepare it for serving. This image carries only what the export needs: a

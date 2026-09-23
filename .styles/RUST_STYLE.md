@@ -259,7 +259,7 @@ when stderr is a terminal and `NO_COLOR` is unset. The text is byte-identical ei
 
 **A green gate containing `[SKIP]` lines is a weaker result than its exit code suggests.**
 Read the output for skip lines rather than trusting the exit status, as
-`/rust-harness/README.md` requires.
+`/docs/rust-harness/testing.md` requires.
 The `test` step passes `--nocapture` so those lines are printed at all: cargo hides a passing
 test's stderr, and a skip is by definition a pass. When adding a skippable test, make the skip
 line name the missing dependency precisely enough that a reader can install it.
@@ -370,4 +370,5 @@ the `release-with-debug` profile) and `make debug-record` / `make debug-replay` 
 - `.styles/TEST_OUTPUT_STYLE.md`   — test program and runner output format
 - `.styles/COMMENT_STYLE.md`       — comment conventions across languages
 - `.styles/DOCUMENTATION_STYLE.md` — markdown documentation standards
-- `rust-harness/README.md`         — workspace layout, test tiers, and roadmap
+- `rust-harness/README.md`         — the workspace router: crates, entry points, traps
+- `docs/rust-harness/testing.md`   — the test tiers, the gate and the contracts

@@ -1,14 +1,25 @@
-# System Update Scripts
+# scripts/update
 
-Simple, focused scripts for updating Ubuntu AI development environment components.
+Updaters for the workstation stack: Ubuntu, the NVIDIA driver, CUDA, cuDNN, Docker, the
+security tools and the uv-managed Python environment. None runs in a sandbox, since each
+needs sudo and the network; `make update` wraps `update_python.sh` and the rest are run by
+hand in the order below.
 
-## Overview
+## Scripts
 
-These scripts update specific components of the AI development stack:
-- `update_ubuntu.sh` - System packages and kernel
-- `update_nvidia.sh` - NVIDIA GPU driver (will reboot)
-- `update_cuda.sh` - CUDA toolkit
-- `update_cudnn.sh` - cuDNN library
+<!-- inventory:scripts:start -->
+
+| Script | Purpose |
+|--------|---------|
+| `update_cuda.sh` | This script automatically checks for and applies updates for the currently installed CUDA toolkit package. |
+| `update_cudnn.sh` | This script automatically checks for and applies updates for the cuDNN package matching your installed CUDA version. |
+| `update_docker.sh` | This script updates Docker CE, Docker Compose, and NVIDIA Container Toolkit. |
+| `update_nvidia.sh` | This script automatically checks for and applies updates for the installed nvidia-driver-*-open package, whichever branch that is. |
+| `update_python.sh` | Updates the uv-managed Python environment and verifies the PyTorch CUDA stack. |
+| `update_security.sh` | This script updates security tools and runs basic security checks. |
+| `update_ubuntu.sh` | Comprehensive Ubuntu update script for AI workstation. |
+
+<!-- inventory:scripts:end -->
 
 ## Usage
 

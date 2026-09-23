@@ -1,16 +1,18 @@
-"""Fine-tuning evaluation wrapper (Phase 1 F7).
+"""Fine-tuning evaluation driver (Phase 1 F7).
 
-One command producing a baseline-versus-tuned scorecard from two
-independently skippable evaluators, held-out loss and lm-evaluation-harness,
-each run in-process in the training container with inference down. A
-model-as-judge evaluator existed until 2026-09-19; it measured preference,
-which no rung of the training tier's progression asks about, and left with
-the serving phase it needed.
+One command running two independently skippable evaluators, held-out loss
+and lm-evaluation-harness, on a baseline and a fine-tuned checkpoint, each
+in-process in the training container with inference down. The output is the
+four per-side records (holdout_<side>.json, lmeval_<side>.json) in the run
+directory, which interp's organism-verify reads for its locality check. A
+scorecard assembled on top of them existed until 2026-09-20 and had no
+reader; a model-as-judge evaluator existed until 2026-09-19 and measured
+preference, which no rung of the training tier's progression asks about.
 
 Both compared sides are HF checkpoint directories under the models tree,
 the base as downloaded and the fine-tune as python -m training export wrote
 it, and each is identified by model_hash, the sha256 of its
-model.safetensors.
+model.safetensors, printed beside its record.
 
 This is a HOST tool: it drives docker compose from the workstation and
 depends only on the Python standard library.
@@ -19,11 +21,11 @@ Usage: python -m training eval-ft --base ... --tuned ...
 
 A null test is the same model on both sides.
 
-Confound rule: scorecard assembly refuses sides whose thinking mode
-differs; both sides' model_hash is recorded so the comparison names the
-exact weights on each side.
+Confound rule: the two records of an evaluator must compare (same
+precision, dataset and example count; same lm-eval version and limit), so a
+side resumed from an earlier run with other parameters is refused.
 
-Exit codes: 0 success, 1 preflight/phase/scorecard failure, 2 invalid usage.
+Exit codes: 0 success, 1 preflight/phase failure, 2 invalid usage.
 """
 
 from __future__ import annotations
@@ -34,12 +36,11 @@ import os
 import signal
 import sys
 import time
-from typing import Any
 
 from common.output import Printer
 from common.serving import REPO_ROOT
 from training import serving
-from training.eval import runner, scorecard
+from training.eval import runner
 
 DEFAULT_TASKS = os.path.join(REPO_ROOT, "training", "eval", "tasks.yaml")
 EVALUATORS = ("holdout", "lmeval")
@@ -68,9 +69,9 @@ def resumable_record(path: str, label: str, out: Printer) -> dict | None:
 def configure(sub) -> None:
     parser = sub.add_parser(
         "eval-ft",
-        help="baseline-versus-tuned scorecard: holdout and lm-eval (F7, host)",
-        description="Baseline-versus-tuned scorecard from held-out loss, "
-        "and lm-eval (F7).",
+        help="held-out loss and lm-eval on a base and a fine-tune (F7, host)",
+        description="Held-out loss and lm-eval records for a baseline and a "
+        "fine-tuned checkpoint (F7).",
         epilog="Manual restore after an unclean exit: "
         "docker compose -f docker-compose.rust-harness.yaml up -d --force-recreate harness-serve; "
         "docker compose -f docker-compose.inference.yaml up -d --force-recreate llama-cpu",
@@ -145,14 +146,15 @@ def container_model(model: str) -> str:
 
 
 def phase_container(args, evaluators, out_dir, out: Printer) -> dict:
-    """Inference-down evaluators inside the training container."""
-    sections = {}
+    """Inference-down evaluators inside the training container. Returns the
+    records by evaluator and side, after checking each pair compares."""
+    records: dict[str, dict[str, dict]] = {}
     sides = (
         ("base", container_model(args.base)),
         ("tuned", container_model(args.tuned)),
     )
     if "holdout" in evaluators:
-        records = {}
+        pair = {}
         for side, model in sides:
             record_path = os.path.join(out_dir, f"holdout_{side}.json")
             record = resumable_record(record_path, f"holdout/{side}", out)
@@ -174,11 +176,12 @@ def phase_container(args, evaluators, out_dir, out: Printer) -> dict:
                     phase_args += ["--max-examples", str(args.max_examples)]
                 runner.run_container_phase("eval-holdout", phase_args)
                 record = read_json(record_path)
-            records[side] = record
-            out.ok(f"holdout/{side}: loss {records[side]['loss']:.6f}")
-        sections["holdout"] = runner.holdout_section(records["base"], records["tuned"])
+            pair[side] = record
+            out.ok(f"holdout/{side}: loss {record['loss']:.6f}")
+        runner.check_holdout_pair(pair["base"], pair["tuned"])
+        records["holdout"] = pair
     if "lmeval" in evaluators:
-        records = {}
+        pair = {}
         for side, model in sides:
             record_path = os.path.join(out_dir, f"lmeval_{side}.json")
             record = resumable_record(record_path, f"lmeval/{side}", out)
@@ -193,13 +196,15 @@ def phase_container(args, evaluators, out_dir, out: Printer) -> dict:
                     phase_args += ["--limit", str(args.lmeval_limit)]
                 runner.run_container_phase("eval-lmeval", phase_args)
                 record = read_json(record_path)
-            records[side] = record
-        sections["lmeval"] = runner.lmeval_section(records["base"], records["tuned"])
-        for task, section in sorted(sections["lmeval"]["tasks"].items()):
+            pair[side] = record
+        runner.check_lmeval_pair(pair["base"], pair["tuned"])
+        for task, tuned_result in sorted(pair["tuned"]["results"].items()):
+            base_result = pair["base"]["results"][task]
             out.ok(
-                f"lmeval/{task}: {section['baseline']:.4f} -> {section['tuned']:.4f}"
+                f"lmeval/{task}: {base_result['value']:.4f} -> {tuned_result['value']:.4f}"
             )
-    return sections
+        records["lmeval"] = pair
+    return records
 
 
 def cmd(args: argparse.Namespace) -> int:
@@ -217,38 +222,22 @@ def cmd(args: argparse.Namespace) -> int:
     os.makedirs(out_dir, exist_ok=True)
     out.info(f"Run directory: {out_dir}")
 
-    metadata: dict[str, Any] = {
-        "git_sha": scorecard.git_sha(REPO_ROOT),
-        "evaluators": evaluators,
-        # model_hash and thinking_mode are resolved from the checkpoint
-        # directory below; None means the side is not a directory the
-        # harness can serve (a hub id, an adapter checkpoint), which both
-        # evaluators accept.
-        "baseline": {"model": args.base, "model_hash": None, "thinking_mode": None},
-        "tuned": {"model": args.tuned, "model_hash": None, "thinking_mode": None},
-    }
     try:
-        sides = {"baseline": args.base, "tuned": args.tuned}
-        # A side that is a servable directory records its identity;
-        # anything else stays None.
-        identities = {}
-        for side, path in sides.items():
+        # A side that is a servable directory names its weights; anything
+        # else (a hub id, an adapter checkpoint) has no model_hash, which
+        # both evaluators accept.
+        for side, path in (("base", args.base), ("tuned", args.tuned)):
             try:
-                identities[side] = runner.hf_identity(path)
+                identity = runner.hf_identity(path)
             except runner.EvalRunError:
+                out.info(f"{side}: {path} (no model_hash: not an exported directory)")
                 continue
-        for side, identity in identities.items():
-            if side in metadata:
-                metadata[side].update(
-                    checkpoint=identity["model"],
-                    model_hash=identity["model_hash"],
-                    thinking_mode=identity["thinking_mode"],
-                )
-
-        sections = phase_container(args, evaluators, out_dir, out)
-
-        card = scorecard.assemble_scorecard(metadata, sections)
-    except (serving.ServingError, runner.EvalRunError, scorecard.ScorecardError) as exc:
+            out.info(
+                f"{side}: {identity['model']} model_hash {identity['model_hash']} "
+                f"thinking_mode {identity['thinking_mode']}"
+            )
+        records = phase_container(args, evaluators, out_dir, out)
+    except (serving.ServingError, runner.EvalRunError) as exc:
         out.error(str(exc))
         return 1
     except KeyboardInterrupt:
@@ -257,14 +246,10 @@ def cmd(args: argparse.Namespace) -> int:
         )
         return 1
 
-    card_path = os.path.join(out_dir, "scorecard.json")
-    with open(card_path, "w") as f:
-        json.dump(card, f, indent=2)
-        f.write("\n")
-    md_path = os.path.join(out_dir, "scorecard.md")
-    with open(md_path, "w") as f:
-        f.write(scorecard.render_markdown(card))
     out.line()
-    out.ok(f"Scorecard written: {card_path}")
-    out.ok(f"Rendered table:    {md_path}")
+    for evaluator in records:
+        for side in ("base", "tuned"):
+            out.ok(
+                f"Record written: {os.path.join(out_dir, f'{evaluator}_{side}.json')}"
+            )
     return 0

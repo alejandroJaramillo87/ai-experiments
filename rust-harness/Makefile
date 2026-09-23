@@ -118,8 +118,12 @@ endif
 # The generators need the parent tree's torch environment. `uv run` discovers
 # the project by walking up from here, so this is the workstation venv rather
 # than whichever python is on PATH -- the first Tier E attempt ran a bare
-# python without transformers and wrote nothing (RH.1b).
-LADDER_PY ?= uv run python
+# python without transformers and wrote nothing (RH.1b). --no-sync because a
+# bare `uv run` first syncs the venv to the lock, and when the two disagree
+# on flash-attn that is a from-source nvcc build fanned out over every core:
+# on 2026-09-20 its compilers exhausted 123 GB of host RAM and the OOM killer
+# took the full quality gate, and the terminal, down with them.
+LADDER_PY ?= uv run --no-sync python
 
 # One artifact per generator, named as runtime/src/bin/ladder.rs joins them
 # onto --reference. `ladder` depends on these as files, so a missing one is
@@ -227,3 +231,34 @@ debug-record:
 
 debug-replay:
 	rr replay
+
+# Housekeeping: the files a run started from this directory leaves behind.
+#
+# The binary writes its session into its working directory, so a `cargo run`,
+# `make flame` or `make debug-record` from here leaves session.jsonl,
+# session.kv and probe-flags.jsonl in the worktree; perf and cargo-flamegraph
+# add perf.data, perf.data.old and flamegraph.svg; gdb under `make debug-replay`
+# adds .gdb_history; `make ladder` writes a reference directory per model
+# under fixtures/reference/, tens of megabytes each. Every one of these turned
+# up as an untracked file on the workstation, and every one is per-run state
+# with no reader once the run is over -- a stale session.kv is worse than
+# useless, since the next run silently restores it.
+#
+# An explicit list rather than a sweep, so the target is also the statement of
+# what the workspace produces. The build output under target/ is deliberately
+# not here: `cargo clean` exists, and the rebuild costs minutes. The
+# observability records under the obs log root are the catalog's, pruned by
+# its retention rule, and a file a --record, --trace-chrome or --alignment-out
+# flag named lives wherever the caller put it.
+.PHONY: clean
+clean: ## Remove the run outputs left in the workspace (sessions, profiles, gdb history, ladder references); target/ stays
+	@removed=0; \
+	for f in session.jsonl session.kv probe-flags.jsonl \
+	         perf.data perf.data.old flamegraph.svg .gdb_history; do \
+	  if [ -e "$$f" ]; then rm -f "$$f"; printf '[OK] clean: removed %s\n' "$$f"; removed=1; fi; \
+	done; \
+	for d in fixtures/reference/*/ fixtures/__pycache__/; do \
+	  if [ -d "$$d" ]; then rm -r "$$d"; printf '[OK] clean: removed %s\n' "$$d"; removed=1; fi; \
+	done; \
+	if [ "$$removed" -eq 0 ]; then printf '[INFO] clean: nothing to remove\n'; fi; \
+	printf '[INFO] clean: target/ kept, use cargo clean\n'

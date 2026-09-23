@@ -4,7 +4,7 @@ Runs the pinned task set (training/eval/tasks.yaml) in-process against the
 HF checkpoint — before quantization, so the numbers measure the fine-tune,
 not the quant. Adapter-only checkpoints load through the harness's peft
 support against their recorded base. Harness and task versions are recorded
-in the result so the scorecard metadata can pin them.
+in the result so a pair of records can be held to one version.
 
 lm_eval imports lazily inside the training container; task-file parsing is
 importable anywhere for unit tests.
@@ -29,8 +29,8 @@ def load_task_config(
     """{task: {"metric": ...}} from tasks.yaml, optionally filtered.
 
     An explicitly requested task missing from the pinned set is an error:
-    every scored task must have a declared metric, or the scorecard could
-    not extract a comparable number.
+    every scored task must have a declared metric, or the record could
+    not carry a comparable number.
     """
     with open(tasks_file) as f:
         config = yaml.safe_load(f)
@@ -84,7 +84,7 @@ def run_lmeval(
     limit: int | None = None,
     batch_size: str = "auto",
 ) -> dict:
-    """Harness run for one model; returns the scorecard-ready record."""
+    """Harness run for one model; returns the record eval-ft writes."""
     import lm_eval
 
     from training.eval.holdout import resolve_model

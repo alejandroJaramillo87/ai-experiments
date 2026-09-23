@@ -3,6 +3,9 @@
 **Parked proposals — recorded 2026-07-30. Blocked on runbook entry RH.1 and a recorded
 baseline; this document is edited only as items graduate out.**
 
+A recorded menu of x86 CPU backend optimizations for the rust harness, each blocked on host
+verification and a measured baseline.
+
 > **Measurement caveat, 2026-08-12. Every wall-clock number below is a single
 > unpinned run, and unpinned runs on this workstation vary by up to 40%.**
 >

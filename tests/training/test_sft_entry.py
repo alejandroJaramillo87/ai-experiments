@@ -7,18 +7,19 @@ from __future__ import annotations
 
 import json
 import os
-from types import SimpleNamespace
 
 import pytest
 from support import reference_recipe
 
-from training.data.sft import IGNORE_INDEX
+from training.data.sft import IGNORE_INDEX, load_sft_dataset
 from training.recipes import RecipeValidationError, validate
 from training.runtime.lock import TrainLockError
 from training.tune.sft import (
     SftPreflightError,
-    check_memory_fit,
+    build_dataset,
+    chunked_loss_trainer,
     collate_padded,
+    compute_chunked_loss,
     pack_examples,
     resolve_sft_resume,
     sft_config_kwargs,
@@ -53,6 +54,59 @@ class TestSftValidation:
     def test_eval_steps_must_be_non_negative(self):
         with pytest.raises(RecipeValidationError, match="sft.eval_steps"):
             validate(sft_recipe(["sft.eval_steps=-1"]))
+
+
+# -- dataset (the hash check reads the base tokenizer, KB-80) ----------------
+
+
+class TestBuildDataset:
+    @pytest.fixture()
+    def prepared(self, tmp_path) -> tuple[str, str]:
+        """(dataset dir, the chat tokenizer dir it was prepared with)."""
+        from support import build_bpe_tokenizer
+        from test_sft import CASES, CHAT_TEXTS, CONTROL_TOKENS
+
+        from training.data.sft import prepare_sft
+
+        tokenizer_dir = build_bpe_tokenizer(
+            str(tmp_path / "chat_tokenizer"), CHAT_TEXTS, specials=CONTROL_TOKENS
+        )
+        source = tmp_path / "chat.jsonl"
+        with open(source, "w") as f:
+            for case in CASES.values():
+                f.write(json.dumps({"messages": case}) + "\n")
+        out = str(tmp_path / "sft")
+        prepare_sft(str(source), out, tokenizer_dir, "gemma4", holdout=0.2)
+        return out, tokenizer_dir
+
+    def test_reads_the_base_directory_tokenizer(self, prepared):
+        dataset, tokenizer_dir = prepared
+        recipe = sft_recipe([f"sft.dataset={dataset}", f"model.hf.id={tokenizer_dir}"])
+        train, holdout = build_dataset(recipe)
+        assert train and holdout
+
+    def test_packing_flag_selects_the_path(self, prepared):
+        # Off: the prepared records pass through untransformed (no position_ids,
+        # labels verbatim). On: pack_examples ran. The holdout is never packed.
+        dataset, tokenizer_dir = prepared
+        base = [f"sft.dataset={dataset}", f"model.hf.id={tokenizer_dir}"]
+        unpacked, holdout = build_dataset(sft_recipe(base + ["sft.packing=false"]))
+        loaded, _ = load_sft_dataset(dataset, tokenizer_dir)
+        assert unpacked == loaded
+        assert all("position_ids" not in record for record in unpacked)
+        packed, holdout_packed = build_dataset(sft_recipe(base + ["sft.packing=true"]))
+        assert all("position_ids" in record for record in packed)
+        assert len(packed) <= len(unpacked)
+        assert holdout_packed == holdout
+
+    def test_refuses_a_base_with_another_tokenizer(self, prepared, tokenizer_dir):
+        # tokenizer_dir is the D2 conftest tokenizer, trained on another corpus
+        from training.data.shards import TokenizerMismatchError
+
+        dataset, _ = prepared
+        recipe = sft_recipe([f"sft.dataset={dataset}", f"model.hf.id={tokenizer_dir}"])
+        with pytest.raises(TokenizerMismatchError):
+            build_dataset(recipe)
 
 
 # -- packing (F3 owns packing; masks must survive it) -------------------------
@@ -136,6 +190,9 @@ class TestSftConfigKwargs:
         assert kwargs["packing"] is False
         assert kwargs["dataset_kwargs"] == {"skip_prepare_dataset": True}
         assert kwargs["report_to"] == []
+        # KB-88: the chunked loss returns no logits, and eval must not
+        # accumulate 262144-wide logits across the holdout.
+        assert kwargs["prediction_loss_only"] is True
 
     def test_holdout_eval_wiring(self):
         kwargs = sft_config_kwargs(sft_recipe(), "/ckpt", has_holdout=True)
@@ -153,6 +210,60 @@ class TestSftConfigKwargs:
             sft_config_kwargs(
                 sft_recipe(["optimizer.name=cpu_adam"]), "/ckpt", has_holdout=False
             )
+
+
+# -- the chunked loss on the trainer (KB-87) ----------------------------------
+
+
+class TestChunkedLossTrainer:
+    def test_compute_loss_routes_through_head_loss_with_the_recipe_chunk(
+        self, monkeypatch
+    ):
+        calls = []
+
+        def fake_loss(model, input_ids, labels, **kwargs):
+            calls.append((model, input_ids, labels, kwargs))
+            return "loss"
+
+        monkeypatch.setattr("training.tune.sft.causal_lm_loss", fake_loss)
+
+        class FakeSFTTrainer:
+            pass
+
+        trainer_class = chunked_loss_trainer(FakeSFTTrainer, 512)
+        assert issubclass(trainer_class, FakeSFTTrainer)
+        trainer = trainer_class()
+        inputs = {
+            "input_ids": "ids",
+            "labels": "labels",
+            "attention_mask": "mask",
+            "position_ids": "pos",
+        }
+        loss, outputs = trainer.compute_loss(
+            "model", inputs, return_outputs=True, num_items_in_batch=32
+        )
+        assert (loss, outputs) == ("loss", {"loss": "loss"})
+        assert trainer.compute_loss("model", inputs) == "loss"
+        assert calls[0] == (
+            "model",
+            "ids",
+            "labels",
+            {
+                "chunk_tokens": 512,
+                "attention_mask": "mask",
+                "position_ids": "pos",
+                "num_items_in_batch": 32,
+            },
+        )
+
+    def test_inputs_without_mask_or_positions(self, monkeypatch):
+        monkeypatch.setattr(
+            "training.tune.sft.causal_lm_loss",
+            lambda model, ids, labels, **kw: kw,
+        )
+        kw = compute_chunked_loss(1024, "model", {"input_ids": 1, "labels": 2})
+        assert kw["attention_mask"] is None and kw["position_ids"] is None
+        assert kw["num_items_in_batch"] is None
 
 
 # -- checkpoint meta, retention, latest ---------------------------------------
@@ -305,33 +416,10 @@ class TestPreflight:
         with pytest.raises(SftPreflightError, match="sft.enabled"):
             train_sft(sft_recipe(["sft.enabled=false"]))
 
-    def test_memory_fit_refusal_precedes_lock(self, monkeypatch):
-        recipe = sft_recipe()
-        monkeypatch.setattr(
-            "training.tune.sft.check_memory_fit", lambda r, force: (False, "too big")
-        )
-        with pytest.raises(SftPreflightError, match="too big"):
-            train_sft(recipe)
-        assert not os.path.exists(os.environ["TRAIN_LOCK_PATH"])
-
     def test_refuses_while_lock_held(self, monkeypatch, tmp_path):
         recipe = sft_recipe()
-        monkeypatch.setattr(
-            "training.tune.sft.check_memory_fit", lambda r, force: (True, "fits")
-        )
         lock = os.environ["TRAIN_LOCK_PATH"]
         with open(lock, "w") as f:
             json.dump({"pid": os.getpid(), "run": "other"}, f)
         with pytest.raises(TrainLockError):
             train_sft(recipe)
-
-    def test_check_memory_fit_force_downgrades(self, monkeypatch):
-        import importlib
-
-        solve_mod = importlib.import_module("training.calculator.solve")
-        fake = SimpleNamespace(fits=False, reserved_estimate=40 << 30)
-        monkeypatch.setattr(solve_mod, "estimate", lambda recipe: fake)
-        ok, message = check_memory_fit(sft_recipe(), force=False)
-        assert not ok and "exceeds" in message
-        ok, message = check_memory_fit(sft_recipe(), force=True)
-        assert ok and "force" in message

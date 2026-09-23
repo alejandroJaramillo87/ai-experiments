@@ -53,7 +53,7 @@ path loads through `AutoModelForCausalLM` (`interp/harvest.py`, in `check_hook_d
 `gemma4*` keys in `MODEL_FOR_CAUSAL_LM_MAPPING_NAMES`, and `AutoModelForCausalLM.from_config`
 returns `Gemma4ForConditionalGeneration` rather than refusing. Verified on the workstation;
 the output is recorded in
-[gemma-4-training.md](../training/gemma-4-training.md). This matters beyond our own code
+[gemma-4-training.md](../training/base/gemma-4-training.md). This matters beyond our own code
 because SAELens hardcodes `model_class_name="AutoModelForCausalLM"` with no override hook.
 See also [The module path is composite](#the-module-path-is-composite).
 
@@ -265,21 +265,22 @@ This settles the contested finding tracked in `/docs/verification/archive/gemma-
 
 ## Export safety
 
-This tier writes two artifacts the `rust-harness` reader opens, and only one is still GGUF:
+This tier writes two artifacts the `rust-harness` reader opens, both safetensors:
 
 | Writer | Format | Scalars | Tensors |
 |--------|--------|---------|---------|
-| `/interp/steering/export.py` | GGUF, architecture `controlvector` | one string, one uint32 | `direction.{layer}`, float32 |
+| `/interp/steering/export.py` | safetensors image plus a sibling `manifest.json` | `model_hash`, the steered layers, a git sha | `block.{index}`, float32, one per steered decoder block, 0-based |
 | `/interp/probes/export.py` | safetensors plus a JSON sidecar | `name`, `model_hash`, `layer`, `bias`, `threshold`, `width`, optional `site` | `weights`, `mu`, `sigma`, float32 |
 
-Neither writes an array-valued metadata key, and both write float32. Probe and steering
-artifacts stay float32 regardless of the model's storage type — they are small, and exactness
-in the direction vectors is worth more than their size.
+Both write float32. Probe and steering artifacts stay float32 regardless of the model's
+storage type — they are small, and exactness in the direction vectors is worth more than
+their size.
 
-There is no longer a **model** GGUF path to contrast them with. The runtime reads the published
-checkpoint — `config.json` and `model.safetensors` — and keeps each weight at its declared
-width; the probe has since followed it to safetensors, so the steering artifact is the only
-GGUF container the runtime still opens. See
+Neither is GGUF, and there is no model GGUF path to contrast them with. The runtime reads
+the published checkpoint — `config.json` and `model.safetensors` — and keeps each weight
+at its declared width; the probe left GGUF at R7 and the control vector at R10, when
+retiring llama.cpp steering left this repository its only reader. The contracts are
+`schemas/probe_artifact.json` and `schemas/control_vector_artifact.json`. See
 [../rust-harness/runtime-design.md](../rust-harness/runtime-design.md).
 
 ## Ecosystem gaps

@@ -1,0 +1,116 @@
+# The test suite
+
+The pytest suite as `pyproject.toml` configures it. This page covers what `make test`
+collects, the two environment tiers and the line that names which one ran, the markers,
+the traps in the configuration, the coverage floor, and how each test directory's README
+is generated. The suite's layout is [../../tests/README.md](../../tests/README.md),
+rendered from the directories themselves.
+
+## What runs
+
+```bash
+make test                    # the whole suite, in either environment
+pytest tests/common -v       # one directory
+pytest -k defect             # one selection
+```
+
+`testpaths` is `tests`, and `addopts` deselects the three hardware markers, so `make test`
+is everything that runs without the workstation: unit and branch tests for `common/`,
+`training/` and `interp/`, the scripts under `scripts/` driven as subprocesses through the
+`run_script` fixture, the Makefile worktree targets in a throwaway repository, the model
+header transcribers against spec-built fixtures, and the documentation gates on scratch
+trees and then on the real tree. `make test` runs the same way in a sandbox as on the
+workstation; `make/quality.mk` drops the `uv run --no-sync` prefix when `AI_SANDBOX` is set.
+
+## The two environment tiers
+
+The suite is torch-optional by construction. Modules whose subject is a real tensor call
+`pytest.importorskip` at import time, so on a torch-free environment they skip instead of
+failing collection; a few install a fake torch into `sys.modules` and run everywhere; the
+rest never import it. That is why a green run is not automatically a complete run, and why
+`tests/conftest.py` prints the determining fact beside the pytest summary rather than in a
+header nobody reads:
+
+```
+[TIER] sandbox: torch absent, so torch-gated tests skipped rather than ran. This is a
+       partial run, not a pass.
+        Full extent: make worktree-<name> TIER=full
+[TIER] full: torch present, the whole suite was in scope.
+```
+
+The line reads `importlib.util.find_spec("torch")`, not the markers selected, so a
+hardware-tier run on the workstation prints `[TIER] full` too. Under `make quality-full`
+the distinction is enforced rather than reported: the target probes `import torch` before
+the suite starts and refuses the torch-free tier, so a `[TIER] sandbox` line cannot appear
+in a green `quality-full` output. Seeing one there means the probe and the suite disagree,
+which is a defect in one of them.
+
+## Markers
+
+Seven markers are registered, all carried only by `tests/hardware/`:
+
+| Marker | Kind | Means |
+|--------|------|-------|
+| `hw_smoke` | tier | under five minutes total, no model downloads, temporary-directory writes only; the before-every-session gate |
+| `hw_full` | tier | may allocate near-capacity VRAM, RAM and disk and load real models; per verification phase and after an environment change |
+| `hw_e4b` | precondition | needs the real Gemma 4 E4B checkpoint on disk; carried beside a tier marker, deselected because no sandbox has the checkpoint |
+| `gpu`, `cpu`, `ram`, `ssd` | resource | the hardware the test exercises |
+
+Every hardware test carries exactly one tier marker and at least one resource marker, and
+`tests/hardware/test_markers.py`, which itself carries none and so runs in `make test`,
+enforces the pairing and that every `hw_*` marker appears in `addopts`. The tiers
+themselves are [hardware-tiers.md](hardware-tiers.md).
+
+## Traps in the configuration
+
+**`pythonpath = ["tests/training"]` is load-bearing.** `tests/training/support.py` is
+imported bare by conftest and about a dozen modules, and because `tests/` and
+`tests/training/` both carry `__init__.py`, pytest's default import mode would put the repo
+root on `sys.path` and never `tests/training` itself. Collection fails outright without it.
+
+**A command-line `-m` replaces `addopts` rather than adding to it.** So `-m gpu` silently
+re-enables all three hardware tiers. Opt in deliberately with `-m hw_smoke`, `-m hw_full`
+or `-m hw_e4b`.
+
+**`tmp_path` may move.** In a contained sandbox `/tmp` is mounted `noexec`, so a test that
+writes an executable stub there dies with `Permission denied` rather than exercising
+anything. `tests/conftest.py` probes once and relocates the temp base to the git-ignored
+`.pytest-tmp/` under the repository when it must.
+
+**The suite is not installed as a package.** `tests/conftest.py` puts the repository root on
+`sys.path` once, before any subdirectory conftest imports, so `common`, `training` and
+`interp` resolve without an install.
+
+## Coverage
+
+`[tool.coverage.report] fail_under` is a ratchet, set one point below the measured sandbox
+total and raised as coverage grows, never lowered to admit a regression. The comment beside
+it in `pyproject.toml` records the per-package figures it was set from. `__main__.py` and
+the container smoke test are omitted from the run.
+
+## Directory READMEs
+
+Every directory under `tests/` carries a README whose inventory table is generated by
+`scripts/docs/gen_inventory.py` from the first sentence of each module's docstring and the
+number of `def test_` functions it declares, and `tests/README.md`'s layout table is
+generated from those READMEs' first paragraphs. `make quality` holds both to the tree
+through `scripts/docs/check_inventory.py`, and fails when a test directory has no README.
+So a new test module needs one docstring sentence, and a new test directory needs one
+README, and neither can go stale:
+
+```bash
+python scripts/docs/gen_inventory.py tests/interp/README.md
+```
+
+The prose above each table is hand-written once: what the directory covers, what its
+conftest fakes, which tests live there on purpose although their subject is elsewhere.
+The Rust crates under `rust-harness/` carry the same shape: each crate README's `rust`
+and `rust_tests` tables are rendered from the files' leading banners and their test
+attributes, and [../rust-harness/testing.md](../rust-harness/testing.md) is the strategy
+above them.
+
+## Related
+
+- [README.md](README.md) — the strategy this suite is one layer of
+- [hardware-tiers.md](hardware-tiers.md) — the deselected tiers, and `make quality-full`
+- [../../tests/README.md](../../tests/README.md) — the suite's layout

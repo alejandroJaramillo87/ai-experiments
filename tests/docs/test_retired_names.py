@@ -63,6 +63,27 @@ class TestPatternFor:
     def test_does_not_match_a_lookalike(self, mod, text, why):
         assert not mod.pattern_for("docker-compose.yaml").search(text), why
 
+    @pytest.mark.parametrize(
+        ("old", "text", "hit"),
+        [
+            ("FT.1", "closes when FT.1 prints the report", True),
+            ("FT.1", "FT.1's first attempt", True),
+            ("FT.1", "depends on FT.14 for the rate", False),
+            ("FT.1", "FT.10 and FT.11 follow", False),
+            ("I.9", "the capture I.9 runs", True),
+            ("I.9", "I.9b sits beside it", False),
+            ("I.9", "I.9c and I.9d scale it up", False),
+        ],
+    )
+    def test_a_slugged_entry_id_is_bounded_by_its_digits(self, mod, old, text, hit):
+        """The entry-id rows: `FT.1` must not fire on `FT.14`, nor `I.9` on `I.9b`.
+
+        The same trailing guard that keeps `docker-compose.yaml` off
+        `docker-compose.yaml-old` does it, since a digit and a letter are both
+        word characters; this pins that the rows added on 2026-09-19 rely on it.
+        """
+        assert bool(mod.pattern_for(old).search(text)) is hit, text
+
 
 class TestRetiredTable:
     def test_every_replacement_is_clean_under_its_own_pattern(self, mod):
@@ -75,6 +96,15 @@ class TestRetiredTable:
     def test_every_entry_states_a_reason(self, mod):
         for old, (replacement, reason) in mod.RETIRED.items():
             assert replacement and reason.strip(), f"{old} has no stated reason"
+
+    def test_every_slugged_entry_id_maps_to_a_slug(self, mod):
+        """The rows for the 2026-09-19 id rename point at slug-shaped ids only."""
+        import re
+
+        slug = re.compile(r"^[A-Z]+\.[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
+        for old, new in mod.SLUGGED_ENTRY_IDS.items():
+            assert slug.match(new), (old, new)
+            assert mod.RETIRED[old][0] == new
 
     def test_no_retired_name_is_also_a_replacement(self, mod):
         """Retiring A to B and B to C would make the gate unsatisfiable."""

@@ -71,8 +71,15 @@ def _library_versions() -> dict:
     return versions
 
 
-def _attention_implementation() -> str:
-    """Resolved attention path, or 'unavailable' where torch is absent."""
+def _attention_implementation(model=None) -> str:
+    """The attention path a loaded model runs on, read from its config, which
+    transformers sets at load; without a model, the host-level resolution.
+    'unavailable' where torch is absent."""
+    if model is not None:
+        config = getattr(model, "config", None)
+        found = getattr(config, "_attn_implementation", None)
+        if isinstance(found, str) and found:
+            return found
     try:
         from training.models.model import attention_implementation
 
@@ -92,6 +99,7 @@ def write_checkpoint_meta(
     base_revision: str | None = None,
     base_config_sha256: str | None = None,
     emergency: bool = False,
+    attention_implementation: str | None = None,
 ) -> str:
     """Stamp a TRL checkpoint directory with the D6-style meta.json F6 reads.
 
@@ -113,9 +121,11 @@ def write_checkpoint_meta(
         "git_sha": _git_sha(),
         "library_versions": _library_versions(),
         "wall_clock": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-        # Resolved attention path at save time (flash_attention_2 or the
-        # sdpa fallback): provenance for the loaded-model configuration.
-        "attention_implementation": _attention_implementation(),
+        # The attention path the saved model ran on (flash_attention_2 or
+        # sdpa): provenance for the loaded-model configuration. Callers pass
+        # what the model reports; the host-level resolution is the fallback.
+        "attention_implementation": attention_implementation
+        or _attention_implementation(),
     }
     if emergency:
         meta["emergency"] = True  # exempt from retention deletion
@@ -302,6 +312,7 @@ def build_callbacks(
                 recipe_hash=recipe_hash,
                 base_revision=getattr(base_identity, "revision", None),
                 base_config_sha256=getattr(base_identity, "config_sha256", None),
+                attention_implementation=_attention_implementation(kwargs.get("model")),
             )
             apply_trl_retention(
                 ckpt_root, recipe.checkpoint.retain_last, recipe.checkpoint.retain_every

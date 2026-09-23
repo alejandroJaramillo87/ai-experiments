@@ -1,7 +1,8 @@
 #!/bin/bash
 set -e
 
-# Training container entrypoint (Phase 0 D1)
+# The training container's entrypoint: echo the environment, then exec the given command
+# (Phase 0 D1).
 # Thin: echo the environment, reserve an optional LD_PRELOAD hook for the D9
 # heterogeneous-compute skeleton, then exec the given command. Unlike the inference
 # entrypoints this starts no server: the container is a batch/interactive job runner,

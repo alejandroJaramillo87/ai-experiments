@@ -1,4 +1,4 @@
-# Training GPU Dockerfile - RTX 5090 (Blackwell) / Ryzen 9950X (Zen 5)
+# The training tier's GPU image for the RTX 5090 (Blackwell) and the Ryzen 9950X (Zen 5).
 #
 # One reproducible environment for the Phase 0 training tier (roadmap D1). PyTorch cu130 on
 # sm_120 with the full training stack (TRL, PEFT, DeepSpeed, bitsandbytes, flash-attn)

@@ -19,7 +19,7 @@ rather than inferred by whoever reads it next.
 |-------|------------|------------|
 | Living reference | Describes the tree as it is now | Correct it when the tree moves |
 | Frozen record | What was decided or measured on a day | Never edit the body; drift is expected and correct |
-| Operational | A runbook executed against the repository or the host | Keep the commands runnable; it has no reader to please |
+| Operational | A runbook executed against the repository or the host | Keep the commands runnable; it has no reader to please. Entry ids follow `docs/verification/protocol.md` |
 | Parked proposal | A recorded menu of work that is not scheduled | Dated at authoring; edited only as items graduate out |
 
 Living reference is the default and carries no marker. The other three declare themselves in
@@ -68,6 +68,24 @@ Brief description paragraph explaining the document's purpose.
 ```
 
 One H1 per document. Include a `## Table of Contents` only when over 500 words.
+
+## README shape
+
+A README is the directory's router, not a document. It routes one level down and stops:
+
+1. The H1, then the description paragraph. Its first sentence stands alone, because the
+   parent's generated table reads it.
+2. The generated tables, directly after: `dirs` when the directory has subdirectories,
+   `pages` when it has pages beside the README, both when it has both. A directory of
+   frozen records is listed like any other; generation reads the records, it never edits
+   them.
+3. Orientation a table cannot render, in a few paragraphs at most: the reading order,
+   what is frozen, the traps.
+4. Related documentation.
+
+Anything longer is a page beside the README, which the `pages` table then lists.
+`scripts/docs/check_inventory.py` holds every directory under `docs/` to this: a missing
+README, or a README without the table its directory's shape needs, fails `make quality`.
 
 ## Formatting
 

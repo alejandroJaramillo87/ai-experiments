@@ -2,7 +2,7 @@
 #
 # Phase 0 reference recipe (roadmap D5): ~1B-parameter scratch pretrain, the
 # envelope config that must fit in 32GB VRAM (validated by the D4 calculator).
-# The shape is the Gemma 4 block at reduced scale (training-scale-reference.md
+# The shape is the Gemma 4 block at reduced scale (docs/training/base/training-scale-reference.md
 # phase 4): E2B's hidden width, 8:1 head-to-KV-head ratio, 4x feed-forward
 # multiplier, global RoPE base and 262144-entry vocabulary, at 18 of its 35
 # layers. The scratch builder still emits a Llama block (training/models/

@@ -96,7 +96,7 @@ class TestRamFull:
         import psutil
 
         from tests.hardware.conftest import REPO_ROOT
-        from training.calculator.components import host_ram_bytes, spec_from_recipe
+        from training.models.architecture import host_ram_bytes, spec_from_recipe
         from training.recipes import load_recipe
 
         recipe = load_recipe(

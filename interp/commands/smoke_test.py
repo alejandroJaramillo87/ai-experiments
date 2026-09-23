@@ -154,7 +154,9 @@ def cmd(args: argparse.Namespace) -> int:
             import torch
             from transformers import AutoModelForCausalLM, AutoTokenizer
 
-            hf_model = AutoModelForCausalLM.from_pretrained("gpt2").to("cuda").eval()
+            hf_model = AutoModelForCausalLM.from_pretrained(
+                "gpt2", device_map="cuda"
+            ).eval()
             hf_tokenizer = AutoTokenizer.from_pretrained("gpt2")
             fired = []
 
@@ -186,7 +188,7 @@ def cmd(args: argparse.Namespace) -> int:
 
             inputs = hf_tokenizer(PROMPT, return_tensors="pt").to("cuda")
             with torch.no_grad():
-                logits = hf_model.to(torch.bfloat16)(**inputs).logits
+                logits = hf_model.bfloat16()(**inputs).logits
             assert torch.isfinite(logits.float()).all(), "non-finite logits at bf16"
             out.ok("bf16: gpt2 forward, finite logits")
         except Exception as exc:  # noqa: BLE001
@@ -211,11 +213,9 @@ def cmd(args: argparse.Namespace) -> int:
 
             from interp import families
 
-            gemma = (
-                AutoModelForCausalLM.from_pretrained(GEMMA_ID, dtype=torch.bfloat16)
-                .to("cuda")
-                .eval()
-            )
+            gemma = AutoModelForCausalLM.from_pretrained(
+                GEMMA_ID, dtype=torch.bfloat16, device_map="cuda"
+            ).eval()
             tokenizer = AutoTokenizer.from_pretrained(GEMMA_ID)
             spec = families.family_from_config(gemma.config)
             captured = []

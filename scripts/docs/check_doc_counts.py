@@ -46,6 +46,9 @@ PRUNE_DIRS = {
     "__pycache__",
     ".ruff_cache",
     ".pytest-tmp",
+    # Docusaurus's cache under site/, gitignored and rebuilt by every site build;
+    # it carries a JSON copy of each page, including pages since deleted.
+    ".docusaurus",
 }
 
 # A heading whose text ends in a parenthesised integer. H1 is excluded: a document
@@ -173,7 +176,7 @@ def count_statuses(text: str) -> tuple[dict[str, int], list[tuple[int, str]]]:
 
     Status lines are the only countable thing here. Entry numbering is not: it is
     neither contiguous nor one-per-entry, so interp.md reaches its 13 entries via
-    an interstitial I.9b with no I.13. Headings are not either, because a parent
+    an interstitial I.harvest-crash-recovery with no I.workbench-build. Headings are not either, because a parent
     entry may carry no status of its own -- rust-harness.md RH.9 heads RH.9a
     through RH.9d, each of which has one.
 

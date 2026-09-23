@@ -2,7 +2,7 @@
 
 Covers the paths the D7 export tests leave to the host acceptance run, executed
 here against stub modules instead: the PEFT adapter merge
-(torch/peft/transformers injected at the sys.modules seam), the calculator's HF-recipe branch, and the common
+(torch/peft/transformers injected at the sys.modules seam), the parameter accounting's HF-recipe branch, and the common
 version-probe and git-provenance helpers.
 """
 
@@ -13,20 +13,20 @@ import os
 import subprocess
 import sys
 import types
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
 from omegaconf import OmegaConf
 
 from common import provenance, smoke
-from training.calculator.components import (
-    ArchitectureSpec,
-    UnknownArchitectureError,
-    optimizer_bytes,
-    spec_from_recipe,
-)
 from training.export import merge as merge_mod
 from training.export.errors import ExportError
+from training.models.architecture import (
+    ArchitectureSpec,
+    UnknownArchitectureError,
+    spec_from_recipe,
+)
 
 
 def write_json(path, payload):
@@ -171,9 +171,9 @@ def test_stage_model_rejects_configless_full_model(tmp_path):
         merge_mod.stage_model(str(ckpt), str(tmp_path / "staging"))
 
 
-# -- D4 calculator: HF-recipe branch ----------------------------------------------
+# -- architecture: HF-recipe branch -----------------------------------------------
 
-# Same hand-computed tiny shape test_calculator.py pins: layers=2, hidden=64,
+# Same hand-computed tiny shape test_architecture.py pins: layers=2, hidden=64,
 # heads=4, kv_heads=2, ffn=128, vocab=256, tied.
 #   param_count  = 256*64 + 2*(12,288 + 24,576 + 128) + 64 = 90,432
 #   linear_count = 2*(12,288 + 24,576)                     = 73,728
@@ -225,10 +225,10 @@ def test_spec_from_recipe_hf_maps_through_autoconfig(monkeypatch):
 
     assert seen["id"] == "org/tiny"
     assert seen["revision"] == "r7"  # the pin reaches AutoConfig (WI-14)
-    # memfit and calibrate run in the offline training container, so even a pure
-    # size estimate must resolve the config locally rather than over the network.
+    # The step command runs in the offline training container, so even a pure
+    # parameter count must resolve the config locally rather than over the network.
     assert seen["local_files_only"] is True
-    assert spec == tiny_spec()
+    assert spec == replace(tiny_spec(), family="llama")
     assert spec.param_count() == TINY_PARAMS
 
 
@@ -238,19 +238,6 @@ def test_spec_from_recipe_requires_scratch_or_hf():
         UnknownArchitectureError, match="neither model.scratch nor model.hf"
     ):
         spec_from_recipe(recipe)
-
-
-def test_optimizer_bytes_unknown_optimizer_fails_loudly():
-    recipe = OmegaConf.create(
-        {
-            "peft": {"enabled": False},
-            "model": {"trainable_filter": "all"},
-            "memory": {"offload": "none"},
-            "optimizer": {"name": "sgd"},
-        }
-    )
-    with pytest.raises(ValueError, match="No optimizer memory model.*sgd"):
-        optimizer_bytes(tiny_spec(), recipe)
 
 
 def test_pkg_version_reports_installed_distribution():

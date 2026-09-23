@@ -1,222 +1,74 @@
-# AI Experiments Documentation Hub
+# Documentation
 
-Central index for all project documentation: hardware setup, software
-configuration, the inference stack, the training and interpretability tiers,
-optimization strategies, and performance benchmarking for a local AI
-workstation (RTX 5090, AMD Ryzen 9950X).
+The knowledge base for changing this repository, organized with agents as its first
+readers: every topic has one directory that owns it, that directory's README indexes its
+pages, and the tables that list directories or pages are rendered from the tree so they
+cannot drift. The site under [../site/](../site/README.md) is the other documentation, written
+for a person building and running the harness or the interp tier; the two do not overlap.
 
-## Quick Navigation
+## How to use this directory
 
-- **[Back to Main README](../README.md)** - Project overview and quick start
-- **[Hardware Setup](hardware/README.md)** - Component selection and assembly
-- **[Getting Started](os/README.md)** - Ubuntu installation and initial setup
+Find the topic in the table below and read its README first. Each one says what the
+topic is, indexes the pages beside it, and points at the code and the compose or
+Dockerfile that own the facts; the shape every README here follows, and the gate that
+holds it, are stated in `.styles/DOCUMENTATION_STYLE.md` under "README shape". A question about code rather than a topic starts at the
+source directory's own README instead; the root [../README.md](../README.md) lists them,
+and `AGENTS.md` says which to read for what.
 
-## Source directory orientation
+## Topics
 
-Each top-level source directory carries a README covering its purpose, what it consumes and
-what consumes it, its entry-point commands, and the mistakes newcomers make. They are
-orientation, not explanation: they point here for the detail.
+<!-- inventory:dirs:start -->
 
-| Directory | Purpose |
-|-----------|---------|
-| [../common/README.md](../common/README.md) | Shared substrate: output, hashing, provenance, observability. A contract package checked across the Python/Rust boundary |
-| [../training/README.md](../training/README.md) | The training tier, and the recipe home for both tiers |
-| [../interp/README.md](../interp/README.md) | The interpretability tier: harvesting, SAEs, probes, steering, organisms |
-| [../tests/README.md](../tests/README.md) | The pytest suite, its tiers, and the skip-count discipline |
-| [../scripts/README.md](../scripts/README.md) | Host-side tooling, and which scripts run in a sandbox |
-| [../docker/README.md](../docker/README.md) | Build contexts; the compose files above them are the source of truth |
-| [../rust-harness/README.md](../rust-harness/README.md) | The Rust harness workspace, its test tiers, and its quality gate |
-| [../docker/llama-cpu/README.md](../docker/llama-cpu/README.md) | The llama-cpu build context: the Dockerfile, its entrypoint, and the huge-page interceptor library it compiles in |
-| [../docker/llama-cpu/hugepages/README.md](../docker/llama-cpu/hugepages/README.md) | The huge-page interceptor library |
-| [../schemas/README.md](../schemas/README.md) | Cross-language artifact contracts |
-| [../site/README.md](../site/README.md) | The user-facing documentation site for the rust harness, distinct from this knowledge base |
+| Directory | Holds |
+|-----------|-------|
+| [agents/](agents/README.md) | How agents work in this repository: the tooling under `.claude/`, the roles, commands and skills it defines, the escalation ladder that says which to reach for, and the workflows for running a session. |
+| [bios/](bios/README.md) | The UEFI firmware setup of the workstation's Gigabyte X870E Aorus Elite WiFi board under the AMD Ryzen 9950X and RTX 5090: the update procedure, POST-code diagnostics and the EXPO memory profile, chosen for stability rather than speed. |
+| [hardware/](hardware/README.md) | The workstation's component build and the reasoning behind each part: board, CPU and cooling, GPU, memory, storage layout, power and case, with the installation notes that follow from them. |
+| [inference/](inference/README.md) | The inference engines running on this workstation (AMD Ryzen 9950X, RTX 5090), how they are tuned, and what each parameter was measured to do. |
+| [interp/](interp/README.md) | Living documentation for the interp tier: the `python -m interp` CLI, the write-back path on the Rust harness, the activation and SAE tooling, and the Gemma 4 facts the tier consumes. |
+| [models/](models/README.md) | Architecture references for the model families this workstation serves, and the raw header transcripts that verify them. |
+| [observability/](observability/README.md) | How to read the logs, find a run, and open a dashboard for the training and interpretability command-line interfaces (`python -m training`, `python -m interp`). |
+| [optimizations/](optimizations/README.md) | System optimizations for LLM inference on AMD Ryzen 9950X + RTX 5090: latency-focused (llama.cpp on CPU/GPU) and throughput-focused (vLLM on GPU). |
+| [os/](os/README.md) | Configuring Ubuntu 24.04 LTS for AI work on the AMD Ryzen 9950X + RTX 5090 hardware. |
+| [precision/](precision/README.md) | The dtype decisions of the three tiers — the Rust inference harness, the interpretability tier, and the training tier — collected in one place. |
+| [rust-harness/](rust-harness/README.md) | Design and reference documentation for `rust-harness`, the single-binary Rust coding harness with the Gemma 4 inference runtime linked in as a library crate. |
+| [sandbox/](sandbox/README.md) | How the inference services are contained on this workstation: what each container is allowed to touch, and why. |
+| [testing/](testing/README.md) | How this repository is tested, and how the documentation is kept true: the commands, what each one proves, where each runs, and the strategy behind them. |
+| [training/](training/README.md) | Living documentation for the training tier: the `python -m training` CLI, the recipe system, the reference loop, and the three rungs the tier climbs. |
+| [verification/](verification/README.md) | The manual verification campaign: the state of every runbook, the defect ledger the entries cross-reference, and the protocol they are executed and recorded under. |
 
-## Documentation by Category
-
-### Infrastructure Setup
-
-| Document | Description |
-|----------|-------------|
-| [hardware/README.md](hardware/README.md) | Hardware selection, compatibility, and assembly guide |
-| [bios/README.md](bios/README.md) | BIOS configuration for Gigabyte X870E Aorus Elite WiFi |
-| [os/README.md](os/README.md) | Ubuntu 24.04 LTS installation and configuration |
-| [os/storage-configuration.md](os/storage-configuration.md) | Dual-SSD architecture and AI data storage setup |
-| [os/backup_and_recovery.md](os/backup_and_recovery.md) | Data protection and recovery strategies |
-| [sandbox/README.md](sandbox/README.md) | Docker sandboxed environment setup |
-| [sandbox/docker_compose_overview.md](sandbox/docker_compose_overview.md) | Multi-service orchestration configuration |
-
-### GPU Software Stack
-
-| Document | Description | Version |
-|----------|-------------|---------|
-| [os/gpu-stack/README.md](os/gpu-stack/README.md) | Three-layer GPU stack overview | - |
-| [os/gpu-stack/nvidia-drivers.md](os/gpu-stack/nvidia-drivers.md) | NVIDIA driver installation and configuration | 580.65.06 |
-| [os/gpu-stack/cuda.md](os/gpu-stack/cuda.md) | CUDA parallel computing platform | 13.0.88 |
-| [os/gpu-stack/cudnn.md](os/gpu-stack/cudnn.md) | cuDNN deep learning acceleration library | 9.13.0.50-1 |
-
-### Python Environment
-
-| Document | Description |
-|----------|-------------|
-| [os/python/uv-dependencies.md](os/python/uv-dependencies.md) | uv dependencies reference for all AI/ML packages |
-| [os/python/setup_python.md](os/python/setup_python.md) | Python 3.12 installation via uv |
-| [os/python/pytorch_cuda_update_guide.md](os/python/pytorch_cuda_update_guide.md) | PyTorch installation with CUDA 13.0 compatibility |
-
-### Inference Optimization
-
-| Document | Description |
-|----------|-------------|
-| [inference/README.md](inference/README.md) | Optimization philosophy and overview |
-| [inference/engines/inference-engines.md](inference/engines/inference-engines.md) | Inference engines versus training frameworks |
-| [inference/engines/llama-cpp.md](inference/engines/llama-cpp.md) | llama.cpp architecture and memory management |
-| [inference/engines/vllm.md](inference/engines/vllm.md) | vLLM PagedAttention and continuous batching |
-| [inference/parameters/llama-cpp-parameters.md](inference/parameters/llama-cpp-parameters.md) | llama.cpp parameter tuning guide |
-| [inference/parameters/vllm-parameters.md](inference/parameters/vllm-parameters.md) | vLLM configuration for throughput (vLLM 0.25.0) |
-
-### Rust Harness
-
-Design and reference documentation for the `rust-harness` workspace.
-
-| Document | Description |
-|----------|-------------|
-| [rust-harness/README.md](rust-harness/README.md) | Directory index |
-| [rust-harness/roadmap.md](rust-harness/roadmap.md) | The scheduled work in five phases, the interp feature specifications, and what each estimate turned out to be worth |
-| [rust-harness/runtime-design.md](rust-harness/runtime-design.md) | Harness and runtime architecture, and the implementation roadmap |
-| [rust-harness/observability.md](rust-harness/observability.md) | Observability and debuggability as first-class code |
-| [rust-harness/observation-frames.md](rust-harness/observation-frames.md) | What the agent loop and chat mode contribute to the training and interp programs, and the acceptance bar for new features |
-| [rust-harness/live-events.md](rust-harness/live-events.md) | Live run-state events as JSONL, with a serve mode and an HTML view that also replays finished runs |
-
-### Model References
-
-Start with the document for the tier being worked on; each is scoped to what that tier's code
-consumes. The family reference below is broader and is the citation target of the conformance
-audit.
-
-| Document | Description |
-|----------|-------------|
-| [training/gemma-4-training.md](training/gemma-4-training.md) | Gemma 4 for the training tier: parameter accounting, memory, tensor names, tokenizer (E2B, E4B) |
-| [interp/gemma-4-interp.md](interp/gemma-4-interp.md) | Gemma 4 for the interp tier: residual width, layer counts, hook hazards (E2B, E4B) |
-| [models/gemma-4.md](models/gemma-4.md) | Gemma 4 dense family (E2B, E4B, 12B, 31B): general architecture reference, and the citation target of `verification/archive/gemma-4-conformance_investigation.md` |
-| [models/README.md](models/README.md) | Index for the above, plus the committed GGUF and safetensors header transcripts and how to regenerate them |
-
-### System Optimizations
-
-| Document | Description | Impact |
-|----------|-------------|--------|
-| [optimizations/README.md](optimizations/README.md) | Optimization overview and verification | +26% CPU performance |
-| [optimizations/bios/bios-optimizations.md](optimizations/bios/bios-optimizations.md) | BIOS settings for AMD Ryzen 9950X | FCLK 2100MHz |
-| [optimizations/os/os-optimizations.md](optimizations/os/os-optimizations.md) | Operating system tuning | Performance governor |
-| [optimizations/bios/](optimizations/bios/) | `cpu_benchmark_results_{no,final}_bios.json` — the raw before and after measurements behind the figure above | Captured data |
-
-Unscheduled optimization work is recorded separately; see
-[Parked proposals](#parked-proposals).
-
-### Container Services
-
-| Document | Service |
-|----------|---------|
-| [sandbox/docker_llama_cpu_overview.md](sandbox/docker_llama_cpu_overview.md) | llama-cpu service (Port 8001) |
-| [sandbox/docker_llama_gpu_overview.md](sandbox/docker_llama_gpu_overview.md) | llama-gpu service (Port 8002) |
-| [sandbox/docker_vllm_gpu_overview.md](sandbox/docker_vllm_gpu_overview.md) | vllm-gpu service (Port 8003) |
-| [sandbox/docker_training_overview.md](sandbox/docker_training_overview.md) | training container (Phase 0 D1, no port) |
-| [sandbox/docker_compose_overview.md](sandbox/docker_compose_overview.md) | Service orchestration |
-
-### Training Tier
-
-Living documentation for the training stack (`python -m training`).
-[training/README.md](training/README.md) indexes this tier and pairs each
-living document with the design record it was implemented from; see
-[Frozen records](#frozen-records) for those per-deliverable
-investigations.
-
-| Document | Description |
-|----------|-------------|
-| [training/data_pipeline.md](training/data_pipeline.md) | Full-scale data pipeline (P2-D1): filter, dedup, decontaminate, shard |
-| [training/tokenizer_training.md](training/tokenizer_training.md) | Byte-level BPE tokenizer training (D3) |
-| [training/memory_fit.md](training/memory_fit.md) | VRAM fit calculator and calibration (D4) |
-| [training/tracking_checkpointing.md](training/tracking_checkpointing.md) | Run tracking, checkpoint layout, resume (D6) |
-| [training/train_serve_roundtrip.md](training/train_serve_roundtrip.md) | Export, serve, smoke-evaluate a checkpoint (D7) |
-| [training/heterogeneous_compute.md](training/heterogeneous_compute.md) | Prefetch loader, staging, affinity (D9) |
-| [training/operational_watchdogs.md](training/operational_watchdogs.md) | Thermal, RAM, and disk watchdogs (D10) |
-| [training/sft_entry_point.md](training/sft_entry_point.md) | Supervised fine-tuning entry point (F1/F3) |
-| [training/teacher_synthetic_data.md](training/teacher_synthetic_data.md) | Teacher generation harness (F4) |
-| [training/eval_wrapper.md](training/eval_wrapper.md) | Baseline-versus-tuned evaluation (F7) |
-| [training/gemma-4-training.md](training/gemma-4-training.md) | Gemma 4 for the training tier: parameter accounting, memory, tensor names, tokenizer |
-| [training/training-scale-reference.md](training/training-scale-reference.md) | What fits on this workstation: model sizes, batch and sequence budgets, wall-clock expectations |
-| [training/continuous-learning-proposal.md](training/continuous-learning-proposal.md) | Parked proposal: the continuous-learning goal, the candidate architecture, and what must be true before it is scheduled |
-| [training/tier-consolidation-proposal.md](training/tier-consolidation-proposal.md) | Parked proposal: the checkpoint-contract consolidation, the CLI handler moves, and the roadmap-code glossary, with what gates each |
-
-### Interpretability Tier
-
-Living documentation for the interp stack (`python -m interp`).
-[interp/README.md](interp/README.md) indexes this tier.
-
-| Document | Description |
-|----------|-------------|
-| [interp/writeback.md](interp/writeback.md) | Steering, probes, log proxy, probe monitor (W1-W4) |
-| [interp/experiments/README.md](interp/experiments/README.md) | The experiments log convention and entries |
-| [interp/gemma-4-interp.md](interp/gemma-4-interp.md) | Gemma 4 for the interp tier: residual width, layer counts, hook hazards |
-| [interp/interp-scale-reference.md](interp/interp-scale-reference.md) | What fits on this workstation for interp work: activation volumes, SAE sizes, harvest budgets |
-| [interp/rust-harness-interp.md](interp/rust-harness-interp.md) | Running the write-back interpretability path on the Rust runtime |
-
-### Numerics and Precision
-
-| Document | Description |
-|----------|-------------|
-| [precision/](precision/README.md) | Numeric dtype policy across the three tiers, by concern: compute and weights, activation storage, gradients and optimizer state, KV cache, quantization, and the probe-precision hazard |
-| [precision/dtype-decisions.md](precision/dtype-decisions.md) | Why each tier chose its dtype and what would change it: f32 in the Rust reference backend, the four accepted GGUF storage types, bf16 over fp16 for training, and whether the three tiers can share one format |
-
-### Agents and Testing
-
-| Document | Description |
-|----------|-------------|
-| [agents/README.md](agents/README.md) | Agent sandbox and tooling |
-| [agents/tooling-parity.md](agents/tooling-parity.md) | OpenCode / Claude Code parity conventions |
-| [testing/README.md](testing/README.md) | The testing tier index: the gate, and the coverage audit |
-| [testing/quality-gate.md](testing/quality-gate.md) | What `make quality` runs, and what a sandbox run does not cover |
-| [sandbox/agent-sandbox.md](sandbox/agent-sandbox.md) | The contained agent sandbox: image, mounts, and egress allowlist |
-
-### Observability
-
-| Document | Description |
-|----------|-------------|
-| [observability/README.md](observability/README.md) | Operating the stack: where the files are, the `OBS_` variables, the event and metrics schemas, finding a run, opening a dashboard, and example `jq` queries |
-| [observability/design-and-roadmap.md](observability/design-and-roadmap.md) | Why the system is shaped this way, and the OBS item ledger with each item's status |
-| [observability/report_schema.md](observability/report_schema.md) | The shared JSON report envelope (`schema_version`, `git_sha`) and its validator. Distinct from `schemas/obs_record.json`, which covers the run event and catalog records |
-
-The Rust half of the same contract is documented at
-[rust-harness/observability.md](rust-harness/observability.md), and the cross-language record
-shapes both sides write live in [../schemas/README.md](../schemas/README.md).
+<!-- inventory:dirs:end -->
 
 ## Document classes
 
 Not every document here is maintained, and that is deliberate. A document's class decides
 whether drift against the current repository is a bug to fix or a record to preserve.
-`.styles/DOCUMENTATION_STYLE.md` defines the four classes and the line each one carries; the
-sections above list the living reference documentation, and the three tables below list the
-rest.
+`.styles/DOCUMENTATION_STYLE.md` defines the four classes and the line each one carries;
+the topic READMEs index the living reference documentation, and the three tables below
+list the rest.
 
-Two of the classes are enforced by path, because both documentation gates read them that way:
-`scripts/docs/check_doc_refs.py` and `scripts/docs/check_retired_names.py` exempt anything
-under an `investigations/` directory, anything whose name ends `_investigation.md`, and
-everything under `docs/verification/`.
+Two of the classes are enforced by path, because both documentation gates read them that
+way: `scripts/docs/check_doc_refs.py` and `scripts/docs/check_retired_names.py` exempt
+anything under an `investigations/` directory and anything whose name ends
+`_investigation.md`. `docs/verification/` is not exempt: its runbooks are operational and
+their paths are checked like any other document's, and only its `archive/` is frozen.
 
 ### Frozen records
 
-What was decided and why at implementation time. Bodies are never edited; a reference that has
-since moved is accurate history rather than drift.
+What was decided and why at implementation time. Bodies are never edited; a reference that
+has since moved is accurate history rather than drift.
 
-**A frozen record is not a source to check the tree against, and an audit should not read it as
-one.** These files describe the code as it stood on their date, so they accumulate names,
-formats and commands that no longer exist — `docs/verification/archive/` alone still
-carries hundreds of references to the GGUF model loader deleted in P8b. That is correct and
-must stay. Anything sweeping the tree for stale facts should skip these paths, as both
+**A frozen record is not a source to check the tree against, and an audit should not read
+it as one.** These files describe the code as it stood on their date, so they accumulate
+names, formats and commands that no longer exist — `docs/verification/archive/` alone still
+carries hundreds of references to the GGUF model loader deleted in P8b. That is correct
+and must stay. Anything sweeping the tree for stale facts should skip these paths, as both
 documentation gates already do, rather than rediscover the same expired history each time.
 
 | Location | Contents |
 |----------|----------|
 | [training/investigations/](training/investigations/) | D3-D10, F1-F8, and P2 deliverable investigations, plus [the unified-CLI investigation](training/investigations/unified_cli_investigation.md) (20 documents, 2026-07-14 to 2026-07-15). [README.md](training/investigations/README.md) carries the directory's conventions |
-| [interp/investigations/](interp/investigations/) | I1, P4, and PS deliverable investigations (8 documents, 2026-07-14 to 2026-07-15) |
+| [interp/investigations/](interp/investigations/) | I1, P4, and PS deliverable investigations (8 documents, 2026-07-14 to 2026-07-15), and the 2026-09-18 Neuronpedia replacement investigation |
 | [testing/investigations/](testing/investigations/) | [test_coverage_investigation.md](testing/investigations/test_coverage_investigation.md) — audit of the suite at 2026-07-16, commit 8316e5e |
 | [verification/archive/](verification/archive/) | The closed verification runbooks, the ledger's closed history, and [gemma-4-conformance_investigation.md](verification/archive/gemma-4-conformance_investigation.md) — the 2026-08-01 audit of the three consumer tiers against the Gemma 4 reference. Its 50 `GH.n` host checks were never executed; [verification/README.md](verification/README.md) records that backlog |
 | [interp/experiments/](interp/experiments/) | Experiment post-mortems, one file per experiment, immutable after the verdict. [README.md](interp/experiments/README.md) is the living convention for writing them |
@@ -229,89 +81,31 @@ graduate into the living documentation named in each.
 
 | Document | Contents |
 |----------|----------|
-| [optimizations/ideation/os-optimization-candidates.md](optimizations/ideation/os-optimization-candidates.md) | Host OS and GPU candidates (2026-07-30); graduate into `optimizations/os/os-optimizations.md` |
-| [optimizations/ideation/python-pipeline-optimization-candidates.md](optimizations/ideation/python-pipeline-optimization-candidates.md) | Training and interp pipeline candidates (2026-07-30) |
-| [optimizations/ideation/rust-harness-optimization-candidates.md](optimizations/ideation/rust-harness-optimization-candidates.md) | x86 CPU backend candidates (2026-07-30); blocked on runbook entry RH.1 |
-| [optimizations/ideation/future-inference-optimizations.md](optimizations/ideation/future-inference-optimizations.md) | Parked custom CUDA and C++ findings (2026-07-27); gates not met |
+| [optimizations/ideation/](optimizations/ideation/README.md) | Four menus of optimization candidates (2026-07-27 and 2026-07-30): host OS and GPU, the Python pipelines, the x86 CPU backend, and custom CUDA and C++ work |
+| [training/continuous-learning-proposal.md](training/continuous-learning-proposal.md) | The continuous-learning goal, the candidate architecture, and what must be true before it is scheduled |
+| [training/tier-consolidation-proposal.md](training/tier-consolidation-proposal.md) | The checkpoint-contract consolidation, the CLI handler moves, and the roadmap-code glossary, with what gates each |
 
 ### Operational runbooks
 
-Executed against the repository or the host rather than read for understanding. The audience
-is whoever is running the checks, and the human's pasted output is the evidence.
+Executed against the repository or the host rather than read for understanding. The
+audience is whoever is running the checks, and the human's pasted output is the evidence.
+[verification/README.md](verification/README.md) indexes them, states each runbook's
+progress, and [verification/protocol.md](verification/protocol.md) owns the recording
+protocol; the defect ledger they cross-reference is
+[verification/bugs/known-bugs.md](verification/bugs/known-bugs.md).
 
-| Document | Contents |
-|----------|----------|
-| [verification/README.md](verification/README.md) | The manual verification campaign: recording protocol and phase order |
-| [verification/archive/step-zero-environment.md](verification/archive/step-zero-environment.md) | Lockfile, images, smoke tests, quality gate; closed 2026-09-18 and frozen |
-| [verification/archive/from-scratch-loop.md](verification/archive/from-scratch-loop.md) | FS.0 through FS.8: the reference loop, D9 overlap and pinning, and the watchdog paths; closed 2026-09-19 and frozen, mirrored by `tests/hardware/test_from_scratch_loop.py` |
-| [verification/training/fine-tuning-loop.md](verification/training/fine-tuning-loop.md) | FT.0 through FT.16: the fine-tuning loop, proved through the harness and interp |
-| [verification/interp/interp.md](verification/interp/interp.md) | The interpretability tier |
-| [verification/observability/observability.md](verification/observability/observability.md) | OBS-V1 to OBS-V8: the observability stack on the workstation |
-| [verification/rust-harness/rust-harness.md](verification/rust-harness/rust-harness.md) | The rust-harness CPU backend on the real E4B checkpoint, and the RHX user-surface entries |
-| [verification/rust-harness/rust-harness-qa.md](verification/rust-harness/rust-harness-qa.md) | Q0-Q6: the sandbox-executable code-quality campaign |
-| [verification/hardware/hardware-stress.md](verification/hardware/hardware-stress.md) | One-time firmware stability soak for the BIOS undervolt profile |
-| [verification/bugs/known-bugs.md](verification/bugs/known-bugs.md) | The defect ledger the runbook entries cross-reference |
-| [verification/archive/ledger-archive.md](verification/archive/ledger-archive.md) | Closed defect history moved out of the ledger, and the candidates the panel refused |
+## Contributing
 
-## Performance Summary
-
-### Benchmarking
-
-Run the benchmark scripts in `scripts/benchmark/` (`benchmark_cpu.sh`,
-`benchmark_gpu.sh`) to measure inference performance on this workstation.
-
-### Key Optimizations Applied
-
-- **GPU**: Batch 2048, Ubatch 512, Flash Attention v3
-- **CPU**: Batch 2048, 16 threads, huge pages enabled
-- **BIOS**: FCLK 2100MHz, C-states disabled, PBO enabled
-- **OS**: Performance governor, swap disabled, CPU pinning
-
-## Documentation Standards
-
-This documentation follows Linux/Unix conventions; see
-[.styles/DOCUMENTATION_STYLE.md](../.styles/DOCUMENTATION_STYLE.md) for the
-full writing standard:
-
-- **Plain text focus** - Clear, technical writing without decorative elements
-- **No emojis in code** - Professional documentation uses standard ASCII
-- **Command-line oriented** - Examples use shell commands and Unix tools
-- **Minimalist approach** - Essential information only, no redundancy
-
-## Contributing to Documentation
-
-1. **Class first**: decide whether the document is living reference, a frozen
-   record, an operational runbook, or a parked proposal, and give it the class
-   line `.styles/DOCUMENTATION_STYLE.md` specifies. Living reference is the
-   default and carries no marker.
-2. **Placement**, by topic:
-   - Hardware guides: `docs/hardware/`; BIOS: `docs/bios/`
-   - Operating system, GPU stack, Python environment: `docs/os/`
-   - Optimization guides: `docs/optimizations/` (unscheduled menus go to
-     `docs/optimizations/ideation/`)
-   - Container and sandbox docs: `docs/sandbox/`
-   - Inference tuning: `docs/inference/`
-   - Model architecture references and header transcripts: `docs/models/`
-   - Rust harness design: `docs/rust-harness/`
-   - Observability and the JSON contracts commands emit: `docs/observability/`
-   - Agent tooling and parity: `docs/agents/`
-   - The quality gate and testing policy: `docs/testing/`
-   - Training tier: `docs/training/`
-   - Interpretability tier: `docs/interp/`
-   - Host and repository verification runbooks: `docs/verification/`
-   - Cross-tier numeric precision policy: `docs/precision/`
-3. **Then by class, within the topic**: a frozen record goes to
-   `<topic>/investigations/` and its filename ends `_investigation.md`. Both
-   documentation gates key on those two patterns, so a frozen record placed
-   anywhere else is gated as living and will be asked to keep its historical
-   paths resolving.
-4. **Index it**: add a row to a section above. A document reachable from
-   nowhere is a document nobody will read or maintain.
-5. **Naming Convention**: lowercase with hyphens or underscores, descriptive
-   but concise.
-6. **Content Standards**: table of contents for long documents, concrete
-   commands, actual measurements, cross-references to related documentation.
-
----
-
-*Last updated: 2026-08-06 | [Main README](../README.md)*
+1. **Class first.** Decide whether the document is living reference, a frozen record, an
+   operational runbook, or a parked proposal, and give it the class line
+   `.styles/DOCUMENTATION_STYLE.md` specifies. Living reference is the default and carries
+   no marker. A frozen record goes to `<topic>/investigations/` or has a filename ending
+   `_investigation.md`; placed anywhere else it is gated as living.
+2. **Then by topic.** The table above is the placement list: one directory per topic, and
+   a new topic is a new directory with a README.
+3. **Describe it.** Open the page with a description paragraph under its title, the first
+   sentence of which stands alone, because the directory's generated index reads it. Then
+   regenerate the parent's table with `python scripts/docs/gen_inventory.py <README>`;
+   `make quality` fails until it matches.
+4. **Name it** lowercase with hyphens or underscores, descriptive but concise, and give a
+   document over 500 words a table of contents.
