@@ -11,7 +11,15 @@ a holdout pass four a side, an lm-eval pass five a side, most of the last in
 the harness's batch-size search).
 
 Every phase is a process of its own, `python -m training <verb>` on the
-workstation venv, as the hand run's compose runs are. Two reasons. A process
+workstation venv, as the hand run's compose runs are. That venv must carry
+what the lock names: lm-eval's ifeval extra (langdetect, immutabledict,
+nltk) reached the lock in the KB-92 fix, and a venv synced before it keeps
+running without them, because `uv run --no-sync` never reconciles the two
+(tests/hardware/test_venv_lock.py). The mirror's first run (2026-09-25)
+found exactly that, fifteen minutes in, at the first lm-eval task load; so
+the extra is checked before any GPU work, and its absence is a failure with
+`make install` named, in conftest's cuda shape, not a skip. Two reasons for
+the process boundary. A process
 boundary frees the GPU between phases, where the in-process training tests
 leave CUDA tensors behind (conftest's cuda fixture reports them), and a
 holdout pass needs the bf16 model beside the full logits of an example. And
@@ -39,6 +47,7 @@ prepared directory is stale (conftest's sft_smoke_recipe).
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import math
 import os
@@ -86,6 +95,10 @@ HOLDOUT_TIMEOUT_S = 15 * 60
 LMEVAL_TIMEOUT_S = 20 * 60
 # Perplexity is exp(loss) rounded to four places by the evaluator.
 PERPLEXITY_RTOL = 1e-3
+# The members of lm-eval's ifeval extra in uv.lock, which the ifeval task
+# imports at load. The 2026-09-25 instance: the workstation venv predated the
+# lock that added them, and the base's eval-lmeval died on langdetect.
+IFEVAL_EXTRA = ("langdetect", "immutabledict", "nltk")
 
 
 def training_cli(args: list[str], timeout_s: float) -> subprocess.CompletedProcess:
@@ -107,6 +120,21 @@ def training_cli(args: list[str], timeout_s: float) -> subprocess.CompletedProce
         timeout=timeout_s,
         env=env,
     )
+
+
+def require_ifeval_extra() -> None:
+    """Fail, with the remedy, when the interpreter the phases run lacks the
+    ifeval extra: the phases use sys.executable, so find_spec here is the
+    same answer the subprocess would give, seconds in rather than minutes."""
+    missing = [name for name in IFEVAL_EXTRA if importlib.util.find_spec(name) is None]
+    if missing:
+        pytest.fail(
+            f"[ERROR] the venv at {sys.prefix} lacks lm-eval's ifeval extra\n"
+            f"  Found: {', '.join(missing)} not importable\n"
+            "  Solution: sync the venv with the lock (uv run --no-sync runs what is there)\n"
+            "  Command: make install",
+            pytrace=False,
+        )
 
 
 def read_json(path) -> dict:
@@ -227,6 +255,7 @@ def test_heldout_eval(cuda, tmp_path, train_lock):
             "(FT.heldout-eval's precondition block: make train-download DATASET=<id> "
             f"for {', '.join(STAGED_DATASETS)})"
         )
+    require_ifeval_extra()
     holdout_examples = read_json(os.path.join(dataset, "manifest.json"))[
         "holdout_examples"
     ]

@@ -270,7 +270,11 @@ builds what it verifies:
   `eval-holdout` and `eval-lmeval` on both sides as host processes with the
   HF cache at the prepare service's root, holding the printed lines, both
   record shapes, the driver's pair checks and the loss order. Its first
-  run is owed to the entry's Observed block.
+  run the same day failed at the base's lm-eval task load on a host venv
+  synced before `f52c158` locked the ifeval extra, after the train, export
+  and holdout phases had passed; recorded in the entry, host state, no
+  ledger row. The mirror now checks the extra before any GPU work; its
+  first pass is owed to the entry's Observed block.
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training
@@ -2676,8 +2680,10 @@ export, then the four verbs as processes of their own on the workstation
 venv, `HF_HOME` at the prepare service's cache so the harness reads the
 staged datasets offline, held to the printed lines, the record shapes, the
 `eval-ft` driver's pair checks, the organism verifier's projection, and the
-one ordering below (merged at or below base). `make hardware-tests HW=full
-SUITE=training` runs it with the other training mirrors.
+one ordering below (merged at or below base), and failing with `make
+install` named when the venv lacks the ifeval extra the lock carries. `make
+hardware-tests HW=full SUITE=training` runs it with the other training
+mirrors.
 
 **Fixes to confirm here** (details in [bugs/known-bugs.md](../bugs/known-bugs.md)):
 
@@ -4093,6 +4099,74 @@ read-write datasets half by the second attempt (the cache line's `last
 modified` for hellaswag is that run's time, 21:05, where the other three
 are the staging's), and this run read them back, which is the mount mode
 doing what KB-92's second fix said it would.
+
+The hardware mirror's first run (2026-09-25, after this entry verified;
+failed on host state), after `git pull` to `dc0fac4`, pasted verbatim with
+the test source and the subprocess's full stderr that pytest echoes elided,
+since the traceback's last frames carry the error:
+
+```
+➜  ai-experiments git:(SFT-verification-2) uv run --no-sync pytest -m "hw_full and training" tests/hardware/test_heldout_eval.py -v 2>&1 | tail -40; echo "exit=$?"
+============================================================================== test session starts ==============================================================================
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /home/alejandro/workspace/ai-experiments/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/alejandro/workspace/ai-experiments
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, mock-3.15.1, jaxtyping-0.3.11, cov-7.1.0, hydra-core-1.3.2, anyio-4.14.2, xdist-3.8.0, typeguard-4.6.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 1 item
+
+tests/hardware/test_heldout_eval.py::test_heldout_eval FAILED                                                                                                             [100%]
+
+=================================================================================== FAILURES ====================================================================================
+_______________________________________________________________________________ test_heldout_eval _______________________________________________________________________________
+[...the test source and the subprocess's stderr, elided; the traceback's last frames follow...]
+E           File "/home/alejandro/workspace/ai-experiments/.venv/lib/python3.12/site-packages/lm_eval/tasks/ifeval/utils.py", line 4, in <module>
+E             from lm_eval.tasks.ifeval import instructions_registry
+E           File "/home/alejandro/workspace/ai-experiments/.venv/lib/python3.12/site-packages/lm_eval/tasks/ifeval/instructions_registry.py", line 17, in <module>
+E             from lm_eval.tasks.ifeval import instructions
+E           File "/home/alejandro/workspace/ai-experiments/.venv/lib/python3.12/site-packages/lm_eval/tasks/ifeval/instructions.py", line 36, in <module>
+E             import langdetect
+E         ModuleNotFoundError: No module named 'langdetect'
+E
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/home/alejandro/workspace/ai-experiments/.venv/bin/python', '-m', 'training', 'eval-lmeval', '--model', '/mnt/ai-data/models/hf/gemma-4-E2B', '--limit', '20', '--out', '/tmp/pytest-of-alejandro/pytest-1/test_heldout_eval0/eval/lmeval_base.json'], returncode=1, stdout='', stderr='[RUN] lm-evaluation-harness: /mnt/ai-data/models/hf/gemma-4-E2B\n\nLoading weights: ...').returncode
+
+tests/hardware/test_heldout_eval.py:146: AssertionError
+[TIER] full: torch present, the whole suite was in scope.
+============================================================================ short test summary info ============================================================================
+FAILED tests/hardware/test_heldout_eval.py::test_heldout_eval - AssertionError: [RUN] lm-evaluation-harness: /mnt/ai-data/models/hf/gemma-4-E2B
+========================================================================= 1 failed in 896.47s (0:14:56) =========================================================================
+```
+
+Judgement. The phases before the failure passed every assertion the mirror
+holds on them: the 20-step `train-sft` run printed `[OK] Run complete: step
+20 [trl]` and left `checkpoint-20` stamped `adapter_only` at the base's
+revision; the export printed `[OK] Base model verified:` and `[OK] Manifest
+written:` and left `model.safetensors` and `config.json`; both `eval-holdout`
+passes wrote records with the eight keys, `bf16`, `sdpa` and 4066 examples,
+which `assert_holdout_shape` accepted on both sides (the comprehension at
+line 279 completed, and the failure is line 287's). The base's `eval-lmeval`
+then loaded the model and died at task load with `ModuleNotFoundError: No
+module named 'langdetect'` from the harness's ifeval task, exit 1, so the
+merged side, the pair checks and the loss order did not run. The cause is
+the workstation venv, not the tree: `pyproject.toml` has pinned
+`lm-eval[ifeval]==0.4.12` since KB-92's fix and `uv.lock` has carried
+`langdetect` and `immutabledict` since `f52c158`, but `uv lock` writes the
+lock and syncs nothing, `make install` has not run since, and `uv run
+--no-sync` runs what is there, as `tests/hardware/test_venv_lock.py` says;
+that check reads the other direction on purpose (installed but unlocked),
+so a locked package left uninstalled fails where it is imported, which is
+what happened. The training container never showed it because `make
+train-build` rebuilt the image from the new lock (the preconditions above),
+and the mirror is the first thing to run the ifeval task on the host venv.
+Host state, the shape of FT.export-merged's root-owned sessions directory,
+so no ledger row; the remedy is `make install`. The mirror gained
+`require_ifeval_extra`, which fails with that command named before the
+training phase, so the next such drift costs seconds rather than the
+fifteen minutes this run spent. The re-run is owed after the sync. The
+Status line below is the entry's, closed on the hand run; the mirror's pass
+is recorded when it happens.
 
 Status: VERIFIED (2026-09-25) on the third evaluation attempt. The
 holdout half passed on the first attempt (KB-92's first fix failed the
