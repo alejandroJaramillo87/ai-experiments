@@ -2094,41 +2094,66 @@ merge on real weights. Depends on FT.train-resume.
 
 Command (the export container mounts the models tree read-write under
 `/app/models/trained`; the harness lines read the result through the
-harness image, and `checkpoint-info` reads it on the host):
+harness image, and `checkpoint-info` reads it on the host). The merge loads
+the 10.2 GB bf16 base on the CPU and writes the same again into the
+`hf.partial` staging directory before the rename, so the first export runs
+for minutes with only `[RUN] Merging model:` showing; an `hf.partial`
+directory left behind marks a killed run, and the next export removes it.
+The last line is interactive: at the `> ` marker type one short prompt
+(`Reply with one sentence: what is a huge page?`), wait for the reply (CPU
+inference on a 5 B model, so minutes rather than seconds), then type
+`/quit`. Every `echo` records the exit of the line above it; `make` reports
+a failing recipe as its own exit 2, whatever the command inside returned.
 
 ```bash
+set -o pipefail
 make export-build
 make export-hf CHECKPOINT=/mnt/ai-data/training/runs/ft3-straight/checkpoints/checkpoint-60 \
     ARGS="--name ft3-straight"
+echo "exit=$?"
 ls /mnt/ai-data/models/trained/ft3-straight/hf/
 grep -E '"(mode|hf_dir|model_hash)"' /mnt/ai-data/models/trained/ft3-straight/manifest.json
 sha256sum /mnt/ai-data/models/trained/ft3-straight/hf/model.safetensors
 make export-hf CHECKPOINT=/mnt/ai-data/training/runs/ft3-straight/checkpoints/checkpoint-60 \
-    ARGS="--name ft3-straight"; echo "exit $?"
+    ARGS="--name ft3-straight"
+echo "exit=$?"
 make harness-run ARGS="--model /app/models/trained/ft3-straight/hf --text-only --status --deep"
+echo "exit=$?"
 cd rust-harness && cargo run --release -p runtime --bin checkpoint-info -- --check --text-only \
-    /mnt/ai-data/models/trained/ft3-straight/hf 2>&1 | tail -3; cd ..
+    /mnt/ai-data/models/trained/ft3-straight/hf 2>&1 | tail -3; echo "exit=$?"; cd ..
 make harness-chat ARGS="--model /app/models/trained/ft3-straight/hf --text-only"
+echo "exit=$?"
 ```
 
 Expected signal: the first export prints `[OK] Base model verified:
-google/gemma-4-E2B (revision d29ff6b4...)`, `[RUN] Merging model: ...`,
-`[OK] Adapter merged: ...`, `[OK] HF export written: .../hf (N bytes)`,
-`[OK] Manifest written: .../manifest.json` and a `model_hash:` line, and
-exits 0 (a checkpoint whose recorded base revision does not match the cached
-base is refused with `[ERROR] Export failed: Base model drifted since
-training:` unless `--allow-base-drift` is passed); `ls` shows `config.json`,
-`generation_config.json`, one `model.safetensors`, the tokenizer files and no
-`model.safetensors.index.json`; the manifest records `"mode": "merge"`,
-`"hf_dir"` as the listed directory, and a `model_hash` equal to the
-`sha256sum` line and different from the FT.preconditions base digest; the second export
-exits 1 with `[ERROR] Export exists: .../hf` and the `--force` solution line,
-leaving the manifest unchanged; `harness --status --deep` and
+/app/models/hf/gemma-4-E2B (revision
+d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f)` (the container spelling of the
+staged base, because the line prints the path the trainer loaded and PEFT
+recorded, not the recipe's hub id; `training/export/merge.py`'s
+`check_meta_consistency` names this one-base-two-spellings case), `[RUN]
+Merging model: ...`, `[OK] Adapter merged: ...`, `[OK] HF export written:
+.../hf (N bytes)`, `[OK] Manifest written: .../manifest.json` and a
+`model_hash:` line, and exits 0 (a checkpoint whose recorded base revision
+does not match the cached base is refused with `[ERROR] Export failed: Base
+model drifted since training:` unless `--allow-base-drift` is passed); `ls`
+shows `config.json`, `generation_config.json`, one `model.safetensors`, the
+tokenizer files and no `model.safetensors.index.json`; the manifest records
+`"mode": "merge"`, `"hf_dir"` as the container spelling of the listed
+directory (`/app/models/trained/ft3-straight/hf`), and a `model_hash` equal
+to the `sha256sum` line and different from the FT.preconditions base digest;
+the second export prints `[ERROR] Export exists: .../hf` and the `--force`
+solution line, returns 1 so `make` reports `Error 1` and the echo shows 2,
+and leaves the manifest unchanged; `harness --status --deep` and
 `checkpoint-info --check` both exit 0 on the directory, with `[OK] backend
-compatibility: supported`, the same 35-layer config as the base, and
-`[WARN] --deep: no effect when there is no interp artifact to check` (the
-hash comparison is FT.probe's, against a probe); one `--chat` reply arrives,
-rendered through the version 2 chat template.
+compatibility: supported` (`checkpoint-info` spells it `CPU backend
+compatibility`), the same 35-layer config as the base, and `[WARN] --deep:
+no effect when there is no interp artifact to check` (the hash comparison is
+FT.probe's, against a probe); one `--chat` reply arrives as a single line
+after the `> ` marker and `/quit` ends with `[INFO] Chat ended: 1 model
+turns`, exit 0. The prompt was rendered through the version 2 chat template,
+which is `CHAT_TEMPLATE_VERSION` in `rust-harness/harness/src/template.rs`
+pinned against `training/models/families.py`; the reply arriving cleanly
+framed is its observable, not a printed version.
 
 Observed:
 
