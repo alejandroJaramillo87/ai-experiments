@@ -132,7 +132,7 @@ paths. The table is what the pairing is; the entries themselves are in
 | FT.recipe-gates | `tests/training/test_recipes.py` | `test_recipe_gates.py`: the two gates a run passes before the GPU | `hw_smoke` | `training` |
 | FT.train-resume | `tests/training/test_sft_entry.py`'s checkpoint helpers and `test_obs_metrics.py`'s stop seam | `test_train_resume.py` trains 20 QLoRA steps straight, then 10 and a resume to 20, and holds the logged losses to `RESUME_LOSS_RTOL` | `hw_full` | `training` |
 | FT.calibrate-qlora | none: the figures are the card's | `test_step_qlora.py` steps the reference QLoRA recipe and holds the adapter count, drift, resident and peak figures | `hw_full` | `training` |
-| FT.export-merged, FT.hardware-test | `tests/training/test_export_harness.py` exports the tiny fixture through the real verb and hands it to the built binaries | `test_fine_tuning_loop.py` trains ten QLoRA steps on E2B, merges, and asks the same two binaries | `hw_full` | `training` |
+| FT.export-merged, FT.hardware-test | `tests/training/test_export_harness.py` exports the tiny fixture through the real verb and hands it to the built binaries | `test_fine_tuning_loop.py` trains ten QLoRA steps on E2B, merges, refuses a re-export, asks the same two binaries and runs one chat turn | `hw_full` | `training` |
 | FS.0 to FS.8 | `tests/training/test_loop.py` and its neighbours | `test_from_scratch_loop.py` runs the reference loop, D9 overlap and pinning, and the watchdog paths | `hw_full` | `training` |
 | WI-3 resource suites | none | `test_cpu.py`, `test_gpu.py`, `test_ram.py`, `test_ssd.py`, each with a smoke and a full depth | both | `platform` |
 

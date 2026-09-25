@@ -4,10 +4,13 @@ The fine-tuning loop runbook (docs/verification/training/fine-tuning-loop.md)
 walks FT.train-resume and FT.export-merged by hand: train a QLoRA adapter on Gemma 4 E2B, export the
 merged HF directory, and load it in the harness. This module runs those three
 steps in one function on the smoke recipe and holds them to the signals the
-entries record: a stamped checkpoint is written, the export is one
-model.safetensors whose manifest hash is the sha256 of the file, and the
+entries record: a stamped checkpoint is written, the export verifies the
+base it merges into and is one model.safetensors whose manifest hash is the
+sha256 of the file, a second export of the same name is refused, the
 harness preflight accepts the directory and, under --deep, agrees with the
-manifest about which weights it is serving.
+manifest about which weights it is serving, and one chat turn on a pipe
+ends with the harness's own summary line. The interrupt and the resume that
+make FT.train-resume are tests/hardware/test_train_resume.py's.
 
 The sandbox half is tests/training/test_export_harness.py, which runs the
 export and the two harness verdicts on the committed tiny fixture with no
@@ -35,7 +38,13 @@ import subprocess
 
 import pytest
 
-from tests.hardware.conftest import REPO_ROOT, altered, sft_smoke_recipe, write_probe
+from tests.hardware.conftest import (
+    REPO_ROOT,
+    altered,
+    default_root_env,
+    sft_smoke_recipe,
+    write_probe,
+)
 
 pytestmark = [
     pytest.mark.hw_full,
@@ -54,6 +63,13 @@ TOTAL_STEPS = 10
 # E2B is about 5 GB in bf16; a hash of it is seconds, a preflight is under a
 # minute on 2026-09-11 (RH.16 on the 15 GB E4B took 80 s for two passes).
 PREFLIGHT_TIMEOUT_S = 10 * 60
+# One chat turn on the merged E2B: a bf16 load of about 10 GB and sixteen
+# tokens on the CPU. The 2026-09-25 hand run loaded in 3.75 s and reached
+# the 256-token cap in minutes; generous, because a timeout reads as a
+# missing line.
+CHAT_TIMEOUT_S = 15 * 60
+CHAT_MAX_TOKENS = 16
+CHAT_ENDED_LINE = "[INFO] Chat ended: 1 model turns"
 
 
 def require_binaries() -> None:
@@ -75,7 +91,30 @@ def run(binary: str, args: list[str], timeout_s: float) -> subprocess.CompletedP
     )
 
 
-def test_fine_tuning_loop(cuda, tmp_path, train_lock):
+def chat_on_a_pipe(cwd, hf_dir) -> subprocess.CompletedProcess:
+    """One turn through `--chat` with stdin a pipe, as FT.export-merged's
+    chat step does at a terminal; the harness writes session.jsonl to cwd."""
+    cwd.mkdir()
+    return subprocess.run(
+        [
+            HARNESS,
+            "--model",
+            str(hf_dir),
+            "--text-only",
+            "--chat",
+            "--max-tokens",
+            str(CHAT_MAX_TOKENS),
+        ],
+        cwd=cwd,
+        input="hello\n",
+        capture_output=True,
+        text=True,
+        timeout=CHAT_TIMEOUT_S,
+        env=default_root_env(),
+    )
+
+
+def test_fine_tuning_loop(cuda, tmp_path, train_lock, capsys):
     from training.tune.sft import train_sft
 
     require_binaries()
@@ -117,6 +156,21 @@ def test_fine_tuning_loop(cuda, tmp_path, train_lock):
     )
     assert args.func(args) == 0
     hf_dir = out_root / "ft11-loop" / "hf"
+    printed = capsys.readouterr().err
+    # KB-91's close condition, and the entry's first criterion (the Printer
+    # writes its status lines to stderr): the base the
+    # adapter was trained on, at the staged spelling the trainer loaded.
+    assert (
+        f"[OK] Base model verified: {base.model} (revision {base.revision})" in printed
+    ), printed
+    assert "[OK] Manifest written:" in printed, printed
+    # A second export of the same name is refused before any staging, with
+    # the remedy, because a re-export changes model_hash under anything
+    # fitted to the old weights.
+    assert args.func(args) == 1
+    refused_export = capsys.readouterr().err
+    assert f"[ERROR] Export exists: {hf_dir}" in refused_export, refused_export
+    assert "Solution: pass --force" in refused_export, refused_export
     with open(out_root / "ft11-loop" / "manifest.json") as f:
         manifest = json.load(f)
     assert manifest["mode"] == "merge"
@@ -185,3 +239,14 @@ def test_fine_tuning_loop(cuda, tmp_path, train_lock):
         f"artifact model_hash {bad}, served model sha256 {manifest['model_hash']}"
         in refused.stderr
     )
+
+    # The generation round trip: one turn, one reply, the harness's own
+    # summary, exit 0. What the reply says and whether the model closes its
+    # turn are the adapter's, judged at FT.heldout-eval, not asserted here.
+    chat = chat_on_a_pipe(tmp_path / "chat", hf_dir)
+    assert chat.returncode == 0, chat.stderr
+    assert CHAT_ENDED_LINE in chat.stderr, chat.stderr
+    assert chat.stdout.strip(), chat.stderr
+    assert "[INFO]" not in chat.stdout, chat.stdout
+    with open(tmp_path / "chat" / "session.jsonl", encoding="utf-8") as f:
+        assert sum(1 for line in f if line.strip()) == 2

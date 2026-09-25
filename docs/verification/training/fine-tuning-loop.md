@@ -219,6 +219,14 @@ builds what it verifies:
   a root-owned `trained` directory older than the setup script's chown, and
   a root-owned `sessions/rust-harness` left by a run before the harness
   targets pre-created it.
+- **Two hardware mirrors and a subsystem axis** (2026-09-25, after
+  FT.export-merged verified): `tests/hardware/test_train_resume.py` runs
+  FT.train-resume's three runs at 20 steps through a `stop_after` seam on
+  `train_sft`, and `test_fine_tuning_loop.py` gained the base-verified line,
+  the refused re-export and a chat turn from FT.export-merged's hand run.
+  Every hardware test now carries one of `harness`, `training`, `interp`,
+  `platform`, and `make hardware-tests HW=full SUITE=training` runs the
+  training slice alone, about twenty minutes of GPU, without the E4B chats.
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training
@@ -2116,7 +2124,16 @@ The export runs in the CPU-only export image (`make export-build` once) and
 writes `/mnt/ai-data/models/trained/<name>/hf/` plus the manifest beside it;
 the sandbox proves the copy path and both harness verdicts on the tiny
 fixture (`tests/training/test_export_harness.py`), and this entry proves the
-merge on real weights. Depends on FT.train-resume.
+merge on real weights. Its hardware mirror is
+`tests/hardware/test_fine_tuning_loop.py` (`hw_full`, `training`), the
+test FT.hardware-test runs: since 2026-09-25 it also asserts the
+`[OK] Base model verified:` line, the refused second export with its
+`--force` remedy, and one chat turn on a pipe ending in `[INFO] Chat ended:
+1 model turns`, the three checks this entry's hand run added to what the
+test held before. The export image itself is not what the test runs, since
+every hardware test is in-process; the image's dependency set is
+`tests/training/test_export_image_dependencies.py`'s (KB-91). Depends on
+FT.train-resume.
 
 Command (the export container mounts the models tree read-write under
 `/app/models/trained`; the harness lines read the result through the
@@ -3063,14 +3080,21 @@ uv run --no-sync pytest -m hw_full tests/hardware/test_fine_tuning_loop.py -v
 ```
 
 Expected signal: the one test passes at `[TIER] full` with no skip, and its
-assertions cover what FT.train-resume and FT.export-merged observe by hand: `checkpoint-10` is
+assertions cover what FT.train-resume's first criterion and FT.export-merged observe by
+hand: `checkpoint-10` is
 written with `adapter_only: true` and the pinned base identity in its
-`meta.json`; the export is `mode: merge`, holds one `model.safetensors` and
-no index, and its manifest `model_hash` equals the file's sha256;
+`meta.json`; the export prints `[OK] Base model verified:` for the staged
+base, is `mode: merge`, holds one `model.safetensors` and
+no index, and its manifest `model_hash` equals the file's sha256; a second
+export of the same name returns 1 with `[ERROR] Export exists:` and the
+`--force` remedy;
 `checkpoint-info --check --text-only` exits 0; `harness --status --deep`
 with a probe carrying that hash prints `[OK] probe identity: matches the
 served weights, sha256 <hash>` and exits 0, and with an altered hash exits 1
-naming both digests.
+naming both digests; one `--chat` turn on a pipe exits 0 with `[INFO] Chat
+ended: 1 model turns` and a non-empty reply. The interrupt and resume half
+of FT.train-resume is `tests/hardware/test_train_resume.py`, run by the same
+`make hardware-tests HW=full SUITE=training`.
 
 Observed:
 
