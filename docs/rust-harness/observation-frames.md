@@ -12,15 +12,19 @@ future harness features. Nothing here is scheduled work: it records design
 conclusions and experiment-planning constraints so later roadmap tasks start
 from settled reasoning instead of re-deriving it.
 
-## Table of contents
+## Table of Contents
 
-- [Purpose](#purpose)
-- [The inference verdict, conceded](#the-inference-verdict-conceded)
-- [The agent frame](#the-agent-frame)
-- [The chat frame](#the-chat-frame)
-- [Training across both frames](#training-across-both-frames)
-- [Cross-frame methodology](#cross-frame-methodology)
-- [The feature bar](#the-feature-bar)
+<!-- toc:start -->
+
+1. [Purpose](#purpose)
+2. [The inference verdict, conceded](#the-inference-verdict-conceded)
+3. [The agent frame](#the-agent-frame)
+4. [The chat frame](#the-chat-frame)
+5. [Training across both frames](#training-across-both-frames)
+6. [Cross-frame methodology](#cross-frame-methodology)
+7. [The feature bar](#the-feature-bar)
+
+<!-- toc:end -->
 
 ## Purpose
 

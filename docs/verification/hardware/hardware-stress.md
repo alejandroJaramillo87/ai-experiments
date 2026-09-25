@@ -30,15 +30,19 @@ independent of the software verification phases and may run any time
 after its own preconditions are met, but it must be VERIFIED before the
 first long training run (phase 2 of the training tier onward).
 
-## Table of contents
+## Table of Contents
 
-- [HS.0 Preconditions and baseline](#hs0-preconditions-and-baseline)
-- [HS.1 CPU sustained AVX-512 soak](#hs1-cpu-sustained-avx-512-soak)
-- [HS.2 GPU sustained soak](#hs2-gpu-sustained-soak)
-- [HS.3 Combined mixed-load soak](#hs3-combined-mixed-load-soak)
-- [HS.4 Memory soak](#hs4-memory-soak)
-- [HS.5 Post-soak sweep and disposition](#hs5-post-soak-sweep-and-disposition)
-- [Failure protocol](#failure-protocol)
+<!-- toc:start -->
+
+1. [HS.0 Preconditions and baseline](#hs0-preconditions-and-baseline)
+2. [HS.1 CPU sustained AVX-512 soak](#hs1-cpu-sustained-avx-512-soak)
+3. [HS.2 GPU sustained soak](#hs2-gpu-sustained-soak)
+4. [HS.3 Combined mixed-load soak](#hs3-combined-mixed-load-soak)
+5. [HS.4 Memory soak](#hs4-memory-soak)
+6. [HS.5 Post-soak sweep and disposition](#hs5-post-soak-sweep-and-disposition)
+7. [Failure protocol](#failure-protocol)
+
+<!-- toc:end -->
 
 ## HS.0 Preconditions and baseline
 

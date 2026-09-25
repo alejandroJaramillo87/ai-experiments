@@ -7,6 +7,17 @@ tree the way the code is held to its tests: by rules a script can check on every
 This page is the strategy, stated once; [../../scripts/docs/README.md](../../scripts/docs/README.md)
 is the reference for the scripts.
 
+## Table of Contents
+
+<!-- toc:start -->
+
+1. [The strategy](#the-strategy)
+2. [The gates](#the-gates)
+3. [What this costs a contributor](#what-this-costs-a-contributor)
+4. [Related](#related)
+
+<!-- toc:end -->
+
 ## The strategy
 
 **One owner per fact.** Every topic has one document that owns it, and `AGENTS.md` is a
@@ -50,6 +61,17 @@ hub: every directory has a README, with a `dirs` table when it has subdirectorie
 `pages` table when it has pages, so the router reaches every page. The same pattern renders the site's reference pages
 from `--help` and from the argparse parser.
 
+**A table of contents is generated from the headings it indexes.** A document over 500
+words with four or more sections carries one, between a `<!-- toc:start -->` and
+`<!-- toc:end -->` pair under its `## Table of Contents` heading, and
+`scripts/docs/gen_toc.py` renders the numbered list of its H2 and H3 headings from the
+document itself. Written by hand it is the one part of a page its editor does not reread,
+so a renamed heading leaves a row linking an anchor that no longer exists. The gate
+regenerates in memory and diffs, and asks a living page that has grown past the
+threshold for the pair; the remedy it prints is `gen_toc.py <file>`, which also adopts a
+hand-written list or inserts the section. A frozen record is never edited, so it is never
+given one and never asked for one, and a README is a router and never needs one.
+
 **A rename adds a retired name.** The path gate cannot see a renamed file, because a bare
 filename is not a path claim, so every rename, retirement or moved entry id goes into the
 table in `scripts/docs/check_retired_names.py` with its replacement and the reason. That
@@ -74,7 +96,7 @@ prompt is tagged `console`.
 
 ## The gates
 
-Thirteen scripts under `scripts/docs/` run in `make quality`, in this order, cheapest first.
+Fourteen scripts under `scripts/docs/` run in `make quality`, in this order, cheapest first.
 Each fails the build on its finding and prints the file, the line and the remedy.
 
 | Gate | Fails when |
@@ -92,9 +114,11 @@ Each fails the build on its finding and prints the file, the line and the remedy
 | `check_site_reference.py` | a generated rust-harness reference page disagrees with the `Flag` literals it came from |
 | `check_site_interp_reference.py` | a generated interp reference page disagrees with the argparse literals it came from |
 | `check_inventory.py` | a generated README table disagrees with the tree, or a directory under a hub has no README with one |
+| `check_toc.py` | a generated table of contents disagrees with its document's headings, or a living document over the threshold carries none |
 
-Three generators feed them: `gen_site_reference.py` and `gen_site_interp_reference.py`
-through `make site-gen`, and `gen_inventory.py` by hand on the README that changed. Each
+Four generators feed them: `gen_site_reference.py` and `gen_site_interp_reference.py`
+through `make site-gen`, and `gen_inventory.py` and `gen_toc.py` by hand on the README or
+the document that changed. Each
 gate has a test of the same name under `tests/docs/` that pins its classifier on the real
 tokens that motivated each rule and ends with the gate run over the whole repository, so a
 stale document fails `make test` as well as `make quality`.

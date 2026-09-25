@@ -5,20 +5,22 @@ Latency optimizations target llama.cpp single-request inference; throughput opti
 
 ## Table of Contents
 
-- [Operating System Optimizations](#operating-system-optimizations)
-  - [Table of Contents](#table-of-contents)
-  - [CPU/RAM Optimizations](#cpuram-optimizations)
-    - [1. Swap Disabled \[IMPLEMENTED\]](#1-swap-disabled-implemented)
-    - [2. CPU Governor - Performance Mode \[IMPLEMENTED\]](#2-cpu-governor---performance-mode-implemented)
-    - [3. Huge Pages \[IMPLEMENTED\]](#3-huge-pages-implemented)
-    - [4. Memory Allocator Tuning \[TESTED - NOT BENEFICIAL\]](#4-memory-allocator-tuning-tested---not-beneficial)
-    - [5. System Memory Tuning \[IMPLEMENTED\]](#5-system-memory-tuning-implemented)
-    - [6. CPU Pinning \[IMPLEMENTED\]](#6-cpu-pinning-implemented)
-  - [GPU Optimizations](#gpu-optimizations)
-    - [1. NVIDIA Driver Persistence Mode \[IMPLEMENTED\]](#1-nvidia-driver-persistence-mode-implemented)
-    - [2. GPU Power and Clock Management \[PARTIALLY IMPLEMENTED\]](#2-gpu-power-and-clock-management-partially-implemented)
-    - [3. NVIDIA Kernel Module Parameters \[IMPLEMENTED\]](#3-nvidia-kernel-module-parameters-implemented)
-    - [4. GPU IRQ Affinity \[IMPLEMENTED\]](#4-gpu-irq-affinity-implemented)
+<!-- toc:start -->
+
+1. [CPU/RAM Optimizations](#cpuram-optimizations)
+   1. [1. Swap Disabled [IMPLEMENTED]](#1-swap-disabled-implemented)
+   2. [2. CPU Governor - Performance Mode [IMPLEMENTED]](#2-cpu-governor---performance-mode-implemented)
+   3. [3. Huge Pages [IMPLEMENTED]](#3-huge-pages-implemented)
+   4. [4. Memory Allocator Tuning [TESTED - NOT BENEFICIAL]](#4-memory-allocator-tuning-tested---not-beneficial)
+   5. [5. System Memory Tuning [IMPLEMENTED]](#5-system-memory-tuning-implemented)
+   6. [6. CPU Pinning [IMPLEMENTED]](#6-cpu-pinning-implemented)
+2. [GPU Optimizations](#gpu-optimizations)
+   1. [1. NVIDIA Driver Persistence Mode [IMPLEMENTED]](#1-nvidia-driver-persistence-mode-implemented)
+   2. [2. GPU Power and Clock Management [PARTIALLY IMPLEMENTED]](#2-gpu-power-and-clock-management-partially-implemented)
+   3. [3. NVIDIA Kernel Module Parameters [IMPLEMENTED]](#3-nvidia-kernel-module-parameters-implemented)
+   4. [4. GPU IRQ Affinity [IMPLEMENTED]](#4-gpu-irq-affinity-implemented)
+
+<!-- toc:end -->
 
 ## CPU/RAM Optimizations
 

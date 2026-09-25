@@ -4,15 +4,38 @@ Comprehensive test coverage for the AMD Zen 5 optimizer library.
 
 ## Table of Contents
 
-- [Quick start](#quick-start)
-- [Test organization](#test-organization)
-- [Test categories](#test-categories)
-- [Running tests](#running-tests)
-- [Test output](#test-output)
-- [Requirements](#requirements)
-- [Test development](#test-development)
-- [Troubleshooting](#troubleshooting)
-- [Coverage status](#coverage-status)
+<!-- toc:start -->
+
+1. [Quick start](#quick-start)
+2. [Test organization](#test-organization)
+3. [Test categories](#test-categories)
+   1. [Unit tests (3 tests)](#unit-tests-3-tests)
+   2. [Functional tests (6 tests)](#functional-tests-6-tests)
+   3. [Integration tests (1 test)](#integration-tests-1-test)
+4. [Running tests](#running-tests)
+   1. [Using Makefile (from project root)](#using-makefile-from-project-root)
+   2. [Using test runner (from tests directory)](#using-test-runner-from-tests-directory)
+   3. [Specific categories](#specific-categories)
+   4. [Individual tests](#individual-tests)
+   5. [Advanced options](#advanced-options)
+5. [Test output](#test-output)
+6. [Requirements](#requirements)
+   1. [Hardware requirements](#hardware-requirements)
+   2. [Software requirements](#software-requirements)
+   3. [Optional dependencies](#optional-dependencies)
+7. [Test development](#test-development)
+   1. [Adding new tests](#adding-new-tests)
+   2. [Test guidelines](#test-guidelines)
+8. [Troubleshooting](#troubleshooting)
+   1. [Build failures](#build-failures)
+   2. [Library not found](#library-not-found)
+   3. [Permission denied](#permission-denied)
+   4. [Hugepage test failures](#hugepage-test-failures)
+9. [Coverage status](#coverage-status)
+   1. [Phase 1A: Complete](#phase-1a-complete)
+   2. [Future phases](#future-phases)
+
+<!-- toc:end -->
 
 ## Quick start
 

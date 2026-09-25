@@ -33,6 +33,7 @@ Generated from each module's docstring; see [../README.md](../README.md).
 | `test_gen_inventory.py` | 61 | Tests for scripts/docs/gen_inventory.py and its gate. |
 | `test_gen_site_interp_reference.py` | 8 | Tests for scripts/docs/gen_site_interp_reference.py. |
 | `test_gen_site_reference.py` | 13 | Tests for scripts/docs/gen_site_reference.py. |
+| `test_gen_toc.py` | 34 | Tests for scripts/docs/gen_toc.py and its gate. |
 | `test_group_pin_parity.py` | 7 | Tests for scripts/docs/check_group_pin_parity.py. |
 | `test_kb_refs.py` | 14 | Tests for scripts/docs/check_kb_refs.py. |
 | `test_make_targets.py` | 14 | Tests for scripts/docs/check_make_targets.py. |

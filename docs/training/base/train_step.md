@@ -10,6 +10,18 @@ workstation that run answers the question by itself. The design record of the ca
 and of its 2026-09-19 reduction is
 [the D4 investigation](../investigations/d4_memory_fit_investigation.md).
 
+## Table of Contents
+
+<!-- toc:start -->
+
+1. [Usage](#usage)
+2. [What it prints](#what-it-prints)
+3. [What it measures](#what-it-measures)
+4. [Parameter accounting](#parameter-accounting)
+5. [Tests](#tests)
+
+<!-- toc:end -->
+
 ## Usage
 
 Host, in the training container, one GPU consumer at a time:

@@ -14,15 +14,19 @@ reserved block below is where those literals go, and only at training time. The 
 section of [training-scale-reference.md](../base/training-scale-reference.md#phase-4-from-scratch-training)
 records the choice and when it is due.
 
-## Table of contents
+## Table of Contents
 
-- [Components](#components)
-- [Tokenizer design](#tokenizer-design)
-- [Artifact format](#artifact-format)
-- [Evaluation](#evaluation)
-- [Usage](#usage)
-- [Reproducibility](#reproducibility)
-- [Testing](#testing)
+<!-- toc:start -->
+
+1. [Components](#components)
+2. [Tokenizer design](#tokenizer-design)
+3. [Artifact format](#artifact-format)
+4. [Evaluation](#evaluation)
+5. [Usage](#usage)
+6. [Reproducibility](#reproducibility)
+7. [Testing](#testing)
+
+<!-- toc:end -->
 
 ## Components
 

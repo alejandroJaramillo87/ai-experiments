@@ -6,6 +6,20 @@ the traps in the configuration, the coverage floor, and how each test directory'
 is generated. The suite's layout is [../../tests/README.md](../../tests/README.md),
 rendered from the directories themselves.
 
+## Table of Contents
+
+<!-- toc:start -->
+
+1. [What runs](#what-runs)
+2. [The two environment tiers](#the-two-environment-tiers)
+3. [Markers](#markers)
+4. [Traps in the configuration](#traps-in-the-configuration)
+5. [Coverage](#coverage)
+6. [Directory READMEs](#directory-readmes)
+7. [Related](#related)
+
+<!-- toc:end -->
+
 ## What runs
 
 ```bash

@@ -8,21 +8,23 @@ This documentation covers UEFI/BIOS configuration for AI development environment
 
 ## Table of Contents
 
-- [AI Engineering BIOS Configuration](#ai-engineering-bios-configuration)
-  - [Table of Contents](#table-of-contents)
-  - [Implementation Overview](#implementation-overview)
-  - [BIOS Update Process](#bios-update-process)
-    - [Downloading BIOS](#downloading-bios)
-    - [Q-Flash Plus (No CPU Required)](#q-flash-plus-no-cpu-required)
-    - [Standard BIOS Flash](#standard-bios-flash)
-  - [POST Code Diagnostics](#post-code-diagnostics)
-    - [Understanding POST Codes](#understanding-post-codes)
-    - [Common POST Code Scenarios](#common-post-code-scenarios)
-    - [Troubleshooting with POST Codes](#troubleshooting-with-post-codes)
-  - [Memory Configuration](#memory-configuration)
-    - [EXPO Profile Activation](#expo-profile-activation)
-    - [Memory Stability Verification](#memory-stability-verification)
-  - [Reference Implementation](#reference-implementation)
+<!-- toc:start -->
+
+1. [Implementation Overview](#implementation-overview)
+2. [BIOS Update Process](#bios-update-process)
+   1. [Downloading BIOS](#downloading-bios)
+   2. [Q-Flash Plus (No CPU Required)](#q-flash-plus-no-cpu-required)
+   3. [Standard BIOS Flash](#standard-bios-flash)
+3. [POST Code Diagnostics](#post-code-diagnostics)
+   1. [Understanding POST Codes](#understanding-post-codes)
+   2. [Common POST Code Scenarios](#common-post-code-scenarios)
+   3. [Troubleshooting with POST Codes](#troubleshooting-with-post-codes)
+4. [Memory Configuration](#memory-configuration)
+   1. [EXPO Profile Activation](#expo-profile-activation)
+   2. [Memory Stability Verification](#memory-stability-verification)
+5. [Reference Implementation](#reference-implementation)
+
+<!-- toc:end -->
 
 ## Implementation Overview
 

@@ -4,6 +4,21 @@
 
 Defects the hardware verification campaign expects to hit, indexed so the operator running the [hardware verification runbook](../../README.md) knows what to expect at each step. Treat a listed bug as the predicted failure: if a step fails in the way its row describes, record it and fix against the real traceback rather than re-diagnosing from scratch.
 
+## Table of Contents
+
+<!-- toc:start -->
+
+1. [Reset on 2026-08-08](#reset-on-2026-08-08)
+2. [How to read this](#how-to-read-this)
+3. [Open (5)](#open-5)
+4. [Fixed in the tree, pending hardware confirmation (5)](#fixed-in-the-tree-pending-hardware-confirmation-5)
+5. [Resolved during the hardware campaign (29)](#resolved-during-the-hardware-campaign-29)
+6. [Closed as moot on 2026-09-18 (3)](#closed-as-moot-on-2026-09-18-3)
+7. [Deleted on 2026-08-08 (12)](#deleted-on-2026-08-08-12)
+8. [Related](#related)
+
+<!-- toc:end -->
+
 ## Reset on 2026-08-08
 
 This ledger was rebuilt. It previously carried 66 rows, 18 of them open. Most of those open rows were claims from the WI-14 capstone review that had never been checked against the tree, and several described fixes that had already landed — so the table read as a list of live defects while being nothing of the kind. An unverified claim presented as a known bug is worse than no entry, because it is acted on.

@@ -17,13 +17,17 @@ wall-clock per campaign and artifacts per hour, not tokens/second. Target
 hardware is the RTX 5090 (32 GB VRAM, Blackwell, native FP8 tensor cores),
 AMD Ryzen 9950X, and 128 GB DDR5-6000.
 
-## Table of contents
+## Table of Contents
 
-- [The provenance constraint](#the-provenance-constraint)
-- [Tier A: order-of-magnitude candidates](#tier-a-order-of-magnitude-candidates)
-- [Tier B: measured moderate wins](#tier-b-measured-moderate-wins)
-- [Tier C: situational](#tier-c-situational)
-- [Sequencing](#sequencing)
+<!-- toc:start -->
+
+1. [The provenance constraint](#the-provenance-constraint)
+2. [Tier A: order-of-magnitude candidates](#tier-a-order-of-magnitude-candidates)
+3. [Tier B: measured moderate wins](#tier-b-measured-moderate-wins)
+4. [Tier C: situational](#tier-c-situational)
+5. [Sequencing](#sequencing)
+
+<!-- toc:end -->
 
 ## The provenance constraint
 

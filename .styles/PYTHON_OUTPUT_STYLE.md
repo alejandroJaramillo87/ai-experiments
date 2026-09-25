@@ -13,6 +13,22 @@ record through the observability core (`common/obs`, see
 Consistent with `.styles/BASH_OUTPUT_STYLE.md` — the same status vocabulary and
 `[STATUS] Subject: detail` format, so bash and Python tools read identically.
 
+## Table of Contents
+
+<!-- toc:start -->
+
+1. [Status Indicators](#status-indicators)
+2. [Color Setup](#color-setup)
+3. [Structure](#structure)
+4. [Errors and Warnings](#errors-and-warnings)
+5. [JSON / Machine Mode](#json--machine-mode)
+6. [Suppressing Third-Party Import Noise](#suppressing-third-party-import-noise)
+7. [Exit Codes](#exit-codes)
+8. [What to Avoid](#what-to-avoid)
+9. [Related Guides](#related-guides)
+
+<!-- toc:end -->
+
 ## Status Indicators
 
 Bracketed format with ANSI colors:

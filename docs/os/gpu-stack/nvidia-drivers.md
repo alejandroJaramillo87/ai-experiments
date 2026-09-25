@@ -4,28 +4,32 @@ Understanding NVIDIA GPU drivers and their role in AI computing.
 
 ## Table of Contents
 
-- [What Are NVIDIA Drivers?](#what-are-nvidia-drivers)
-  - [Key Components](#key-components)
-- [Why Critical for Our AI Workstation?](#why-critical-for-our-ai-workstation)
-  - [1. Hardware Resource Management](#1-hardware-resource-management)
-  - [2. PCIe Communication](#2-pcie-communication)
-  - [3. CUDA Runtime Foundation](#3-cuda-runtime-foundation)
-- [Our Specific Setup](#our-specific-setup)
-  - [Driver Version: 580.65.06](#driver-version-58065606)
-  - [Key Configuration](#key-configuration)
-  - [Installation Process](#installation-process)
-- [Impact on AI Performance](#impact-on-ai-performance)
-  - [Memory Management](#memory-management)
-  - [Real-World Example](#real-world-example)
-- [Troubleshooting](#troubleshooting)
-  - [Common Issues](#common-issues)
-- [Monitoring and Maintenance](#monitoring-and-maintenance)
-  - [Key Metrics to Monitor](#key-metrics-to-monitor)
-  - [Regular Maintenance](#regular-maintenance)
-- [Server vs Desktop Drivers](#server-vs-desktop-drivers)
-- [Integration with CUDA Stack](#integration-with-cuda-stack)
-- [Best Practices](#best-practices)
-- [Next Steps](#next-steps)
+<!-- toc:start -->
+
+1. [What Are NVIDIA Drivers?](#what-are-nvidia-drivers)
+   1. [Key Components](#key-components)
+2. [Why Critical for Our AI Workstation?](#why-critical-for-our-ai-workstation)
+   1. [1. Hardware Resource Management](#1-hardware-resource-management)
+   2. [2. PCIe Communication](#2-pcie-communication)
+   3. [3. CUDA Runtime Foundation](#3-cuda-runtime-foundation)
+3. [Our Specific Setup](#our-specific-setup)
+   1. [Driver Version: 580.65.06](#driver-version-5806506)
+   2. [Key Configuration](#key-configuration)
+   3. [Installation Process](#installation-process)
+4. [Impact on AI Performance](#impact-on-ai-performance)
+   1. [Memory Management](#memory-management)
+   2. [Real-World Example](#real-world-example)
+5. [Troubleshooting](#troubleshooting)
+   1. [Common Issues](#common-issues)
+6. [Monitoring and Maintenance](#monitoring-and-maintenance)
+   1. [Key Metrics to Monitor](#key-metrics-to-monitor)
+   2. [Regular Maintenance](#regular-maintenance)
+7. [Server vs Desktop Drivers](#server-vs-desktop-drivers)
+8. [Integration with CUDA Stack](#integration-with-cuda-stack)
+9. [Best Practices](#best-practices)
+10. [Next Steps](#next-steps)
+
+<!-- toc:end -->
 
 ## What Are NVIDIA Drivers?
 

@@ -5,17 +5,21 @@ tracking. One recipe YAML fully drives a run; every run is observable and resuma
 Design record:
 [the D6 investigation](../investigations/d6_tracking_checkpointing_investigation.md).
 
-## Table of contents
+## Table of Contents
 
-- [Running a training job](#running-a-training-job)
-- [Directory layout](#directory-layout)
-- [Checkpoint contents](#checkpoint-contents)
-- [Atomicity](#atomicity)
-- [Retention](#retention)
-- [Resume](#resume)
-- [Tracking](#tracking)
-- [Secrets](#secrets)
-- [Module map](#module-map)
+<!-- toc:start -->
+
+1. [Running a training job](#running-a-training-job)
+2. [Directory layout](#directory-layout)
+3. [Checkpoint contents](#checkpoint-contents)
+4. [Atomicity](#atomicity)
+5. [Retention](#retention)
+6. [Resume](#resume)
+7. [Tracking](#tracking)
+8. [Secrets](#secrets)
+9. [Module map](#module-map)
+
+<!-- toc:end -->
 
 ## Running a training job
 

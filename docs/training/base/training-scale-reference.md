@@ -13,15 +13,19 @@ aspirational are exactly that. Related documents:
 [interp-scale-reference.md](../../interp/interp-scale-reference.md)
 (how these conclusions shape the interpretability program).
 
-## Table of contents
+## Table of Contents
 
-- [FP8 on Blackwell](#fp8-on-blackwell)
-- [Memory arithmetic](#memory-arithmetic)
-- [The Gemma 4 ladder](#the-gemma-4-ladder)
-- [Phase 4: from-scratch training](#phase-4-from-scratch-training)
-- [Phase 5: continual learning](#phase-5-continual-learning)
-- [Titans-class architectures](#titans-class-architectures)
-- [Sequencing](#sequencing)
+<!-- toc:start -->
+
+1. [FP8 on Blackwell](#fp8-on-blackwell)
+2. [Memory arithmetic](#memory-arithmetic)
+3. [The Gemma 4 ladder](#the-gemma-4-ladder)
+4. [Phase 4: from-scratch training](#phase-4-from-scratch-training)
+5. [Phase 5: continual learning](#phase-5-continual-learning)
+6. [Titans-class architectures](#titans-class-architectures)
+7. [Sequencing](#sequencing)
+
+<!-- toc:end -->
 
 ## FP8 on Blackwell
 

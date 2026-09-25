@@ -2,29 +2,31 @@
 
 ## Table of Contents
 
-- [Explicit Huge Pages for llama.cpp Inference](#explicit-huge-pages-for-llamacpp-inference)
-  - [Table of Contents](#table-of-contents)
-  - [Overview](#overview)
-  - [How It Works](#how-it-works)
-    - [The Problem](#the-problem)
-    - [The Solution](#the-solution)
-    - [Implementation Details](#implementation-details)
-  - [Performance Impact](#performance-impact)
-  - [Configuration](#configuration)
-    - [System Requirements](#system-requirements)
-    - [Docker Configuration](#docker-configuration)
-  - [Usage](#usage)
-  - [Monitoring](#monitoring)
-  - [Advantages Over Other Approaches](#advantages-over-other-approaches)
-    - [vs hugetlbfs](#vs-hugetlbfs)
-    - [vs Transparent Huge Pages (THP)](#vs-transparent-huge-pages-thp)
-  - [Troubleshooting](#troubleshooting)
-    - ["Cannot allocate memory" Error](#cannot-allocate-memory-error)
-    - [Wrapper Not Activating](#wrapper-not-activating)
-    - [Performance Not Improved](#performance-not-improved)
-    - [Warning: "munmap failed: Invalid argument"](#warning-munmap-failed-invalid-argument)
-  - [Technical Implementation](#technical-implementation)
-  - [Files Reference](#files-reference)
+<!-- toc:start -->
+
+1. [Overview](#overview)
+2. [How It Works](#how-it-works)
+   1. [The Problem](#the-problem)
+   2. [The Solution](#the-solution)
+   3. [Implementation Details](#implementation-details)
+3. [Performance Impact](#performance-impact)
+4. [Configuration](#configuration)
+   1. [System Requirements](#system-requirements)
+   2. [Docker Configuration](#docker-configuration)
+5. [Usage](#usage)
+6. [Monitoring](#monitoring)
+7. [Advantages Over Other Approaches](#advantages-over-other-approaches)
+   1. [vs hugetlbfs](#vs-hugetlbfs)
+   2. [vs Transparent Huge Pages (THP)](#vs-transparent-huge-pages-thp)
+8. [Troubleshooting](#troubleshooting)
+   1. ["Cannot allocate memory" Error](#cannot-allocate-memory-error)
+   2. [Wrapper Not Activating](#wrapper-not-activating)
+   3. [Performance Not Improved](#performance-not-improved)
+   4. [Warning: "munmap failed: Invalid argument"](#warning-munmap-failed-invalid-argument)
+9. [Technical Implementation](#technical-implementation)
+10. [Files Reference](#files-reference)
+
+<!-- toc:end -->
 
 ## Overview
 

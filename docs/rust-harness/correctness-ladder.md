@@ -10,15 +10,25 @@ reason.
 
 ## Table of Contents
 
-- [Why a ladder](#why-a-ladder)
-- [The rungs](#the-rungs)
-- [Two oracles, two tolerances](#two-oracles-two-tolerances)
-- [The perplexity gate](#the-perplexity-gate)
-- [The reference artifacts](#the-reference-artifacts)
-- [What the loader refuses](#what-the-loader-refuses)
-- [Sizes, flags and records](#sizes-flags-and-records)
-- [Status](#status)
-- [Related documentation](#related-documentation)
+<!-- toc:start -->
+
+1. [Why a ladder](#why-a-ladder)
+2. [The rungs](#the-rungs)
+3. [Two oracles, two tolerances](#two-oracles-two-tolerances)
+4. [The perplexity gate](#the-perplexity-gate)
+5. [The reference artifacts](#the-reference-artifacts)
+   1. [Why transformers and not llama.cpp](#why-transformers-and-not-llamacpp)
+   2. [The two tiers on disk](#the-two-tiers-on-disk)
+   3. [Generating the Tier E artifacts](#generating-the-tier-e-artifacts)
+   4. [The greedy prompts](#the-greedy-prompts)
+   5. [What L0 can and cannot ask](#what-l0-can-and-cannot-ask)
+   6. [What an artifact must record](#what-an-artifact-must-record)
+6. [What the loader refuses](#what-the-loader-refuses)
+7. [Sizes, flags and records](#sizes-flags-and-records)
+8. [Status](#status)
+9. [Related documentation](#related-documentation)
+
+<!-- toc:end -->
 
 ## Why a ladder
 

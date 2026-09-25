@@ -6,14 +6,18 @@ knobs, and the host-side acceptance checks. Design rationale and
 repository-versus-roadmap deviations are recorded in
 [d9_heterogeneous_compute_investigation.md](../investigations/d9_heterogeneous_compute_investigation.md).
 
-## Table of contents
+## Table of Contents
 
-- [Pieces](#pieces)
-- [Recipe configuration](#recipe-configuration)
-- [Resume model](#resume-model)
-- [Run lock](#run-lock)
-- [Overlap metric](#overlap-metric)
-- [Acceptance checks](#acceptance-checks)
+<!-- toc:start -->
+
+1. [Pieces](#pieces)
+2. [Recipe configuration](#recipe-configuration)
+3. [Resume model](#resume-model)
+4. [Run lock](#run-lock)
+5. [Overlap metric](#overlap-metric)
+6. [Acceptance checks](#acceptance-checks)
+
+<!-- toc:end -->
 
 ## Pieces
 

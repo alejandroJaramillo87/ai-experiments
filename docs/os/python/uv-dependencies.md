@@ -10,26 +10,32 @@ That one file serves several interpreters. The host environment installs everyth
 container image installs one group. [Which environment installs
 what](#which-environment-installs-what) maps the groups onto their consumers.
 
-## Table of contents
+## Table of Contents
 
-- [Layout of pyproject.toml](#layout-of-pyprojecttoml)
-- [Exact-pin policy](#exact-pin-policy)
-- [Core runtime dependencies](#core-runtime-dependencies)
-  - [Transformers ecosystem](#transformers-ecosystem)
-  - [Training optimization](#training-optimization)
-  - [Data science and visualization](#data-science-and-visualization)
-  - [MLOps and experiment tracking](#mlops-and-experiment-tracking)
-  - [Utilities and serving](#utilities-and-serving)
-- [PyTorch and the CUDA index](#pytorch-and-the-cuda-index)
-- [The quant optional extra](#the-quant-optional-extra)
-- [The dev dependency group](#the-dev-dependency-group)
-- [The sandbox dependency group](#the-sandbox-dependency-group)
-- [The interp dependency group](#the-interp-dependency-group)
-- [The training dependency group](#the-training-dependency-group)
-- [Default groups](#default-groups)
-- [Which environment installs what](#which-environment-installs-what)
-- [Common tasks](#common-tasks)
-- [Version modernization](#version-modernization)
+<!-- toc:start -->
+
+1. [Layout of pyproject.toml](#layout-of-pyprojecttoml)
+2. [Exact-pin policy](#exact-pin-policy)
+3. [Core runtime dependencies](#core-runtime-dependencies)
+   1. [Transformers ecosystem](#transformers-ecosystem)
+   2. [Training optimization](#training-optimization)
+   3. [Data science and visualization](#data-science-and-visualization)
+   4. [MLOps and experiment tracking](#mlops-and-experiment-tracking)
+   5. [Utilities and serving](#utilities-and-serving)
+4. [PyTorch and the CUDA index](#pytorch-and-the-cuda-index)
+5. [The quant optional extra](#the-quant-optional-extra)
+6. [The dev dependency group](#the-dev-dependency-group)
+7. [The sandbox dependency group](#the-sandbox-dependency-group)
+8. [The interp dependency group](#the-interp-dependency-group)
+9. [The training dependency group](#the-training-dependency-group)
+   1. [Build-time torch](#build-time-torch)
+10. [Default groups](#default-groups)
+11. [Which environment installs what](#which-environment-installs-what)
+12. [Common tasks](#common-tasks)
+13. [Version modernization](#version-modernization)
+14. [Next steps](#next-steps)
+
+<!-- toc:end -->
 
 ## Layout of pyproject.toml
 

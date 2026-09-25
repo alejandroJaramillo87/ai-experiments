@@ -19,13 +19,19 @@ one, the implemented shape is what is recorded below.
 [observability.md](observability.md) is the reference for what is built;
 this document keeps only the design that is not.
 
-## Table of contents
+## Table of Contents
 
-- [Purpose](#purpose)
-- [Event stream](#event-stream)
-- [Viewer](#viewer)
-- [Non-goals](#non-goals)
-- [Sequencing](#sequencing)
+<!-- toc:start -->
+
+1. [Purpose](#purpose)
+2. [Event stream](#event-stream)
+   1. [What the file carries today](#what-the-file-carries-today)
+   2. [Still proposed](#still-proposed)
+3. [Viewer](#viewer)
+4. [Non-goals](#non-goals)
+5. [Sequencing](#sequencing)
+
+<!-- toc:end -->
 
 ## Purpose
 

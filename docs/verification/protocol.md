@@ -9,6 +9,17 @@ A runbook's own text says what it verifies;
 this page says how an entry is run, recorded and closed, and in what order the runbooks
 are executed.
 
+## Table of Contents
+
+<!-- toc:start -->
+
+1. [Recording protocol](#recording-protocol)
+2. [Entry identifiers](#entry-identifiers)
+3. [Phase order](#phase-order)
+4. [Session-start gate](#session-start-gate)
+
+<!-- toc:end -->
+
 ## Recording protocol
 
 - The human runs each host command on the workstation and pastes the command

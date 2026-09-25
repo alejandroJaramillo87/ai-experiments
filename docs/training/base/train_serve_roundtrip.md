@@ -5,13 +5,17 @@ directory the rust harness serves and the interp tier captures from, and an eval
 runs against the live service. Per the concurrency policy (one GPU consumer at a time),
 the round trip is phased: training is idle while serving runs.
 
-## Table of contents
+## Table of Contents
 
-- [Pipeline overview](#pipeline-overview)
-- [Export](#export)
-- [Loading and serving](#loading-and-serving)
-- [Identity](#identity)
-- [Acceptance checks](#acceptance-checks)
+<!-- toc:start -->
+
+1. [Pipeline overview](#pipeline-overview)
+2. [Export](#export)
+3. [Loading and serving](#loading-and-serving)
+4. [Identity](#identity)
+5. [Acceptance checks](#acceptance-checks)
+
+<!-- toc:end -->
 
 ## Pipeline overview
 

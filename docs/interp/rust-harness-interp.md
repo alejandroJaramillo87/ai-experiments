@@ -5,19 +5,26 @@ monitoring) on the `rust-harness` runtime instead of llama.cpp. Bridges the
 [interp platform](writeback.md) and the
 [rust harness observability design](../rust-harness/observability.md).
 
-## Table of contents
+## Table of Contents
 
-- [Motivation](#motivation)
-- [The tap seam](#the-tap-seam)
-- [Steering](#steering)
-- [Activation capture](#activation-capture)
-- [Finding the run behind a capture](#finding-the-run-behind-a-capture)
-- [In-band monitoring](#in-band-monitoring)
-- [What stays in Python](#what-stays-in-python)
-- [Validation](#validation)
-- [What per-layer embeddings change](#what-per-layer-embeddings-change)
-- [Constraint on future backends](#constraint-on-future-backends)
-- [Roadmap](#roadmap)
+<!-- toc:start -->
+
+1. [Motivation](#motivation)
+   1. [Reaching the harness over HTTP](#reaching-the-harness-over-http)
+2. [The tap seam](#the-tap-seam)
+   1. [Attention weights](#attention-weights)
+3. [Steering](#steering)
+4. [Activation capture](#activation-capture)
+5. [Finding the run behind a capture](#finding-the-run-behind-a-capture)
+6. [In-band monitoring](#in-band-monitoring)
+   1. [Token-to-text alignment](#token-to-text-alignment)
+7. [What stays in Python](#what-stays-in-python)
+8. [Validation](#validation)
+9. [What per-layer embeddings change](#what-per-layer-embeddings-change)
+10. [Constraint on future backends](#constraint-on-future-backends)
+11. [Roadmap](#roadmap)
+
+<!-- toc:end -->
 
 ## Motivation
 

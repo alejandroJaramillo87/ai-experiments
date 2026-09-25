@@ -4,35 +4,37 @@ Explanation of the AMD Zen 5 optimized Dockerfile for CPU-based AI model inferen
 
 > Note: This document explains the actual implementation in `docker/llama-cpu/Dockerfile.cpu` and `docker/llama-cpu/entrypoint.cpu.sh`. The Dockerfile and entrypoint are the source of truth; this document follows them.
 
-## Table of contents
+## Table of Contents
 
-- [AI engineering CPU Docker implementation](#ai-engineering-cpu-docker-implementation)
-  - [Table of contents](#table-of-contents)
-  - [Implementation overview](#implementation-overview)
-  - [Stage 1: builder environment](#stage-1-builder-environment)
-    - [Base image selection](#base-image-selection)
-    - [AMD Zen 5 compiler configuration](#amd-zen-5-compiler-configuration)
-    - [System dependencies installation](#system-dependencies-installation)
-    - [zen5_optimizer library](#zen5_optimizer-library)
-    - [llama.cpp compilation](#llamacpp-compilation)
-  - [Stage 2: runtime environment](#stage-2-runtime-environment)
-    - [Runtime base image](#runtime-base-image)
-    - [Library dependencies](#library-dependencies)
-    - [Security configuration](#security-configuration)
-    - [Application deployment](#application-deployment)
-  - [Entrypoint configuration](#entrypoint-configuration)
-    - [Required environment variables](#required-environment-variables)
-    - [Optional environment variables](#optional-environment-variables)
-    - [Feature flags](#feature-flags)
-    - [Advanced server knobs](#advanced-server-knobs)
-    - [Server command construction](#server-command-construction)
-  - [Performance optimization strategy](#performance-optimization-strategy)
-    - [AMD Zen 5 architecture targeting](#amd-zen-5-architecture-targeting)
-    - [AVX-512 cmake configuration](#avx-512-cmake-configuration)
-    - [Threading configuration](#threading-configuration)
-    - [Memory optimization](#memory-optimization)
-  - [Container security implementation](#container-security-implementation)
-  - [Reference implementation](#reference-implementation)
+<!-- toc:start -->
+
+1. [Implementation overview](#implementation-overview)
+2. [Stage 1: builder environment](#stage-1-builder-environment)
+   1. [Base image selection](#base-image-selection)
+   2. [AMD Zen 5 compiler configuration](#amd-zen-5-compiler-configuration)
+   3. [System dependencies installation](#system-dependencies-installation)
+   4. [zen5_optimizer library](#zen5_optimizer-library)
+   5. [llama.cpp compilation](#llamacpp-compilation)
+3. [Stage 2: runtime environment](#stage-2-runtime-environment)
+   1. [Runtime base image](#runtime-base-image)
+   2. [Library dependencies](#library-dependencies)
+   3. [Security configuration](#security-configuration)
+   4. [Application deployment](#application-deployment)
+4. [Entrypoint configuration](#entrypoint-configuration)
+   1. [Required environment variables](#required-environment-variables)
+   2. [Optional environment variables](#optional-environment-variables)
+   3. [Feature flags](#feature-flags)
+   4. [Advanced server knobs](#advanced-server-knobs)
+   5. [Server command construction](#server-command-construction)
+5. [Performance optimization strategy](#performance-optimization-strategy)
+   1. [AMD Zen 5 architecture targeting](#amd-zen-5-architecture-targeting)
+   2. [AVX-512 cmake configuration](#avx-512-cmake-configuration)
+   3. [Threading configuration](#threading-configuration)
+   4. [Memory optimization](#memory-optimization)
+6. [Container security implementation](#container-security-implementation)
+7. [Reference implementation](#reference-implementation)
+
+<!-- toc:end -->
 
 ## Implementation overview
 

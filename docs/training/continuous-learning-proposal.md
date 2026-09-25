@@ -10,14 +10,18 @@ that is the current candidate, the order of work that precedes it, and the desig
 problems any implementation has to clear first, so that none of it is derived a second
 time. The rest of the tier is documented in [README.md](README.md).
 
-## Table of contents
+## Table of Contents
 
-- [The goal, stated against what this lab can do](#the-goal-stated-against-what-this-lab-can-do)
-- [The progression that precedes it](#the-progression-that-precedes-it)
-- [The current candidate](#the-current-candidate)
-- [Design problems to clear first](#design-problems-to-clear-first)
-- [What is ruled out, and why](#what-is-ruled-out-and-why)
-- [Graduation condition](#graduation-condition)
+<!-- toc:start -->
+
+1. [The goal, stated against what this lab can do](#the-goal-stated-against-what-this-lab-can-do)
+2. [The progression that precedes it](#the-progression-that-precedes-it)
+3. [The current candidate](#the-current-candidate)
+4. [Design problems to clear first](#design-problems-to-clear-first)
+5. [What is ruled out, and why](#what-is-ruled-out-and-why)
+6. [Graduation condition](#graduation-condition)
+
+<!-- toc:end -->
 
 ## The goal, stated against what this lab can do
 

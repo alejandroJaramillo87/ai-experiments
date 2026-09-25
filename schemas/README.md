@@ -34,13 +34,17 @@ are required, which are emitted by one writer only, and which fields are
 deliberately not comparable across implementations. Both sides compare against
 them with set logic; no validator dependency is involved.
 
-## Table of contents
+## Table of Contents
 
-- [Why these exist](#why-these-exist)
-- [The contracts](#the-contracts)
-- [The report envelope, and where it meets these contracts](#the-report-envelope-and-where-it-meets-these-contracts)
-- [How enforcement works](#how-enforcement-works)
-- [Changing a contract](#changing-a-contract)
+<!-- toc:start -->
+
+1. [Why these exist](#why-these-exist)
+2. [The contracts](#the-contracts)
+3. [The report envelope, and where it meets these contracts](#the-report-envelope-and-where-it-meets-these-contracts)
+4. [How enforcement works](#how-enforcement-works)
+5. [Changing a contract](#changing-a-contract)
+
+<!-- toc:end -->
 
 ## Why these exist
 

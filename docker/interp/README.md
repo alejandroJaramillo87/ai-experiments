@@ -30,5 +30,7 @@ the entrypoint.
 ## Consumers
 
 - `make interp-build` builds the image; `make interp-up` preflights and starts JupyterLab.
+- [../../docs/sandbox/docker_interp_overview.md](../../docs/sandbox/docker_interp_overview.md)
+  explains the image and the service.
 - [../../docs/interp/](../../docs/interp/README.md) documents the interpretability tier the
   image serves.

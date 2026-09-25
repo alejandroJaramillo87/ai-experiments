@@ -17,16 +17,57 @@ cannot drift apart in separate files. Design ownership stays where it already is
 [../interp/rust-harness-interp.md](../interp/rust-harness-interp.md) owns the interp seam, and
 this file owns only the ordering and the reasoning behind it.
 
-## Table of contents
+## Table of Contents
 
-- [Status](#status)
-- [Phase 1 — Foundations](#phase-1--foundations)
-- [Phase 2 — The observatory](#phase-2--the-observatory)
-- [Phase 3 — Serving and retiring llama.cpp](#phase-3--serving-and-retiring-llamacpp)
-- [Phase 4 — Intervention](#phase-4--intervention)
-- [Phase 5 — CUDA backend](#phase-5--cuda-backend)
-- [Running in parallel](#running-in-parallel)
-- [Feature specifications](#feature-specifications)
+<!-- toc:start -->
+
+1. [Status](#status)
+2. [Phase 1 — Foundations](#phase-1--foundations)
+   1. [R1 — L3 batched scoring (done, null result)](#r1--l3-batched-scoring-done-null-result)
+   2. [R2 — Long-context conformance rung (done)](#r2--long-context-conformance-rung-done)
+   3. [R3 — P11 window storage cap (done)](#r3--p11-window-storage-cap-done)
+   4. [R4 — Sampling with recorded seed (done, much smaller than budgeted)](#r4--sampling-with-recorded-seed-done-much-smaller-than-budgeted)
+   5. [R5 — IF-1 tap site identity (done)](#r5--if-1-tap-site-identity-done)
+3. [Phase 2 — The observatory](#phase-2--the-observatory)
+   1. [R6 — IF-2 token-to-text alignment (done)](#r6--if-2-token-to-text-alignment-done)
+   2. [R7 — P12 probes to safetensors plus JSON sidecar (done)](#r7--p12-probes-to-safetensors-plus-json-sidecar-done)
+   3. [R8 — IF-3 attention weights (done, cheaper than budgeted)](#r8--if-3-attention-weights-done-cheaper-than-budgeted)
+4. [Phase 3 — Serving and retiring llama.cpp](#phase-3--serving-and-retiring-llamacpp)
+   1. [R9 — P13 harness serves interp (done)](#r9--p13-harness-serves-interp-done)
+   2. [R10 — P14 control vector to safetensors (done, acceptance pending)](#r10--p14-control-vector-to-safetensors-done-acceptance-pending)
+   3. [R10.5 — the proxy and the replay stage retire (done, acceptance pending)](#r105--the-proxy-and-the-replay-stage-retire-done-acceptance-pending)
+5. [The U series — the user surface, and the harness as an observability tier](#the-u-series--the-user-surface-and-the-harness-as-an-observability-tier)
+   1. [U5 — the runs catalog becomes browsable (done)](#u5--the-runs-catalog-becomes-browsable-done)
+   2. [U1 — `runtime/src/status.rs`, the shared six-tag emitter (done)](#u1--runtimesrcstatusrs-the-shared-six-tag-emitter-done)
+   3. [U1b / U1c — migrate the print sites (done)](#u1b--u1c--migrate-the-print-sites-done)
+   4. [U3 — one flag table behind `--help`, `-V`, and unknown-flag rejection (done)](#u3--one-flag-table-behind---help--v-and-unknown-flag-rejection-done)
+   5. [U3b — the same for the other seven binaries (done)](#u3b--the-same-for-the-other-seven-binaries-done)
+   6. [U2 — the run header, built once and rendered twice (done)](#u2--the-run-header-built-once-and-rendered-twice-done)
+   7. [U2a — the serve tests stop leaking, and the flake is named correctly (done)](#u2a--the-serve-tests-stop-leaking-and-the-flake-is-named-correctly-done)
+   8. [U4 — `harness --status` (done)](#u4--harness---status-done)
+   9. [U6 — phases, `metrics.jsonl`, and the existing dashboard](#u6--phases-metricsjsonl-and-the-existing-dashboard)
+   10. [U7 — errors that state the fix (done)](#u7--errors-that-state-the-fix-done)
+   11. [U8 — progress on long operations (done)](#u8--progress-on-long-operations-done)
+   12. [U9 — bring the other binaries under obs](#u9--bring-the-other-binaries-under-obs)
+   13. [U10 — the interior of the forward pass in the trace (done)](#u10--the-interior-of-the-forward-pass-in-the-trace-done)
+6. [Phase 4 — Intervention](#phase-4--intervention)
+   1. [R11 — IF-4 plus IF-5 together](#r11--if-4-plus-if-5-together)
+   2. [R12 — IF-3 remaining sites](#r12--if-3-remaining-sites)
+   3. [R13 — IF-6 activation patching](#r13--if-6-activation-patching)
+7. [Phase 5 — CUDA backend](#phase-5--cuda-backend)
+8. [Running in parallel](#running-in-parallel)
+   1. [G2 — one validated Gemma 4 direction](#g2--one-validated-gemma-4-direction)
+   2. [R14 — measurement protocol](#r14--measurement-protocol)
+   3. [R15 — P15 documentation and quality review](#r15--p15-documentation-and-quality-review)
+9. [Feature specifications](#feature-specifications)
+   1. [IF-1 — tap site identity](#if-1--tap-site-identity)
+   2. [IF-2 — token-to-text alignment in the score stream](#if-2--token-to-text-alignment-in-the-score-stream)
+   3. [IF-3 — sub-layer read taps](#if-3--sub-layer-read-taps)
+   4. [IF-4 — position-conditioned steering](#if-4--position-conditioned-steering)
+   5. [IF-5 — intervention provenance in the flight recorder](#if-5--intervention-provenance-in-the-flight-recorder)
+   6. [IF-6 — mutable residual seam (activation patching)](#if-6--mutable-residual-seam-activation-patching)
+
+<!-- toc:end -->
 
 ## Status
 

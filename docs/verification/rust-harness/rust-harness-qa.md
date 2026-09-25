@@ -9,18 +9,22 @@ RH.13) verifies behavior on real weights and hardware; this campaign
 verifies code quality, and every step runs in an agent sandbox with no GPU
 and no model data.
 
-## Table of contents
+## Table of Contents
 
-- [Method contract](#method-contract)
-- [Phase Q0: gate baseline](#phase-q0-gate-baseline)
-- [Phase Q1: numerics core](#phase-q1-numerics-core)
-- [Phase Q2: engine invariants](#phase-q2-engine-invariants)
-- [Phase Q3: harness loop and security surface](#phase-q3-harness-loop-and-security-surface)
-- [Phase Q4: observability and interpretability seams](#phase-q4-observability-and-interpretability-seams)
-- [Phase Q5: packaging and reproducibility](#phase-q5-packaging-and-reproducibility)
-- [Phase Q6: documentation and drift](#phase-q6-documentation-and-drift)
-- [Campaign completion](#campaign-completion)
-- [Previous campaigns](#previous-campaigns)
+<!-- toc:start -->
+
+1. [Method contract](#method-contract)
+2. [Phase Q0: gate baseline](#phase-q0-gate-baseline)
+3. [Phase Q1: numerics core](#phase-q1-numerics-core)
+4. [Phase Q2: engine invariants](#phase-q2-engine-invariants)
+5. [Phase Q3: harness loop and security surface](#phase-q3-harness-loop-and-security-surface)
+6. [Phase Q4: observability and interpretability seams](#phase-q4-observability-and-interpretability-seams)
+7. [Phase Q5: packaging and reproducibility](#phase-q5-packaging-and-reproducibility)
+8. [Phase Q6: documentation and drift](#phase-q6-documentation-and-drift)
+9. [Campaign completion](#campaign-completion)
+10. [Previous campaigns](#previous-campaigns)
+
+<!-- toc:end -->
 
 ## Method contract
 

@@ -12,15 +12,19 @@ describes the harness as a distillation-era tool with a `synthesize` pipeline; t
 pipeline was removed on 2026-09-19 (nothing consumed it), distillation left the tier on
 2026-09-18, and the harness stayed because the organisms need it.
 
-## Table of contents
+## Table of Contents
 
-- [Overview](#overview)
-- [Usage](#usage)
-- [Pipelines](#pipelines)
-- [Dataset format](#dataset-format)
-- [Resumability](#resumability)
-- [Concurrency policy](#concurrency-policy)
-- [Modules](#modules)
+<!-- toc:start -->
+
+1. [Overview](#overview)
+2. [Usage](#usage)
+3. [Pipelines](#pipelines)
+4. [Dataset format](#dataset-format)
+5. [Resumability](#resumability)
+6. [Concurrency policy](#concurrency-policy)
+7. [Modules](#modules)
+
+<!-- toc:end -->
 
 ## Overview
 

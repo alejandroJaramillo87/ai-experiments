@@ -7,19 +7,27 @@ deliberately absent, and the general family reference at `/docs/models/gemma-4.m
 Scope: E2B and E4B, the two variants named in the recipes. The 12B and 31B variants appear in
 no code path here.
 
-## Table of contents
+## Table of Contents
 
-- [Provenance and the revisions to pin](#provenance-and-the-revisions-to-pin)
-- [Architecture ingestion](#architecture-ingestion)
-- [Parameter accounting](#parameter-accounting)
-- [What the parameter count counts](#what-the-parameter-count-counts)
-- [Memory](#memory)
-- [Tensor names the freeze patterns depend on](#tensor-names-the-freeze-patterns-depend-on)
-- [Dispatch, identity, and export](#dispatch-identity-and-export)
-- [Tokenizer and chat template](#tokenizer-and-chat-template)
-- [Context and attention](#context-and-attention)
-- [Open questions](#open-questions)
-- [Reproducing this document](#reproducing-this-document)
+<!-- toc:start -->
+
+1. [Provenance and the revisions to pin](#provenance-and-the-revisions-to-pin)
+   1. [Repository layout](#repository-layout)
+2. [Architecture ingestion](#architecture-ingestion)
+3. [Parameter accounting](#parameter-accounting)
+   1. [The double-wide feed-forward rule](#the-double-wide-feed-forward-rule)
+4. [What the parameter count counts](#what-the-parameter-count-counts)
+5. [Memory](#memory)
+6. [Tensor names the freeze patterns depend on](#tensor-names-the-freeze-patterns-depend-on)
+7. [Dispatch, identity, and export](#dispatch-identity-and-export)
+8. [Tokenizer and chat template](#tokenizer-and-chat-template)
+9. [Context and attention](#context-and-attention)
+10. [Resolved from upstream source](#resolved-from-upstream-source)
+11. [Resolved: the auto-class accepts Gemma 4](#resolved-the-auto-class-accepts-gemma-4)
+12. [Open questions](#open-questions)
+13. [Reproducing this document](#reproducing-this-document)
+
+<!-- toc:end -->
 
 ## Provenance and the revisions to pin
 

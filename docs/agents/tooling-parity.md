@@ -8,6 +8,27 @@ Agent sessions themselves are sandboxed with no access to the host (see the exec
 environment section in `AGENTS.md`): the parity, preflight, and sync `make` targets in this
 document are run by the human on the workstation, and agents work from the reported output.
 
+## Table of Contents
+
+<!-- toc:start -->
+
+1. [Rules and style guides (Phase 1)](#rules-and-style-guides-phase-1)
+   1. [Permission encoding (single policy, two files)](#permission-encoding-single-policy-two-files)
+2. [Agents (Phase 2)](#agents-phase-2)
+   1. [Frontmatter translation table](#frontmatter-translation-table)
+   2. [Model policy](#model-policy)
+   3. [Parity check](#parity-check)
+   4. [Role acceptance tests](#role-acceptance-tests)
+3. [Commands (Phase 3)](#commands-phase-3)
+4. [Skills (Phase 3)](#skills-phase-3)
+5. [Guardrails and observability (Phase 4)](#guardrails-and-observability-phase-4)
+   1. [One spend number: `make agent-usage`](#one-spend-number-make-agent-usage)
+   2. [Notes](#notes)
+6. [Workflow automation (Phase 5)](#workflow-automation-phase-5)
+7. [Security hardening (Phase 6)](#security-hardening-phase-6)
+
+<!-- toc:end -->
+
 ## Rules and style guides (Phase 1)
 
 - Single source of truth: `AGENTS.md`. OpenCode reads it directly and ignores `CLAUDE.md`

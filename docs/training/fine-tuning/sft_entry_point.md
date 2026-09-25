@@ -6,16 +6,20 @@ QLoRA, wired into the Phase 0 tracking, checkpointing, lock, and watchdog
 machinery. Design record:
 [the F3 investigation](../investigations/f3_sft_entry_point_investigation.md).
 
-## Table of contents
+## Table of Contents
 
-- [Workflow](#workflow)
-- [Recipe surface](#recipe-surface)
-- [Preflight](#preflight)
-- [Checkpoints and resume](#checkpoints-and-resume)
-- [Packing](#packing)
-- [Backends](#backends)
-- [Metrics](#metrics)
-- [Export](#export)
+<!-- toc:start -->
+
+1. [Workflow](#workflow)
+2. [Recipe surface](#recipe-surface)
+3. [Preflight](#preflight)
+4. [Checkpoints and resume](#checkpoints-and-resume)
+5. [Packing](#packing)
+6. [Backends](#backends)
+7. [Metrics](#metrics)
+8. [Export](#export)
+
+<!-- toc:end -->
 
 ## Workflow
 

@@ -22,13 +22,26 @@ It introduces no external services or cloud dependencies; the only servers it
 may run are local, stateless viewers over the files (see
 [the stateless viewer principle](#the-stateless-viewer-principle)).
 
-## Table of contents
+## Table of Contents
 
-- [Goals and non-goals](#goals-and-non-goals)
-- [Design overview](#design-overview)
-- [Implementation roadmap](#implementation-roadmap)
-- [Sequencing and dependencies](#sequencing-and-dependencies)
-- [Acceptance and testing conventions](#acceptance-and-testing-conventions)
+<!-- toc:start -->
+
+1. [Goals and non-goals](#goals-and-non-goals)
+   1. [Goals](#goals)
+   2. [Non-goals](#non-goals)
+2. [Design overview](#design-overview)
+   1. [What tracing means in this system](#what-tracing-means-in-this-system)
+   2. [The stateless viewer principle](#the-stateless-viewer-principle)
+3. [Implementation roadmap](#implementation-roadmap)
+   1. [Phase A: logging foundation](#phase-a-logging-foundation)
+   2. [Phase B: event capture](#phase-b-event-capture)
+   3. [Phase C: operability](#phase-c-operability)
+   4. [Phase D: metrics and dashboards](#phase-d-metrics-and-dashboards)
+   5. [Phase E: documentation](#phase-e-documentation)
+4. [Sequencing and dependencies](#sequencing-and-dependencies)
+5. [Acceptance and testing conventions](#acceptance-and-testing-conventions)
+
+<!-- toc:end -->
 
 ## Goals and non-goals
 

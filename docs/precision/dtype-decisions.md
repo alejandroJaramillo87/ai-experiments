@@ -8,14 +8,20 @@ The short answer is that **storage can converge and compute cannot**, for a reas
 a matter of taste: a stored value has already been measured, and a value about to flow through
 a forward pass has not.
 
-## Table of contents
+## Table of Contents
 
-- [The one-sentence answer per tier](#the-one-sentence-answer-per-tier)
-- [Why rust-harness computes in f32](#why-rust-harness-computes-in-f32)
-- [Why the harness accepts three float widths and no quantization](#why-the-harness-accepts-three-float-widths-and-no-quantization)
-- [Why training computes in bf16 and not fp16](#why-training-computes-in-bf16-and-not-fp16)
-- [Where the dtype constants live, and whether to pin one](#where-the-dtype-constants-live-and-whether-to-pin-one)
-- [Can all three tiers share one dtype](#can-all-three-tiers-share-one-dtype)
+<!-- toc:start -->
+
+1. [The one-sentence answer per tier](#the-one-sentence-answer-per-tier)
+2. [Why rust-harness computes in f32](#why-rust-harness-computes-in-f32)
+   1. [Computing in f32 is not the same as storing in f32](#computing-in-f32-is-not-the-same-as-storing-in-f32)
+3. [Why the harness accepts three float widths and no quantization](#why-the-harness-accepts-three-float-widths-and-no-quantization)
+4. [Why training computes in bf16 and not fp16](#why-training-computes-in-bf16-and-not-fp16)
+5. [Where the dtype constants live, and whether to pin one](#where-the-dtype-constants-live-and-whether-to-pin-one)
+6. [Can all three tiers share one dtype](#can-all-three-tiers-share-one-dtype)
+7. [Related](#related)
+
+<!-- toc:end -->
 
 ## The one-sentence answer per tier
 

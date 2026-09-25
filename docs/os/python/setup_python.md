@@ -4,17 +4,26 @@ Configuration guide for the uv-managed Python environment on Ubuntu 24.04 for AI
 experiments. uv manages the interpreter, the project virtual environment, the lock file,
 and the PyTorch CUDA wheels from a single `pyproject.toml`.
 
-## Table of contents
+## Table of Contents
 
-- [Prerequisites](#prerequisites)
-- [Install uv](#install-uv)
-- [Install the Python interpreter](#install-the-python-interpreter)
-- [Sync the environment](#sync-the-environment)
-- [Activate the environment](#activate-the-environment)
-- [Acceptance checks](#acceptance-checks)
-- [Common commands](#common-commands)
-- [Retire the old pyenv and Poetry toolchain](#retire-the-old-pyenv-and-poetry-toolchain)
-- [Troubleshooting](#troubleshooting)
+<!-- toc:start -->
+
+1. [Prerequisites](#prerequisites)
+2. [Install uv](#install-uv)
+3. [Install the Python interpreter](#install-the-python-interpreter)
+4. [Sync the environment](#sync-the-environment)
+5. [Activate the environment](#activate-the-environment)
+6. [Acceptance checks](#acceptance-checks)
+7. [Common commands](#common-commands)
+8. [Retire the old pyenv and Poetry toolchain](#retire-the-old-pyenv-and-poetry-toolchain)
+9. [Troubleshooting](#troubleshooting)
+   1. [uv: command not found](#uv-command-not-found)
+   2. [No interpreter found for Python 3.12](#no-interpreter-found-for-python-312)
+   3. [CUDA not detected](#cuda-not-detected)
+   4. [Environment out of sync](#environment-out-of-sync)
+   5. [The environment stops working after removing a tool or updating VS Code](#the-environment-stops-working-after-removing-a-tool-or-updating-vs-code)
+
+<!-- toc:end -->
 
 ## Prerequisites
 

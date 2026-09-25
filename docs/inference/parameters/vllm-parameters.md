@@ -2,6 +2,42 @@
 
 Detailed analysis of runtime parameters for vLLM server optimized for high-throughput concurrent inference on the RTX 5090 with focus on maximizing request handling capacity.
 
+## Table of Contents
+
+<!-- toc:start -->
+
+1. [Current Parameter Configuration](#current-parameter-configuration)
+   1. [vllm-gpu Service (Port 8003)](#vllm-gpu-service-port-8003)
+2. [Parameter Analysis](#parameter-analysis)
+   1. [GPU Resource Management](#gpu-resource-management)
+   2. [Sequence and Batching Configuration](#sequence-and-batching-configuration)
+   3. [Memory and Caching Optimizations](#memory-and-caching-optimizations)
+   4. [Model and Data Configuration](#model-and-data-configuration)
+3. [Missing Parameters to Research](#missing-parameters-to-research)
+   1. [Performance Optimizations](#performance-optimizations)
+   2. [Advanced Features (2025)](#advanced-features-2025)
+   3. [Memory Management](#memory-management)
+4. [Optimization Opportunities](#optimization-opportunities)
+   1. [Immediate Improvements](#immediate-improvements)
+   2. [Throughput Optimization](#throughput-optimization)
+   3. [Memory Efficiency](#memory-efficiency)
+5. [CUDA 13.0 Configuration](#cuda-130-configuration)
+   1. [Current Status](#current-status)
+   2. [Active Optimizations](#active-optimizations)
+   3. [Experimental Optimizations (not currently enabled)](#experimental-optimizations-not-currently-enabled)
+   4. [Features of CUDA 13](#features-of-cuda-13)
+6. [Benchmarking Plan](#benchmarking-plan)
+   1. [Test Matrix](#test-matrix)
+   2. [Metrics to Track](#metrics-to-track)
+7. [Hardware-Specific Optimizations](#hardware-specific-optimizations)
+   1. [RTX 5090 Blackwell Features](#rtx-5090-blackwell-features)
+   2. [vLLM Engine Configuration](#vllm-engine-configuration)
+8. [Production Deployment Notes](#production-deployment-notes)
+   1. [Monitoring Requirements](#monitoring-requirements)
+   2. [Scaling Considerations](#scaling-considerations)
+
+<!-- toc:end -->
+
 ## Current Parameter Configuration
 
 ### vllm-gpu Service (Port 8003)

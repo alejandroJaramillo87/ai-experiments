@@ -11,17 +11,23 @@ layout. The general family reference is `/docs/models/gemma-4.md`.
 Scope: E2B and E4B. The 12B and 31B variants have no code path here, and
 `gemma4_unified_text` is deliberately unregistered.
 
-## Table of contents
+## Table of Contents
 
-- [Provenance](#provenance)
-- [Registry facts](#registry-facts)
-- [Residual width and layer counts](#residual-width-and-layer-counts)
-- [Uniform post-block width](#uniform-post-block-width)
-- [The per-layer embedding hazard](#the-per-layer-embedding-hazard)
-- [The module path is composite](#the-module-path-is-composite)
-- [Export safety](#export-safety)
-- [Ecosystem gaps](#ecosystem-gaps)
-- [Reproducing this document](#reproducing-this-document)
+<!-- toc:start -->
+
+1. [Provenance](#provenance)
+2. [Registry facts](#registry-facts)
+3. [Residual width and layer counts](#residual-width-and-layer-counts)
+4. [Uniform post-block width](#uniform-post-block-width)
+5. [The per-layer embedding hazard](#the-per-layer-embedding-hazard)
+6. [`layer_scalar` scales what the hook captures](#layer_scalar-scales-what-the-hook-captures)
+7. [Key and value share a projection on full-attention layers](#key-and-value-share-a-projection-on-full-attention-layers)
+8. [The module path is composite](#the-module-path-is-composite)
+9. [Export safety](#export-safety)
+10. [Ecosystem gaps](#ecosystem-gaps)
+11. [Reproducing this document](#reproducing-this-document)
+
+<!-- toc:end -->
 
 ## Provenance
 

@@ -3,6 +3,23 @@
 Documentation standards for this repository. Follow Unix manual-page conventions: accuracy over
 aesthetics, minimalism, unambiguous language, working examples, no emojis or decoration.
 
+## Table of Contents
+
+<!-- toc:start -->
+
+1. [Scope](#scope)
+2. [Document class](#document-class)
+3. [Writing Standards](#writing-standards)
+4. [Document Structure](#document-structure)
+5. [README shape](#readme-shape)
+6. [Formatting](#formatting)
+7. [Technical Standards](#technical-standards)
+8. [Language Conventions](#language-conventions)
+9. [Cross-References](#cross-references)
+10. [Prohibited](#prohibited)
+
+<!-- toc:end -->
+
 ## Scope
 
 Document actual behavior, not intended behavior. Include performance measurements and credit
@@ -62,12 +79,23 @@ paths are checked like any other document's.
 
 Brief description paragraph explaining the document's purpose.
 
-## Table of Contents      (required only for documents > 500 words)
+## Table of Contents      (required over 500 words and four sections; generated)
+
+<!-- toc:start -->
+<!-- toc:end -->
 
 ## Main Content           (logical H2/H3 hierarchy; avoid H4)
 ```
 
-One H1 per document. Include a `## Table of Contents` only when over 500 words.
+One H1 per document. A document over 500 words with four or more H2 and H3 headings
+carries a `## Table of Contents`, and the list under it is never written by hand: it sits
+between a `<!-- toc:start -->` and `<!-- toc:end -->` pair and
+`python scripts/docs/gen_toc.py <file>` renders it from the headings, one numbered row per
+H2 and an indented row per H3, each linking the heading's anchor. The same command adds
+the section, or the markers under an existing one, when the document has none, and
+`make quality` fails a document over the threshold without the pair or with a stale list.
+A shorter document may carry the pair and is rendered the same way. A README never needs
+one, and a frozen record is never given one.
 
 ## README shape
 
