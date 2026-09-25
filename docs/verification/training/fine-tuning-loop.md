@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 5 verified, 0 blocked, 9 pending, of 14.**
+**Entries: 6 verified, 0 blocked, 8 pending, of 14.**
 
 Host verification of the fine-tuning loop, the first rung of the training tier: train
 a Gemma 4 E2B with a known change, then recover it through the rust harness and the
@@ -1979,7 +1979,103 @@ not stray checkpoints. `git_sha: unknown` is the same soft-fail
 FT.smoke-dataset noted for the prepare container: the training image carries
 no `.git` either, and no reader checks the field.
 
-Status: PENDING
+Resumed run (2026-09-25), with the straight run's checkpoint listing and
+its step-60 `meta.json` owed from stage 1:
+
+```
+➜  ai-experiments git:(SFT-verification-2) cd ~/workspace/ai-experiments
+set -o pipefail
+ls /mnt/ai-data/training/runs/ft3-straight/checkpoints/
+cat /mnt/ai-data/training/runs/ft3-straight/checkpoints/checkpoint-60/meta.json
+make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
+    ARGS="run.name=ft3-resume schedule.total_steps=60 schedule.warmup_steps=3 checkpoint.interval_steps=30 sft.eval_steps=30 \
+    checkpoint.resume=/mnt/ai-data/training/runs/ft3-resume/checkpoints/checkpoint-30"
+echo "exit=$?"
+ls /mnt/ai-data/training/runs/ft3-resume/checkpoints/
+checkpoint-30  checkpoint-60  latest  README.md
+{
+  "step": 60,
+  "checkpoint_format": "trl",
+  "adapter_only": true,
+  "base_model": "google/gemma-4-E2B",
+  "base_revision": "d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f",
+  "base_config_sha256": "e5faef0dd1a8f2437f6010721146b85433eaa90e679ef011e803c7ffefae73b8",
+  "backend": "trl",
+  "recipe_hash": "98a8eab285605b237344e8151270ded92cb4f704b37b0207a6628ec517ae14b4",
+  "git_sha": "unknown",
+  "library_versions": {
+    "torch": "2.13.0+cu130",
+    "transformers": "5.13.1",
+    "trl": "0.24.0",
+    "peft": "0.19.1"
+  },
+  "wall_clock": "2026-09-25T14:00:37+0000",
+  "attention_implementation": "sdpa"
+}docker compose -f docker-compose.training.yaml run --rm training python -m training train-sft --config training/recipes/reference/sft-qlora-e2b.yaml run.name=ft3-resume schedule.total_steps=60 schedule.warmup_steps=3 checkpoint.interval_steps=30 sft.eval_steps=30     checkpoint.resume=/mnt/ai-data/training/runs/ft3-resume/checkpoints/checkpoint-30
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up. 
+Container ai-experiments-training-run-a67e2e96b1cc Creating 
+Container ai-experiments-training-run-a67e2e96b1cc Created 
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training train-sft --config training/recipes/reference/sft-qlora-e2b.yaml run.name=ft3-resume schedule.total_steps=60 schedule.warmup_steps=3 checkpoint.interval_steps=30 sft.eval_steps=30 checkpoint.resume=/mnt/ai-data/training/runs/ft3-resume/checkpoints/checkpoint-30
+[RUN] Resuming (/mnt/ai-data/training/runs/ft3-resume/checkpoints/checkpoint-30) ft3-resume [trl]: 60 total steps
+[model] flash-attn supports head_dim <= 256; this model's widest head is 512, so attention runs on sdpa
+Loading weights:   0%|                                                                                                                                 | 0/1951 [00:00<?, ?it/s]/opt/venv/lib/python3.12/site-packages/bitsandbytes/backends/cuda/ops.py:213: FutureWarning: _check_is_size will be removed in a future PyTorch release along with guard_size_oblivious.     Use _check(i >= 0) instead.
+  torch._check_is_size(blocksize)
+Loading weights: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1951/1951 [00:00<00:00, 3202.55it/s]
+[transformers] The tokenizer has new PAD/BOS/EOS tokens that differ from the model config and generation config. The model config and generation config were aligned accordingly, being updated with the tokenizer's values. Updated tokens: {'eos_token_id': 1, 'bos_token_id': 2, 'pad_token_id': 0}.
+{'loss': '1.106', 'grad_norm': '0.542', 'learning_rate': '5.983e-05', 'epoch': '0.008303'}                                                                                      
+ 67%|████████████████████████████████████████████████████████████████████████████████████████████▋                                              | 40/60 [02:40<03:51, 11.59s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+ 72%|███████████████████████████████████████████████████████████████████████████████████████████████████▌                                       | 43/60 [03:30<04:08, 14.62s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+{'loss': '1.093', 'grad_norm': '0.894', 'learning_rate': '1.782e-05', 'epoch': '0.01038'}                                                                                       
+ 83%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████▊                       | 50/60 [05:21<02:38, 15.84s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+{'loss': '1.083', 'grad_norm': '0.2802', 'learning_rate': '1.518e-07', 'epoch': '0.01245'}                                                                                      
+100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 60/60 [08:04<00:00, 16.08s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5                                                                                          | 30/2033 [00:04<04:55,  6.79it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5                                                                                         | 143/2033 [00:24<05:54,  5.33it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5                                                                                         | 657/2033 [01:55<03:03,  7.48it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5█████████████████████████████▉                                                          | 1159/2033 [03:24<02:54,  5.01it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5█████████████████████████████████████▌                                                  | 1274/2033 [03:44<02:31,  5.00it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5████████████████████████████████████████████████████████████                            | 1613/2033 [04:44<01:32,  4.54it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5███████████████████████████████████████████████████████████████████████▎                | 1782/2033 [05:14<00:51,  4.92it/s]
+{'eval_loss': '1.03', 'eval_runtime': '361.4', 'eval_samples_per_second': '11.25', 'eval_steps_per_second': '5.626', 'epoch': '0.01245'}                                        
+{'train_runtime': '846.4', 'train_samples_per_second': '2.268', 'train_steps_per_second': '0.071', 'train_loss': '0.547', 'epoch': '0.01245'}                                   
+100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 60/60 [14:06<00:00, 14.11s/it]
+[OK] Run complete: step 60 [trl]
+  [INFO] trainable parameters: 24,158,208 of 5,128,455,712 (0.47 percent)
+Final train loss: 1.083399
+Held-out loss:    1.030488
+Run directory: /mnt/ai-data/training/runs/ft3-resume/2026-09-25_15-14-51
+Checkpoints:   /mnt/ai-data/training/runs/ft3-resume/checkpoints
+exit=0
+checkpoint-30  checkpoint-60  latest  README.md
+```
+
+Every remaining criterion observed. Straight run's checkpoints:
+`checkpoint-30` and `checkpoint-60` listed, and the step-60 `meta.json`
+carries `checkpoint_format: trl`, `adapter_only: true`, `base_revision
+d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f` and `attention_implementation:
+sdpa`. Resumed run: `[RUN] Resuming
+(/mnt/ai-data/training/runs/ft3-resume/checkpoints/checkpoint-30) ft3-resume
+[trl]: 60 total steps`, the step counter picking up past 30 with the
+learning rate already on the cosine tail (5.983e-05 at the first log line),
+`[OK] Run complete: step 60 [trl]`, `Held-out loss:    1.030488`, exit 0, and
+`checkpoint-60` beside `checkpoint-30` in the final listing. Tolerance:
+abs(1.029761 - 1.030488) / 1.029761 = 0.000706, inside `RESUME_LOSS_RTOL`
+(0.01) by a factor of 14. Two observations, neither a mismatch: the
+trainer's own summary line reports `train_loss` 0.547 because transformers
+divides the loss accumulated over the 30 resumed steps by all 60, whereas
+the `Final train loss: 1.083399` the command prints is the last logged step
+loss; and the two runs' `recipe_hash` values differ because `run.name` is
+part of the hashed recipe, which is why the resumed run carries the
+interrupted run's hash (both `ft3-resume`) and the straight run its own.
+
+Status: VERIFIED (2026-09-25)
 
 ## FT.export-merged Export the merged HF directory and load it in the harness
 
