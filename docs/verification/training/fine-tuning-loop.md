@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 7 verified, 0 blocked, 7 pending, of 14.**
+**Entries: 8 verified, 0 blocked, 6 pending, of 14.**
 
 Host verification of the fine-tuning loop, the first rung of the training tier: train
 a Gemma 4 E2B with a known change, then recover it through the rust harness and the
@@ -227,6 +227,13 @@ builds what it verifies:
   Every hardware test now carries one of `harness`, `training`, `interp`,
   `platform`, and `make hardware-tests HW=full SUITE=training` runs the
   training slice alone, about twenty minutes of GPU, without the E4B chats.
+- **FT.hardware-test verified** (2026-09-25) on the two mirrors' first run:
+  `test_train_interrupt_resume` and `test_fine_tuning_loop` passed at
+  `[TIER] full` in 25 minutes, no skip. It closed ahead of the five entries
+  before it in the order because its own dependencies were all met. One
+  observation: 16.6 GB of CUDA tensors survived the resume test into the loop
+  test, which the `cuda` fixture exists to report and the loop test ran
+  beside; no ledger row.
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training
@@ -2109,6 +2116,12 @@ loss; and the two runs' `recipe_hash` values differ because `run.name` is
 part of the hashed recipe, which is why the resumed run carries the
 interrupted run's hash (both `ft3-resume`) and the straight run its own.
 
+The hardware mirror's first run (2026-09-25, after this entry verified):
+`tests/hardware/test_train_resume.py::test_train_interrupt_resume PASSED`
+at `[TIER] full`, the three runs at 20 steps with both window losses inside
+`RESUME_LOSS_RTOL`; the paste is recorded once, verbatim, under
+FT.hardware-test.
+
 Status: VERIFIED (2026-09-25)
 
 ## FT.export-merged Export the merged HF directory and load it in the harness
@@ -2599,6 +2612,13 @@ through both readers and one generation round trip, was observed in full,
 so the clause is corrected above with this record beside it, and the entry
 closes. Pass on every stage B criterion as corrected.
 
+The hardware mirror's first run with the three checks this entry added
+(2026-09-25, after this entry verified):
+`tests/hardware/test_fine_tuning_loop.py::test_fine_tuning_loop PASSED` at
+`[TIER] full`, the base-verified line, the refused re-export and the chat
+turn on a pipe included; the paste is recorded once, verbatim, under
+FT.hardware-test.
+
 Status: VERIFIED (2026-09-25)
 
 ## FT.heldout-eval Held-out loss and lm-eval on base and merged
@@ -3039,10 +3059,13 @@ Status: PENDING
 ## FT.hardware-test The hardware test
 
 Implementation: `tests/hardware/test_fine_tuning_loop.py::test_fine_tuning_loop`
-(`hw_full`, `gpu`, `ssd`), running a ten-step QLoRA fine-tune of the smoke
-recipe in-process, the export through `cmd_export`, and the two harness
-verdicts in one function; the marker is defined in `pyproject.toml` and its
-tiers in [tests/README.md](../../../tests/README.md). Its sandbox half,
+(`hw_full`, `gpu`, `ssd`, `training`), running a ten-step QLoRA fine-tune of
+the smoke recipe in-process, the export through `cmd_export`, the two harness
+verdicts and one chat turn in one function, and, since 2026-09-25,
+`tests/hardware/test_train_resume.py::test_train_interrupt_resume` (the same
+four markers), FT.train-resume's mirror, which trains 20 steps straight, 10
+and a resume to 20; the markers are defined in `pyproject.toml` and the tiers
+in [tests/README.md](../../../tests/README.md). Its sandbox half,
 `tests/training/test_export_harness.py`, runs the export and the same two
 verdicts on the committed tiny fixture on every `make test`. Built by the
 exporter PR; depends on FT.preconditions (the cached base) and FT.smoke-dataset (the prepared
@@ -3069,17 +3092,28 @@ exception from inside `train_sft`.
 
 Command (the tier and invocation are the ones every hardware entry uses;
 `--no-sync` because a plain `uv run` resyncs the default groups and, on a
-host without a `flash-attn` wheel, starts a source build on every core):
+host without a `flash-attn` wheel, starts a source build on every core; the
+`-m` expression names the tier and the subsystem both, since a bare `-m`
+replaces the `addopts` deselection). The two files are the entry's; `make
+hardware-tests HW=full SUITE=training` runs the whole training slice, which
+adds `test_step_qlora.py`, `test_from_scratch_loop.py` and the training
+functions of the resource suites:
 
 ```bash
 set -o pipefail
 cd ~/workspace/ai-experiments
 ls rust-harness/target/release/harness rust-harness/target/release/checkpoint-info
-ls "${HF_HOME:-$HOME/.cache/huggingface}/hub/models--google--gemma-4-E2B/snapshots/"
-uv run --no-sync pytest -m hw_full tests/hardware/test_fine_tuning_loop.py -v
+ls /mnt/ai-data/models/hf/gemma-4-E2B/config.json
+uv run --no-sync pytest -m "hw_full and training" tests/hardware/test_train_resume.py tests/hardware/test_fine_tuning_loop.py -v 2>&1 | tail -40; echo "exit=$?"
 ```
 
-Expected signal: the one test passes at `[TIER] full` with no skip, and its
+Expected signal: both tests pass at `[TIER] full` with no skip and exit 0.
+The resume test holds FT.train-resume's interrupt and resume: the
+interrupted run ends at step 10 with `checkpoint-10` stamped and no
+`checkpoint-20`, the resumed run ends at 20 with `checkpoint-20` stamped,
+`checkpoint-10`'s `trainer_state.json` byte for byte as it was, its own
+metrics log carrying train losses above step 10 only, and both logged
+losses within `RESUME_LOSS_RTOL` of the straight run's. The loop test's
 assertions cover what FT.train-resume's first criterion and FT.export-merged observe by
 hand: `checkpoint-10` is
 written with `adapter_only: true` and the pinned base identity in its
@@ -3092,13 +3126,126 @@ export of the same name returns 1 with `[ERROR] Export exists:` and the
 with a probe carrying that hash prints `[OK] probe identity: matches the
 served weights, sha256 <hash>` and exits 0, and with an altered hash exits 1
 naming both digests; one `--chat` turn on a pipe exits 0 with `[INFO] Chat
-ended: 1 model turns` and a non-empty reply. The interrupt and resume half
-of FT.train-resume is `tests/hardware/test_train_resume.py`, run by the same
-`make hardware-tests HW=full SUITE=training`.
+ended: 1 model turns` and a non-empty reply.
 
-Observed:
+Observed (2026-09-25, the two mirrors' first run; the entry ran ahead of
+the five before it in the order because its own dependencies, the staged
+base, the prepared dataset and the release binaries, were all met, and the
+tests mirror two entries already verified by hand):
 
 ```
+➜  ai-experiments git:(SFT-verification-2) set -o pipefail
+cd ~/workspace/ai-experiments && git pull origin SFT-verification-2 && git log -1 --oneline
+ls rust-harness/target/release/harness rust-harness/target/release/checkpoint-info
+uv run --no-sync pytest -m "hw_full and training" tests/hardware/test_train_resume.py tests/hardware/test_fine_tuning_loop.py -v 2>&1 | tail -40; echo "exit=$?"
+remote: Enumerating objects: 81, done.
+remote: Counting objects: 100% (81/81), done.
+remote: Compressing objects: 100% (12/12), done.
+remote: Total 81 (delta 69), reused 81 (delta 69), pack-reused 0 (from 0)
+Unpacking objects: 100% (81/81), 26.13 KiB | 1.31 MiB/s, done.
+From https://github.com/alejandroJaramillo87/ai-experiments
+ * branch              SFT-verification-2 -> FETCH_HEAD
+   d52ace9f..3f78b999  SFT-verification-2 -> origin/SFT-verification-2
+Updating d52ace9..3f78b99
+Fast-forward
+ docs/testing/README.md                         |   2 +-
+ docs/testing/hardware-tiers.md                 |  91 ++++++++++++++++++++++++++++++---------------
+ docs/testing/test-suite.md                     |   9 +++--
+ docs/verification/training/fine-tuning-loop.md | 245 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++----------
+ make/README.md                                 |   2 +-
+ make/quality.mk                                |  62 ++++++++++++++++++++++++++++++-
+ pyproject.toml                                 |   8 ++++
+ tests/hardware/README.md                       |   9 +++--
+ tests/hardware/conftest.py                     |  60 ++++++++++++++++++++++++++++++
+ tests/hardware/test_alignment.py               |   8 +++-
+ tests/hardware/test_attention_capture.py       |   8 +++-
+ tests/hardware/test_capture_run_record.py      |   1 +
+ tests/hardware/test_chat_marker.py             |   1 +
+ tests/hardware/test_checkpoint_info.py         |   7 +++-
+ tests/hardware/test_compaction.py              |   8 +++-
+ tests/hardware/test_cpu.py                     |   2 +-
+ tests/hardware/test_fine_tuning_loop.py        | 131 ++++++++++++++++++++++++++++++++++++++++-------------------------
+ tests/hardware/test_from_scratch_loop.py       |   2 +-
+ tests/hardware/test_gpu.py                     |  15 ++++----
+ tests/hardware/test_harness_endpoint.py        |   8 +++-
+ tests/hardware/test_interp_chain.py            |   8 +++-
+ tests/hardware/test_ladder.py                  |   7 +++-
+ tests/hardware/test_layer_diff.py              |   8 +++-
+ tests/hardware/test_markers.py                 |  19 ++++++++--
+ tests/hardware/test_obs_records.py             |   8 +++-
+ tests/hardware/test_permissions.py             |   8 +++-
+ tests/hardware/test_preflight.py               |   1 +
+ tests/hardware/test_ram.py                     |   2 +-
+ tests/hardware/test_recipe_gates.py            |   2 +-
+ tests/hardware/test_remedy_runs_as_printed.py  |   1 +
+ tests/hardware/test_run_header.py              |   1 +
+ tests/hardware/test_session_resume.py          |   1 +
+ tests/hardware/test_shared_kv_weights.py       |   7 +++-
+ tests/hardware/test_ssd.py                     |   5 +++
+ tests/hardware/test_status_costs.py            |   1 +
+ tests/hardware/test_step_qlora.py              |   2 +-
+ tests/hardware/test_train_resume.py            | 149 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ tests/hardware/test_venv_lock.py               |   2 +-
+ tests/training/README.md                       |   2 +-
+ tests/training/test_obs_metrics.py             |  37 +++++++++++++++++++
+ training/tune/sft.py                           |  13 +++++--
+ training/tune/sft_callbacks.py                 |  20 +++++++++-
+ 42 files changed, 843 insertions(+), 140 deletions(-)
+ create mode 100644 tests/hardware/test_train_resume.py
+rust-harness/target/release/checkpoint-info  rust-harness/target/release/harness
+
+============================= test session starts ==============================
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /home/alejandro/workspace/ai-experiments/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/alejandro/workspace/ai-experiments
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, mock-3.15.1, jaxtyping-0.3.11, cov-7.1.0, hydra-core-1.3.2, anyio-4.14.2, xdist-3.8.0, typeguard-4.6.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 2 items
+
+tests/hardware/test_train_resume.py::test_train_interrupt_resume PASSED  [ 50%]
+tests/hardware/test_fine_tuning_loop.py::test_fine_tuning_loop PASSED    [100%]
+
+=============================== warnings summary ===============================
+tests/hardware/test_train_resume.py: 14 warnings
+  /home/alejandro/workspace/ai-experiments/.venv/lib/python3.12/site-packages/torch/jit/_script.py:365: DeprecationWarning: `torch.jit.script_method` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
+
+tests/hardware/test_train_resume.py::test_train_interrupt_resume
+tests/hardware/test_train_resume.py::test_train_interrupt_resume
+tests/hardware/test_train_resume.py::test_train_interrupt_resume
+tests/hardware/test_fine_tuning_loop.py::test_fine_tuning_loop
+  /home/alejandro/workspace/ai-experiments/.venv/lib/python3.12/site-packages/bitsandbytes/backends/cuda/ops.py:213: FutureWarning: _check_is_size will be removed in a future PyTorch release along with guard_size_oblivious.     Use _check(i >= 0) instead.
+    torch._check_is_size(blocksize)
+
+tests/hardware/test_train_resume.py: 12 warnings
+tests/hardware/test_fine_tuning_loop.py: 8 warnings
+  /home/alejandro/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=883615) is multi-threaded, use of fork() may lead to deadlocks in the child.
+    self.pid = os.fork()
+
+tests/hardware/test_fine_tuning_loop.py::test_fine_tuning_loop
+  /home/alejandro/workspace/ai-experiments/tests/hardware/conftest.py:213: UserWarning: 16575893504 bytes of CUDA tensors survive from an earlier test in this process after a collection; the previous GPU test holds a reference
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+[TIER] full: torch present, the whole suite was in scope.
+================= 2 passed, 39 warnings in 1516.01s (0:25:16) ==================
+exit=0
 ```
 
-Status: PENDING
+Both tests `PASSED` at `[TIER] full`, no skip, exit 0, 25:16 of wall clock
+against the resume test's estimate of about twelve minutes plus the loop
+test's ten steps, export and two binaries. The `git pull` line proves the
+tree carried the two tests and the subsystem markers (`3f78b99`). One
+observation, not a mismatch: the `cuda` fixture warned that 16,575,893,504
+bytes of CUDA tensors survived from `test_train_interrupt_resume` into
+`test_fine_tuning_loop` after a collection. The fixture exists to report
+this (`tests/hardware/conftest.py`: an HF model an earlier test left in a
+reference cycle under accelerate hooks stays on the card until the process
+ends, and each test's own bounds measure against what remains), the loop
+test loaded its own base and trained, exported and chatted beside them on
+the 32 GB card, and nothing the entry asserts reads that figure; no ledger
+row. The warnings from torch, bitsandbytes and `os.fork` are the ones
+FT.train-resume's container runs printed. Pass on every criterion.
+
+Status: VERIFIED (2026-09-25)
