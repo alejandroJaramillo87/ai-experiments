@@ -1680,6 +1680,8 @@ cd ~/workspace/ai-experiments
 make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
     ARGS="run.name=ft3-straight schedule.total_steps=60 schedule.warmup_steps=3 checkpoint.interval_steps=30 sft.eval_steps=30"
 echo "exit=$?"
+ls /mnt/ai-data/training/runs/ft3-straight/checkpoints/
+cat /mnt/ai-data/training/runs/ft3-straight/checkpoints/checkpoint-60/meta.json
 make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
     ARGS="run.name=ft3-resume schedule.total_steps=60 schedule.warmup_steps=3 checkpoint.interval_steps=30 sft.eval_steps=30"
 echo "exit=$?"
@@ -1760,6 +1762,93 @@ Environment:
 make: *** [make/training.mk:56: train-sft] Error 1
 exit=2
 ```
+
+Straight run (2026-09-25, as committed after the warmup fix; the `ls` and
+`cat` of its checkpoints were added to the command block afterwards and are
+recorded with the interrupted run):
+
+```
+➜  ai-experiments git:(SFT-verification-2) make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
+    ARGS="run.name=ft3-straight schedule.total_steps=60 schedule.warmup_steps=3 checkpoint.interval_steps=30 sft.eval_steps=30"
+echo "exit=$?"
+docker compose -f docker-compose.training.yaml run --rm training python -m training train-sft --config training/recipes/reference/sft-qlora-e2b.yaml run.name=ft3-straight schedule.total_steps=60 schedule.warmup_steps=3 checkpoint.interval_steps=30 sft.eval_steps=30
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up. 
+Container ai-experiments-training-run-596881c37182 Creating 
+Container ai-experiments-training-run-596881c37182 Created 
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training train-sft --config training/recipes/reference/sft-qlora-e2b.yaml run.name=ft3-straight schedule.total_steps=60 schedule.warmup_steps=3 checkpoint.interval_steps=30 sft.eval_steps=30
+[RUN] Fine-tuning ft3-straight [trl]: 60 total steps
+[model] flash-attn supports head_dim <= 256; this model's widest head is 512, so attention runs on sdpa
+Loading weights:   0%|                                                                                                                                 | 0/1951 [00:00<?, ?it/s]/opt/venv/lib/python3.12/site-packages/bitsandbytes/backends/cuda/ops.py:213: FutureWarning: _check_is_size will be removed in a future PyTorch release along with guard_size_oblivious.     Use _check(i >= 0) instead.
+  torch._check_is_size(blocksize)
+Loading weights: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1951/1951 [00:03<00:00, 505.89it/s]
+[transformers] The tokenizer has new PAD/BOS/EOS tokens that differ from the model config and generation config. The model config and generation config were aligned accordingly, being updated with the tokenizer's values. Updated tokens: {'eos_token_id': 1, 'bos_token_id': 2, 'pad_token_id': 0}.
+{'loss': '1.469', 'grad_norm': '0.5555', 'learning_rate': '0.0001946', 'epoch': '0.002076'}                                                                                     
+ 18%|█████████████████████████▍                                                                                                                 | 11/60 [02:58<13:35, 16.64s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+{'loss': '1.231', 'grad_norm': '0.3388', 'learning_rate': '0.0001636', 'epoch': '0.004152'}                                                                                     
+ 45%|██████████████████████████████████████████████████████████████▌                                                                            | 27/60 [07:14<08:47, 15.99s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+ 48%|███████████████████████████████████████████████████████████████████▏                                                                       | 29/60 [07:44<07:56, 15.37s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+{'loss': '1.102', 'grad_norm': '0.359', 'learning_rate': '0.0001137', 'epoch': '0.006227'}                                                                                      
+ 50%|█████████████████████████████████████████████████████████████████████▌                                                                     | 30/60 [08:00<07:52, 15.77s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5                                                                                         | 155/2033 [00:26<04:13,  7.40it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5                                                                                         | 493/2033 [01:26<04:51,  5.29it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5████▉                                                                                    | 776/2033 [02:16<03:47,  5.52it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5██████████████████████████████████▌                                                     | 1229/2033 [03:36<02:14,  5.98it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5██████████████████████████████████████████▏                                             | 1343/2033 [03:56<02:27,  4.69it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5████████████████████████████████████████████████████████████▋                           | 1622/2033 [04:46<01:10,  5.79it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5███████████████████████████████████████████████████████████████████████▉                | 1791/2033 [05:17<00:46,  5.22it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5███████████████████████████████████████████████████████████████████████████████████     | 1959/2033 [05:46<00:14,  5.27it/s]
+{'eval_loss': '1.038', 'eval_runtime': '361.7', 'eval_samples_per_second': '11.24', 'eval_steps_per_second': '5.621', 'epoch': '0.006227'}                                      
+ 52%|███████████████████████████████████████████████████████████████████████▎                                                                  | 31/60 [14:16<59:49, 123.78s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5                                                                                                                            
+ 65%|██████████████████████████████████████████████████████████████████████████████████████████▎                                                | 39/60 [16:26<07:41, 21.98s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+{'loss': '1.099', 'grad_norm': '0.2819', 'learning_rate': '5.983e-05', 'epoch': '0.008303'}                                                                                     
+{'loss': '1.085', 'grad_norm': '0.6077', 'learning_rate': '1.782e-05', 'epoch': '0.01038'}                                                                                      
+ 87%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████▍                  | 52/60 [19:59<02:13, 16.68s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+ 88%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████▊                | 53/60 [20:14<01:52, 16.12s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+ 95%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████       | 57/60 [21:20<00:49, 16.57s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+{'loss': '1.078', 'grad_norm': '0.3607', 'learning_rate': '1.518e-07', 'epoch': '0.01245'}                                                                                     
+100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 60/60 [22:06<00:00, 15.74s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5                                                                                          | 36/2033 [00:06<06:08,  5.41it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5                                                                                         | 149/2033 [00:26<05:11,  6.05it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5                                                                                         | 663/2033 [01:56<03:37,  6.30it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5████████▍                                                                                | 828/2033 [02:25<03:31,  5.70it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5███████████████▉                                                                         | 940/2033 [02:46<03:48,  4.78it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5██████████████████████████████▎                                                         | 1165/2033 [03:26<02:27,  5.87it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5█████████████████████████████████████████████████████▏                                  | 1508/2033 [04:26<01:36,  5.46it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5███████████████████████████████████████████████████████████████████▉                    | 1731/2033 [05:06<01:03,  4.76it/s]
+{'eval_loss': '1.03', 'eval_runtime': '361.5', 'eval_samples_per_second': '11.25', 'eval_steps_per_second': '5.624', 'epoch': '0.01245'}                                        
+{'train_runtime': '1688', 'train_samples_per_second': '1.137', 'train_steps_per_second': '0.036', 'train_loss': '1.177', 'epoch': '0.01245'}                                    
+100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 60/60 [28:08<00:00, 28.14s/it]
+[OK] Run complete: step 60 [trl]
+  [INFO] trainable parameters: 24,158,208 of 5,128,455,712 (0.47 percent)
+Final train loss: 1.077697
+Held-out loss:    1.029761
+Run directory: /mnt/ai-data/training/runs/ft3-straight/2026-09-25_13-32-04
+Checkpoints:   /mnt/ai-data/training/runs/ft3-straight/checkpoints
+exit=0
+```
+
+Every stage-1 criterion observed: `[RUN] Fine-tuning ft3-straight [trl]: 60
+total steps`, the sdpa note (KB-84), the dataset loaded from the staged
+base's tokenizer without a hash error (KB-80's `train-sft` half, confirmed),
+`eval_loss` 1.038 at step 30 and 1.03 at step 60, each over the 2033 holdout
+batches in 361 s with no out-of-memory (KB-88 confirmed), `[OK] Run complete:
+step 60 [trl]`, `Final train loss: 1.077697`, `Held-out loss:    1.029761`,
+exit 0, and the adapter's 24,158,208 trainable parameters, the count
+FT.calibrate-qlora measured. The step-60 held-out loss, 1.029761, is the
+straight-run side of the tolerance criterion. Observation, not a mismatch:
+`[watchdog] ALERT gpu_throttle: value 1, threshold 0.5` printed on most
+samples, in both the step loop and the evaluation. The sampler
+(`training/runtime/watchdog.py`) reports 1 for any active clock-throttle
+reason other than idle, and the signal is alert-only
+([operational_watchdogs.md](../../training/base/operational_watchdogs.md)),
+so a standing reason such as a locked clock or a power cap trips it on every
+sample and the line carries no information on this workstation.
 
 Status: PENDING
 
