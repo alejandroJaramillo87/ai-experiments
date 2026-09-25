@@ -50,6 +50,7 @@ pytestmark = [
     pytest.mark.cpu,
     pytest.mark.ram,
     pytest.mark.ssd,
+    pytest.mark.harness,
 ]
 
 # The runbook's turns: a fact, then a question about it, shorter than the fact.

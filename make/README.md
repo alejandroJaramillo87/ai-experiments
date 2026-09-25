@@ -26,7 +26,7 @@ fragment defines them; a rule without a `##` comment is internal and is not list
 | `interp.mk` | Interpretability (interp Phase 0 I1 - separate compose file; GPU inference must be down) | `interp-build`, `interp-up`, `interp-shell`, `interp-smoke`, `interp-runs`, `interp-down`, `interp-dirs`, `steer-extract`, `steer-up`, `steer-down`, `steer-scorecard`, `probe-capture`, `probe-train`, `probe-export`, `probe-eval`, `probe-monitor`, `harvest`, `harvest-check-hooks`, `interp-gc`, `sae-train`, `sae-eval`, `organism-generate`, `organism-verify`, `organism-seal`, `organism-check-seal`, `organism` |
 | `ops.mk` | Monitoring & Debugging | `status`, `logs`, `logs-gpu`, `logs-cpu`, `logs-ui`, `logs-vllm`, `health`, `shell-gpu`, `shell-cpu`, `shell-vllm`, `update-models`, `list-models` |
 | `python.mk` | Python Environment (uv) | `install`, `update`, `shell` |
-| `quality.mk` | Testing & Code Quality | `test`, `lint`, `format`, `quality`, `quality-full` |
+| `quality.mk` | Testing & Code Quality | `test`, `lint`, `format`, `quality`, `quality-full`, `hardware-tests` |
 | `quickstart.mk` | Quick Start Commands | `demo`, `dev` |
 | `services.mk` | Service Management | `up`, `down`, `restart`, `gpu-up`, `cpu-up`, `ui-up` |
 | `site.mk` | Documentation site (Docusaurus, under site/) | `site-install`, `site-gen`, `site-build`, `site-serve`, `site-check` |

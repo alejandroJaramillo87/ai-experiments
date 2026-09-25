@@ -1,8 +1,15 @@
 """Marker invariants for the hardware suites (WI-3): every test in
-tests/hardware/ carries exactly one tier marker (hw_smoke or hw_full) and at
-least one resource marker (gpu, cpu, ram, ssd), and every hardware-gated
+tests/hardware/ carries exactly one tier marker (hw_smoke or hw_full), at
+least one resource marker (gpu, cpu, ram, ssd) and exactly one subsystem
+marker (harness, training, interp, platform), and every hardware-gated
 marker declared in pyproject.toml is deselected by addopts. Runs in the
-default selection, so the sandbox suite guards the contract."""
+default selection, so the sandbox suite guards the contract.
+
+The subsystem axis is what `make hardware-tests SUITE=training` selects on.
+Exactly one, not at least one, because pytest unions the marks of a
+function, its class and its module: a module-level mark beside a
+function-level one would put the test in two suites and run it twice across
+a per-suite session, and a test in no suite would run in none."""
 
 from __future__ import annotations
 
@@ -15,10 +22,11 @@ import pytest
 
 TIERS = {"hw_smoke", "hw_full"}
 RESOURCES = {"gpu", "cpu", "ram", "ssd"}
+SUBSYSTEMS = {"harness", "training", "interp", "platform"}
 PYPROJECT = Path(__file__).parents[2] / "pyproject.toml"
 
 
-def test_every_hardware_test_carries_tier_and_resource_markers():
+def test_every_hardware_test_carries_tier_resource_and_subsystem_markers():
     here = os.path.dirname(os.path.abspath(__file__))
     plugin = _Collector()
     rc = pytest.main(
@@ -36,6 +44,9 @@ def test_every_hardware_test_carries_tier_and_resource_markers():
             problems.append(f"{item.nodeid}: tier markers {sorted(tiers)}")
         if not resources:
             problems.append(f"{item.nodeid}: no resource marker")
+        subsystems = marks & SUBSYSTEMS
+        if len(subsystems) != 1:
+            problems.append(f"{item.nodeid}: subsystem markers {sorted(subsystems)}")
     assert not problems, "\n".join(problems)
 
 

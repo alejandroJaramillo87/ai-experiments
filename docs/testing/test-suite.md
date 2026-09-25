@@ -61,7 +61,7 @@ which is a defect in one of them.
 
 ## Markers
 
-Seven markers are registered, all carried only by `tests/hardware/`:
+Eleven markers are registered, all carried only by `tests/hardware/`:
 
 | Marker | Kind | Means |
 |--------|------|-------|
@@ -69,8 +69,10 @@ Seven markers are registered, all carried only by `tests/hardware/`:
 | `hw_full` | tier | may allocate near-capacity VRAM, RAM and disk and load real models; per verification phase and after an environment change |
 | `hw_e4b` | precondition | needs the real Gemma 4 E4B checkpoint on disk; carried beside a tier marker, deselected because no sandbox has the checkpoint |
 | `gpu`, `cpu`, `ram`, `ssd` | resource | the hardware the test exercises |
+| `harness`, `training`, `interp`, `platform` | subsystem | the part of the tree the test proves; `make hardware-tests SUITE=<subsystem>` selects on it |
 
-Every hardware test carries exactly one tier marker and at least one resource marker, and
+Every hardware test carries exactly one tier marker, at least one resource marker and exactly
+one subsystem marker, and
 `tests/hardware/test_markers.py`, which itself carries none and so runs in `make test`,
 enforces the pairing and that every `hw_*` marker appears in `addopts`. The tiers
 themselves are [hardware-tiers.md](hardware-tiers.md).
@@ -84,7 +86,8 @@ root on `sys.path` and never `tests/training` itself. Collection fails outright 
 
 **A command-line `-m` replaces `addopts` rather than adding to it.** So `-m gpu` silently
 re-enables all three hardware tiers. Opt in deliberately with `-m hw_smoke`, `-m hw_full`
-or `-m hw_e4b`.
+or `-m hw_e4b`, and combine a subsystem with a tier (`-m "hw_full and training"`), which is
+what `make hardware-tests` does.
 
 **`tmp_path` may move.** In a contained sandbox `/tmp` is mounted `noexec`, so a test that
 writes an executable stub there dies with `Permission denied` rather than exercising

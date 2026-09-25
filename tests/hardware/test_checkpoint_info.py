@@ -39,7 +39,12 @@ from tests.hardware.conftest import REPO_ROOT, e4b_checkpoint
 
 # No `ram`: the tool reads the config and the safetensors header, never the
 # payload, so a run costs no memory worth a marker.
-pytestmark = [pytest.mark.hw_full, pytest.mark.hw_e4b, pytest.mark.cpu]
+pytestmark = [
+    pytest.mark.hw_full,
+    pytest.mark.hw_e4b,
+    pytest.mark.cpu,
+    pytest.mark.harness,
+]
 
 HARNESS_DIR = os.path.join(REPO_ROOT, "rust-harness")
 CHECKPOINT_INFO = os.path.join(HARNESS_DIR, "target", "release", "checkpoint-info")

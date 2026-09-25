@@ -1,6 +1,6 @@
 ##@ Testing & Code Quality
 
-.PHONY: format lint quality quality-full test
+.PHONY: format lint quality quality-full hardware-tests test
 
 # How a Python tool is reached. The two environments hold the same pinned
 # versions in different places, so the difference is resolved here once rather
@@ -228,6 +228,10 @@ endif
 # accepted set (sandbox|full) and a `?=` default; a second `?=` in this file would win by
 # include order and silently hand `worktree-%` a value it rejects.
 HW ?= smoke
+# Which subsystem's hardware tests `hardware-tests` runs: one of the four subsystem
+# markers pyproject.toml registers, or every test of the tier. Only that target reads it;
+# `quality-full` runs the whole tier by design.
+SUITE ?= all
 
 # The gate that runs everything. `make quality` skips pytest entirely and `make test`
 # deselects both hardware markers (pyproject.toml:263), so until this target existed "I ran
@@ -280,6 +284,62 @@ else
 	    exit 1; \
 	  fi; \
 	  HARNESS_E4B_MODEL="$(HARNESS_E4B_MODEL)" $(RUN_PY) pytest -m hw_e4b -v; \
+	  HARNESS_E4B_MODEL="$(HARNESS_E4B_MODEL)" $(MAKE) -C rust-harness test-e4b; \
+	fi
+endif
+
+# One tier of one subsystem, for the runs that are not the whole gate: the training
+# slice of hw_full is minutes of GPU (a QLoRA train, interrupt and resume; a merge and
+# a harness chat) that a session verifying the harness has no reason to pay for, and
+# the reverse holds for the E4B chats. Selection is the tier marker and the subsystem
+# marker together, so the default-selection guard in pyproject.toml still applies:
+# a bare `-m training` would re-enable every tier, because a command-line -m replaces
+# addopts rather than adding to it. The refusals are quality-full's, for the same
+# reasons; the e4b arm adds the rust workspace's E4B tests only when the harness is
+# in the selection, since nothing else in that workspace reads the checkpoint.
+hardware-tests: ## Run one hardware tier for one subsystem (HW=smoke|full|e4b SUITE=harness|training|interp|platform|all)
+ifdef AI_SANDBOX
+	@printf '[ERROR] hardware-tests: this target requires the workstation\n'; \
+	printf '  Found: AI_SANDBOX is set, so there is no GPU, no /mnt/ai-data, and no running services.\n'; \
+	printf '  Solution: run the sandbox-executable half here, then run this on the workstation\n'; \
+	printf '  Command: make test\n'; \
+	exit 1
+else
+	@case "$(HW)" in \
+	  smoke|full|e4b) ;; \
+	  *) printf '[ERROR] hardware-tests: unknown HW: %s\n' "$(HW)"; \
+	     printf '  Accepted: smoke (under five minutes, default), full (near-capacity VRAM, real models),\n'; \
+	     printf '            e4b (the checks needing the real E4B checkpoint on disk)\n'; \
+	     printf '  Command: make hardware-tests HW=full SUITE=training\n'; \
+	     exit 1;; \
+	esac
+	@case "$(SUITE)" in \
+	  harness|training|interp|platform|all) ;; \
+	  *) printf '[ERROR] hardware-tests: unknown SUITE: %s\n' "$(SUITE)"; \
+	     printf '  Accepted: harness, training, interp, platform, all (default)\n'; \
+	     printf '  Command: make hardware-tests HW=full SUITE=training\n'; \
+	     exit 1;; \
+	esac
+	@printf '[INFO] GPU/benchmark work stays serialized across all worktrees (see AGENTS.md)\n'
+	@$(RUN_PY) python -c 'import torch' 2>/dev/null || { \
+	  printf '[ERROR] hardware-tests: torch is not importable, so the suite would skip its way to green\n'; \
+	  printf '  Found: the environment is the torch-free sandbox tier; the run would report [TIER] sandbox\n'; \
+	  printf '  Solution: provision the full tier\n'; \
+	  printf '  Command: make install\n'; \
+	  exit 1; \
+	}
+	@if [ "$(HW)" = e4b ] && [ -z "$(HARNESS_E4B_MODEL)" ]; then \
+	  printf '[ERROR] hardware-tests HW=e4b: HARNESS_E4B_MODEL is unset, so every check would skip its way to green\n'; \
+	  printf '  Found: the tier names the checkpoint through one variable so no test hard-codes a path.\n'; \
+	  printf '  Solution: point it at the instruction-tuned safetensors directory\n'; \
+	  printf '  Command: make hardware-tests HW=e4b SUITE=harness HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B-it\n'; \
+	  exit 1; \
+	fi
+	@if [ "$(SUITE)" = all ]; then expr="hw_$(HW)"; else expr="hw_$(HW) and $(SUITE)"; fi; \
+	printf '[RUN] hardware tests: -m "%s"\n' "$$expr"; \
+	HARNESS_E4B_MODEL="$(HARNESS_E4B_MODEL)" $(RUN_PY) pytest -m "$$expr" tests/hardware -v
+	@if [ "$(HW)" = e4b ] && { [ "$(SUITE)" = harness ] || [ "$(SUITE)" = all ]; }; then \
+	  printf '[RUN] E4B tier: the rust workspace tests that read the checkpoint\n'; \
 	  HARNESS_E4B_MODEL="$(HARNESS_E4B_MODEL)" $(MAKE) -C rust-harness test-e4b; \
 	fi
 endif

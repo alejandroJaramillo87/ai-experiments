@@ -36,7 +36,12 @@ import pytest
 
 from tests.hardware.conftest import REPO_ROOT, altered, write_probe
 
-pytestmark = [pytest.mark.hw_full, pytest.mark.gpu, pytest.mark.ssd]
+pytestmark = [
+    pytest.mark.hw_full,
+    pytest.mark.gpu,
+    pytest.mark.ssd,
+    pytest.mark.training,
+]
 
 HARNESS_DIR = os.path.join(REPO_ROOT, "rust-harness")
 BIN_DIR = os.path.join(HARNESS_DIR, "target", "release")

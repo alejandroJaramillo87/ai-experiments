@@ -39,7 +39,13 @@ import pytest
 from common import serving
 from tests.hardware.conftest import AI_DATA_ROOT, REPO_ROOT
 
-pytestmark = [pytest.mark.hw_full, pytest.mark.cpu, pytest.mark.ram, pytest.mark.ssd]
+pytestmark = [
+    pytest.mark.hw_full,
+    pytest.mark.cpu,
+    pytest.mark.ram,
+    pytest.mark.ssd,
+    pytest.mark.harness,
+]
 
 HARNESS_DIR = os.path.join(REPO_ROOT, "rust-harness")
 HARNESS = os.path.join(HARNESS_DIR, "target", "release", "harness")

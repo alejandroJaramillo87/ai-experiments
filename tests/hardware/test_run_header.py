@@ -55,6 +55,7 @@ pytestmark = [
     pytest.mark.cpu,
     pytest.mark.ram,
     pytest.mark.ssd,
+    pytest.mark.harness,
 ]
 
 CATALOG = Path(LOG_ROOT) / "runs.jsonl"  # read_runs takes a Path, not a str

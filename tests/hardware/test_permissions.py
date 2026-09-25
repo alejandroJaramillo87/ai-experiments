@@ -45,7 +45,13 @@ from tests.hardware.conftest import (
     require_binary,
 )
 
-pytestmark = [pytest.mark.hw_full, pytest.mark.cpu, pytest.mark.ram, pytest.mark.ssd]
+pytestmark = [
+    pytest.mark.hw_full,
+    pytest.mark.cpu,
+    pytest.mark.ram,
+    pytest.mark.ssd,
+    pytest.mark.harness,
+]
 
 RULES = "rules:\n  - tool: read\n    action: allow\n  - tool: bash\n    action: deny\n"
 TASK = "Read hello.txt, write its contents to copy.txt, then say done"

@@ -28,7 +28,7 @@ import pytest
 from common import serving
 from tests.hardware.conftest import REPO_ROOT
 
-pytestmark = [pytest.mark.hw_smoke, pytest.mark.cpu]
+pytestmark = [pytest.mark.hw_smoke, pytest.mark.cpu, pytest.mark.training]
 
 RECIPE_DIR = os.path.join(REPO_ROOT, "training", "recipes")
 RECIPES = sorted(

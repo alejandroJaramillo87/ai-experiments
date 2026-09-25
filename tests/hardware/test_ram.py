@@ -9,7 +9,7 @@ import os
 
 import pytest
 
-pytestmark = pytest.mark.ram
+pytestmark = [pytest.mark.ram, pytest.mark.platform]
 
 # Replay residency probe size: large enough that RSS growth is unambiguous,
 # small enough to keep hw_full runtime in seconds (the P2-D4 acceptance at

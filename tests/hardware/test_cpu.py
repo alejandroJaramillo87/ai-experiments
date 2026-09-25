@@ -10,7 +10,7 @@ import time
 
 import pytest
 
-pytestmark = pytest.mark.cpu
+pytestmark = [pytest.mark.cpu, pytest.mark.platform]
 
 # Zen 5 ships full-width AVX-512; these flags are what the znver5 CPUAdam
 # build and the huge-page inference path rely on.

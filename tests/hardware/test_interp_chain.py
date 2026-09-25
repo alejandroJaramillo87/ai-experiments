@@ -41,7 +41,13 @@ import pytest
 
 from tests.hardware.conftest import REPO_ROOT, e2b_it_checkpoint
 
-pytestmark = [pytest.mark.hw_full, pytest.mark.cpu, pytest.mark.ram, pytest.mark.ssd]
+pytestmark = [
+    pytest.mark.hw_full,
+    pytest.mark.cpu,
+    pytest.mark.ram,
+    pytest.mark.ssd,
+    pytest.mark.interp,
+]
 
 HARNESS_DIR = os.path.join(REPO_ROOT, "rust-harness")
 BIN_DIR = os.path.join(HARNESS_DIR, "target", "release")

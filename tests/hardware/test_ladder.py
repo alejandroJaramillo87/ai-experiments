@@ -51,7 +51,12 @@ from common.obs.catalog import read_runs
 from common.obs.dashboard import read_metrics
 from tests.hardware.conftest import LOG_ROOT, REPO_ROOT, e4b_checkpoint, events
 
-pytestmark = [pytest.mark.hw_full, pytest.mark.hw_e4b, pytest.mark.ssd]
+pytestmark = [
+    pytest.mark.hw_full,
+    pytest.mark.hw_e4b,
+    pytest.mark.ssd,
+    pytest.mark.harness,
+]
 
 HARNESS = os.path.join(REPO_ROOT, "rust-harness")
 SIZE = "quick"

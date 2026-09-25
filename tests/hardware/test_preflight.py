@@ -46,6 +46,7 @@ pytestmark = [
     pytest.mark.hw_e4b,
     pytest.mark.cpu,
     pytest.mark.ssd,
+    pytest.mark.harness,
 ]
 
 HARNESS_DIR = os.path.join(REPO_ROOT, "rust-harness")
