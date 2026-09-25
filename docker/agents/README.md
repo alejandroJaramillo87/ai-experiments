@@ -35,5 +35,7 @@ session.
 
 - `make agent-sandbox-build` builds both images; `make agent-sandbox` starts a session.
 - [../../docs/sandbox/agent-sandbox.md](../../docs/sandbox/agent-sandbox.md) explains the
-  containment model, and [../../docs/agents/](../../docs/agents/README.md) how the agents
+  containment model,
+  [../../docs/sandbox/docker_agents_overview.md](../../docs/sandbox/docker_agents_overview.md)
+  walks these files, and [../../docs/agents/](../../docs/agents/README.md) how the agents
   are run.

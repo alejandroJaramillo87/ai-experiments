@@ -1,25 +1,33 @@
 # Training container implementation
 
 Explanation of the Phase 0 training container (`docker/training/Dockerfile.training`), the
-reproducible GPU environment where the training tier runs. It builds PyTorch cu130 on the RTX
+reproducible GPU environment where the training tier runs, and of the CPU-only export image
+(`docker/training/Dockerfile.export`) beside it. It builds PyTorch cu130 on the RTX
 5090 Blackwell architecture (sm_120) with the full fine-tuning and pretraining stack, and
 verifies every CUDA-compiled path at build time through a smoke test.
 
 > Note: This document explains the actual implementation in `docker/training/Dockerfile.training`,
-> `docker/training/entrypoint.sh`, `training/commands/smoke_test.py`, and
-> `docker-compose.training.yaml`. Those files are the source of truth; this document follows
+> `docker/training/Dockerfile.export`, `docker/training/entrypoint.sh`,
+> `training/commands/smoke_test.py`, and `docker-compose.training.yaml`. Those files are the source of truth; this document follows
 > them.
 
 ## Table of Contents
 
-- [Design](#design)
-- [Dependency source of truth](#dependency-source-of-truth)
-- [Image build](#image-build)
-- [Smoke test](#smoke-test)
-- [Compose integration](#compose-integration)
-- [Interface](#interface)
-- [Concurrency policy](#concurrency-policy)
-- [Reference implementation](#reference-implementation)
+<!-- toc:start -->
+
+1. [Design](#design)
+2. [Dependency source of truth](#dependency-source-of-truth)
+3. [Image build](#image-build)
+4. [Smoke test](#smoke-test)
+5. [Compose integration](#compose-integration)
+6. [Network split: one door to the hub](#network-split-one-door-to-the-hub)
+7. [Interface](#interface)
+8. [Export image](#export-image)
+9. [Validate compared with preflight](#validate-compared-with-preflight)
+10. [Concurrency policy](#concurrency-policy)
+11. [Reference implementation](#reference-implementation)
+
+<!-- toc:end -->
 
 ## Design
 
@@ -165,6 +173,44 @@ Everything else runs in `training` or `export`, with no network:
 | `make train-smoke` | Run the six-step smoke test on the workstation |
 | `make train-preflight` | Prove every asset a recipe references is already local |
 
+## Export image
+
+`docker/training/Dockerfile.export` is a second, CPU-only image, separate from the training
+image by decision: the image that trains a model is not reused to prepare it for serving. It
+carries only what the adapter merge and the safetensors write need, on `ubuntu:24.04` with no
+CUDA base, so a merge never competes with a serving swap for VRAM. It writes the merged HF
+checkpoint directory (`config.json` plus one `model.safetensors`) that the rust harness serves
+and interp captures from, and produces no GGUF.
+
+The build copies the same pinned uv binary, installs `git` (for the manifest's `git_sha`) and
+Python 3.12, creates `/opt/venv`, and installs a hand-pinned CPU stack: torch 2.13.0 from the
+CPU wheel index, then transformers 5.13.1, peft 0.19.1, accelerate 1.14.0, and
+sentencepiece 0.2.2. This is the one deliberate deviation from lockfile installs in the
+repository, because the cu130 torch build in `uv.lock` is GPU-sized and unnecessary here; the
+versions mirror the core pins in `pyproject.toml` and are kept in step by hand. The image sets
+`HF_HOME=/app/cache` and `HOME=/app`, creates `appuser`, checks that torch, transformers,
+peft, and safetensors import, and ends in `CMD ["/bin/bash"]`; the compose file supplies the
+command.
+
+The `export` service (container `training-export`) takes the shared hardening anchor and no
+GPU reservation. It has no egress by topology, on `training-network`, and needs none: the
+export code path forces `local_files_only`, so both the preflight and the merge are cache-only.
+
+| Mount | Mode | Purpose |
+|-------|------|---------|
+| `/tmp` | tmpfs, 2G | Scratch |
+| `/app/cache` | tmpfs, 8G | `HF_HOME` for the merge's base-model reads |
+| `/mnt/ai-data/models/` | read-only | Base models, as the inference services mount them |
+| `/mnt/ai-data/models/trained` | read-write | The narrow window the exported checkpoint is written into |
+| `/mnt/ai-data/training` | read-write | Checkpoints to export and the on-disk staging area |
+| `/mnt/ai-data/logs` | read-write | Structured observability records, identity-mounted |
+| `./scripts`, `./training`, `./common` | read-only | Repository sources, mounted live |
+
+| Target | Action |
+|--------|--------|
+| `make export-build` | Build the export image |
+| `make export-hf` | Export a checkpoint as the merged HF directory: `CHECKPOINT=<checkpoint dir> ARGS="--name <name> ..."` |
+
 ## Validate compared with preflight
 
 Two commands check a recipe, and the difference matters:
@@ -189,6 +235,8 @@ Training and inference must not run at the same time: one GPU consumer at a time
 ## Reference implementation
 
 - `docker/training/Dockerfile.training` — multi-stage-capable devel-base training image.
+- `docker/training/Dockerfile.export` — CPU-only exporter: hand-pinned CPU torch, the adapter
+  merge, and the safetensors write.
 - `docker/training/entrypoint.sh` — thin entrypoint: environment echo, optional LD_PRELOAD hook,
   `exec`.
 - `training/commands/smoke_test.py` — six-step stack verification and versions manifest.

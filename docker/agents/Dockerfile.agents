@@ -176,7 +176,7 @@ ENV RUSTUP_HOME=/usr/local/rustup \
     PATH=/usr/local/cargo/bin:$PATH
 
 # CARGO_HOME must be writable and cannot live on the rootfs, which is read-only
-# at run time, nor in $HOME, a 256MB tmpfs. /tmp is the 1GB tmpfs. The seed below
+# at run time, nor in $HOME, a 256MB tmpfs. /tmp is the 4GB tmpfs. The seed below
 # copies the baked registry there once per session; /etc/profile.d is sourced
 # because the make wrapper launches a login shell (`sh -lc`). A session that
 # somehow skips it still works — cargo falls back to fetching from crates.io,

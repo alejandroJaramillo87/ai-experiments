@@ -33,6 +33,8 @@ entrypoint exists because docker compose cannot pass a flag conditionally.
 
 - `make harness-build` builds the image; `make harness-run`, `make harness-chat` and
   `make harness-serve` run it.
+- [../../docs/sandbox/docker_rust_harness_overview.md](../../docs/sandbox/docker_rust_harness_overview.md)
+  explains the image and the two services.
 - [../../rust-harness/README.md](../../rust-harness/README.md) is the workspace the image
   builds, and [../../docs/rust-harness/](../../docs/rust-harness/README.md) its
   documentation.

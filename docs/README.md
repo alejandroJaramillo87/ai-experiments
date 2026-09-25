@@ -32,7 +32,7 @@ and `AGENTS.md` says which to read for what.
 | [os/](os/README.md) | Configuring Ubuntu 24.04 LTS for AI work on the AMD Ryzen 9950X + RTX 5090 hardware. |
 | [precision/](precision/README.md) | The dtype decisions of the three tiers — the Rust inference harness, the interpretability tier, and the training tier — collected in one place. |
 | [rust-harness/](rust-harness/README.md) | Design and reference documentation for `rust-harness`, the single-binary Rust coding harness with the Gemma 4 inference runtime linked in as a library crate. |
-| [sandbox/](sandbox/README.md) | How the inference services are contained on this workstation: what each container is allowed to touch, and why. |
+| [sandbox/](sandbox/README.md) | How every container on this workstation is contained: what each is allowed to touch, and why, across the inference services, the training and export images, the interpretability workbench, the rust harness, and the agent sandbox. |
 | [testing/](testing/README.md) | How this repository is tested, and how the documentation is kept true: the commands, what each one proves, where each runs, and the strategy behind them. |
 | [training/](training/README.md) | Living documentation for the training tier: the `python -m training` CLI, the recipe system, the reference loop, and the three rungs the tier climbs. |
 | [verification/](verification/README.md) | The manual verification campaign: the state of every runbook, the defect ledger the entries cross-reference, and the protocol they are executed and recorded under. |
@@ -107,5 +107,7 @@ protocol; the defect ledger they cross-reference is
    sentence of which stands alone, because the directory's generated index reads it. Then
    regenerate the parent's table with `python scripts/docs/gen_inventory.py <README>`;
    `make quality` fails until it matches.
-4. **Name it** lowercase with hyphens or underscores, descriptive but concise, and give a
-   document over 500 words a table of contents.
+4. **Name it** lowercase with hyphens or underscores, descriptive but concise. A document
+   over 500 words with four or more sections carries a table of contents, rendered from
+   its headings with `python scripts/docs/gen_toc.py <file>`; `make quality` fails until
+   it does.

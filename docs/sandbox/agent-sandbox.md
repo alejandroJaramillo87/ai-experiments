@@ -4,22 +4,34 @@ Guide for running coding agents (OpenCode and Claude Code) safely on the AMD Ryz
 RTX 5090 workstation. It records the threat model, the containment design, the host-versus-
 contained tier split, and a quarterly review checklist. It is the agent-side companion to the
 inference-stack hardening in [README.md](README.md) and
-[docker_compose_overview.md](docker_compose_overview.md).
+[docker_compose_overview.md](docker_compose_overview.md);
+[docker_agents_overview.md](docker_agents_overview.md) walks the Dockerfiles and compose file
+that implement it.
 
-## Table of contents
+## Table of Contents
 
-- [Conclusion first](#conclusion-first)
-- [Threat model](#threat-model)
-  - [Per-tool delta](#per-tool-delta)
-- [Why the inference pattern does not copy directly](#why-the-inference-pattern-does-not-copy-directly)
-- [Containment](#containment)
-  - [Image and version pins](#image-and-version-pins)
-  - [Egress allowlist](#egress-allowlist)
-  - [Credentials and the never-mount list](#credentials-and-the-never-mount-list)
-- [Tier split](#tier-split)
-- [Configuration hardening](#configuration-hardening)
-- [Supply-chain preflight](#supply-chain-preflight)
-- [Quarterly review checklist](#quarterly-review-checklist)
+<!-- toc:start -->
+
+1. [Conclusion first](#conclusion-first)
+2. [Threat model](#threat-model)
+   1. [Per-tool delta](#per-tool-delta)
+3. [Why the inference pattern does not copy directly](#why-the-inference-pattern-does-not-copy-directly)
+4. [Containment](#containment)
+   1. [Image and version pins](#image-and-version-pins)
+   2. [Python toolchain](#python-toolchain)
+   3. [Rust toolchain](#rust-toolchain)
+   4. [Staging model weights](#staging-model-weights)
+   5. [Egress allowlist](#egress-allowlist)
+   6. [Credentials and the never-mount list](#credentials-and-the-never-mount-list)
+   7. [Terminal fidelity and clipboard](#terminal-fidelity-and-clipboard)
+   8. [Persistent settings](#persistent-settings)
+   9. [Model selection](#model-selection)
+5. [Tier split](#tier-split)
+6. [Configuration hardening](#configuration-hardening)
+7. [Supply-chain preflight](#supply-chain-preflight)
+8. [Quarterly review checklist](#quarterly-review-checklist)
+
+<!-- toc:end -->
 
 ## Conclusion first
 
