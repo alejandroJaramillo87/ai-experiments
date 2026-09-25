@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 8 verified, 0 blocked, 6 pending, of 14.**
+**Entries: 9 verified, 0 blocked, 5 pending, of 14.**
 
 Host verification of the fine-tuning loop, the first rung of the training tier: train
 a Gemma 4 E2B with a known change, then recover it through the rust harness and the
@@ -257,6 +257,14 @@ builds what it verifies:
   `,<filter>` suffix lm-eval puts on every result, `none` for an
   unfiltered task (KB-94, fixed in `tasks.yaml`). The lm-eval half re-runs
   on a `git pull` alone: the yaml is compose-mounted.
+- **FT.heldout-eval verified** (2026-09-25) on its third evaluation
+  attempt, the lm-eval half after a `git pull` to the KB-94 fix: both
+  sides exit 0 with the four `[OK]` lines spelled as the harness keys
+  them, the records carrying the pin and the limit, about four minutes a
+  side; KB-92, KB-93 and KB-94 confirmed, and KB-84's third loader had
+  its first run on the first attempt's holdout passes. The harness's
+  batch-size search, some forty allocator warnings a phase, is read from
+  the wheel and recorded as the noise it is.
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training
@@ -2666,7 +2674,8 @@ FT.export-merged (the merged directory) and FT.smoke-dataset (the dataset).
   was the hub half, which `datasets` offline never reads; the first
   evaluation attempt (below) found that, and the second fix mounts the
   datasets half read-write. Closes when the base's `eval-lmeval` prints one
-  `[OK] <task>:` line per pinned task.
+  `[OK] <task>:` line per pinned task. Confirmed 2026-09-25 by the third
+  evaluation attempt.
 - KB-93 — two more run-time needs of the task set the offline container did
   not have: the ifeval task loads nltk's punkt models (its import tried to
   download them), and the harness's tinyMMLU scores through a git-only
@@ -2674,13 +2683,15 @@ FT.export-merged (the merged directory) and FT.smoke-dataset (the dataset).
   `punkt_tab` at build by digest and sets `NLTK_DATA`; the pinned MMLU task
   is the repo-owned `tinyMMLU_acc`, the same items with plain accuracy.
   Closes with KB-92, on the same `[OK]` lines, after the sentence-count
-  probe below prints `2`.
+  probe below prints `2`. Confirmed 2026-09-25: the probe on the second
+  evaluation attempt, the lines on the third.
 - KB-94 — the pinned task set named its result keys bare, and lm-eval
   keys every result `<metric>,<filter>`, `none` when the task declares no
   filter; the first `eval-lmeval` to reach scoring was refused by the
   tree's own extractor. Fixed 2026-09-25: the three unfiltered keys carry
   `,none`. Closes on the same `[OK]` lines, `ifeval:
-  prompt_level_strict_acc,none` among them.
+  prompt_level_strict_acc,none` among them. Confirmed 2026-09-25 by the
+  third evaluation attempt.
 
 `holdout.load_model` is KB-84's third loader (config first, sdpa above the
 head-width cap), and this entry is its first run; the fix was confirmed by
@@ -3742,7 +3753,336 @@ not a git repository` is the harness's `get_git_commit_hash` running
 caught and the hash recorded as absent. The whole base pass took under
 four minutes at `--limit 20`, model load included.
 
-Status: PENDING
+Third evaluation attempt (2026-09-25; the lm-eval half, as committed after
+KB-94):
+
+```
+➜  ai-experiments git:(SFT-verification-2) set -o pipefail
+cd ~/workspace/ai-experiments && git pull origin SFT-verification-2 && git log -1 --oneline
+docker compose -f docker-compose.training.yaml run --rm training \
+    python -m training eval-lmeval --model /app/models/hf/gemma-4-E2B --limit 20 \
+    --out /mnt/ai-data/training/eval/ft5-lmeval-base.json
+echo "exit=$?"
+remote: Enumerating objects: 29, done.
+remote: Counting objects: 100% (29/29), done.
+remote: Compressing objects: 100% (3/3), done.
+remote: Total 15 (delta 12), reused 15 (delta 12), pack-reused 0 (from 0)
+Unpacking objects: 100% (15/15), 9.47 KiB | 1.89 MiB/s, done.
+From https://github.com/alejandroJaramillo87/ai-experiments
+ * branch              SFT-verification-2 -> FETCH_HEAD
+   921897ce..530f4691  SFT-verification-2 -> origin/SFT-verification-2
+Updating 921897c..530f469
+Fast-forward
+ docs/verification/bugs/known-bugs.md           |  11 ++--
+ docs/verification/training/fine-tuning-loop.md | 353 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++--
+ tests/training/README.md                       |   2 +-
+ tests/training/test_lmeval.py                  |  22 ++++++--
+ training/eval/tasks.yaml                       |  11 ++--
+ 5 files changed, 380 insertions(+), 19 deletions(-)
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-11e26f15b66b Creating
+Container ai-experiments-training-run-11e26f15b66b Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training eval-lmeval --model /app/models/hf/gemma-4-E2B --limit 20 --out /mnt/ai-data/training/eval/ft5-lmeval-base.json
+[RUN] lm-evaluation-harness: /app/models/hf/gemma-4-E2B
+Loading weights: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1951/1951 [00:00<00:00, 3817.88it/s]
+Using the latest cached version of the dataset since google/IFEval couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'default' at /app/cache/datasets/google___if_eval/default/0.0.0/966cd89545d6b6acfd7638bc708b98261ca58e84 (last modified on Fri Sep 25 19:34:02 2026).
+Using the latest cached version of the dataset since openai/gsm8k couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'main' at /app/cache/datasets/openai___gsm8k/main/0.0.0/740312add88f781978c0658806c59bc2815b9866 (last modified on Fri Sep 25 19:34:09 2026).
+Using the latest cached version of the dataset since tinyBenchmarks/tinyMMLU couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'all' at /app/cache/datasets/tinyBenchmarks___tiny_mmlu/all/0.0.0/cd6a8ee9e1e6f3f18f683535f6c096c386a85da3 (last modified on Fri Sep 25 19:35:56 2026).
+Using the latest cached version of the dataset since Rowan/hellaswag couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'default' at /app/cache/datasets/Rowan___hellaswag/default/0.0.0/218ec52e09a7e7462a5400043bb9a69a41d06b76 (last modified on Fri Sep 25 21:05:57 2026).
+100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 20/20 [00:00<00:00, 91180.52it/s]
+100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 20/20 [00:00<00:00, 742.25it/s]
+100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 20/20 [00:00<00:00, 8564.17it/s]
+100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 20/20 [00:00<00:00, 4661.89it/s]
+Running generate_until requests:   0%|                                                                                                                   | 0/40 [00:00<?, ?it/s]Passed argument batch_size = auto. Detecting largest batch size
+[W925 21:22:13.356927682 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 3221225472 bytes (free: 2256338944, total: 33668726784).
+[W925 21:22:14.707787901 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 68719476736 bytes (free: 1383923712, total: 33668726784).
+[W925 21:22:16.674202151 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 68719476736 bytes (free: 15682306048, total: 33668726784).
+[W925 21:22:18.417256657 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 2868903936 bytes (free: 2346516480, total: 33668726784).
+[W925 21:22:19.584106578 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 61203283968 bytes (free: 1570570240, total: 33668726784).
+[W925 21:22:21.364763198 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 61203283968 bytes (free: 11498487808, total: 33668726784).
+[W925 21:22:23.991064817 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 54760833024 bytes (free: 1438449664, total: 33668726784).
+[W925 21:22:25.592244435 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 54760833024 bytes (free: 14801502208, total: 33668726784).
+[W925 21:22:27.946043375 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 48318382080 bytes (free: 5924257792, total: 33668726784).
+[W925 21:22:29.355809983 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 48318382080 bytes (free: 15682306048, total: 33668726784).
+[W925 21:22:31.466350791 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 42949672960 bytes (free: 7792820224, total: 33668726784).
+[W925 21:22:32.734033990 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 42949672960 bytes (free: 16489709568, total: 33668726784).
+[W925 21:22:34.660025429 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 38654705664 bytes (free: 9388752896, total: 33668726784).
+[W925 21:22:35.800609206 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 38654705664 bytes (free: 16783310848, total: 33668726784).
+[W925 21:22:37.554065657 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 34359738368 bytes (free: 10472980480, total: 33668726784).
+[W925 21:22:38.570648207 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 34359738368 bytes (free: 17737515008, total: 33668726784).
+[W925 21:22:39.134635357 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 30064771072 bytes (free: 12215713792, total: 33668726784).
+[W925 21:22:40.024787844 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 30064771072 bytes (free: 18324717568, total: 33668726784).
+[W925 21:22:42.444650710 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 26843545600 bytes (free: 14652604416, total: 33668726784).
+[W925 21:22:43.231444244 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 26843545600 bytes (free: 16489709568, total: 33668726784).
+[W925 21:22:44.513543088 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 23622320128 bytes (free: 14872805376, total: 33668726784).
+[W925 21:22:45.208495405 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 23622320128 bytes (free: 17223712768, total: 33668726784).
+[W925 21:22:46.353364021 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 20401094656 bytes (free: 15827009536, total: 33668726784).
+[W925 21:22:46.953461033 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 20401094656 bytes (free: 17884315648, total: 33668726784).
+[W925 21:22:47.008560282 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 18253611008 bytes (free: 16634413056, total: 33668726784).
+[W925 21:22:48.548697103 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 18253611008 bytes (free: 217907200, total: 33668726784).
+[W925 21:22:48.548749973 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 18253611008 bytes (free: 217907200, total: 33668726784).
+[W925 21:22:49.511223494 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 16106127360 bytes (free: 213712896, total: 33668726784).
+[W925 21:22:49.090283796 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 16106127360 bytes (free: 3080519680, total: 33668726784).
+[W925 21:22:50.959893790 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13958643712 bytes (free: 3076325376, total: 33668726784).
+[W925 21:22:51.456249627 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13958643712 bytes (free: 3080519680, total: 33668726784).
+[W925 21:22:52.232393505 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11811160064 bytes (free: 3076325376, total: 33668726784).
+[W925 21:22:52.651323488 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11811160064 bytes (free: 3080519680, total: 33668726784).
+[W925 21:22:53.336851940 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9663676416 bytes (free: 3078422528, total: 33668726784).
+[W925 21:22:53.676909598 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9663676416 bytes (free: 3080519680, total: 33668726784).
+[W925 21:22:54.040511326 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8589934592 bytes (free: 3078422528, total: 33668726784).
+[W925 21:22:55.343185070 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8589934592 bytes (free: 3080519680, total: 33668726784).
+[W925 21:22:56.550085701 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7516192768 bytes (free: 3078422528, total: 33668726784).
+[W925 21:22:56.812063911 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7516192768 bytes (free: 3080519680, total: 33668726784).
+[W925 21:22:57.873210513 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6442450944 bytes (free: 3078422528, total: 33668726784).
+[W925 21:22:57.094478783 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6442450944 bytes (free: 3080519680, total: 33668726784).
+Determined Largest batch size: 5
+Running generate_until requests: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████| 40/40 [02:27<00:00,  3.68s/it]
+Tokenizing inputs: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 160/160 [00:00<00:00, 2075.27it/s]
+Running loglikelihood requests:   0%|                                                                                                                   | 0/160 [00:00<?, ?it/s]Passed argument batch_size = auto:1. Detecting largest batch size
+[W925 21:24:41.643091704 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 65062043648 bytes (free: 287113216, total: 33668726784).
+[W925 21:24:43.494183675 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 65062043648 bytes (free: 16055599104, total: 33668726784).
+[W925 21:24:46.319611596 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 57946406912 bytes (free: 708640768, total: 33668726784).
+[W925 21:24:47.988924436 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 57946406912 bytes (free: 12094078976, total: 33668726784).
+[W925 21:24:50.544465949 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 51847888896 bytes (free: 2568814592, total: 33668726784).
+[W925 21:24:51.043196367 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 51847888896 bytes (free: 15223029760, total: 33668726784).
+[W925 21:24:54.301322919 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 45747273728 bytes (free: 6813450240, total: 33668726784).
+[W925 21:24:55.651683198 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 45747273728 bytes (free: 15638265856, total: 33668726784).
+[W925 21:24:57.688440649 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 40663777280 bytes (free: 8166113280, total: 33668726784).
+[W925 21:24:58.886611027 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 40663777280 bytes (free: 14080081920, total: 33668726784).
+[W925 21:25:00.754349594 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 36597399552 bytes (free: 11573985280, total: 33668726784).
+[W925 21:25:01.833720384 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 36597399552 bytes (free: 15539699712, total: 33668726784).
+[W925 21:25:03.524884655 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 32531021824 bytes (free: 11785797632, total: 33668726784).
+[W925 21:25:04.486582761 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 32531021824 bytes (free: 18001756160, total: 33668726784).
+[W925 21:25:05.995685046 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 28464644096 bytes (free: 12771459072, total: 33668726784).
+[W925 21:25:06.836528902 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 28464644096 bytes (free: 18280677376, total: 33668726784).
+[W925 21:25:08.212797587 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 25415385088 bytes (free: 13608222720, total: 33668726784).
+[W925 21:25:08.961421801 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 25415385088 bytes (free: 16542138368, total: 33668726784).
+[W925 21:25:10.205828700 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 22366126080 bytes (free: 15009120256, total: 33668726784).
+[W925 21:25:10.868488697 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 22366126080 bytes (free: 19459276800, total: 33668726784).
+[W925 21:25:11.982200831 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 19316867072 bytes (free: 16814768128, total: 33668726784).
+[W925 21:25:12.550391849 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 19316867072 bytes (free: 18138071040, total: 33668726784).
+[W925 21:25:13.576170931 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 17282629632 bytes (free: 16953180160, total: 33668726784).
+[W925 21:25:13.088555875 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 17282629632 bytes (free: 1411186688, total: 33668726784).
+[W925 21:25:13.088619515 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 17282629632 bytes (free: 1411186688, total: 33668726784).
+[W925 21:25:14.034571945 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 15250489344 bytes (free: 1406992384, total: 33668726784).
+[W925 21:25:15.587283247 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 15250489344 bytes (free: 4124901376, total: 33668726784).
+[W925 21:25:16.434304925 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13216251904 bytes (free: 4120707072, total: 33668726784).
+[W925 21:25:16.904210942 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13216251904 bytes (free: 4124901376, total: 33668726784).
+[W925 21:25:17.659119927 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11184111616 bytes (free: 4120707072, total: 33668726784).
+[W925 21:25:17.055112811 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11184111616 bytes (free: 4124901376, total: 33668726784).
+[W925 21:25:18.721109955 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9149874176 bytes (free: 4122804224, total: 33668726784).
+[W925 21:25:18.044013953 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9149874176 bytes (free: 4124901376, total: 33668726784).
+[W925 21:25:20.344125223 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8132755456 bytes (free: 4122804224, total: 33668726784).
+[W925 21:25:20.629917352 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8132755456 bytes (free: 4124901376, total: 33668726784).
+[W925 21:25:21.806788766 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7117733888 bytes (free: 4122804224, total: 33668726784).
+[W925 21:25:21.058441417 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7117733888 bytes (free: 4124901376, total: 33668726784).
+[W925 21:25:22.071053890 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6100615168 bytes (free: 4122804224, total: 33668726784).
+[W925 21:25:23.277950012 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6100615168 bytes (free: 4124901376, total: 33668726784).
+Determined largest batch size: 5
+Running loglikelihood requests: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████| 160/160 [00:48<00:00,  3.28it/s]
+fatal: not a git repository (or any of the parent directories): .git
+[OK] gsm8k: exact_match,strict-match = 0.2500 (stderr 0.0993)
+[OK] hellaswag: acc_norm,none = 0.5500 (stderr 0.1141)
+[OK] ifeval: prompt_level_strict_acc,none = 0.0500 (stderr 0.0500)
+[OK] tinyMMLU_acc: acc_norm,none = 0.6500 (stderr 0.1094)
+[OK] Record written: /mnt/ai-data/training/eval/ft5-lmeval-base.json
+exit=0
+
+➜  ai-experiments git:(SFT-verification-2) docker compose -f docker-compose.training.yaml run --rm training \
+    python -m training eval-lmeval --model /app/models/trained/ft3-straight/hf --limit 20 \
+    --out /mnt/ai-data/training/eval/ft5-lmeval-merged.json
+echo "exit=$?"
+grep -E '"(lm_eval_version|limit)"' /mnt/ai-data/training/eval/ft5-lmeval-base.json /mnt/ai-data/training/eval/ft5-lmeval-merged.json
+
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-86586192114e Creating
+Container ai-experiments-training-run-86586192114e Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training eval-lmeval --model /app/models/trained/ft3-straight/hf --limit 20 --out /mnt/ai-data/training/eval/ft5-lmeval-merged.json
+[RUN] lm-evaluation-harness: /app/models/trained/ft3-straight/hf
+Loading weights: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1951/1951 [00:00<00:00, 3689.15it/s]
+Using the latest cached version of the dataset since google/IFEval couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'default' at /app/cache/datasets/google___if_eval/default/0.0.0/966cd89545d6b6acfd7638bc708b98261ca58e84 (last modified on Fri Sep 25 19:34:02 2026).
+Using the latest cached version of the dataset since openai/gsm8k couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'main' at /app/cache/datasets/openai___gsm8k/main/0.0.0/740312add88f781978c0658806c59bc2815b9866 (last modified on Fri Sep 25 19:34:09 2026).
+Using the latest cached version of the dataset since tinyBenchmarks/tinyMMLU couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'all' at /app/cache/datasets/tinyBenchmarks___tiny_mmlu/all/0.0.0/cd6a8ee9e1e6f3f18f683535f6c096c386a85da3 (last modified on Fri Sep 25 19:35:56 2026).
+Using the latest cached version of the dataset since Rowan/hellaswag couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'default' at /app/cache/datasets/Rowan___hellaswag/default/0.0.0/218ec52e09a7e7462a5400043bb9a69a41d06b76 (last modified on Fri Sep 25 21:05:57 2026).
+100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 20/20 [00:00<00:00, 85077.16it/s]
+100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 20/20 [00:00<00:00, 759.57it/s]
+100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 20/20 [00:00<00:00, 6374.32it/s]
+100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 20/20 [00:00<00:00, 4578.93it/s]
+Running generate_until requests:   0%|                                                                                                                   | 0/40 [00:00<?, ?it/s]Passed argument batch_size = auto. Detecting largest batch size
+[W925 21:26:24.911874622 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 3221225472 bytes (free: 2256338944, total: 33668726784).
+[W925 21:26:26.266123812 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 68719476736 bytes (free: 1383923712, total: 33668726784).
+[W925 21:26:28.237222655 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 68719476736 bytes (free: 15682306048, total: 33668726784).
+[W925 21:26:29.981670524 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 2868903936 bytes (free: 2346516480, total: 33668726784).
+[W925 21:26:31.151607482 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 61203283968 bytes (free: 1570570240, total: 33668726784).
+[W925 21:26:32.936749402 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 61203283968 bytes (free: 11498487808, total: 33668726784).
+[W925 21:26:35.571281008 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 54760833024 bytes (free: 1438449664, total: 33668726784).
+[W925 21:26:37.177261618 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 54760833024 bytes (free: 14801502208, total: 33668726784).
+[W925 21:26:39.535385915 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 48318382080 bytes (free: 5924257792, total: 33668726784).
+[W925 21:26:40.948753161 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 48318382080 bytes (free: 15682306048, total: 33668726784).
+[W925 21:26:42.067712834 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 42949672960 bytes (free: 7792820224, total: 33668726784).
+[W925 21:26:44.339123865 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 42949672960 bytes (free: 16489709568, total: 33668726784).
+[W925 21:26:46.269728282 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 38654705664 bytes (free: 9388752896, total: 33668726784).
+[W925 21:26:47.413591565 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 38654705664 bytes (free: 16783310848, total: 33668726784).
+[W925 21:26:49.161668523 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 34359738368 bytes (free: 10472980480, total: 33668726784).
+[W925 21:26:50.180653384 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 34359738368 bytes (free: 17737515008, total: 33668726784).
+[W925 21:26:51.745242379 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 30064771072 bytes (free: 12215713792, total: 33668726784).
+[W925 21:26:52.637829049 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 30064771072 bytes (free: 18324717568, total: 33668726784).
+[W925 21:26:53.065273910 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 26843545600 bytes (free: 14652604416, total: 33668726784).
+[W925 21:26:54.854454579 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 26843545600 bytes (free: 16489709568, total: 33668726784).
+[W925 21:26:55.140550768 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 23622320128 bytes (free: 14872805376, total: 33668726784).
+[W925 21:26:56.837512933 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 23622320128 bytes (free: 17223712768, total: 33668726784).
+[W925 21:26:57.987459202 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 20401094656 bytes (free: 15827009536, total: 33668726784).
+[W925 21:26:58.588495435 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 20401094656 bytes (free: 17884315648, total: 33668726784).
+[W925 21:26:59.645086243 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 18253611008 bytes (free: 16634413056, total: 33668726784).
+[W925 21:27:00.187699024 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 18253611008 bytes (free: 217907200, total: 33668726784).
+[W925 21:27:00.187753928 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 18253611008 bytes (free: 217907200, total: 33668726784).
+[W925 21:27:01.154845646 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 16106127360 bytes (free: 213712896, total: 33668726784).
+[W925 21:27:01.736306480 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 16106127360 bytes (free: 3080519680, total: 33668726784).
+[W925 21:27:02.607493455 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13958643712 bytes (free: 3076325376, total: 33668726784).
+[W925 21:27:02.106039004 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13958643712 bytes (free: 3080519680, total: 33668726784).
+[W925 21:27:03.883269483 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11811160064 bytes (free: 3076325376, total: 33668726784).
+[W925 21:27:04.303463633 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11811160064 bytes (free: 3080519680, total: 33668726784).
+[W925 21:27:04.988240634 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9663676416 bytes (free: 3078422528, total: 33668726784).
+[W925 21:27:05.329272784 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9663676416 bytes (free: 3080519680, total: 33668726784).
+[W925 21:27:06.691264031 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8589934592 bytes (free: 3078422528, total: 33668726784).
+[W925 21:27:06.995180550 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8589934592 bytes (free: 3080519680, total: 33668726784).
+[W925 21:27:08.204390471 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7516192768 bytes (free: 3078422528, total: 33668726784).
+[W925 21:27:08.467338717 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7516192768 bytes (free: 3080519680, total: 33668726784).
+[W925 21:27:09.529174438 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6442450944 bytes (free: 3078422528, total: 33668726784).
+[W925 21:27:09.751454226 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6442450944 bytes (free: 3080519680, total: 33668726784).
+Determined Largest batch size: 5
+Running generate_until requests: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████| 40/40 [02:14<00:00,  3.37s/it]
+Tokenizing inputs: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 160/160 [00:00<00:00, 2040.38it/s]
+Running loglikelihood requests:   0%|                                                                                                                   | 0/160 [00:00<?, ?it/s]Passed argument batch_size = auto:1. Detecting largest batch size
+[W925 21:28:40.484738158 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 65062043648 bytes (free: 287113216, total: 33668726784).
+[W925 21:28:42.336165569 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 65062043648 bytes (free: 16055599104, total: 33668726784).
+[W925 21:28:45.166051771 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 57946406912 bytes (free: 708640768, total: 33668726784).
+[W925 21:28:46.835919329 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 57946406912 bytes (free: 12094078976, total: 33668726784).
+[W925 21:28:49.399323739 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 51847888896 bytes (free: 2568814592, total: 33668726784).
+[W925 21:28:50.900211691 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 51847888896 bytes (free: 15223029760, total: 33668726784).
+[W925 21:28:53.165416081 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 45747273728 bytes (free: 6813450240, total: 33668726784).
+[W925 21:28:54.515676920 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 45747273728 bytes (free: 15638265856, total: 33668726784).
+[W925 21:28:56.557454581 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 40663777280 bytes (free: 8166113280, total: 33668726784).
+[W925 21:28:57.756576930 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 40663777280 bytes (free: 14080081920, total: 33668726784).
+[W925 21:28:59.621722206 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 36597399552 bytes (free: 11573985280, total: 33668726784).
+[W925 21:29:00.700709081 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 36597399552 bytes (free: 15539699712, total: 33668726784).
+[W925 21:29:02.390023935 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 32531021824 bytes (free: 11785797632, total: 33668726784).
+[W925 21:29:03.352603582 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 32531021824 bytes (free: 18001756160, total: 33668726784).
+[W925 21:29:04.867993028 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 28464644096 bytes (free: 12771459072, total: 33668726784).
+[W925 21:29:05.709516001 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 28464644096 bytes (free: 18280677376, total: 33668726784).
+[W925 21:29:06.090592648 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 25415385088 bytes (free: 13608222720, total: 33668726784).
+[W925 21:29:07.841394792 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 25415385088 bytes (free: 16542138368, total: 33668726784).
+[W925 21:29:08.089163426 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 22366126080 bytes (free: 15009120256, total: 33668726784).
+[W925 21:29:09.752557324 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 22366126080 bytes (free: 19459276800, total: 33668726784).
+[W925 21:29:10.872218913 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 19316867072 bytes (free: 16814768128, total: 33668726784).
+[W925 21:29:11.440386617 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 19316867072 bytes (free: 18138071040, total: 33668726784).
+[W925 21:29:12.477419543 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 17282629632 bytes (free: 16953180160, total: 33668726784).
+[W925 21:29:12.992843719 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 17282629632 bytes (free: 1411186688, total: 33668726784).
+[W925 21:29:12.992917799 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 17282629632 bytes (free: 1411186688, total: 33668726784).
+[W925 21:29:13.938475702 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 15250489344 bytes (free: 1406992384, total: 33668726784).
+[W925 21:29:14.492295902 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 15250489344 bytes (free: 4124901376, total: 33668726784).
+[W925 21:29:15.339686628 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13216251904 bytes (free: 4120707072, total: 33668726784).
+[W925 21:29:15.810625256 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13216251904 bytes (free: 4124901376, total: 33668726784).
+[W925 21:29:16.565854764 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11184111616 bytes (free: 4120707072, total: 33668726784).
+[W925 21:29:16.962925887 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11184111616 bytes (free: 4124901376, total: 33668726784).
+[W925 21:29:17.633689171 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9149874176 bytes (free: 4122804224, total: 33668726784).
+[W925 21:29:17.956394468 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9149874176 bytes (free: 4124901376, total: 33668726784).
+[W925 21:29:19.261733203 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8132755456 bytes (free: 4122804224, total: 33668726784).
+[W925 21:29:19.547624584 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8132755456 bytes (free: 4124901376, total: 33668726784).
+[W925 21:29:20.727721271 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7117733888 bytes (free: 4122804224, total: 33668726784).
+[W925 21:29:20.979393464 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7117733888 bytes (free: 4124901376, total: 33668726784).
+[W925 21:29:21.996022039 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6100615168 bytes (free: 4122804224, total: 33668726784).
+[W925 21:29:22.203171483 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6100615168 bytes (free: 4124901376, total: 33668726784).
+Determined largest batch size: 5
+Running loglikelihood requests: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████| 160/160 [00:48<00:00,  3.28it/s]
+fatal: not a git repository (or any of the parent directories): .git
+[OK] gsm8k: exact_match,strict-match = 0.2500 (stderr 0.0993)
+[OK] hellaswag: acc_norm,none = 0.6000 (stderr 0.1124)
+[OK] ifeval: prompt_level_strict_acc,none = 0.1500 (stderr 0.0819)
+[OK] tinyMMLU_acc: acc_norm,none = 0.6500 (stderr 0.1094)
+[OK] Record written: /mnt/ai-data/training/eval/ft5-lmeval-merged.json
+exit=0
+/mnt/ai-data/training/eval/ft5-lmeval-base.json:  "lm_eval_version": "0.4.12",
+/mnt/ai-data/training/eval/ft5-lmeval-base.json:  "limit": 20,
+/mnt/ai-data/training/eval/ft5-lmeval-merged.json:  "lm_eval_version": "0.4.12",
+/mnt/ai-data/training/eval/ft5-lmeval-merged.json:  "limit": 20,
+```
+
+Judgement. Every criterion met, and the entry closes on this paste with
+the holdout half of the first attempt and the probes of the second. The
+`git pull` fast-forwarded to the KB-94 commit and no rebuild was needed,
+as the precondition paragraph says: the yaml is compose-mounted. Both
+sides printed `[RUN] lm-evaluation-harness: <model>`, `datasets`' cached
+warning once per task with no `[nltk_data]` or `Downloaded punkt_tab`
+line, then the four `[OK]` lines in sorted order with the keys spelled as
+the harness keys them, `[OK] Record written:` and `exit=0`; the `grep`
+shows both records carrying `"lm_eval_version": "0.4.12"` and `"limit":
+20`. The values, base then merged: gsm8k `exact_match,strict-match`
+0.2500 and 0.2500, hellaswag `acc_norm,none` 0.5500 and 0.6000, ifeval
+`prompt_level_strict_acc,none` 0.0500 and 0.1500, `tinyMMLU_acc`
+`acc_norm,none` 0.6500 and 0.6500, each with a standard error near 0.1
+at 20 examples, so the sides are not ranked, as the expected signal
+says; the record's purpose here is the shape. That closes KB-94 (the
+`ifeval: prompt_level_strict_acc,none` line), and with it KB-92 and
+KB-93, whose close condition was these same lines: the datasets half
+served all four tasks offline on both sides, and `tinyMMLU_acc` scored
+with its plain mean. Each side took about four minutes, the load
+included: 2:27 and 2:14 of generation at batch 5, 0:48 of loglikelihood,
+and roughly 45 s of batch-size search before each phase.
+
+Two observations, no row. First, the batch-size search. The entry names
+the allocator warnings as harness noise and the paste shows their
+mechanism, read from the 0.4.12 wheel and the accelerate 1.14.0 wheel it
+imports `find_executable_batch_size` from. `batch_size=auto` makes the
+harness's HF model class forward a dummy batch of ones and take a
+full-vocabulary `log_softmax` of the logits, starting at its
+`max_batch_size` default of 64 and multiplying by 0.9 after every
+out-of-memory error until a size fits; the probe's sequence length is the
+model's full context for the generation phase (131072 for E2B, the
+first ask 64 GiB on a 33 GB card) and the longest request for the
+loglikelihood phase (the `auto:1` line; 65 GB is 64 sequences of about
+970 tokens against a 262144-token vocabulary in fp32). Nineteen sizes
+fail before 5 fits, each failure logging torch's allocator warning
+twice, which is the forty lines; the harness then clears the cache and
+runs at 5. The warnings come from the allocator's retry path, not from
+the harness, and no request failed. A fixed `--batch-size` on
+`eval-lmeval`, or a `max_length` in the model arguments, would remove
+the search and its 45 s a phase; that is a separate decision, not a
+finding, since the run's numbers do not depend on it. Second, hellaswag
+printed no `Map:` lines this time: its processed docs were written to the
+read-write datasets half by the second attempt (the cache line's `last
+modified` for hellaswag is that run's time, 21:05, where the other three
+are the staging's), and this run read them back, which is the mount mode
+doing what KB-92's second fix said it would.
+
+Status: VERIFIED (2026-09-25) on the third evaluation attempt. The
+holdout half passed on the first attempt (KB-92's first fix failed the
+lm-eval half there, and KB-93 was found), the probes on the second (which
+found KB-94 at scoring), the lm-eval half on the third.
 
 ## FT.eval-ft eval-ft with both sides identified
 
