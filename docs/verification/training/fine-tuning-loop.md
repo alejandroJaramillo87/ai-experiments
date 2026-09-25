@@ -2738,8 +2738,222 @@ naming one of the four dataset ids means its staging line did not run.
 
 Observed:
 
+Preconditions (2026-09-25). The lock was regenerated and committed on the
+workstation (`f52c158`, adding `langdetect` and `immutabledict`), then the
+image and the four staging lines, pasted verbatim:
+
 ```
+➜  ai-experiments git:(SFT-verification-2) make train-build
+Building training image...
+MAX_JOBS=4 NVCC_THREADS=2 docker compose -f docker-compose.training.yaml build
+[+] Building 2428.8s (39/39) FINISHED
+ => [internal] load local bake definitions                                                                                                                                  0.0s
+ => => reading from stdin 1.71kB                                                                                                                                            0.0s
+ => [prepare internal] load build definition from Dockerfile.training                                                                                                       0.0s
+ => => transferring dockerfile: 6.44kB                                                                                                                                      0.0s
+ => [export internal] load build definition from Dockerfile.export                                                                                                          0.0s
+ => => transferring dockerfile: 3.01kB                                                                                                                                      0.0s
+ => [export internal] load metadata for ghcr.io/astral-sh/uv:0.11.28                                                                                                        0.3s
+ => [prepare internal] load metadata for docker.io/nvidia/cuda:13.0.2-cudnn-devel-ubuntu24.04                                                                               0.5s
+ => [export internal] load metadata for docker.io/library/ubuntu:24.04                                                                                                      0.5s
+ => [export internal] load .dockerignore                                                                                                                                    0.0s
+ => => transferring context: 1.73kB                                                                                                                                         0.0s
+ => [export stage-1 1/9] FROM docker.io/library/ubuntu:24.04@sha256:008173c23f95b170204355c12626cb5a965d779a7e1283b09e9cffbb1bf33ca3                                        0.0s
+ => [training uv 1/1] FROM ghcr.io/astral-sh/uv:0.11.28@sha256:0f36cb9361a3346885ca3677e3767016687b5a170c1a6b88465ec14aefec90aa                                             0.0s
+ => CACHED [export stage-1 2/9] RUN apt-get update &&     apt-get install -y --no-install-recommends         git         ca-certificates         python3.12         python  0.0s
+ => CACHED [export stage-1 3/9] COPY --from=uv /uv /uvx /usr/local/bin/                                                                                                     0.0s
+ => CACHED [export stage-1 4/9] RUN uv venv /opt/venv --python 3.12                                                                                                         0.0s
+ => CACHED [export stage-1 5/9] RUN --mount=type=cache,target=/root/.cache/uv     uv pip install --index-url https://download.pytorch.org/whl/cpu torch==2.13.0 &&     uv   0.0s
+ => CACHED [export stage-1 6/9] RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin -c "Application User" appuser                                     0.0s
+ => CACHED [export stage-1 7/9] RUN mkdir -p /app/cache /app/logs && chown -R appuser:appuser /app                                                                          0.0s
+ => CACHED [export stage-1 8/9] WORKDIR /app                                                                                                                                0.0s
+ => CACHED [export stage-1 9/9] RUN python -c "import torch, transformers, peft, safetensors, omegaconf, xxhash"                                                            0.0s
+ => [prepare stage-1  1/15] FROM docker.io/nvidia/cuda:13.0.2-cudnn-devel-ubuntu24.04@sha256:e071e85c52ad91fc9ea24158ff5330876b2d1a5c4ac83ccc6066976835873c01               0.0s
+ => [prepare internal] load build context                                                                                                                                   0.0s
+ => => transferring context: 7.30kB                                                                                                                                         0.0s
+ => [export] exporting to image                                                                                                                                             0.0s
+ => => exporting layers                                                                                                                                                     0.0s
+ => => writing image sha256:84c03bf6d68e4b6c1794365545ddcab077851ac24fe7de5478e15569d1b1900a                                                                                0.0s
+ => => naming to docker.io/library/ai-experiments-export                                                                                                                    0.0s
+ => CACHED [prepare stage-1  2/15] RUN apt-get update &&     apt-get install -y --no-install-recommends --allow-change-held-packages         build-essential         gcc g  0.0s
+ => CACHED [prepare stage-1  3/15] COPY --from=uv /uv /uvx /usr/local/bin/                                                                                                  0.0s
+ => CACHED [prepare stage-1  4/15] RUN uv venv /opt/venv --python 3.12                                                                                                      0.0s
+ => CACHED [prepare stage-1  5/15] COPY pyproject.toml uv.lock ./                                                                                                           0.0s
+ => [training stage-1  6/15] RUN --mount=type=cache,target=/root/.cache/uv     MAX_JOBS=4 NVCC_THREADS=2     DS_BUILD_CPU_ADAM=1 DS_BUILD_UTILS=1     CFLAGS="-march=na  2408.8s
+ => [export] resolving provenance for metadata file                                                                                                                         0.0s
+ => [training stage-1  7/15] RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin -c "Application User" appuser                                        0.1s
+ => [prepare stage-1  8/15] RUN mkdir -p /app/cache /app/logs && chown -R appuser:appuser /app                                                                              0.2s
+ => [prepare stage-1  9/15] WORKDIR /app                                                                                                                                    0.0s
+ => [prepare stage-1 10/15] COPY --chown=appuser:appuser common ./common                                                                                                    0.0s
+ => [training stage-1 11/15] COPY --chown=appuser:appuser training ./training                                                                                               0.0s
+ => [training stage-1 12/15] COPY --chown=appuser:appuser scripts/training ./scripts/training                                                                               0.0s
+ => [training stage-1 13/15] COPY --chown=appuser:appuser docker/training/entrypoint.sh /app/entrypoint.sh                                                                  0.0s
+ => [prepare stage-1 14/15] RUN chmod +x /app/entrypoint.sh                                                                                                                 0.1s
+ => [prepare stage-1 15/15] RUN python -m training smoke --build                                                                                                           12.1s
+ => [prepare] exporting to image                                                                                                                                            6.6s
+ => => exporting layers                                                                                                                                                     6.6s
+ => => writing image sha256:cb3511decc3f96a46049acb8ffd7d831535b05684320cb1a9e54ee62dabb4c36                                                                                0.0s
+ => => naming to docker.io/library/ai-experiments-prepare                                                                                                                   0.0s
+ => [training] exporting to image                                                                                                                                           6.6s
+ => => exporting layers                                                                                                                                                     6.6s
+ => => writing image sha256:a7b5a9d7faf7d1bb23a440ccafda8b371a91d2ba413d08f9b4cdfc1efecb5756                                                                                0.0s
+ => => naming to docker.io/library/ai-experiments-training                                                                                                                  0.0s
+ => [prepare] resolving provenance for metadata file                                                                                                                        0.0s
+ => [training] resolving provenance for metadata file                                                                                                                       0.0s
+[+] build 3/3
+ ✔ Image ai-experiments-prepare  Built                                                                                                                                    2428.8s
+ ✔ Image ai-experiments-export   Built                                                                                                                                    2428.8s
+ ✔ Image ai-experiments-training Built                                                                                                                                    2428.8s
+Training image built.
+➜  ai-experiments git:(SFT-verification-2) make train-download DATASET=google/IFEval; echo "exit=$?"
+make train-download DATASET=openai/gsm8k NAME=main; echo "exit=$?"
+make train-download DATASET=tinyBenchmarks/tinyMMLU NAME=all; echo "exit=$?"
+make train-download DATASET=Rowan/hellaswag; echo "exit=$?"
+docker compose -f docker-compose.training.yaml run --rm prepare python -m training download --dataset google/IFEval
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-prepare-run-6f923ec81ba3 Creating
+Container ai-experiments-prepare-run-6f923ec81ba3 Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+[WARN] nvidia-smi not found: no GPU visible in this container
+
+[RUN] exec: python -m training download --dataset google/IFEval
+=== Staging a dataset ===
+
+[INFO] Dataset: google/IFEval
+[INFO] Config: (default)
+[INFO] Cache: /app/cache
+
+/opt/venv/lib/python3.12/site-packages/huggingface_hub/constants.py:298: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+[RUN] Downloading google/IFEval
+README.md: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 5.52k/5.52k [00:00<00:00, 1.67MB/s]
+ifeval_input_data.jsonl: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████| 207k/207k [00:00<00:00, 35.9MB/s]
+Generating train split: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████| 541/541 [00:00<00:00, 192151.62 examples/s]
+[OK] Staged google/IFEval (default) at 966cd89545d6b6acfd7638bc708b98261ca58e84: train=541
+The training service reads this snapshot offline; a re-stage moves it.
+exit=0
+docker compose -f docker-compose.training.yaml run --rm prepare python -m training download --dataset openai/gsm8k --name main
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-prepare-run-ca67280ac86f Creating
+Container ai-experiments-prepare-run-ca67280ac86f Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+[WARN] nvidia-smi not found: no GPU visible in this container
+
+[RUN] exec: python -m training download --dataset openai/gsm8k --name main
+=== Staging a dataset ===
+
+[INFO] Dataset: openai/gsm8k
+[INFO] Config: main
+[INFO] Cache: /app/cache
+
+/opt/venv/lib/python3.12/site-packages/huggingface_hub/constants.py:298: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+[RUN] Downloading openai/gsm8k
+README.md: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 7.93k/7.93k [00:00<00:00, 49.5MB/s]
+main/train-00000-of-00001.parquet: downloading bytes: ██████████████████████████████████████████████████████████████████████████████████████████████████████| 2.30MB,  222kB/s
+main/train-00000-of-00001.parquet: reconstructing file: 100%|██████████████████████████████████████████████████████████████████████████████████████| 2.31MB / 2.31MB,  223kB/s
+main/test-00000-of-00001.parquet: downloading bytes: ███████████████████████████████████████████████████████████████████████████████████████████████████████|  419kB, 41.2kB/s
+main/test-00000-of-00001.parquet: reconstructing file: 100%|███████████████████████████████████████████████████████████████████████████████████████|  419kB /  419kB, 41.3kB/s
+Generating train split: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████| 7473/7473 [00:00<00:00, 1333675.17 examples/s]
+Generating test split: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████| 1319/1319 [00:00<00:00, 955655.03 examples/s]
+[OK] Staged openai/gsm8k (main) at 740312add88f781978c0658806c59bc2815b9866: train=7473, test=1319
+The training service reads this snapshot offline; a re-stage moves it.
+exit=0
+docker compose -f docker-compose.training.yaml run --rm prepare python -m training download --dataset tinyBenchmarks/tinyMMLU --name all
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-prepare-run-399d1651e2e4 Creating
+Container ai-experiments-prepare-run-399d1651e2e4 Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+[WARN] nvidia-smi not found: no GPU visible in this container
+
+[RUN] exec: python -m training download --dataset tinyBenchmarks/tinyMMLU --name all
+=== Staging a dataset ===
+
+[INFO] Dataset: tinyBenchmarks/tinyMMLU
+[INFO] Config: all
+[INFO] Cache: /app/cache
+
+/opt/venv/lib/python3.12/site-packages/huggingface_hub/constants.py:298: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+[RUN] Downloading tinyBenchmarks/tinyMMLU
+README.md: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 5.73k/5.73k [00:00<00:00, 33.5MB/s]
+all/test-00000-of-00001.parquet: downloading bytes: ████████████████████████████████████████████████████████████████████████████████████████████████████████|  170kB, 16.7kB/s
+all/test-00000-of-00001.parquet: reconstructing file: 100%|████████████████████████████████████████████████████████████████████████████████████████|  178kB /  178kB, 17.5kB/s
+all/dev-00000-of-00001.parquet: downloading bytes: █████████████████████████████████████████████████████████████████████████████████████████████████████████|  177kB, 17.4kB/s
+all/dev-00000-of-00001.parquet: reconstructing file: 100%|█████████████████████████████████████████████████████████████████████████████████████████|  205kB /  205kB, 20.2kB/s
+Generating test split: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 100/100 [00:00<00:00, 45724.45 examples/s]
+Generating dev split: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 285/285 [00:00<00:00, 167022.03 examples/s]
+[OK] Staged tinyBenchmarks/tinyMMLU (all) at cd6a8ee9e1e6f3f18f683535f6c096c386a85da3: test=100, dev=285
+The training service reads this snapshot offline; a re-stage moves it.
+exit=0
+docker compose -f docker-compose.training.yaml run --rm prepare python -m training download --dataset Rowan/hellaswag
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-prepare-run-c0c08c182007 Creating
+Container ai-experiments-prepare-run-c0c08c182007 Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+[WARN] nvidia-smi not found: no GPU visible in this container
+
+[RUN] exec: python -m training download --dataset Rowan/hellaswag
+=== Staging a dataset ===
+
+[INFO] Dataset: Rowan/hellaswag
+[INFO] Config: (default)
+[INFO] Cache: /app/cache
+
+/opt/venv/lib/python3.12/site-packages/huggingface_hub/constants.py:298: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+[RUN] Downloading Rowan/hellaswag
+README.md: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 7.02k/7.02k [00:00<00:00, 36.9MB/s]
+data/train-00000-of-00001.parquet: downloading bytes: ██████████████████████████████████████████████████████████████████████████████████████████████████████| 23.2MB, 2.16MB/s
+data/train-00000-of-00001.parquet: reconstructing file: 100%|██████████████████████████████████████████████████████████████████████████████████████| 24.4MB / 24.4MB, 2.34MB/s
+data/test-00000-of-00001.parquet: downloading bytes: ███████████████████████████████████████████████████████████████████████████████████████████████████████| 5.58MB,  544kB/s
+data/test-00000-of-00001.parquet: reconstructing file: 100%|███████████████████████████████████████████████████████████████████████████████████████| 6.11MB / 6.11MB,  599kB/s
+data/validation-00000-of-00001.parquet: downloading bytes: █████████████████████████████████████████████████████████████████████████████████████████████████| 6.03MB,  583kB/s
+data/validation-00000-of-00001.parquet: reconstructing file: 100%|█████████████████████████████████████████████████████████████████████████████████| 6.32MB / 6.32MB,  617kB/s
+Generating train split: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████| 39905/39905 [00:00<00:00, 865723.06 examples/s]
+Generating test split: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████| 10003/10003 [00:00<00:00, 903378.83 examples/s]
+Generating validation split: 100%|█████████████████████████████████████████████████████████████████████████████████████████████| 10042/10042 [00:00<00:00, 869907.90 examples/s]
+[OK] Staged Rowan/hellaswag (default) at 218ec52e09a7e7462a5400043bb9a69a41d06b76: train=39905, test=10003, validation=10042
+The training service reads this snapshot offline; a re-stage moves it.
+exit=0
 ```
+
+Preconditions judged: `make train-build` rebuilt the training image's pip
+layer from the new lock (2408 s, the flash-attn and DeepSpeed compiles
+behind the `uv sync`; the export image was a cache hit) and passed its
+build smoke; each of the four staging lines exited 0 with its `[OK] Staged
+<id> (<config>) at <sha>: <splits>` line, the pins being
+`966cd89545d6b6acfd7638bc708b98261ca58e84` (IFEval, 541 train),
+`740312add88f781978c0658806c59bc2815b9866` (gsm8k main, 7473 train and
+1319 test), `cd6a8ee9e1e6f3f18f683535f6c096c386a85da3` (tinyMMLU all, 100
+test and 285 dev) and `218ec52e09a7e7462a5400043bb9a69a41d06b76`
+(hellaswag, 39905 train, 10003 test, 10042 validation). Two lines are
+known, neither a finding: `[WARN] nvidia-smi not found` is the prepare
+service's, which reserves no GPU, and the `HF_HUB_ENABLE_HF_TRANSFER`
+FutureWarning is huggingface_hub deprecating the variable the prepare
+service sets (`docker-compose.training.yaml`) in favour of its Xet
+transfer; the downloads ran regardless. The evaluation commands have not
+yet run.
 
 Status: PENDING
 
