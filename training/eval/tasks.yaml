@@ -1,21 +1,26 @@
 # Pinned lm-evaluation-harness task set (Phase 1 F7, resolved decision 5).
 #
-# tinyMMLU (tinyBenchmarks, 100 IRT-selected items) replaces the full mmlu
-# group: F7's lm-eval section is a regression detector run on every
-# fine-tune and null test, so runtime wins over per-subject detail. Override
-# tasks per run with --tasks, e.g. the full mmlu group when a headline
-# number is needed.
+# tinyMMLU_acc (tasks/tinyMMLU_acc.yaml: tinyBenchmarks' 100 IRT-selected
+# items, scored as plain accuracy) replaces the full mmlu group: F7's lm-eval
+# section is a regression detector run on every fine-tune and null test, so
+# runtime wins over per-subject detail. The harness's own tinyMMLU is not
+# usable here (KB-93): its IRT aggregation needs a git-only package and all
+# 100 items. Override tasks per run with --tasks, e.g. the full mmlu group
+# when a headline number is needed.
 #
 # metric names the harness result key the record carries for each task;
-# higher is better for all of them.
+# higher is better for all of them. The harness suffixes every key with the
+# name of the filter that produced it, and a task that declares no filter
+# block gets the default filter, named none (KB-94), so each key is written
+# here as the harness spells it: <metric>,<filter>.
 
 lm_eval_version: "0.4.12"
 tasks:
   ifeval:
-    metric: prompt_level_strict_acc
+    metric: prompt_level_strict_acc,none
   gsm8k:
     metric: exact_match,strict-match
-  tinyMMLU:
-    metric: acc_norm
+  tinyMMLU_acc:
+    metric: acc_norm,none
   hellaswag:
-    metric: acc_norm
+    metric: acc_norm,none

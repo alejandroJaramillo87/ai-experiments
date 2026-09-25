@@ -445,7 +445,10 @@ HOLDOUT_RECORD = {
     "perplexity": 3.4903,
     "examples": 12,
     "supervised_tokens": 3456,
-    "precision": "bfloat16",
+    # The shape training/eval/holdout.py writes: precision is the short
+    # spelling, and the loader's attention choice is recorded (KB-84).
+    "precision": "bf16",
+    "attention_implementation": "sdpa",
 }
 
 
@@ -482,7 +485,7 @@ class TestCmdEvalHoldout:
         assert "[RUN] Held-out loss: /ckpt/sft over /data/sft" in out
         assert (
             "[OK] Loss 1.250000, perplexity 3.4903 (12 examples, "
-            "3456 supervised tokens, bfloat16)"
+            "3456 supervised tokens, bf16)"
         ) in out
         assert "Record written" not in out
         assert seen == {

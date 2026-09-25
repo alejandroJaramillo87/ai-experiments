@@ -59,6 +59,7 @@ def tiny_causal_lm():
 
 
 @pytest.mark.hw_smoke
+@pytest.mark.platform
 class TestSsdSmoke:
     def test_ai_data_mounted_with_expected_layout(self):
         assert os.path.isdir(AI_DATA_ROOT), f"{AI_DATA_ROOT} is not mounted"
@@ -78,6 +79,7 @@ class TestSsdSmoke:
 
 @pytest.mark.hw_full
 class TestSsdFull:
+    @pytest.mark.platform
     def test_shard_staging_write_throughput(self):
         target = os.path.join(staging_dir(), "hw-throughput-probe")
         payload = os.urandom(1 << 24)  # 16MB block, written repeatedly
@@ -100,6 +102,7 @@ class TestSsdFull:
             "check the tmpfs mount and disk pressure"
         )
 
+    @pytest.mark.training
     def test_checkpoint_write_restore_roundtrip(self, torch, tmp_path):
         """D6 checkpoint save/load round trip on the SSD-backed training
         root: weights, optimizer, scheduler, and data state survive."""
@@ -153,6 +156,7 @@ class TestSsdFull:
         finally:
             shutil.rmtree(root, ignore_errors=True)
 
+    @pytest.mark.interp
     def test_harvest_disk_preflight_reads_real_disk(self):
         """The P4-D2 preflight (harvests can reach ~1.4TB per layer) refuses
         an impossible projection against the real mount and passes a small
@@ -166,6 +170,7 @@ class TestSsdFull:
             disk_preflight(target, 10 << 50, floor_gb=100.0)  # 10PB: refused
 
     @pytest.mark.gpu
+    @pytest.mark.training
     def test_data_wait_under_the_d9_bar(self, cuda, tmp_path, train_lock):
         """Mean data_wait_ms stays under 5% of mean step time on a short
         prefetch-loader run (docs/training/base/heterogeneous_compute.md)."""

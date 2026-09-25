@@ -68,7 +68,10 @@ The build:
 1. Copies the pinned uv binary from `ghcr.io/astral-sh/uv:0.11.28` (no network installer runs).
 2. Installs the build toolchain (gcc, g++, git, nvcc, CUDA dev headers) on the devel base.
 3. Creates a `/opt/venv` virtual environment and syncs `uv.lock` into it with
-   `uv sync --frozen --no-install-project --group training`.
+   `uv sync --frozen --no-install-project --group training`, then fetches nltk's
+   `punkt_tab` models into `/opt/nltk_data` (`NLTK_DATA`) by the sha256 the nltk_data
+   index publishes: lm-eval's ifeval task loads them at run time and the training
+   service has no route to fetch them (KB-93).
 4. Pre-builds the DeepSpeed CPUAdam op with `DS_BUILD_CPU_ADAM=1 DS_BUILD_UTILS=1` and
    `CFLAGS="-march=native"`. The image gcc (13, on Ubuntu 24.04) has no `znver5` target, so
    `native` is what resolves to Zen 5; the image is therefore specific to the CPU it was
@@ -108,9 +111,10 @@ inference stack's hardening (`no-new-privileges`, `cap_drop: ALL`, `read_only: t
 non-root `user`), reserves one NVIDIA GPU, sets `shm_size: 16g` for dataloader workers, and
 mounts a tmpfs `/tmp` with the `exec` flag that the Triton and CUDA JIT caches require. Two
 further tmpfs mounts back it: `/app/cache` at 2G, deliberately small because this service
-never resolves a hub id — if it fills, something is reaching the hub that should not be —
-and `/staging`, sized by `TRAIN_STAGING_GB` (default 32G) to match `staging.max_gb` for the
-D9 RAM-disk shard staging.
+never fetches from the hub — its task datasets come through the persistent cache mounted
+beneath it, and if it fills, something is reaching the hub that should not be — and
+`/staging`, sized by `TRAIN_STAGING_GB` (default 32G) to match
+`staging.max_gb` for the D9 RAM-disk shard staging.
 
 Volumes:
 
@@ -118,6 +122,7 @@ Volumes:
 |-------|------|---------|
 | `/mnt/ai-data/models/` | read-only | Base model weights, as the inference services mount them |
 | `/mnt/ai-data/models/trained` | read-write | Narrow window for exported checkpoints; the rest of `/app/models` stays read-only via the mount above |
+| `/mnt/ai-data/cache/huggingface/datasets` | read-write | The processed half of the HF cache, at `/app/cache/datasets`: lm-eval's task datasets, staged through `prepare` (KB-92) |
 | `/mnt/ai-data/training` | read-write | Datasets, shards, checkpoints, and run outputs |
 | `/mnt/ai-data/logs` | read-write | Structured observability records, identity-mounted |
 | `./scripts` | read-only | Training scripts and recipes, mounted live for iteration |
@@ -148,8 +153,16 @@ of those accept an offline argument this repository controls.
 `prepare` binds `/mnt/ai-data/cache/huggingface` as a persistent `HF_HOME`, so re-downloading
 an already-fetched revision is a cache hit. It is also the only service that mounts
 `/mnt/ai-data/models/hf` read-write. The `training` service keeps a deliberately small tmpfs
-at the same path, which is expected to stay empty — anything landing there means a code path
-is still resolving a hub identifier.
+at the same path and, since 2026-09-25 (KB-92), mounts the datasets half of that cache
+read-write beneath it at `/app/cache/datasets`: `lm_eval` loads its four task datasets
+(`training/eval/tasks.yaml`) by hub id with no revision, and `datasets` offline never
+consults a hub snapshot for a hub id; its one fallback is the processed arrow cache under
+`HF_HOME/datasets`, which `make train-download DATASET=<id> NAME=<config>` fills through
+`prepare`. The first fix that day mounted the hub half, read-only, which nothing read.
+Read-write because the builder takes a lock file at the cache root and hellaswag's
+`process_docs` writes map caches beside the arrow files; the network topology and the
+offline flags, not the mount mode, are what keep the service offline. A base model landing
+in the tmpfs above means a code path is still resolving a hub identifier.
 
 ## Interface
 
@@ -184,13 +197,17 @@ and interp captures from, and produces no GGUF.
 
 The build copies the same pinned uv binary, installs `git` (for the manifest's `git_sha`) and
 Python 3.12, creates `/opt/venv`, and installs a hand-pinned CPU stack: torch 2.13.0 from the
-CPU wheel index, then transformers 5.13.1, peft 0.19.1, accelerate 1.14.0, and
-sentencepiece 0.2.2. This is the one deliberate deviation from lockfile installs in the
-repository, because the cu130 torch build in `uv.lock` is GPU-sized and unnecessary here; the
-versions mirror the core pins in `pyproject.toml` and are kept in step by hand. The image sets
+CPU wheel index, then transformers 5.13.1, peft 0.19.1, accelerate 1.14.0,
+sentencepiece 0.2.2, omegaconf 2.3.1 and xxhash 3.5.0. This is the one deliberate deviation
+from lockfile installs in the repository, because the cu130 torch build in `uv.lock` is
+GPU-sized and unnecessary here; the versions mirror the pins in `pyproject.toml` and are kept
+in step by hand, which `tests/training/test_export_image_dependencies.py` holds to. The last
+two are not for the export: `python -m training` registers every subcommand before it
+dispatches, and their module-scope imports reach both packages, so without them the CLI died
+before the merge began (KB-91, the first export the image ran). The image sets
 `HF_HOME=/app/cache` and `HOME=/app`, creates `appuser`, checks that torch, transformers,
-peft, and safetensors import, and ends in `CMD ["/bin/bash"]`; the compose file supplies the
-command.
+peft, safetensors, omegaconf, and xxhash import, and ends in `CMD ["/bin/bash"]`; the compose
+file supplies the command.
 
 The `export` service (container `training-export`) takes the shared hardening anchor and no
 GPU reservation. It has no egress by topology, on `training-network`, and needs none: the

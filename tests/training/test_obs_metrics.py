@@ -198,6 +198,43 @@ def test_tracking_callback_maps_ce_kl(monkeypatch, tmp_path):
     assert metrics["train/kl_loss"] == 0.3
 
 
+def test_stop_after_ends_the_run_at_its_step_and_is_absent_without_it(
+    monkeypatch, tmp_path
+):
+    """The seam tests/hardware/test_train_resume.py interrupts through: the
+    flag flips at the end of the named step and not before, and a run
+    without stop_after carries no stop callback at all."""
+    monkeypatch.setitem(
+        sys.modules, "transformers", types.SimpleNamespace(TrainerCallback=object)
+    )
+    recipe = SimpleNamespace(
+        data=SimpleNamespace(micro_batch=1, grad_accum=1, seq_len=8),
+        sft=SimpleNamespace(backend="trl"),
+        peft=SimpleNamespace(enabled=False),
+        model=SimpleNamespace(hf=SimpleNamespace(id="test/model")),
+        checkpoint=SimpleNamespace(retain_last=1, retain_every=100),
+    )
+    plain = build_callbacks(
+        recipe, str(tmp_path), RecordingTracker(), watchdog=None, recipe_hash="h"
+    )
+    assert len(plain) == 2
+    stopping = build_callbacks(
+        recipe,
+        str(tmp_path),
+        RecordingTracker(),
+        watchdog=None,
+        recipe_hash="h",
+        stop_after=10,
+    )
+    assert len(stopping) == 3
+    stop = stopping[-1]
+    control = SimpleNamespace(should_training_stop=False)
+    stop.on_step_end(None, SimpleNamespace(global_step=9), control)
+    assert control.should_training_stop is False
+    stop.on_step_end(None, SimpleNamespace(global_step=10), control)
+    assert control.should_training_stop is True
+
+
 def test_header_identity_survives_sampler_thread_first_log(tmp_path, obs_isolation):
     import threading
 

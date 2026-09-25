@@ -49,6 +49,7 @@ pytestmark = [
     pytest.mark.cpu,
     pytest.mark.ram,
     pytest.mark.ssd,
+    pytest.mark.harness,
 ]
 
 CAPTURE_BIN = os.path.join(HARNESS_DIR, "target", "release", "activation-capture")

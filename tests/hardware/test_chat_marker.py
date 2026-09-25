@@ -52,6 +52,7 @@ pytestmark = [
     pytest.mark.cpu,
     pytest.mark.ram,
     pytest.mark.ssd,
+    pytest.mark.harness,
 ]
 
 TURN = "hello"

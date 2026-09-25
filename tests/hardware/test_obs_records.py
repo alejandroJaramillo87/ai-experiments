@@ -51,7 +51,13 @@ from tests.hardware.conftest import (
     require_binary,
 )
 
-pytestmark = [pytest.mark.hw_full, pytest.mark.cpu, pytest.mark.ram, pytest.mark.ssd]
+pytestmark = [
+    pytest.mark.hw_full,
+    pytest.mark.cpu,
+    pytest.mark.ram,
+    pytest.mark.ssd,
+    pytest.mark.harness,
+]
 
 CONTRACT = os.path.join(REPO_ROOT, "schemas", "obs_record.json")
 CATALOG = Path(LOG_ROOT) / "runs.jsonl"  # read_runs takes a Path, not a str

@@ -31,7 +31,12 @@ from interp.probes.weight_stats import (
 )
 from tests.hardware.conftest import AI_DATA_ROOT
 
-pytestmark = [pytest.mark.hw_full, pytest.mark.hw_e4b, pytest.mark.ssd]
+pytestmark = [
+    pytest.mark.hw_full,
+    pytest.mark.hw_e4b,
+    pytest.mark.ssd,
+    pytest.mark.interp,
+]
 
 VARIANTS = ("gemma-4-E2B", "gemma-4-E4B")
 

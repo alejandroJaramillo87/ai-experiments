@@ -53,6 +53,7 @@ pytestmark = [
     pytest.mark.hw_e4b,
     pytest.mark.cpu,
     pytest.mark.ssd,
+    pytest.mark.harness,
 ]
 
 ERROR_LINE = re.compile(r"^\[ERROR\] Task failed: (.+)$")

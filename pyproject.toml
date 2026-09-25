@@ -187,7 +187,7 @@ training = [
     "hydra-core==1.3.2",
     # F7 lm-evaluation-harness (resolved F7 decision 4: training group, not a
     # separate image; the pinned task set lives in training/eval/tasks.yaml)
-    "lm-eval==0.4.12",
+    "lm-eval[ifeval]==0.4.12",
     "pynvml==12.0.0",
     "psutil==7.2.2",
     "xxhash==3.5.0",
@@ -257,6 +257,10 @@ pythonpath = ["tests/training"]
 # Every hw_* marker below must appear in this expression: a tier marker absent
 # from it runs by default, so a sandbox with no hardware fails on collection
 # rather than deselecting. tests/hardware/test_markers.py enforces the pairing.
+# The subsystem markers (harness, training, interp, platform) need no
+# negation: every test carrying one also carries a tier marker, which is what
+# keeps it out of the default run. They exist so one subsystem's hardware
+# tests run alone: `pytest -m "hw_full and training"`, or `make hardware-tests`.
 addopts = "-m 'not hw_smoke and not hw_full and not hw_e4b'"
 markers = [
     "hw_smoke: workstation smoke tier — under five minutes total, no model downloads, temporary-directory writes only; the before-every-session gate",
@@ -266,6 +270,10 @@ markers = [
     "cpu: exercises the Ryzen 9950X (AVX-512, CPUAdam, affinity)",
     "ram: exercises host memory (huge pages, pinned buffers, replay residency)",
     "ssd: exercises /mnt/ai-data and staging (mounts, throughput, preflights)",
+    "harness: subsystem — the rust harness and its binaries (RH and RHX entries, the ladder)",
+    "training: subsystem — the training tier (FT and FS entries)",
+    "interp: subsystem — the interp tier (the chain, the harvest, the shared-KV weights)",
+    "platform: subsystem — the workstation itself (the WI-3 resource suites, the venv lock)",
 ]
 
 [tool.mypy]

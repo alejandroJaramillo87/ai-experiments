@@ -8,8 +8,8 @@ or the rust workspace; the entry id is the first word of each module's docstring
 
 ## Tiers, markers and the rule
 
-Every test carries exactly one tier marker and at least one resource marker, and
-`test_markers.py` enforces both, plus that every `hw_*` marker appears in `addopts` so a
+Every test carries exactly one tier marker, at least one resource marker and exactly one
+subsystem marker, and `test_markers.py` enforces all three, plus that every `hw_*` marker appears in `addopts` so a
 sandbox deselects rather than fails on collection.
 
 | Marker | Means |
@@ -18,6 +18,7 @@ sandbox deselects rather than fails on collection.
 | `hw_full` | may allocate near-capacity VRAM, RAM and disk and load real models; per verification phase and after an environment change |
 | `hw_e4b` | needs the real Gemma 4 E4B checkpoint on disk; a provisioning precondition carried beside a tier marker |
 | `gpu`, `cpu`, `ram`, `ssd` | the resource exercised |
+| `harness`, `training`, `interp`, `platform` | the subsystem proved; `make hardware-tests SUITE=<subsystem>` selects on it, combined with a tier |
 
 **A test fails rather than skips when the hardware it exists to prove is absent.** The
 `cuda` fixture asserts `torch.cuda.is_available()`, and `require_binary()` asserts the
@@ -37,6 +38,7 @@ record suites check.
 ```bash
 uv run --no-sync pytest -m hw_smoke tests/hardware/ -v     # session-start gate
 uv run --no-sync pytest -m hw_full tests/hardware/ -v      # per verification phase
+make hardware-tests HW=full SUITE=training                 # one tier of one subsystem
 make quality-full HW=e4b HARNESS_E4B_MODEL=/mnt/ai-data/models/hf/gemma-4-E4B-it
 ```
 
@@ -61,10 +63,11 @@ is the smoke-tier check that names such a stray, and `make install` is the repai
 | `test_from_scratch_loop.py` | 1 | FS.0 to FS.8, less FS.5, the from-scratch loop as one hw_full test. |
 | `test_gpu.py` | 10 | GPU/VRAM hardware suite (WI-3): sm_120 presence and bf16 compute at the smoke tier; near-capacity allocation, the step measurement on the tiny recipe, tolerance-based resume, family-registry loads, and the harvest hook smoke at the full tier. |
 | `test_harness_endpoint.py` | 4 | RH.14, the endpoint answering the interp client, as a test. |
+| `test_heldout_eval.py` | 1 | FT.heldout-eval, held-out loss and lm-eval on base and merged, as one test the hw_full tier runs. |
 | `test_interp_chain.py` | 10 | RH.9a-9e, the in-band interp chain on real weights, as tests the hw tier runs. |
 | `test_ladder.py` | 4 | RH.1b, the correctness ladder at Tier E, as a test the hardware tiers run. |
 | `test_layer_diff.py` | 3 | RH.21, layer-diff against a transformers capture of the real E4B, as a test the E4B tier runs. |
-| `test_markers.py` | 3 | Marker invariants for the hardware suites (WI-3): every test in tests/hardware/ carries exactly one tier marker (hw_smoke or hw_full) and at least one resource marker (gpu, cpu, ram, ssd), and every hardware-gated marker declared in pyproject.toml is deselected by addopts. |
+| `test_markers.py` | 3 | Marker invariants for the hardware suites (WI-3): every test in tests/hardware/ carries exactly one tier marker (hw_smoke or hw_full), at least one resource marker (gpu, cpu, ram, ssd) and exactly one subsystem marker (harness, training, interp, platform), and every hardware-gated marker declared in pyproject.toml is deselected by addopts. |
 | `test_obs_records.py` | 4 | RH.13, the run-level observability records on the workstation, as a test. |
 | `test_permissions.py` | 5 | RHX.10, the permissions layer on a model that makes the calls, as a test. |
 | `test_preflight.py` | 6 | RH.16, the preflight on the real checkpoint, as a test the hardware tiers run. |
@@ -77,6 +80,7 @@ is the smoke-tier check that names such a stray, and `make install` is the repai
 | `test_ssd.py` | 6 | SSD/storage hardware suite (WI-3): mount layout and staging writability at the smoke tier; staging throughput, checkpoint round trip, the harvest disk preflight, and the D9 data_wait_ms bar at the full tier. |
 | `test_status_costs.py` | 5 | RHX.2, the load and prefill lines on real weights, as a test. |
 | `test_step_qlora.py` | 1 | FT.calibrate-qlora, the reference QLoRA recipe stepped on the GPU, as the hw_full tier runs it. |
+| `test_train_resume.py` | 1 | FT.train-resume, a TRL fine-tune interrupted and resumed, as one test the hw_full tier runs. |
 | `test_venv_lock.py` | 1 | Environment drift suite (WI-3): every distribution installed in the interpreter's site-packages is one uv.lock names at a locked version, at the smoke tier. |
 
 <!-- inventory:tests:end -->

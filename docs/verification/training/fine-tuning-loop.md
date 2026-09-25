@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 5 verified, 0 blocked, 9 pending, of 14.**
+**Entries: 9 verified, 0 blocked, 5 pending, of 14.**
 
 Host verification of the fine-tuning loop, the first rung of the training tier: train
 a Gemma 4 E2B with a known change, then recover it through the rust harness and the
@@ -202,6 +202,80 @@ builds what it verifies:
   refuses. A runbook defect, not a tree defect; the entry gains a
   `schedule.warmup_steps=3` override, the paste is kept as a superseded
   observation, and the entry re-runs as committed.
+- **FT.export-merged's first attempt** (2026-09-25) died before the export
+  began: the export image did not carry `xxhash` or `omegaconf`, which
+  `python -m training` reaches while registering every subcommand, so the
+  CLI never dispatched. A tree defect, KB-91, the same shape as KB-59: both
+  packages are pinned in the image, a sandbox test holds the image's pins to
+  the CLI's imports, the paste is kept as a superseded observation, and the
+  entry re-runs as committed.
+- **FT.export-merged verified** (2026-09-25) on its second run, with one
+  runbook finding: the entry asked for a single-line chat reply, the
+  behaviour of the instruction-tuned model the rust-harness chats ran, and
+  the 60-step adapter over the base ran to the sampling cap. The harness
+  promises no line count, so the clause was corrected with the observation
+  kept beside it; the reply's shape is the adapter's, judged at
+  FT.heldout-eval. Two host-state fixes on the way, neither a tree defect:
+  a root-owned `trained` directory older than the setup script's chown, and
+  a root-owned `sessions/rust-harness` left by a run before the harness
+  targets pre-created it.
+- **Two hardware mirrors and a subsystem axis** (2026-09-25, after
+  FT.export-merged verified): `tests/hardware/test_train_resume.py` runs
+  FT.train-resume's three runs at 20 steps through a `stop_after` seam on
+  `train_sft`, and `test_fine_tuning_loop.py` gained the base-verified line,
+  the refused re-export and a chat turn from FT.export-merged's hand run.
+  Every hardware test now carries one of `harness`, `training`, `interp`,
+  `platform`, and `make hardware-tests HW=full SUITE=training` runs the
+  training slice alone, about twenty minutes of GPU, without the E4B chats.
+- **FT.hardware-test verified** (2026-09-25) on the two mirrors' first run:
+  `test_train_interrupt_resume` and `test_fine_tuning_loop` passed at
+  `[TIER] full` in 25 minutes, no skip. It closed ahead of the five entries
+  before it in the order because its own dependencies were all met. One
+  observation: 16.6 GB of CUDA tensors survived the resume test into the loop
+  test, which the `cuda` fixture exists to report and the loop test ran
+  beside; no ledger row.
+- **FT.heldout-eval read against the tree** (2026-09-25, before it ran) and
+  found KB-92: `eval-lmeval` could not run in the training container, whose
+  offline cache held none of the four task datasets and whose `lm-eval` pin
+  lacked the ifeval extra. Fixed the same day (a dataset form on
+  `train-download`, a read-only hub-cache mount, the extra); the entry
+  gains a precondition block, the printed lines and a KB-92 confirmation,
+  and runs as committed once the workstation locks the extra.
+- **FT.heldout-eval's first evaluation attempt** (2026-09-25): both holdout
+  passes met every criterion; both lm-eval passes died at task load, offline,
+  because KB-92's first fix mounted the half of the HF cache that `datasets`
+  never reads offline (KB-92 reopened, second fix: the datasets half,
+  read-write), and the run showed two more things the task set reaches that
+  the container lacked, nltk's punkt models and tinyMMLU's git-only scoring
+  package (KB-93: the models baked into the image by digest, a repo-owned
+  `tinyMMLU_acc` with plain accuracy). The holdout half stands on that paste;
+  the lm-eval half re-runs.
+- **FT.heldout-eval's second evaluation attempt** (2026-09-25): the two
+  probes and the base's task loading passed, so KB-92's second fix and
+  KB-93 hold; the base `eval-lmeval` ran to scoring and was refused by the
+  tree's own extractor, because the pinned metric keys lacked the
+  `,<filter>` suffix lm-eval puts on every result, `none` for an
+  unfiltered task (KB-94, fixed in `tasks.yaml`). The lm-eval half re-runs
+  on a `git pull` alone: the yaml is compose-mounted.
+- **FT.heldout-eval verified** (2026-09-25) on its third evaluation
+  attempt, the lm-eval half after a `git pull` to the KB-94 fix: both
+  sides exit 0 with the four `[OK]` lines spelled as the harness keys
+  them, the records carrying the pin and the limit, about four minutes a
+  side; KB-92, KB-93 and KB-94 confirmed, and KB-84's third loader had
+  its first run on the first attempt's holdout passes. The harness's
+  batch-size search, some forty allocator warnings a phase, is read from
+  the wheel and recorded as the noise it is.
+- **FT.heldout-eval's hardware mirror** (2026-09-25):
+  `tests/hardware/test_heldout_eval.py` trains 20 steps, exports, and runs
+  `eval-holdout` and `eval-lmeval` on both sides as host processes with the
+  HF cache at the prepare service's root, holding the printed lines, both
+  record shapes, the driver's pair checks and the loss order. Its first
+  run the same day failed at the base's lm-eval task load on a host venv
+  synced before `f52c158` locked the ifeval extra, after the train, export
+  and holdout phases had passed; recorded in the entry, host state, no
+  ledger row. The mirror now checks the extra before any GPU work, and
+  passed the same day after `make install` (`1 passed` in 21:34), recorded
+  in the entry.
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training
@@ -1680,6 +1754,8 @@ cd ~/workspace/ai-experiments
 make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
     ARGS="run.name=ft3-straight schedule.total_steps=60 schedule.warmup_steps=3 checkpoint.interval_steps=30 sft.eval_steps=30"
 echo "exit=$?"
+ls /mnt/ai-data/training/runs/ft3-straight/checkpoints/
+cat /mnt/ai-data/training/runs/ft3-straight/checkpoints/checkpoint-60/meta.json
 make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
     ARGS="run.name=ft3-resume schedule.total_steps=60 schedule.warmup_steps=3 checkpoint.interval_steps=30 sft.eval_steps=30"
 echo "exit=$?"
@@ -1716,13 +1792,22 @@ ft3-resume [trl]: 60 total steps` (the verb carries the override as
 passed), ends at `[OK] Run complete: step 60 [trl]` with exit 0, and its
 `ls` shows `checkpoint-60` beside `checkpoint-30`. The criterion that makes
 the resume a resume: the resumed run's `Held-out loss:` agrees with the
-straight run's within `RESUME_LOSS_RTOL` (0.01, `tests/hardware/test_gpu.py`),
+straight run's within `RESUME_LOSS_RTOL` (0.01, `tests/hardware/conftest.py`),
 that is `abs(a - b) / a <= 0.01`; record both numbers and the quotient.
-The constant is borrowed from `test_resume_loss_curve_within_tolerance`,
-which holds the from-scratch loop's per-step losses to it on the GPU; no
-hardware test mirrors a TRL resume, so this entry is the only evidence for
-one. A resumed run that reports `Fine-tuning` rather than `Resuming`, or
-ends at a step other than 60, has restarted rather than resumed.
+The constant is shared with `test_resume_loss_curve_within_tolerance`,
+which holds the from-scratch loop's per-step losses to it on the GPU. Since
+2026-09-25 this entry has a hardware mirror,
+`tests/hardware/test_train_resume.py` (`hw_full`, `gpu`, `ssd`, `training`),
+written after the hand run verified: the same three runs at 20 steps with
+the checkpoint at 10, in-process through `train_sft`'s `stop_after` in
+place of the Ctrl-C, no held-out passes, and the tolerance applied to the
+trainer's ten-step train-loss log, whose entry at step 20 is the mean over
+steps 11 to 20 in both the straight and the resumed run. That is the
+quantity the pastes below print every ten steps, and the hand run's own
+pairs at steps 40, 50 and 60 sit inside the tolerance too; the held-out
+comparison stays this entry's, at the recipe's scale. A resumed run that
+reports `Fine-tuning` rather than `Resuming`, or ends at a step other than
+60, has restarted rather than resumed.
 
 Observed:
 
@@ -1761,7 +1846,325 @@ make: *** [make/training.mk:56: train-sft] Error 1
 exit=2
 ```
 
-Status: PENDING
+Straight run (2026-09-25, as committed after the warmup fix; the `ls` and
+`cat` of its checkpoints were added to the command block afterwards and are
+recorded with the interrupted run):
+
+```
+➜  ai-experiments git:(SFT-verification-2) make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
+    ARGS="run.name=ft3-straight schedule.total_steps=60 schedule.warmup_steps=3 checkpoint.interval_steps=30 sft.eval_steps=30"
+echo "exit=$?"
+docker compose -f docker-compose.training.yaml run --rm training python -m training train-sft --config training/recipes/reference/sft-qlora-e2b.yaml run.name=ft3-straight schedule.total_steps=60 schedule.warmup_steps=3 checkpoint.interval_steps=30 sft.eval_steps=30
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up. 
+Container ai-experiments-training-run-596881c37182 Creating 
+Container ai-experiments-training-run-596881c37182 Created 
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training train-sft --config training/recipes/reference/sft-qlora-e2b.yaml run.name=ft3-straight schedule.total_steps=60 schedule.warmup_steps=3 checkpoint.interval_steps=30 sft.eval_steps=30
+[RUN] Fine-tuning ft3-straight [trl]: 60 total steps
+[model] flash-attn supports head_dim <= 256; this model's widest head is 512, so attention runs on sdpa
+Loading weights:   0%|                                                                                                                                 | 0/1951 [00:00<?, ?it/s]/opt/venv/lib/python3.12/site-packages/bitsandbytes/backends/cuda/ops.py:213: FutureWarning: _check_is_size will be removed in a future PyTorch release along with guard_size_oblivious.     Use _check(i >= 0) instead.
+  torch._check_is_size(blocksize)
+Loading weights: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1951/1951 [00:03<00:00, 505.89it/s]
+[transformers] The tokenizer has new PAD/BOS/EOS tokens that differ from the model config and generation config. The model config and generation config were aligned accordingly, being updated with the tokenizer's values. Updated tokens: {'eos_token_id': 1, 'bos_token_id': 2, 'pad_token_id': 0}.
+{'loss': '1.469', 'grad_norm': '0.5555', 'learning_rate': '0.0001946', 'epoch': '0.002076'}                                                                                     
+ 18%|█████████████████████████▍                                                                                                                 | 11/60 [02:58<13:35, 16.64s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+{'loss': '1.231', 'grad_norm': '0.3388', 'learning_rate': '0.0001636', 'epoch': '0.004152'}                                                                                     
+ 45%|██████████████████████████████████████████████████████████████▌                                                                            | 27/60 [07:14<08:47, 15.99s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+ 48%|███████████████████████████████████████████████████████████████████▏                                                                       | 29/60 [07:44<07:56, 15.37s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+{'loss': '1.102', 'grad_norm': '0.359', 'learning_rate': '0.0001137', 'epoch': '0.006227'}                                                                                      
+ 50%|█████████████████████████████████████████████████████████████████████▌                                                                     | 30/60 [08:00<07:52, 15.77s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5                                                                                         | 155/2033 [00:26<04:13,  7.40it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5                                                                                         | 493/2033 [01:26<04:51,  5.29it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5████▉                                                                                    | 776/2033 [02:16<03:47,  5.52it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5██████████████████████████████████▌                                                     | 1229/2033 [03:36<02:14,  5.98it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5██████████████████████████████████████████▏                                             | 1343/2033 [03:56<02:27,  4.69it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5████████████████████████████████████████████████████████████▋                           | 1622/2033 [04:46<01:10,  5.79it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5███████████████████████████████████████████████████████████████████████▉                | 1791/2033 [05:17<00:46,  5.22it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5███████████████████████████████████████████████████████████████████████████████████     | 1959/2033 [05:46<00:14,  5.27it/s]
+{'eval_loss': '1.038', 'eval_runtime': '361.7', 'eval_samples_per_second': '11.24', 'eval_steps_per_second': '5.621', 'epoch': '0.006227'}                                      
+ 52%|███████████████████████████████████████████████████████████████████████▎                                                                  | 31/60 [14:16<59:49, 123.78s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5                                                                                                                            
+ 65%|██████████████████████████████████████████████████████████████████████████████████████████▎                                                | 39/60 [16:26<07:41, 21.98s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+{'loss': '1.099', 'grad_norm': '0.2819', 'learning_rate': '5.983e-05', 'epoch': '0.008303'}                                                                                     
+{'loss': '1.085', 'grad_norm': '0.6077', 'learning_rate': '1.782e-05', 'epoch': '0.01038'}                                                                                      
+ 87%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████▍                  | 52/60 [19:59<02:13, 16.68s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+ 88%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████▊                | 53/60 [20:14<01:52, 16.12s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+ 95%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████       | 57/60 [21:20<00:49, 16.57s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+{'loss': '1.078', 'grad_norm': '0.3607', 'learning_rate': '1.518e-07', 'epoch': '0.01245'}                                                                                     
+100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 60/60 [22:06<00:00, 15.74s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5                                                                                          | 36/2033 [00:06<06:08,  5.41it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5                                                                                         | 149/2033 [00:26<05:11,  6.05it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5                                                                                         | 663/2033 [01:56<03:37,  6.30it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5████████▍                                                                                | 828/2033 [02:25<03:31,  5.70it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5███████████████▉                                                                         | 940/2033 [02:46<03:48,  4.78it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5██████████████████████████████▎                                                         | 1165/2033 [03:26<02:27,  5.87it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5█████████████████████████████████████████████████████▏                                  | 1508/2033 [04:26<01:36,  5.46it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5███████████████████████████████████████████████████████████████████▉                    | 1731/2033 [05:06<01:03,  4.76it/s]
+{'eval_loss': '1.03', 'eval_runtime': '361.5', 'eval_samples_per_second': '11.25', 'eval_steps_per_second': '5.624', 'epoch': '0.01245'}                                        
+{'train_runtime': '1688', 'train_samples_per_second': '1.137', 'train_steps_per_second': '0.036', 'train_loss': '1.177', 'epoch': '0.01245'}                                    
+100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 60/60 [28:08<00:00, 28.14s/it]
+[OK] Run complete: step 60 [trl]
+  [INFO] trainable parameters: 24,158,208 of 5,128,455,712 (0.47 percent)
+Final train loss: 1.077697
+Held-out loss:    1.029761
+Run directory: /mnt/ai-data/training/runs/ft3-straight/2026-09-25_13-32-04
+Checkpoints:   /mnt/ai-data/training/runs/ft3-straight/checkpoints
+exit=0
+```
+
+Every stage-1 criterion observed: `[RUN] Fine-tuning ft3-straight [trl]: 60
+total steps`, the sdpa note (KB-84), the dataset loaded from the staged
+base's tokenizer without a hash error (KB-80's `train-sft` half, confirmed),
+`eval_loss` 1.038 at step 30 and 1.03 at step 60, each over the 2033 holdout
+batches in 361 s with no out-of-memory (KB-88 confirmed), `[OK] Run complete:
+step 60 [trl]`, `Final train loss: 1.077697`, `Held-out loss:    1.029761`,
+exit 0, and the adapter's 24,158,208 trainable parameters, the count
+FT.calibrate-qlora measured. The step-60 held-out loss, 1.029761, is the
+straight-run side of the tolerance criterion. Observation, not a mismatch:
+`[watchdog] ALERT gpu_throttle: value 1, threshold 0.5` printed on most
+samples, in both the step loop and the evaluation. The sampler
+(`training/runtime/watchdog.py`) reports 1 for any active clock-throttle
+reason other than idle, and the signal is alert-only
+([operational_watchdogs.md](../../training/base/operational_watchdogs.md)),
+so a standing reason such as a locked clock or a power cap trips it on every
+sample and the line carries no information on this workstation.
+
+Interrupted run (2026-09-25; the straight run's checkpoint `ls` and `cat`
+were not pasted with it and are still owed):
+
+```
+➜  ai-experiments git:(SFT-verification-2) cd ~/workspace/ai-experiments
+set -o pipefail
+make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
+    ARGS="run.name=ft3-resume schedule.total_steps=60 schedule.warmup_steps=3 checkpoint.interval_steps=30 sft.eval_steps=30"
+echo "exit=$?"
+ls /mnt/ai-data/training/runs/ft3-resume/checkpoints/
+cat /mnt/ai-data/training/runs/ft3-resume/checkpoints/checkpoint-30/meta.json
+docker compose -f docker-compose.training.yaml run --rm training python -m training train-sft --config training/recipes/reference/sft-qlora-e2b.yaml run.name=ft3-resume schedule.total_steps=60 schedule.warmup_steps=3 checkpoint.interval_steps=30 sft.eval_steps=30
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up. 
+Container ai-experiments-training-run-cb3ccfc7b6fe Creating 
+Container ai-experiments-training-run-cb3ccfc7b6fe Created 
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training train-sft --config training/recipes/reference/sft-qlora-e2b.yaml run.name=ft3-resume schedule.total_steps=60 schedule.warmup_steps=3 checkpoint.interval_steps=30 sft.eval_steps=30
+[RUN] Fine-tuning ft3-resume [trl]: 60 total steps
+[model] flash-attn supports head_dim <= 256; this model's widest head is 512, so attention runs on sdpa
+Loading weights:   0%|                                                                                                                                 | 0/1951 [00:00<?, ?it/s]/opt/venv/lib/python3.12/site-packages/bitsandbytes/backends/cuda/ops.py:213: FutureWarning: _check_is_size will be removed in a future PyTorch release along with guard_size_oblivious.     Use _check(i >= 0) instead.
+  torch._check_is_size(blocksize)
+Loading weights: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1951/1951 [00:00<00:00, 3196.33it/s]
+[transformers] The tokenizer has new PAD/BOS/EOS tokens that differ from the model config and generation config. The model config and generation config were aligned accordingly, being updated with the tokenizer's values. Updated tokens: {'eos_token_id': 1, 'bos_token_id': 2, 'pad_token_id': 0}.
+{'loss': '1.464', 'grad_norm': '0.608', 'learning_rate': '0.0001946', 'epoch': '0.002076'}                                                                                      
+ 17%|███████████████████████▏                                                                                                                   | 10/60 [02:39<13:19, 15.99s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+ 27%|█████████████████████████████████████                                                                                                      | 16/60 [04:16<11:42, 15.97s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+ 28%|███████████████████████████████████████▍                                                                                                   | 17/60 [04:34<11:46, 16.43s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+{'loss': '1.225', 'grad_norm': '0.4617', 'learning_rate': '0.0001636', 'epoch': '0.004152'}                                                                                     
+ 37%|██████████████████████████████████████████████████▉                                                                                        | 22/60 [05:53<10:00, 15.81s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+ 48%|███████████████████████████████████████████████████████████████████▏                                                                       | 29/60 [07:42<07:55, 15.35s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+{'loss': '1.104', 'grad_norm': '1.176', 'learning_rate': '0.0001137', 'epoch': '0.006227'}                                                                                      
+ 50%|█████████████████████████████████████████████████████████████████████▌                                                                     | 30/60 [07:59<07:52, 15.74s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5                                                                                         | 157/2033 [00:27<05:02,  6.21it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5                                                                                         | 387/2033 [01:07<04:40,  5.86it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5                                                                                         | 669/2033 [01:57<03:53,  5.84it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5████████████▋                                                                            | 892/2033 [02:37<03:48,  5.00it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5██████████████████████████████▊                                                         | 1171/2033 [03:27<03:02,  4.73it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5████████████████████████████████████████████████████████████████████████████            | 1853/2033 [05:27<00:33,  5.33it/s]
+{'eval_loss': '1.038', 'eval_runtime': '361.5', 'eval_samples_per_second': '11.25', 'eval_steps_per_second': '5.624', 'epoch': '0.006227'}                                      
+ 55%|████████████████████████████████████████████████████████████████████████████▍                                                              | 33/60 [14:47<30:55, 68.73s/it]^CTraceback (most recent call last):                                                                                                                                             
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/app/training/__main__.py", line 7, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/app/training/cli.py", line 484, in main
+    return dispatch("training", build_parser, argv)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/common/obs/dispatch.py", line 70, in dispatch
+    result = args.func(args)
+             ^^^^^^^^^^^^^^^
+  File "/app/training/cli.py", line 115, in cmd_train_sft
+    result = train_sft(recipe)
+             ^^^^^^^^^^^^^^^^^
+  File "/app/training/tune/sft.py", line 389, in train_sft
+    return _train_locked(recipe)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/app/training/tune/sft.py", line 479, in _train_locked
+    trainer.train(resume_from_checkpoint=resume_path)
+  File "/opt/venv/lib/python3.12/site-packages/transformers/trainer.py", line 1433, in train
+    return inner_training_loop(
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/transformers/trainer.py", line 1515, in _inner_training_loop
+    self._run_epoch(
+  File "/opt/venv/lib/python3.12/site-packages/transformers/trainer.py", line 1743, in _run_epoch
+    tr_loss_step = self.training_step(model, inputs, num_items_in_batch)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/trl/trainer/sft_trainer.py", line 1185, in training_step
+    return super().training_step(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/transformers/trainer.py", line 1943, in training_step
+    self.accelerator.backward(loss, **kwargs)
+  File "/opt/venv/lib/python3.12/site-packages/accelerate/accelerator.py", line 2850, in backward
+    loss.backward(**kwargs)
+  File "/opt/venv/lib/python3.12/site-packages/torch/_tensor.py", line 623, in backward
+    torch.autograd.backward(
+  File "/opt/venv/lib/python3.12/site-packages/torch/autograd/__init__.py", line 395, in backward
+    _engine_run_backward(
+  File "/opt/venv/lib/python3.12/site-packages/torch/autograd/graph.py", line 979, in _engine_run_backward
+    return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt
+ 55%|████████████████████████████████████████████████████████████████████████████▍                                                              | 33/60 [15:07<12:22, 27.51s/it]
+
+make: *** [make/training.mk:56: train-sft] Error 130
+exit=2
+checkpoint-30  latest  README.md
+{
+  "step": 30,
+  "checkpoint_format": "trl",
+  "adapter_only": true,
+  "base_model": "google/gemma-4-E2B",
+  "base_revision": "d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f",
+  "base_config_sha256": "e5faef0dd1a8f2437f6010721146b85433eaa90e679ef011e803c7ffefae73b8",
+  "backend": "trl",
+  "recipe_hash": "beda71298666ffce4ba8d9547915371a7deb8994fd648057f8b769e6b80380ec",
+  "git_sha": "unknown",
+  "library_versions": {
+    "torch": "2.13.0+cu130",
+    "transformers": "5.13.1",
+    "trl": "0.24.0",
+    "peft": "0.19.1"
+  },
+  "wall_clock": "2026-09-25T15:02:53+0000",
+  "attention_implementation": "sdpa"
+}
+```
+
+Every stage-2 criterion observed: `[RUN] Fine-tuning ft3-resume [trl]: 60
+total steps`, the same `eval_loss` 1.038 at step 30 as the straight run (the
+two runs are seeded alike, so agreement here is expected), one Ctrl-C at step
+33 ending in the `KeyboardInterrupt` traceback with `make` reporting error
+130 and the shell `exit=2` (`make` exits 2 when a recipe fails, whatever the
+recipe's own code), `checkpoint-30` present and `checkpoint-60` absent, and
+the `meta.json` inside `checkpoint-30` carrying `checkpoint_format: trl`, `adapter_only:
+true`, `base_revision d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f` and
+`attention_implementation: sdpa`. The other two listing entries, `latest` and
+`README.md`, are the checkpoint callback's own outputs (the symlink
+`update_latest` maintains and the run readme, `training/tune/sft_callbacks.py`),
+not stray checkpoints. `git_sha: unknown` is the same soft-fail
+FT.smoke-dataset noted for the prepare container: the training image carries
+no `.git` either, and no reader checks the field.
+
+Resumed run (2026-09-25), with the straight run's checkpoint listing and
+its step-60 `meta.json` owed from stage 1:
+
+```
+➜  ai-experiments git:(SFT-verification-2) cd ~/workspace/ai-experiments
+set -o pipefail
+ls /mnt/ai-data/training/runs/ft3-straight/checkpoints/
+cat /mnt/ai-data/training/runs/ft3-straight/checkpoints/checkpoint-60/meta.json
+make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
+    ARGS="run.name=ft3-resume schedule.total_steps=60 schedule.warmup_steps=3 checkpoint.interval_steps=30 sft.eval_steps=30 \
+    checkpoint.resume=/mnt/ai-data/training/runs/ft3-resume/checkpoints/checkpoint-30"
+echo "exit=$?"
+ls /mnt/ai-data/training/runs/ft3-resume/checkpoints/
+checkpoint-30  checkpoint-60  latest  README.md
+{
+  "step": 60,
+  "checkpoint_format": "trl",
+  "adapter_only": true,
+  "base_model": "google/gemma-4-E2B",
+  "base_revision": "d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f",
+  "base_config_sha256": "e5faef0dd1a8f2437f6010721146b85433eaa90e679ef011e803c7ffefae73b8",
+  "backend": "trl",
+  "recipe_hash": "98a8eab285605b237344e8151270ded92cb4f704b37b0207a6628ec517ae14b4",
+  "git_sha": "unknown",
+  "library_versions": {
+    "torch": "2.13.0+cu130",
+    "transformers": "5.13.1",
+    "trl": "0.24.0",
+    "peft": "0.19.1"
+  },
+  "wall_clock": "2026-09-25T14:00:37+0000",
+  "attention_implementation": "sdpa"
+}docker compose -f docker-compose.training.yaml run --rm training python -m training train-sft --config training/recipes/reference/sft-qlora-e2b.yaml run.name=ft3-resume schedule.total_steps=60 schedule.warmup_steps=3 checkpoint.interval_steps=30 sft.eval_steps=30     checkpoint.resume=/mnt/ai-data/training/runs/ft3-resume/checkpoints/checkpoint-30
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up. 
+Container ai-experiments-training-run-a67e2e96b1cc Creating 
+Container ai-experiments-training-run-a67e2e96b1cc Created 
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training train-sft --config training/recipes/reference/sft-qlora-e2b.yaml run.name=ft3-resume schedule.total_steps=60 schedule.warmup_steps=3 checkpoint.interval_steps=30 sft.eval_steps=30 checkpoint.resume=/mnt/ai-data/training/runs/ft3-resume/checkpoints/checkpoint-30
+[RUN] Resuming (/mnt/ai-data/training/runs/ft3-resume/checkpoints/checkpoint-30) ft3-resume [trl]: 60 total steps
+[model] flash-attn supports head_dim <= 256; this model's widest head is 512, so attention runs on sdpa
+Loading weights:   0%|                                                                                                                                 | 0/1951 [00:00<?, ?it/s]/opt/venv/lib/python3.12/site-packages/bitsandbytes/backends/cuda/ops.py:213: FutureWarning: _check_is_size will be removed in a future PyTorch release along with guard_size_oblivious.     Use _check(i >= 0) instead.
+  torch._check_is_size(blocksize)
+Loading weights: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1951/1951 [00:00<00:00, 3202.55it/s]
+[transformers] The tokenizer has new PAD/BOS/EOS tokens that differ from the model config and generation config. The model config and generation config were aligned accordingly, being updated with the tokenizer's values. Updated tokens: {'eos_token_id': 1, 'bos_token_id': 2, 'pad_token_id': 0}.
+{'loss': '1.106', 'grad_norm': '0.542', 'learning_rate': '5.983e-05', 'epoch': '0.008303'}                                                                                      
+ 67%|████████████████████████████████████████████████████████████████████████████████████████████▋                                              | 40/60 [02:40<03:51, 11.59s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+ 72%|███████████████████████████████████████████████████████████████████████████████████████████████████▌                                       | 43/60 [03:30<04:08, 14.62s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+{'loss': '1.093', 'grad_norm': '0.894', 'learning_rate': '1.782e-05', 'epoch': '0.01038'}                                                                                       
+ 83%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████▊                       | 50/60 [05:21<02:38, 15.84s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+{'loss': '1.083', 'grad_norm': '0.2802', 'learning_rate': '1.518e-07', 'epoch': '0.01245'}                                                                                      
+100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 60/60 [08:04<00:00, 16.08s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5                                                                                          | 30/2033 [00:04<04:55,  6.79it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5                                                                                         | 143/2033 [00:24<05:54,  5.33it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5                                                                                         | 657/2033 [01:55<03:03,  7.48it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5█████████████████████████████▉                                                          | 1159/2033 [03:24<02:54,  5.01it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5█████████████████████████████████████▌                                                  | 1274/2033 [03:44<02:31,  5.00it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5████████████████████████████████████████████████████████████                            | 1613/2033 [04:44<01:32,  4.54it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5███████████████████████████████████████████████████████████████████████▎                | 1782/2033 [05:14<00:51,  4.92it/s]
+{'eval_loss': '1.03', 'eval_runtime': '361.4', 'eval_samples_per_second': '11.25', 'eval_steps_per_second': '5.626', 'epoch': '0.01245'}                                        
+{'train_runtime': '846.4', 'train_samples_per_second': '2.268', 'train_steps_per_second': '0.071', 'train_loss': '0.547', 'epoch': '0.01245'}                                   
+100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 60/60 [14:06<00:00, 14.11s/it]
+[OK] Run complete: step 60 [trl]
+  [INFO] trainable parameters: 24,158,208 of 5,128,455,712 (0.47 percent)
+Final train loss: 1.083399
+Held-out loss:    1.030488
+Run directory: /mnt/ai-data/training/runs/ft3-resume/2026-09-25_15-14-51
+Checkpoints:   /mnt/ai-data/training/runs/ft3-resume/checkpoints
+exit=0
+checkpoint-30  checkpoint-60  latest  README.md
+```
+
+Every remaining criterion observed. Straight run's checkpoints:
+`checkpoint-30` and `checkpoint-60` listed, and the step-60 `meta.json`
+carries `checkpoint_format: trl`, `adapter_only: true`, `base_revision
+d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f` and `attention_implementation:
+sdpa`. Resumed run: `[RUN] Resuming
+(/mnt/ai-data/training/runs/ft3-resume/checkpoints/checkpoint-30) ft3-resume
+[trl]: 60 total steps`, the step counter picking up past 30 with the
+learning rate already on the cosine tail (5.983e-05 at the first log line),
+`[OK] Run complete: step 60 [trl]`, `Held-out loss:    1.030488`, exit 0, and
+`checkpoint-60` beside `checkpoint-30` in the final listing. Tolerance:
+abs(1.029761 - 1.030488) / 1.029761 = 0.000706, inside `RESUME_LOSS_RTOL`
+(0.01) by a factor of 14. Two observations, neither a mismatch: the
+trainer's own summary line reports `train_loss` 0.547 because transformers
+divides the loss accumulated over the 30 resumed steps by all 60, whereas
+the `Final train loss: 1.083399` the command prints is the last logged step
+loss; and the two runs' `recipe_hash` values differ because `run.name` is
+part of the hashed recipe, which is why the resumed run carries the
+interrupted run's hash (both `ft3-resume`) and the straight run its own.
+
+The hardware mirror's first run (2026-09-25, after this entry verified):
+`tests/hardware/test_train_resume.py::test_train_interrupt_resume PASSED`
+at `[TIER] full`, the three runs at 20 steps with both window losses inside
+`RESUME_LOSS_RTOL`; the paste is recorded once, verbatim, under
+FT.hardware-test.
+
+Status: VERIFIED (2026-09-25)
 
 ## FT.export-merged Export the merged HF directory and load it in the harness
 
@@ -1776,98 +2179,2041 @@ The export runs in the CPU-only export image (`make export-build` once) and
 writes `/mnt/ai-data/models/trained/<name>/hf/` plus the manifest beside it;
 the sandbox proves the copy path and both harness verdicts on the tiny
 fixture (`tests/training/test_export_harness.py`), and this entry proves the
-merge on real weights. Depends on FT.train-resume.
+merge on real weights. Its hardware mirror is
+`tests/hardware/test_fine_tuning_loop.py` (`hw_full`, `training`), the
+test FT.hardware-test runs: since 2026-09-25 it also asserts the
+`[OK] Base model verified:` line, the refused second export with its
+`--force` remedy, and one chat turn on a pipe ending in `[INFO] Chat ended:
+1 model turns`, the three checks this entry's hand run added to what the
+test held before. The export image itself is not what the test runs, since
+every hardware test is in-process; the image's dependency set is
+`tests/training/test_export_image_dependencies.py`'s (KB-91). Depends on
+FT.train-resume.
 
 Command (the export container mounts the models tree read-write under
 `/app/models/trained`; the harness lines read the result through the
-harness image, and `checkpoint-info` reads it on the host):
+harness image, and `checkpoint-info` reads it on the host). `make
+export-build` rebuilds the image's pip layer after KB-91's two pins, minutes
+rather than the cache hit FT.preconditions observed. The merge loads
+the 10.2 GB bf16 base on the CPU and writes the same again into the
+`hf.partial` staging directory before the rename; with the base in the page
+cache from the training runs it took seconds on the first run (2026-09-25),
+and a cold cache costs one read of the base on top. An `hf.partial`
+directory left behind marks a killed run, and the next export removes it.
+The last line is interactive: at the `> ` marker type one short prompt
+(`Reply with one sentence: what is a huge page?`), wait for the reply (CPU
+inference on a 5 B model, so minutes rather than seconds), then type
+`/quit`. Every `echo` records the exit of the line above it; `make` reports
+a failing recipe as its own exit 2, whatever the command inside returned.
 
 ```bash
+set -o pipefail
 make export-build
 make export-hf CHECKPOINT=/mnt/ai-data/training/runs/ft3-straight/checkpoints/checkpoint-60 \
     ARGS="--name ft3-straight"
+echo "exit=$?"
 ls /mnt/ai-data/models/trained/ft3-straight/hf/
 grep -E '"(mode|hf_dir|model_hash)"' /mnt/ai-data/models/trained/ft3-straight/manifest.json
 sha256sum /mnt/ai-data/models/trained/ft3-straight/hf/model.safetensors
 make export-hf CHECKPOINT=/mnt/ai-data/training/runs/ft3-straight/checkpoints/checkpoint-60 \
-    ARGS="--name ft3-straight"; echo "exit $?"
+    ARGS="--name ft3-straight"
+echo "exit=$?"
 make harness-run ARGS="--model /app/models/trained/ft3-straight/hf --text-only --status --deep"
+echo "exit=$?"
 cd rust-harness && cargo run --release -p runtime --bin checkpoint-info -- --check --text-only \
-    /mnt/ai-data/models/trained/ft3-straight/hf 2>&1 | tail -3; cd ..
+    /mnt/ai-data/models/trained/ft3-straight/hf 2>&1 | tail -3; echo "exit=$?"; cd ..
 make harness-chat ARGS="--model /app/models/trained/ft3-straight/hf --text-only"
+echo "exit=$?"
 ```
 
 Expected signal: the first export prints `[OK] Base model verified:
-google/gemma-4-E2B (revision d29ff6b4...)`, `[RUN] Merging model: ...`,
-`[OK] Adapter merged: ...`, `[OK] HF export written: .../hf (N bytes)`,
-`[OK] Manifest written: .../manifest.json` and a `model_hash:` line, and
-exits 0 (a checkpoint whose recorded base revision does not match the cached
-base is refused with `[ERROR] Export failed: Base model drifted since
-training:` unless `--allow-base-drift` is passed); `ls` shows `config.json`,
-`generation_config.json`, one `model.safetensors`, the tokenizer files and no
-`model.safetensors.index.json`; the manifest records `"mode": "merge"`,
-`"hf_dir"` as the listed directory, and a `model_hash` equal to the
-`sha256sum` line and different from the FT.preconditions base digest; the second export
-exits 1 with `[ERROR] Export exists: .../hf` and the `--force` solution line,
-leaving the manifest unchanged; `harness --status --deep` and
+/app/models/hf/gemma-4-E2B (revision
+d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f)` (the container spelling of the
+staged base, because the line prints the path the trainer loaded and PEFT
+recorded, not the recipe's hub id; `training/export/merge.py`'s
+`check_meta_consistency` names this one-base-two-spellings case), `[RUN]
+Merging model: ...`, `[OK] Adapter merged: ...`, `[OK] HF export written:
+.../hf (N bytes)`, `[OK] Manifest written: .../manifest.json` and a
+`model_hash:` line, and exits 0 (a checkpoint whose recorded base revision
+does not match the cached base is refused with `[ERROR] Export failed: Base
+model drifted since training:` unless `--allow-base-drift` is passed); `ls`
+shows `config.json`, `generation_config.json`, one `model.safetensors`, the
+tokenizer files and no `model.safetensors.index.json`; the manifest records
+`"mode": "merge"`, `"hf_dir"` as the container spelling of the listed
+directory (`/app/models/trained/ft3-straight/hf`), and a `model_hash` equal
+to the `sha256sum` line and different from the FT.preconditions base digest;
+the second export prints `[ERROR] Export exists: .../hf` and the `--force`
+solution line, returns 1 so `make` reports `Error 1` and the echo shows 2,
+and leaves the manifest unchanged; `harness --status --deep` and
 `checkpoint-info --check` both exit 0 on the directory, with `[OK] backend
-compatibility: supported`, the same 35-layer config as the base, and
-`[WARN] --deep: no effect when there is no interp artifact to check` (the
-hash comparison is FT.probe's, against a probe); one `--chat` reply arrives,
-rendered through the version 2 chat template.
+compatibility: supported` (`checkpoint-info` spells it `CPU backend
+compatibility`), the same 35-layer config as the base, and `[WARN] --deep:
+no effect when there is no interp artifact to check` (the hash comparison is
+FT.probe's, against a probe); one `--chat` reply arrives after the `> `
+marker, ends at the model's end-of-turn or at the 256-token sampling cap,
+and `/quit` ends with `[INFO] Chat ended: 1 model turns`, exit 0. The
+reply's length and whether it closes its own turn are the adapter's, judged
+at FT.heldout-eval, not the harness's: until 2026-09-25 this clause asked
+for "a single line", the behaviour of the instruction-tuned model the
+rust-harness chats ran, and the 60-step adapter over the base ran to the
+cap, recorded below. The prompt was rendered through the version 2 chat
+template, which is `CHAT_TEMPLATE_VERSION` in
+`rust-harness/harness/src/template.rs` pinned against
+`training/models/families.py`; the reply arriving cleanly framed is its
+observable, not a printed version.
 
 Observed:
 
+First attempt (2026-09-25, superseded, kept verbatim: stage A stopped before
+the export began. The image build was the cache hit FT.preconditions
+observed, and `python -m training` died at import in the container: the
+export image carried neither `xxhash` nor `omegaconf`, which the CLI reaches
+while registering every subcommand. KB-91, fixed in the tree the same day;
+no criterion was reached, so none is judged):
+
 ```
+➜  ai-experiments git:(SFT-verification-2) cd ~/workspace/ai-experiments
+git pull origin SFT-verification-2
+git log -1 --oneline
+set -o pipefail
+make export-build
+remote: Enumerating objects: 18, done.
+remote: Counting objects: 100% (18/18), done.
+remote: Compressing objects: 100% (12/12), done.
+remote: Total 18 (delta 9), reused 15 (delta 6), pack-reused 0 (from 0)
+Unpacking objects: 100% (18/18), 11.34 KiB | 1.89 MiB/s, done.
+From https://github.com/alejandroJaramillo87/ai-experiments
+ * branch              SFT-verification-2 -> FETCH_HEAD
+   9509f1b3..e9703d73  SFT-verification-2 -> origin/SFT-verification-2
+Updating 9509f1b..e9703d7
+Fast-forward
+ docs/verification/training/fine-tuning-loop.md | 292 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++---------
+ 1 file changed, 271 insertions(+), 21 deletions(-)
+Building export image...
+docker compose -f docker-compose.training.yaml build export
+[+] Building 0.6s (17/17) FINISHED
+ => [internal] load local bake definitions                                                                                                                                  0.0s
+ => => reading from stdin 569B                                                                                                                                              0.0s
+ => [internal] load build definition from Dockerfile.export                                                                                                                 0.0s
+ => => transferring dockerfile: 2.53kB                                                                                                                                      0.0s
+ => [internal] load metadata for docker.io/library/ubuntu:24.04                                                                                                             0.5s
+ => [internal] load metadata for ghcr.io/astral-sh/uv:0.11.28                                                                                                               0.3s
+ => [internal] load .dockerignore                                                                                                                                           0.0s
+ => => transferring context: 1.73kB                                                                                                                                         0.0s
+ => [stage-1 1/9] FROM docker.io/library/ubuntu:24.04@sha256:008173c23f95b170204355c12626cb5a965d779a7e1283b09e9cffbb1bf33ca3                                               0.0s
+ => [uv 1/1] FROM ghcr.io/astral-sh/uv:0.11.28@sha256:0f36cb9361a3346885ca3677e3767016687b5a170c1a6b88465ec14aefec90aa                                                      0.0s
+ => CACHED [stage-1 2/9] RUN apt-get update &&     apt-get install -y --no-install-recommends         git         ca-certificates         python3.12         python3.12-de  0.0s
+ => CACHED [stage-1 3/9] COPY --from=uv /uv /uvx /usr/local/bin/                                                                                                            0.0s
+ => CACHED [stage-1 4/9] RUN uv venv /opt/venv --python 3.12                                                                                                                0.0s
+ => CACHED [stage-1 5/9] RUN --mount=type=cache,target=/root/.cache/uv     uv pip install --index-url https://download.pytorch.org/whl/cpu torch==2.13.0 &&     uv pip ins  0.0s
+ => CACHED [stage-1 6/9] RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin -c "Application User" appuser                                            0.0s
+ => CACHED [stage-1 7/9] RUN mkdir -p /app/cache /app/logs && chown -R appuser:appuser /app                                                                                 0.0s
+ => CACHED [stage-1 8/9] WORKDIR /app                                                                                                                                       0.0s
+ => CACHED [stage-1 9/9] RUN python -c "import torch, transformers, peft, safetensors"                                                                                      0.0s
+ => exporting to image                                                                                                                                                      0.0s
+ => => exporting layers                                                                                                                                                     0.0s
+ => => writing image sha256:fb7e7363b4fb02b3b5a582c4a4c2d573961d4a95accf1c57c3485a695e4986f4                                                                                0.0s
+ => => naming to docker.io/library/ai-experiments-export                                                                                                                    0.0s
+ => resolving provenance for metadata file                                                                                                                                  0.0s
+[+] build 1/1
+ ✔ Image ai-experiments-export Built                                                                                                                                         0.6s
+Export image built.
+➜  ai-experiments git:(SFT-verification-2) make export-hf CHECKPOINT=/mnt/ai-data/training/runs/ft3-straight/checkpoints/checkpoint-60 \
+    ARGS="--name ft3-straight"
+echo "exit=$?"
+docker compose -f docker-compose.training.yaml run --rm export python -m training export --checkpoint /mnt/ai-data/training/runs/ft3-straight/checkpoints/checkpoint-60 --name ft3-straight
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-export-run-0aab72d6b2ca Creating
+Container ai-experiments-export-run-0aab72d6b2ca Created
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/app/training/__main__.py", line 5, in <module>
+    from training.cli import main
+  File "/app/training/cli.py", line 24, in <module>
+    from training.commands import (
+  File "/app/training/commands/build_contamination.py", line 20, in <module>
+    from training.data import contamination
+  File "/app/training/data/contamination.py", line 29, in <module>
+    import xxhash
+ModuleNotFoundError: No module named 'xxhash'
+
+make: *** [make/training.mk:64: export-hf] Error 1
+exit=2
 ```
 
-Status: PENDING
+Stage A (2026-09-25, as committed after KB-91; the export, the listing, the
+manifest, the digest, and the refused second export):
+
+```
+➜  ai-experiments git:(SFT-verification-2) cd ~/workspace/ai-experiments
+git pull origin SFT-verification-2
+git log -1 --oneline
+set -o pipefail
+make export-build
+remote: Enumerating objects: 17, done.
+remote: Counting objects: 100% (17/17), done.
+remote: Compressing objects: 100% (4/4), done.
+remote: Total 17 (delta 13), reused 17 (delta 13), pack-reused 0 (from 0)
+Unpacking objects: 100% (17/17), 8.42 KiB | 2.10 MiB/s, done.
+From https://github.com/alejandroJaramillo87/ai-experiments
+ * branch              SFT-verification-2 -> FETCH_HEAD
+   e9703d73..293d77aa  SFT-verification-2 -> origin/SFT-verification-2
+Updating e9703d7..293d77a
+Fast-forward
+ docker/training/Dockerfile.export                |  12 +++++--
+ docs/sandbox/docker_training_overview.md         |  16 +++++----
+ docs/verification/bugs/known-bugs.md             |   7 ++--
+ docs/verification/training/fine-tuning-loop.md   |  86 ++++++++++++++++++++++++++++++++++++++++++++++-
+ tests/training/README.md                         |   1 +
+ tests/training/test_export_image_dependencies.py | 219 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 6 files changed, 329 insertions(+), 12 deletions(-)
+ create mode 100644 tests/training/test_export_image_dependencies.py
+Building export image...
+docker compose -f docker-compose.training.yaml build export
+[+] Building 24.9s (17/17) FINISHED
+ => [internal] load local bake definitions                                                                                                                                  0.0s
+ => => reading from stdin 569B                                                                                                                                              0.0s
+ => [internal] load build definition from Dockerfile.export                                                                                                                 0.0s
+ => => transferring dockerfile: 3.01kB                                                                                                                                      0.0s
+ => [internal] load metadata for docker.io/library/ubuntu:24.04                                                                                                             0.8s
+ => [internal] load metadata for ghcr.io/astral-sh/uv:0.11.28                                                                                                               0.8s
+ => [internal] load .dockerignore                                                                                                                                           0.0s
+ => => transferring context: 1.73kB                                                                                                                                         0.0s
+ => [stage-1 1/9] FROM docker.io/library/ubuntu:24.04@sha256:008173c23f95b170204355c12626cb5a965d779a7e1283b09e9cffbb1bf33ca3                                               0.0s
+ => [uv 1/1] FROM ghcr.io/astral-sh/uv:0.11.28@sha256:0f36cb9361a3346885ca3677e3767016687b5a170c1a6b88465ec14aefec90aa                                                      0.0s
+ => CACHED [stage-1 2/9] RUN apt-get update &&     apt-get install -y --no-install-recommends         git         ca-certificates         python3.12         python3.12-de  0.0s
+ => CACHED [stage-1 3/9] COPY --from=uv /uv /uvx /usr/local/bin/                                                                                                            0.0s
+ => CACHED [stage-1 4/9] RUN uv venv /opt/venv --python 3.12                                                                                                                0.0s
+ => [stage-1 5/9] RUN --mount=type=cache,target=/root/.cache/uv     uv pip install --index-url https://download.pytorch.org/whl/cpu torch==2.13.0 &&     uv pip install    17.8s
+ => [stage-1 6/9] RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin -c "Application User" appuser                                                   0.1s
+ => [stage-1 7/9] RUN mkdir -p /app/cache /app/logs && chown -R appuser:appuser /app                                                                                        0.2s
+ => [stage-1 8/9] WORKDIR /app                                                                                                                                              0.0s
+ => [stage-1 9/9] RUN python -c "import torch, transformers, peft, safetensors, omegaconf, xxhash"                                                                          4.7s
+ => exporting to image                                                                                                                                                      1.2s
+ => => exporting layers                                                                                                                                                     1.2s
+ => => writing image sha256:84c03bf6d68e4b6c1794365545ddcab077851ac24fe7de5478e15569d1b1900a                                                                                0.0s
+ => => naming to docker.io/library/ai-experiments-export                                                                                                                    0.0s
+ => resolving provenance for metadata file                                                                                                                                  0.0s
+[+] build 1/1
+ ✔ Image ai-experiments-export Built                                                                                                                                        24.9s
+Export image built.
+➜  ai-experiments git:(SFT-verification-2) make export-hf CHECKPOINT=/mnt/ai-data/training/runs/ft3-straight/checkpoints/checkpoint-60 \
+    ARGS="--name ft3-straight"
+echo "exit=$?"
+docker compose -f docker-compose.training.yaml run --rm export python -m training export --checkpoint /mnt/ai-data/training/runs/ft3-straight/checkpoints/checkpoint-60 --name ft3-straight
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-export-run-47c8bdd51646 Creating
+Container ai-experiments-export-run-47c8bdd51646 Created
+[OK] Base model verified: /app/models/hf/gemma-4-E2B (revision d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f)
+[ERROR] Export failed: [Errno 13] Permission denied: '/app/models/trained/ft3-straight'
+
+make: *** [make/training.mk:64: export-hf] Error 1
+exit=2
+➜  ai-experiments git:(SFT-verification-2) id -u; id -g; echo "UID=${UID} GID=${GID}"
+ls -ld /mnt/ai-data /mnt/ai-data/models /mnt/ai-data/models/trained /mnt/ai-data/training/runs
+ls -la /mnt/ai-data/models/trained/
+docker compose -f docker-compose.training.yaml config export 2>/dev/null | grep -E "^\s+user:"
+1000
+1000
+UID=1000 GID=1000
+drwxr-xr-x  9 alejandro alejandro 4096 Aug  6 15:41 /mnt/ai-data
+drwxr-xr-x  9 alejandro alejandro 4096 Aug  1 05:44 /mnt/ai-data/models
+drwxr-xr-x  2 root      root      4096 Jul 23 11:10 /mnt/ai-data/models/trained
+drwxr-xr-x 12 alejandro alejandro 4096 Sep 25 07:42 /mnt/ai-data/training/runs
+total 8
+drwxr-xr-x 2 root      root      4096 Jul 23 11:10 .
+drwxr-xr-x 9 alejandro alejandro 4096 Aug  1 05:44 ..
+    user: 1000:1000
+  user: 1000:1000
+➜  ai-experiments git:(SFT-verification-2) sudo chown -R "$(whoami):$(whoami)" /mnt/ai-data/models/trained
+➜  ai-experiments git:(SFT-verification-2) ls -ld /mnt/ai-data/models/trained
+drwxr-xr-x  2 alejandro alejandro 4096 Jul 23 11:10 /mnt/ai-data/models/trained
+➜  ai-experiments git:(SFT-verification-2) make export-hf CHECKPOINT=/mnt/ai-data/training/runs/ft3-straight/checkpoints/checkpoint-60 \
+    ARGS="--name ft3-straight"
+echo "exit=$?"
+docker compose -f docker-compose.training.yaml run --rm export python -m training export --checkpoint /mnt/ai-data/training/runs/ft3-straight/checkpoints/checkpoint-60 --name ft3-straight
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-export-run-fb0cd4975a17 Creating
+Container ai-experiments-export-run-fb0cd4975a17 Created
+[OK] Base model verified: /app/models/hf/gemma-4-E2B (revision d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f)
+[RUN] Merging model: /mnt/ai-data/training/runs/ft3-straight/checkpoints/checkpoint-60
+Loading weights: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1951/1951 [00:00<00:00, 61658.17it/s]
+Writing model shards: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1/1 [00:01<00:00,  1.55s/it]
+[OK] Adapter merged: /mnt/ai-data/training/runs/ft3-straight/checkpoints/checkpoint-60 into /app/models/hf/gemma-4-E2B
+[OK] HF export written: /app/models/trained/ft3-straight/hf (10,208,852,910 bytes)
+[OK] Manifest written: /app/models/trained/ft3-straight/manifest.json
+model_hash: 684dfd319d75faff9d56e9c1cc911a78427540e12ca53a6ae9a3f7818d478b52
+exit=0
+➜  ai-experiments git:(SFT-verification-2) ls /mnt/ai-data/models/trained/ft3-straight/hf/
+grep -E '"(mode|hf_dir|model_hash)"' /mnt/ai-data/models/trained/ft3-straight/manifest.json
+sha256sum /mnt/ai-data/models/trained/ft3-straight/hf/model.safetensors
+config.json  generation_config.json  model.safetensors  tokenizer_config.json  tokenizer.json
+  "mode": "merge",
+  "hf_dir": "/app/models/trained/ft3-straight/hf",
+  "model_hash": "684dfd319d75faff9d56e9c1cc911a78427540e12ca53a6ae9a3f7818d478b52",
+684dfd319d75faff9d56e9c1cc911a78427540e12ca53a6ae9a3f7818d478b52  /mnt/ai-data/models/trained/ft3-straight/hf/model.safetensors
+➜  ai-experiments git:(SFT-verification-2) make export-hf CHECKPOINT=/mnt/ai-data/training/runs/ft3-straight/checkpoints/checkpoint-60 \
+    ARGS="--name ft3-straight"
+echo "exit=$?"
+docker compose -f docker-compose.training.yaml run --rm export python -m training export --checkpoint /mnt/ai-data/training/runs/ft3-straight/checkpoints/checkpoint-60 --name ft3-straight
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-export-run-fcdcb0f69297 Creating
+Container ai-experiments-export-run-fcdcb0f69297 Created
+[OK] Base model verified: /app/models/hf/gemma-4-E2B (revision d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f)
+[ERROR] Export exists: /app/models/trained/ft3-straight/hf
+  Solution: pass --force to replace it, or --name for a new export (a re-export changes model_hash under anything fitted to the old weights)
+
+make: *** [make/training.mk:64: export-hf] Error 1
+exit=2
+```
+
+Stage A judged: the base-verified line printed the staged container path
+and the full revision as the expected signal states, which is KB-91's close
+condition. `[RUN] Merging model:`, `[OK] Adapter merged:`, `[OK] HF export
+written:` (10,208,852,910 bytes), `[OK] Manifest written:` and the
+`model_hash:` line all printed, `exit=0`. The listing holds `config.json`,
+`generation_config.json`, one `model.safetensors`, `tokenizer.json` and
+`tokenizer_config.json`, and no index file. The manifest records
+`"mode": "merge"`, `"hf_dir"` in the container spelling, and a `model_hash`
+that equals the `sha256sum` line and differs from the FT.preconditions base
+digest `76dc84a5...`. The second export was refused with `[ERROR] Export
+exists:` and the `--force` solution line before staging, `make` reported
+`Error 1`, the echo showed 2, and the listing and manifest above are the
+ones the refusal left in place. Pass on every stage A criterion.
+
+Two observations, neither a mismatch. First, the export's first run died at
+`[Errno 13] Permission denied` creating the export directory: the host
+`trained` directory was owned by root, dated 2026-07-23, older than the rest
+of the tree, so it predates the `chown -R` in
+`scripts/setup/setup_data_ssd.sh` that gives every other directory to the
+operator, and the container ran as uid 1000 exactly as the compose anchor
+resolves it. One `chown` on the host fixed it, kept in the paste; a host-state
+defect outside the tree, so no ledger row. Second, the merge took seconds,
+not the minutes the command paragraph predicted: the 1,951 tensors loaded at
+61,658 per second and the single shard wrote in 1.55 s, because the staged
+base was in the page cache from the training runs and safetensors maps it
+rather than reading it. The command paragraph's timing note was operator
+guidance, not an expected signal, and now states what was observed.
+
+Stage B (2026-09-25): the two harness readers.
+
+```
+➜  ai-experiments git:(SFT-verification-2) cd ~/workspace/ai-experiments
+git pull origin SFT-verification-2
+git log -1 --oneline
+set -o pipefail
+make harness-run ARGS="--model /app/models/trained/ft3-straight/hf --text-only --status --deep"
+echo "exit=$?"
+remote: Enumerating objects: 8, done.
+remote: Counting objects: 100% (8/8), done.
+remote: Compressing objects: 100% (3/3), done.
+remote: Total 8 (delta 5), reused 8 (delta 5), pack-reused 0 (from 0)
+Unpacking objects: 100% (8/8), 3.86 KiB | 1.29 MiB/s, done.
+From https://github.com/alejandroJaramillo87/ai-experiments
+ * branch              SFT-verification-2 -> FETCH_HEAD
+   293d77aa..d52ace9f  SFT-verification-2 -> origin/SFT-verification-2
+Updating 293d77a..d52ace9
+Fast-forward
+ docs/verification/bugs/known-bugs.md           |   2 +-
+ docs/verification/training/fine-tuning-loop.md | 159 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++--
+ 2 files changed, 158 insertions(+), 3 deletions(-)
+docker compose -f docker-compose.rust-harness.yaml run --rm harness --model /app/models/trained/ft3-straight/hf --text-only --status --deep
+WARN[0000] Found orphan containers (llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-harness-run-2e58861a6c18 Creating
+Container ai-experiments-harness-run-2e58861a6c18 Created
+[WARN] --deep: no effect when there is no interp artifact to check
+[OK] model directory: /app/models/trained/ft3-straight/hf
+[OK] checkpoint files: config.json and model.safetensors present, header names 1951 tensors
+[OK] config.json: 35 layers, hidden size 1536, context 131072
+[OK] backend compatibility: supported
+[SKIP] probe: no --probe given
+[SKIP] probe geometry: no --probe given
+[SKIP] probe identity: no --probe given
+[SKIP] control vector: no --control-vector given
+[SKIP] control vector identity: no --control-vector given
+[SKIP] interp log directory: no --interp-log given
+[WARN] obs log directory: /mnt/ai-data/logs/harness cannot be created: /mnt is not writable: Read-only file system (os error 30); run records degrade to a no-op
+exit=0
+➜  ai-experiments git:(SFT-verification-2) cd rust-harness && cargo run --release -p runtime --bin checkpoint-info -- --check --text-only \
+    /mnt/ai-data/models/trained/ft3-straight/hf 2>&1 | tail -3; echo "exit=$?"; cd ..
+  layer 34: Global, head 512, ffn 12288, rope base 1000000
+
+[OK] CPU backend compatibility: supported
+exit=0
+```
+
+Stage B, the container chat, first run (2026-09-25; superseded, host
+state: the bind-mounted `sessions/rust-harness` was root-owned, and the
+inspection that found it is kept):
+
+```
+➜  ai-experiments git:(SFT-verification-2) make harness-chat ARGS="--model /app/models/trained/ft3-straight/hf --text-only"
+echo "exit=$?"
+docker compose -f docker-compose.rust-harness.yaml run --rm harness --model /app/models/trained/ft3-straight/hf --text-only --chat
+WARN[0000] Found orphan containers (llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-harness-run-c00f8d115bcf Creating
+Container ai-experiments-harness-run-c00f8d115bcf Created
+[ERROR] Task failed: session.jsonl: open /work/session.jsonl for append: Permission denied (os error 13)
+
+make: *** [make/harness.mk:18: harness-chat] Error 1
+exit=2
+➜  ai-experiments git:(SFT-verification-2) cd ~/workspace/ai-experiments
+ls -la sessions/ sessions/rust-harness/
+sessions/:
+total 12
+drwxrwxr-x  3 alejandro alejandro 4096 Sep 20 09:29 .
+drwxrwxr-x 24 alejandro alejandro 4096 Sep 25 07:24 ..
+drwxr-xr-x  2 root      root      4096 Sep 20 09:29 rust-harness
+
+sessions/rust-harness/:
+total 8
+drwxr-xr-x 2 root      root      4096 Sep 20 09:29 .
+drwxrwxr-x 3 alejandro alejandro 4096 Sep 20 09:29 ..
+```
+
+Stage B, the container chat (2026-09-25, after the `sessions/rust-harness`
+reset that RH.38's own command block opens with):
+
+```
+➜  ai-experiments git:(SFT-verification-2) cd ~/workspace/ai-experiments
+rm -rf sessions/rust-harness && mkdir -p sessions/rust-harness
+ls -ld sessions/rust-harness
+make harness-chat ARGS="--model /app/models/trained/ft3-straight/hf --text-only"
+echo "exit=$?"
+ls -la sessions/rust-harness
+drwxrwxr-x 2 alejandro alejandro 4096 Sep 25 09:23 sessions/rust-harness
+docker compose -f docker-compose.rust-harness.yaml run --rm harness --model /app/models/trained/ft3-straight/hf --text-only --chat
+WARN[0000] Found orphan containers (llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-harness-run-7fdbb34fb71b Creating
+Container ai-experiments-harness-run-7fdbb34fb71b Created
+[INFO] Model: /app/models/trained/ft3-straight/hf hash=027443861f18a8f6 layers=35
+[INFO] Weights: 8.62 GiB resident at bf16
+[INFO] Peak RSS after load: 9.51 GiB
+[INFO] KV cache: 131072 tokens, 1.52 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=256
+[INFO] Build: 0.1.0 git unknown
+[INFO] Model load: 3.75 s
+Reply with one sentence: what is a huge page?
+[INFO] Prefill: 20 tokens in 0.72 s (28 tok/s)
+A huge page is a large virtual memory page that can be used for efficient memory management and speedier access to data.
+
+<h2>What is a Huge Page?</h2>
+
+A huge page is a large virtual memory page that can be used for efficient memory management and speedier access to data. It is a memory page that is larger than the normal page size, which is typically 4KB.
+
+Virtual memory is an essential part of computer system because it allows programs to access data that is not present in physical memory. However, virtual memory can be slow and inefficient if the page size is not large enough. This is where huge pages come into play.
+
+A huge page can be used for memory management because it can store more data in a single page. This can result in fewer page faults, which are the number of times the operating system has to retrieve data from disk instead of from memory. This can lead to faster processing times.
+
+Additionally, huge pages can improve the performance of applications that require large amounts of memory, such as databases and virtual machines. By allocating a large page to an application, it can access more data in memory, resulting in faster processing times.
+
+Overall, huge pages are a valuable tool for efficient memory management and faster data access
+/quit
+[INFO] Chat ended: 1 model turns
+[INFO] Session snapshot: 276 cached tokens at /work/session.kv
+exit=0
+total 9952
+drwxrwxr-x 2 alejandro alejandro     4096 Sep 25 09:26 .
+drwxrwxr-x 3 alejandro alejandro     4096 Sep 25 09:23 ..
+-rw-r--r-- 1 alejandro alejandro     1389 Sep 25 09:25 session.jsonl
+-rw-r--r-- 1 alejandro alejandro 10175889 Sep 25 09:26 session.kv
+```
+
+Stage B judged: `harness --status --deep` exited 0 with `[OK] backend
+compatibility: supported`, the base's 35-layer config, the header naming
+1,951 tensors, and the `--deep` WARN the signal names. `checkpoint-info
+--check` ended on `[OK] CPU backend compatibility: supported`, exit 0. The
+chat loaded the export (8.62 GiB resident at bf16, 3.75 s), rendered the
+prompt through the pinned template so that the reply came back framed and
+on topic, and `/quit` ended with `[INFO] Chat ended: 1 model turns`, exit 0,
+leaving a user-owned `session.jsonl` and `session.kv`. The `[WARN] obs log
+directory` line is the one FT.preconditions observed on the same service,
+which mounts no log root by design. The chat's first run failed on host
+state, not the tree: the bind-mounted `sessions/rust-harness` was root-owned
+and dated 2026-09-20 09:29, created by docker as the bind source on a run
+whose tree predated the `mkdir -p` the harness targets gained on 2026-09-19,
+and `mkdir -p` leaves an existing directory alone; the same shape as stage
+A's `trained` directory, fixed the same way, no ledger row.
+
+One mismatch, and it is a runbook finding, not a code defect. The signal as
+first written asked for a reply "as a single line". The reply answered the
+question in one sentence and then continued into a headed essay until the
+256-token sampling cap, without emitting its end-of-turn. Nothing in the
+harness promises a line count: the generator stops at the tokenizer EOS or
+the turn-close token (`rust-harness/harness/src/generator.rs`,
+`rust-harness/harness/src/chat.rs`), and the REPL prints what the model
+produced. The clause was carried over from the rust-harness chats, which ran
+the instruction-tuned `gemma-4-E2B-it`; this artifact is 60 SFT steps over
+the pretrained base, about 1,920 examples, and whether it has learned to
+close its turn is the adapter's quality, which FT.heldout-eval and
+FT.eval-ft measure. What this entry tests, the export loading and serving
+through both readers and one generation round trip, was observed in full,
+so the clause is corrected above with this record beside it, and the entry
+closes. Pass on every stage B criterion as corrected.
+
+The hardware mirror's first run with the three checks this entry added
+(2026-09-25, after this entry verified):
+`tests/hardware/test_fine_tuning_loop.py::test_fine_tuning_loop PASSED` at
+`[TIER] full`, the base-verified line, the refused re-export and the chat
+turn on a pipe included; the paste is recorded once, verbatim, under
+FT.hardware-test.
+
+Status: VERIFIED (2026-09-25)
 
 ## FT.heldout-eval Held-out loss and lm-eval on base and merged
 
-Implementation: `training/eval/holdout.py`, `training/eval/lmeval.py`,
-`training/eval/tasks.yaml`, `common/reports.py`. Both verbs are CLI-only
-(`python -m training eval-holdout`, `eval-lmeval`); no `make` target wraps
-them, so they run inside the training container. Existing code; depends on
+Implementation: `training/eval/holdout.py` (`evaluate_holdout`,
+`load_model`), `training/eval/lmeval.py` (`run_lmeval`),
+`training/eval/tasks.yaml`, `training/cli.py` (`cmd_eval_holdout`,
+`cmd_eval_lmeval`, the printed lines). Both verbs are CLI-only (`python -m
+training eval-holdout`, `eval-lmeval`); no `make` target wraps one alone
+(`make eval-ft`, FT.eval-ft, drives all four), so they run inside the
+training container. The records are plain JSON, not the `common/reports.py`
+envelope, which only the run tracker writes. Existing code; depends on
 FT.export-merged (the merged directory) and FT.smoke-dataset (the dataset).
+Since 2026-09-25 this entry has a hardware mirror,
+`tests/hardware/test_heldout_eval.py` (`hw_full`, `gpu`, `ssd`, `training`),
+written after the hand run verified: 20 QLoRA steps on the smoke recipe, the
+export, then the four verbs as processes of their own on the workstation
+venv, `HF_HOME` at the prepare service's cache so the harness reads the
+staged datasets offline, held to the printed lines, the record shapes, the
+`eval-ft` driver's pair checks, the organism verifier's projection, and the
+one ordering below (merged at or below base), and failing with `make
+install` named when the venv lacks the ifeval extra the lock carries. `make
+hardware-tests HW=full SUITE=training` runs it with the other training
+mirrors.
+
+**Fixes to confirm here** (details in [bugs/known-bugs.md](../bugs/known-bugs.md)):
+
+- KB-92 — `eval-lmeval` could not run in the training container: the four
+  pinned tasks load hub datasets the offline container had no copy of, and
+  the ifeval task imports two packages the `lm-eval` pin did not carry.
+  Fixed 2026-09-25 by a dataset form on `train-download`, a cache mount into
+  the training service, and the `ifeval` extra on the pin. The first mount
+  was the hub half, which `datasets` offline never reads; the first
+  evaluation attempt (below) found that, and the second fix mounts the
+  datasets half read-write. Closes when the base's `eval-lmeval` prints one
+  `[OK] <task>:` line per pinned task. Confirmed 2026-09-25 by the third
+  evaluation attempt.
+- KB-93 — two more run-time needs of the task set the offline container did
+  not have: the ifeval task loads nltk's punkt models (its import tried to
+  download them), and the harness's tinyMMLU scores through a git-only
+  package with all 100 items. Fixed 2026-09-25: the training image fetches
+  `punkt_tab` at build by digest and sets `NLTK_DATA`; the pinned MMLU task
+  is the repo-owned `tinyMMLU_acc`, the same items with plain accuracy.
+  Closes with KB-92, on the same `[OK]` lines, after the sentence-count
+  probe below prints `2`. Confirmed 2026-09-25: the probe on the second
+  evaluation attempt, the lines on the third.
+- KB-94 — the pinned task set named its result keys bare, and lm-eval
+  keys every result `<metric>,<filter>`, `none` when the task declares no
+  filter; the first `eval-lmeval` to reach scoring was refused by the
+  tree's own extractor. Fixed 2026-09-25: the three unfiltered keys carry
+  `,none`. Closes on the same `[OK]` lines, `ifeval:
+  prompt_level_strict_acc,none` among them. Confirmed 2026-09-25 by the
+  third evaluation attempt.
+
+`holdout.load_model` is KB-84's third loader (config first, sdpa above the
+head-width cap), and this entry is its first run; the fix was confirmed by
+FT.calibrate-qlora, so a `FlashAttention forward only supports head
+dimension at most 256` here is KB-84 back, not a new row.
+
+Preconditions, in order. The lock first: the `ifeval` extra changed
+`pyproject.toml` in the sandbox, and `uv lock` resolves through the cu130
+torch index the sandbox cannot reach, so the workstation regenerates and
+commits it (until then `make quality` fails its `uv lock --check` step,
+which is the gate working). Then the image, whose pip layer the new lock
+rebuilds, then the four datasets through the prepare service, the one with
+egress: each `download --dataset` prints `[OK] Staged <id> (<config>) at
+<sha>: <split>=<n>, ...`, and the sha it prints is the pin, since the
+consumer resolves `main` offline and passes no revision. These ran on
+2026-09-25 (Observed, below) and the staged data stands.
+
+```bash
+set -o pipefail
+cd ~/workspace/ai-experiments && git pull origin SFT-verification-2 && git log -1 --oneline
+uv lock && git diff --stat uv.lock
+git -c user.name="Alejandro Jaramillo" -c user.email="alejandroj1234@proton.me" commit -am "Lock the lm-eval ifeval extra" && git push origin SFT-verification-2
+make train-build 2>&1 | tail -5; echo "exit=$?"
+make train-download DATASET=google/IFEval; echo "exit=$?"
+make train-download DATASET=openai/gsm8k NAME=main; echo "exit=$?"
+make train-download DATASET=tinyBenchmarks/tinyMMLU NAME=all; echo "exit=$?"
+make train-download DATASET=Rowan/hellaswag; echo "exit=$?"
+```
+
+After the first evaluation attempt (KB-92's second fix, KB-93): the image
+again, for the nltk layer only (the pip layer is a cache hit, so minutes,
+not the 2408 s of the first build), then two probes in the training
+container, no GPU, before any evaluation runs. The first loads the four
+datasets the way the harness will, offline, and prints a `DatasetDict`
+with the staged split counts for each, after `datasets`' warning `Using
+the latest cached version of the dataset since <id> couldn't be found on
+the Hugging Face Hub (offline mode is enabled).`; a `ConnectionError`
+naming a dataset id means the mount is still wrong. The second counts the
+sentences of a two-sentence string through the ifeval task's own helper
+and prints `2`, with no `[nltk_data]` line and no `Downloaded punkt_tab`
+line before it; a `LookupError` naming `punkt` means the image was not
+rebuilt or `NLTK_DATA` is not searched. These ran on 2026-09-25 and
+passed (Observed, below); they stand. KB-94's fix is a yaml the training
+service compose-mounts, so the lm-eval half after it needs the `git
+pull` only, no rebuild and no probe.
+
+```bash
+set -o pipefail
+cd ~/workspace/ai-experiments && git pull origin SFT-verification-2 && git log -1 --oneline
+make train-build 2>&1 | tail -5; echo "exit=$?"
+docker compose -f docker-compose.training.yaml run --rm training \
+    python -c "from datasets import load_dataset; [print(d, load_dataset(d, n)) for d, n in [('google/IFEval', None), ('openai/gsm8k', 'main'), ('tinyBenchmarks/tinyMMLU', 'all'), ('Rowan/hellaswag', None)]]"
+echo "exit=$?"
+docker compose -f docker-compose.training.yaml run --rm training \
+    python -c "from lm_eval.tasks.ifeval import instructions_util as u; print(u.count_sentences('One sentence. Two sentences.'))"
+echo "exit=$?"
+```
 
 Command (inference down). The models tree is mounted in the training
 container at `/app/models` only (`docker-compose.training.yaml`), so both
 sides are named in that spelling; the training volume is identity-mounted,
 so the dataset and the output records keep their host paths. This block
 named `/mnt/ai-data/models/...` until 2026-09-18, which does not exist in
-the container.
+the container. Each holdout pass loads the model in bf16 on the GPU (10.2
+GB for E2B) and runs the 4066-example holdout one example at a time with
+full logits per example, so expect minutes per side after the load, with
+no progress line until the `[OK]` (the trainer's own evaluation of the same
+split took 361 s at batch 2). Each lm-eval pass loads the model again
+through the harness's own `hf` backend and runs 20 examples per task; gsm8k
+and ifeval generate, so they dominate.
 
 ```bash
+set -o pipefail
 docker compose -f docker-compose.training.yaml run --rm training \
     python -m training eval-holdout --model /app/models/hf/gemma-4-E2B \
     --dataset /mnt/ai-data/training/datasets/sft/ultrachat-e2b \
     --out /mnt/ai-data/training/eval/ft5-holdout-base.json
+echo "exit=$?"
 docker compose -f docker-compose.training.yaml run --rm training \
     python -m training eval-holdout --model /app/models/trained/ft3-straight/hf \
     --dataset /mnt/ai-data/training/datasets/sft/ultrachat-e2b \
     --out /mnt/ai-data/training/eval/ft5-holdout-merged.json
+echo "exit=$?"
+grep -E '"(loss|perplexity|supervised_tokens|precision|attention_implementation)"' \
+    /mnt/ai-data/training/eval/ft5-holdout-base.json /mnt/ai-data/training/eval/ft5-holdout-merged.json
+```
+
+The holdout half ran and passed on 2026-09-25 (Observed, below); its code
+and the image's Python dependencies are untouched by the fixes that
+followed, so it is not re-run. The lm-eval half, after the probes above:
+
+```bash
+set -o pipefail
 docker compose -f docker-compose.training.yaml run --rm training \
     python -m training eval-lmeval --model /app/models/hf/gemma-4-E2B --limit 20 \
     --out /mnt/ai-data/training/eval/ft5-lmeval-base.json
+echo "exit=$?"
 docker compose -f docker-compose.training.yaml run --rm training \
     python -m training eval-lmeval --model /app/models/trained/ft3-straight/hf --limit 20 \
     --out /mnt/ai-data/training/eval/ft5-lmeval-merged.json
+echo "exit=$?"
+grep -E '"(lm_eval_version|limit)"' /mnt/ai-data/training/eval/ft5-lmeval-base.json /mnt/ai-data/training/eval/ft5-lmeval-merged.json
 ```
 
-Expected signal: all four exit 0; each held-out record carries loss,
-perplexity, the supervised-token count, `precision` and
-`attention_implementation`, and the merged model's held-out loss is at or
-below the base's on the dataset it trained on; each lm-eval record reports
-the pinned task set from `training/eval/tasks.yaml` with `limit: 20`
-recorded (a smoke run, not a benchmark).
+Expected signal: all four exit 0. Each holdout run prints `[RUN] Held-out
+loss: <model> over <dataset>`, then `[OK] Loss <x>, perplexity <y> (4066
+examples, <n> supervised tokens, bf16)` and `[OK] Record written: <out>`;
+each record carries `loss`, `perplexity`, `supervised_tokens`, `precision`
+`bf16` and `attention_implementation` `sdpa` (the two `grep` lines show
+them side by side), and the merged model's held-out loss is at or below the
+base's on the dataset it trained on. The merged number is in the
+neighbourhood of the `1.030488` FT.train-resume's straight run reported, not
+equal to it: that was the nf4 adapter under the trainer's chunked loss at
+step 60, this is the merged bf16 weights under plain cross-entropy, and the
+entry records the gap without judging it. Each lm-eval run prints `[RUN]
+lm-evaluation-harness: <model>`, then one `[OK] <task>: <metric> = <value>
+(stderr <s>)` line per pinned task, sorted (`gsm8k`, `hellaswag`, `ifeval`,
+`tinyMMLU_acc`), the metric spelled as the harness keys it, filter suffix
+included (`exact_match,strict-match`, `acc_norm,none`,
+`prompt_level_strict_acc,none`, `acc_norm,none`; KB-94), and `[OK] Record
+written:`; each record reports the pinned
+task set from `training/eval/tasks.yaml` with `"lm_eval_version": "0.4.12"`
+and `"limit": 20` recorded (a smoke run, not a benchmark: 20 examples per
+task carry stderr wide enough that base and merged are not ranked here).
+Between the `[RUN]` and the first `[OK]`, `datasets` prints its
+`Using the latest cached version` warning once per task, and no
+`[nltk_data]` or `Downloaded punkt_tab` line appears. Two lines are the
+harness's own noise, not failures: a run of `CUDACachingAllocator ...
+OOM` warnings while `batch_size=auto` probes descending batch sizes at
+the model's full context, ending in `Determined Largest batch size:`,
+and `fatal: not a git repository` from its commit-hash lookup in `/app`. An `lm-eval version
+mismatch` line means the image was not rebuilt from the new lock; a `Task
+missing from harness results` or a `ConnectionError` naming one of the four
+dataset ids means the datasets half is not mounted or its staging line did
+not run; a `ModuleNotFoundError: tinyBenchmarks` means the harness's own
+tinyMMLU was loaded instead of the repo-owned task; a `Metric <m> missing
+from <task> results` line after the requests have run means
+`training/eval/tasks.yaml` spells a key differently from the harness.
 
 Observed:
 
+Preconditions (2026-09-25). The lock was regenerated and committed on the
+workstation (`f52c158`, adding `langdetect` and `immutabledict`), then the
+image and the four staging lines, pasted verbatim:
+
 ```
+➜  ai-experiments git:(SFT-verification-2) make train-build
+Building training image...
+MAX_JOBS=4 NVCC_THREADS=2 docker compose -f docker-compose.training.yaml build
+[+] Building 2428.8s (39/39) FINISHED
+ => [internal] load local bake definitions                                                                                                                                  0.0s
+ => => reading from stdin 1.71kB                                                                                                                                            0.0s
+ => [prepare internal] load build definition from Dockerfile.training                                                                                                       0.0s
+ => => transferring dockerfile: 6.44kB                                                                                                                                      0.0s
+ => [export internal] load build definition from Dockerfile.export                                                                                                          0.0s
+ => => transferring dockerfile: 3.01kB                                                                                                                                      0.0s
+ => [export internal] load metadata for ghcr.io/astral-sh/uv:0.11.28                                                                                                        0.3s
+ => [prepare internal] load metadata for docker.io/nvidia/cuda:13.0.2-cudnn-devel-ubuntu24.04                                                                               0.5s
+ => [export internal] load metadata for docker.io/library/ubuntu:24.04                                                                                                      0.5s
+ => [export internal] load .dockerignore                                                                                                                                    0.0s
+ => => transferring context: 1.73kB                                                                                                                                         0.0s
+ => [export stage-1 1/9] FROM docker.io/library/ubuntu:24.04@sha256:008173c23f95b170204355c12626cb5a965d779a7e1283b09e9cffbb1bf33ca3                                        0.0s
+ => [training uv 1/1] FROM ghcr.io/astral-sh/uv:0.11.28@sha256:0f36cb9361a3346885ca3677e3767016687b5a170c1a6b88465ec14aefec90aa                                             0.0s
+ => CACHED [export stage-1 2/9] RUN apt-get update &&     apt-get install -y --no-install-recommends         git         ca-certificates         python3.12         python  0.0s
+ => CACHED [export stage-1 3/9] COPY --from=uv /uv /uvx /usr/local/bin/                                                                                                     0.0s
+ => CACHED [export stage-1 4/9] RUN uv venv /opt/venv --python 3.12                                                                                                         0.0s
+ => CACHED [export stage-1 5/9] RUN --mount=type=cache,target=/root/.cache/uv     uv pip install --index-url https://download.pytorch.org/whl/cpu torch==2.13.0 &&     uv   0.0s
+ => CACHED [export stage-1 6/9] RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin -c "Application User" appuser                                     0.0s
+ => CACHED [export stage-1 7/9] RUN mkdir -p /app/cache /app/logs && chown -R appuser:appuser /app                                                                          0.0s
+ => CACHED [export stage-1 8/9] WORKDIR /app                                                                                                                                0.0s
+ => CACHED [export stage-1 9/9] RUN python -c "import torch, transformers, peft, safetensors, omegaconf, xxhash"                                                            0.0s
+ => [prepare stage-1  1/15] FROM docker.io/nvidia/cuda:13.0.2-cudnn-devel-ubuntu24.04@sha256:e071e85c52ad91fc9ea24158ff5330876b2d1a5c4ac83ccc6066976835873c01               0.0s
+ => [prepare internal] load build context                                                                                                                                   0.0s
+ => => transferring context: 7.30kB                                                                                                                                         0.0s
+ => [export] exporting to image                                                                                                                                             0.0s
+ => => exporting layers                                                                                                                                                     0.0s
+ => => writing image sha256:84c03bf6d68e4b6c1794365545ddcab077851ac24fe7de5478e15569d1b1900a                                                                                0.0s
+ => => naming to docker.io/library/ai-experiments-export                                                                                                                    0.0s
+ => CACHED [prepare stage-1  2/15] RUN apt-get update &&     apt-get install -y --no-install-recommends --allow-change-held-packages         build-essential         gcc g  0.0s
+ => CACHED [prepare stage-1  3/15] COPY --from=uv /uv /uvx /usr/local/bin/                                                                                                  0.0s
+ => CACHED [prepare stage-1  4/15] RUN uv venv /opt/venv --python 3.12                                                                                                      0.0s
+ => CACHED [prepare stage-1  5/15] COPY pyproject.toml uv.lock ./                                                                                                           0.0s
+ => [training stage-1  6/15] RUN --mount=type=cache,target=/root/.cache/uv     MAX_JOBS=4 NVCC_THREADS=2     DS_BUILD_CPU_ADAM=1 DS_BUILD_UTILS=1     CFLAGS="-march=na  2408.8s
+ => [export] resolving provenance for metadata file                                                                                                                         0.0s
+ => [training stage-1  7/15] RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin -c "Application User" appuser                                        0.1s
+ => [prepare stage-1  8/15] RUN mkdir -p /app/cache /app/logs && chown -R appuser:appuser /app                                                                              0.2s
+ => [prepare stage-1  9/15] WORKDIR /app                                                                                                                                    0.0s
+ => [prepare stage-1 10/15] COPY --chown=appuser:appuser common ./common                                                                                                    0.0s
+ => [training stage-1 11/15] COPY --chown=appuser:appuser training ./training                                                                                               0.0s
+ => [training stage-1 12/15] COPY --chown=appuser:appuser scripts/training ./scripts/training                                                                               0.0s
+ => [training stage-1 13/15] COPY --chown=appuser:appuser docker/training/entrypoint.sh /app/entrypoint.sh                                                                  0.0s
+ => [prepare stage-1 14/15] RUN chmod +x /app/entrypoint.sh                                                                                                                 0.1s
+ => [prepare stage-1 15/15] RUN python -m training smoke --build                                                                                                           12.1s
+ => [prepare] exporting to image                                                                                                                                            6.6s
+ => => exporting layers                                                                                                                                                     6.6s
+ => => writing image sha256:cb3511decc3f96a46049acb8ffd7d831535b05684320cb1a9e54ee62dabb4c36                                                                                0.0s
+ => => naming to docker.io/library/ai-experiments-prepare                                                                                                                   0.0s
+ => [training] exporting to image                                                                                                                                           6.6s
+ => => exporting layers                                                                                                                                                     6.6s
+ => => writing image sha256:a7b5a9d7faf7d1bb23a440ccafda8b371a91d2ba413d08f9b4cdfc1efecb5756                                                                                0.0s
+ => => naming to docker.io/library/ai-experiments-training                                                                                                                  0.0s
+ => [prepare] resolving provenance for metadata file                                                                                                                        0.0s
+ => [training] resolving provenance for metadata file                                                                                                                       0.0s
+[+] build 3/3
+ ✔ Image ai-experiments-prepare  Built                                                                                                                                    2428.8s
+ ✔ Image ai-experiments-export   Built                                                                                                                                    2428.8s
+ ✔ Image ai-experiments-training Built                                                                                                                                    2428.8s
+Training image built.
+➜  ai-experiments git:(SFT-verification-2) make train-download DATASET=google/IFEval; echo "exit=$?"
+make train-download DATASET=openai/gsm8k NAME=main; echo "exit=$?"
+make train-download DATASET=tinyBenchmarks/tinyMMLU NAME=all; echo "exit=$?"
+make train-download DATASET=Rowan/hellaswag; echo "exit=$?"
+docker compose -f docker-compose.training.yaml run --rm prepare python -m training download --dataset google/IFEval
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-prepare-run-6f923ec81ba3 Creating
+Container ai-experiments-prepare-run-6f923ec81ba3 Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+[WARN] nvidia-smi not found: no GPU visible in this container
+
+[RUN] exec: python -m training download --dataset google/IFEval
+=== Staging a dataset ===
+
+[INFO] Dataset: google/IFEval
+[INFO] Config: (default)
+[INFO] Cache: /app/cache
+
+/opt/venv/lib/python3.12/site-packages/huggingface_hub/constants.py:298: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+[RUN] Downloading google/IFEval
+README.md: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 5.52k/5.52k [00:00<00:00, 1.67MB/s]
+ifeval_input_data.jsonl: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████| 207k/207k [00:00<00:00, 35.9MB/s]
+Generating train split: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████| 541/541 [00:00<00:00, 192151.62 examples/s]
+[OK] Staged google/IFEval (default) at 966cd89545d6b6acfd7638bc708b98261ca58e84: train=541
+The training service reads this snapshot offline; a re-stage moves it.
+exit=0
+docker compose -f docker-compose.training.yaml run --rm prepare python -m training download --dataset openai/gsm8k --name main
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-prepare-run-ca67280ac86f Creating
+Container ai-experiments-prepare-run-ca67280ac86f Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+[WARN] nvidia-smi not found: no GPU visible in this container
+
+[RUN] exec: python -m training download --dataset openai/gsm8k --name main
+=== Staging a dataset ===
+
+[INFO] Dataset: openai/gsm8k
+[INFO] Config: main
+[INFO] Cache: /app/cache
+
+/opt/venv/lib/python3.12/site-packages/huggingface_hub/constants.py:298: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+[RUN] Downloading openai/gsm8k
+README.md: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 7.93k/7.93k [00:00<00:00, 49.5MB/s]
+main/train-00000-of-00001.parquet: downloading bytes: ██████████████████████████████████████████████████████████████████████████████████████████████████████| 2.30MB,  222kB/s
+main/train-00000-of-00001.parquet: reconstructing file: 100%|██████████████████████████████████████████████████████████████████████████████████████| 2.31MB / 2.31MB,  223kB/s
+main/test-00000-of-00001.parquet: downloading bytes: ███████████████████████████████████████████████████████████████████████████████████████████████████████|  419kB, 41.2kB/s
+main/test-00000-of-00001.parquet: reconstructing file: 100%|███████████████████████████████████████████████████████████████████████████████████████|  419kB /  419kB, 41.3kB/s
+Generating train split: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████| 7473/7473 [00:00<00:00, 1333675.17 examples/s]
+Generating test split: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████| 1319/1319 [00:00<00:00, 955655.03 examples/s]
+[OK] Staged openai/gsm8k (main) at 740312add88f781978c0658806c59bc2815b9866: train=7473, test=1319
+The training service reads this snapshot offline; a re-stage moves it.
+exit=0
+docker compose -f docker-compose.training.yaml run --rm prepare python -m training download --dataset tinyBenchmarks/tinyMMLU --name all
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-prepare-run-399d1651e2e4 Creating
+Container ai-experiments-prepare-run-399d1651e2e4 Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+[WARN] nvidia-smi not found: no GPU visible in this container
+
+[RUN] exec: python -m training download --dataset tinyBenchmarks/tinyMMLU --name all
+=== Staging a dataset ===
+
+[INFO] Dataset: tinyBenchmarks/tinyMMLU
+[INFO] Config: all
+[INFO] Cache: /app/cache
+
+/opt/venv/lib/python3.12/site-packages/huggingface_hub/constants.py:298: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+[RUN] Downloading tinyBenchmarks/tinyMMLU
+README.md: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 5.73k/5.73k [00:00<00:00, 33.5MB/s]
+all/test-00000-of-00001.parquet: downloading bytes: ████████████████████████████████████████████████████████████████████████████████████████████████████████|  170kB, 16.7kB/s
+all/test-00000-of-00001.parquet: reconstructing file: 100%|████████████████████████████████████████████████████████████████████████████████████████|  178kB /  178kB, 17.5kB/s
+all/dev-00000-of-00001.parquet: downloading bytes: █████████████████████████████████████████████████████████████████████████████████████████████████████████|  177kB, 17.4kB/s
+all/dev-00000-of-00001.parquet: reconstructing file: 100%|█████████████████████████████████████████████████████████████████████████████████████████|  205kB /  205kB, 20.2kB/s
+Generating test split: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 100/100 [00:00<00:00, 45724.45 examples/s]
+Generating dev split: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 285/285 [00:00<00:00, 167022.03 examples/s]
+[OK] Staged tinyBenchmarks/tinyMMLU (all) at cd6a8ee9e1e6f3f18f683535f6c096c386a85da3: test=100, dev=285
+The training service reads this snapshot offline; a re-stage moves it.
+exit=0
+docker compose -f docker-compose.training.yaml run --rm prepare python -m training download --dataset Rowan/hellaswag
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-prepare-run-c0c08c182007 Creating
+Container ai-experiments-prepare-run-c0c08c182007 Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+[WARN] nvidia-smi not found: no GPU visible in this container
+
+[RUN] exec: python -m training download --dataset Rowan/hellaswag
+=== Staging a dataset ===
+
+[INFO] Dataset: Rowan/hellaswag
+[INFO] Config: (default)
+[INFO] Cache: /app/cache
+
+/opt/venv/lib/python3.12/site-packages/huggingface_hub/constants.py:298: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+[RUN] Downloading Rowan/hellaswag
+README.md: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 7.02k/7.02k [00:00<00:00, 36.9MB/s]
+data/train-00000-of-00001.parquet: downloading bytes: ██████████████████████████████████████████████████████████████████████████████████████████████████████| 23.2MB, 2.16MB/s
+data/train-00000-of-00001.parquet: reconstructing file: 100%|██████████████████████████████████████████████████████████████████████████████████████| 24.4MB / 24.4MB, 2.34MB/s
+data/test-00000-of-00001.parquet: downloading bytes: ███████████████████████████████████████████████████████████████████████████████████████████████████████| 5.58MB,  544kB/s
+data/test-00000-of-00001.parquet: reconstructing file: 100%|███████████████████████████████████████████████████████████████████████████████████████| 6.11MB / 6.11MB,  599kB/s
+data/validation-00000-of-00001.parquet: downloading bytes: █████████████████████████████████████████████████████████████████████████████████████████████████| 6.03MB,  583kB/s
+data/validation-00000-of-00001.parquet: reconstructing file: 100%|█████████████████████████████████████████████████████████████████████████████████| 6.32MB / 6.32MB,  617kB/s
+Generating train split: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████| 39905/39905 [00:00<00:00, 865723.06 examples/s]
+Generating test split: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████| 10003/10003 [00:00<00:00, 903378.83 examples/s]
+Generating validation split: 100%|█████████████████████████████████████████████████████████████████████████████████████████████| 10042/10042 [00:00<00:00, 869907.90 examples/s]
+[OK] Staged Rowan/hellaswag (default) at 218ec52e09a7e7462a5400043bb9a69a41d06b76: train=39905, test=10003, validation=10042
+The training service reads this snapshot offline; a re-stage moves it.
+exit=0
 ```
 
-Status: PENDING
+Preconditions judged: `make train-build` rebuilt the training image's pip
+layer from the new lock (2408 s, the flash-attn and DeepSpeed compiles
+behind the `uv sync`; the export image was a cache hit) and passed its
+build smoke; each of the four staging lines exited 0 with its `[OK] Staged
+<id> (<config>) at <sha>: <splits>` line, the pins being
+`966cd89545d6b6acfd7638bc708b98261ca58e84` (IFEval, 541 train),
+`740312add88f781978c0658806c59bc2815b9866` (gsm8k main, 7473 train and
+1319 test), `cd6a8ee9e1e6f3f18f683535f6c096c386a85da3` (tinyMMLU all, 100
+test and 285 dev) and `218ec52e09a7e7462a5400043bb9a69a41d06b76`
+(hellaswag, 39905 train, 10003 test, 10042 validation). Two lines are
+known, neither a finding: `[WARN] nvidia-smi not found` is the prepare
+service's, which reserves no GPU, and the `HF_HUB_ENABLE_HF_TRANSFER`
+FutureWarning is huggingface_hub deprecating the variable the prepare
+service sets (`docker-compose.training.yaml`) in favour of its Xet
+transfer; the downloads ran regardless.
+
+First evaluation attempt (2026-09-25; the holdout half verified, the lm-eval
+half superseded by KB-92's second fix and KB-93). The four commands as
+committed, pasted verbatim, terminal artefacts included:
+
+```
+➜  ai-experiments git:(SFT-verification-2) set -o pipefail
+cd ~/workspace/ai-experiments && git pull origin SFT-verification-2 && git log -1 --oneline
+docker compose -f docker-compose.training.yaml run --rm training \
+    python -m training eval-holdout --model /app/models/hf/gemma-4-E2B \
+    --dataset /mnt/ai-data/training/datasets/sft/ultrachat-e2b \
+    --out /mnt/ai-data/training/eval/ft5-holdout-base.json
+echo "exit=$?"
+remote: Enumerating objects: 11, done.
+remote: Counting objects: 100% (11/11), done.
+remote: Compressing objects: 100% (2/2), done.
+remote: Total 6 (delta 4), reused 6 (delta 4), pack-reused 0 (from 0)
+Unpacking objects: 100% (6/6), 3.34 KiB | 1.11 MiB/s, done.
+From https://github.com/alejandroJaramillo87/ai-experiments
+ * branch              SFT-verification-2 -> FETCH_HEAD
+   f52c158a..afa9bd04  SFT-verification-2 -> origin/SFT-verification-2
+Updating f52c158..afa9bd0
+Fast-forward
+ docs/verification/training/fine-tuning-loop.md | 214 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 214 insertions(+)
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-816becdcc985 Creating
+Container ai-experiments-training-run-816becdcc985 Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training eval-holdout --model /app/models/hf/gemma-4-E2B --dataset /mnt/ai-data/training/datasets/sft/ultrachat-e2b --out /mnt/ai-data/training/eval/ft5-holdout-base.json
+[RUN] Held-out loss: /app/models/hf/gemma-4-E2B over /mnt/ai-data/training/datasets/sft/ultrachat-e2b
+[model] flash-attn supports head_dim <= 256; this model's widest head is 512, so attention runs on sdpa
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1951/1951 [00:00<00:00, 3686.48it/s]
+[OK] Loss 1.064038, perplexity 2.8980 (4066 examples, 3631683 supervised tokens, bf16)
+[OK] Record written: /mnt/ai-data/training/eval/ft5-holdout-base.json
+exit=0
+➜  ai-experiments git:(SFT-verification-2) ^[[200~docker compose -f docker-compose.training.yaml run --rm training \
+>     python -m training eval-holdout --model /app/models/trained/ft3-straight/hf \
+>     --dataset /mnt/ai-data/training/datasets/sft/ultrachat-e2b \
+>     --out /mnt/ai-data/training/eval/ft5-holdout-merged.json
+200~docker compose -f docker-compose.training.yaml run --rm training python200~dockerzsh: bad pattern: ^[[200~docker
+➜  ai-experiments git:(SFT-verification-2) echo "exit=$?"
+exit=1
+➜  ai-experiments git:(SFT-verification-2) docker compose -f docker-compose.training.yaml run --rm training \
+>     python -m training eval-lmeval --model /app/models/hf/gemma-4-E2B --limit 20 \
+>     --out /mnt/ai-data/training/eval/ft5-lmeval-base.json
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-e08779292dc3 Creating
+Container ai-experiments-training-run-e08779292dc3 Created
+echo "exit=$?"
+docker compose -f docker-compose.training.yaml run --rm training \
+    python -m training eval-lmeval --model /app/models/trained/ft3-straight/hf --limit 20 \
+    --out /mnt/ai-data/training/eval/ft5-lmeval-merged.json
+echo "exit=$?"
+grep -E '"(loss|perplexity|supervised_tokens|precision|attention_implementation)"' \
+    /mnt/ai-data/training/eval/ft5-holdout-base.json /mnt/ai-data/training/eval/ft5-holdout-merged.json
+grep -E '"(lm_eval_version|limit)"' /mnt/ai-data/training/eval/ft5-lmeval-base.json /mnt/ai-data/training/eval/ft5-lmeval-merged.json^[[201~=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training eval-lmeval --model /app/models/hf/gemma-4-E2B --limit 20 --out /mnt/ai-data/training/eval/ft5-lmeval-base.json
+[RUN] lm-evaluation-harness: /app/models/hf/gemma-4-E2B
+^C^CTraceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/app/training/__main__.py", line 7, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/app/training/cli.py", line 484, in main
+    return dispatch("training", build_parser, argv)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/common/obs/dispatch.py", line 70, in dispatch
+    result = args.func(args)
+             ^^^^^^^^^^^^^^^
+  File "/app/training/cli.py", line 309, in cmd_eval_lmeval
+    record = run_lmeval(
+             ^^^^^^^^^^^
+  File "/app/training/eval/lmeval.py", line 106, in run_lmeval
+    raw = lm_eval.simple_evaluate(
+          ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/utils.py", line 575, in _wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/evaluator.py", line 257, in simple_evaluate
+    lm = lm_eval.api.registry.get_model(model).create_from_arg_string(
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/api/registry.py", line 508, in get_model
+    return model_registry.get(model_name)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/api/registry.py", line 310, in get
+    concrete = self._materialise(fresh)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/api/registry.py", line 270, in _materialise
+    return cast("T", _materialise_placeholder(ph))
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/api/registry.py", line 121, in _materialise_placeholder
+    return getattr(importlib.import_module(mod), attr)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/models/huggingface.py", line 23, in <module>
+    from transformers.models.auto.modeling_auto import (
+  File "/opt/venv/lib/python3.12/site-packages/transformers/models/auto/modeling_auto.py", line 21, in <module>
+    from .auto_factory import (
+  File "/opt/venv/lib/python3.12/site-packages/transformers/models/auto/auto_factory.py", line 42, in <module>
+    from ...generation import GenerationMixin
+  File "<frozen importlib._bootstrap>", line 1412, in _handle_fromlist
+  File "/opt/venv/lib/python3.12/site-packages/transformers/utils/import_utils.py", line 2305, in __getattr__
+    module = self._get_module(self._class_to_module[name])
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/transformers/utils/import_utils.py", line 2537, in _get_module
+    return importlib.import_module("." + module_name, self.__name__)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/transformers/generation/utils.py", line 44, in <module>
+    from ..masking_utils import create_masks_for_generate
+  File "/opt/venv/lib/python3.12/site-packages/transformers/masking_utils.py", line 42, in <module>
+    from torch._dynamo._trace_wrapped_higher_order_op import TransformGetItemToIndex
+  File "/opt/venv/lib/python3.12/site-packages/torch/_dynamo/__init__.py", line 13, in <module>
+    from . import (
+  File "/opt/venv/lib/python3.12/site-packages/torch/_dynamo/aot_compile.py", line 17, in <module>
+    from torch._dynamo.convert_frame import GraphRuntimeEnv
+  File "/opt/venv/lib/python3.12/site-packages/torch/_dynamo/convert_frame.py", line 62, in <module>
+    from torch._dynamo.symbolic_convert import TensorifyState
+  File "/opt/venv/lib/python3.12/site-packages/torch/_dynamo/symbolic_convert.py", line 62, in <module>
+    from . import (
+  File "/opt/venv/lib/python3.12/site-packages/torch/_dynamo/trace_rules.py", line 60, in <module>
+    from .variables import (
+  File "/opt/venv/lib/python3.12/site-packages/torch/_dynamo/variables/__init__.py", line 19, in <module>
+    from .base import VariableTracker
+  File "/opt/venv/lib/python3.12/site-packages/torch/_dynamo/variables/base.py", line 1943, in <module>
+    from . import builder
+  File "/opt/venv/lib/python3.12/site-packages/torch/_dynamo/variables/builder.py", line 207, in <module>
+    from .builtin import BuiltinVariable
+KeyboardInterrupt
+^C
+➜  ai-experiments git:(SFT-verification-2)
+➜  ai-experiments git:(SFT-verification-2) docker compose -f docker-compose.training.yaml run --rm training \
+    python -m training eval-holdout --model /app/models/trained/ft3-straight/hf \
+    --dataset /mnt/ai-data/training/datasets/sft/ultrachat-e2b \
+    --out /mnt/ai-data/training/eval/ft5-holdout-merged.json
+echo "exit=$?"
+docker compose -f docker-compose.training.yaml run --rm training \
+    python -m training eval-lmeval --model /app/models/hf/gemma-4-E2B --limit 20 \
+    --out /mnt/ai-data/training/eval/ft5-lmeval-base.json
+echo "exit=$?"
+docker compose -f docker-compose.training.yaml run --rm training \
+    python -m training eval-lmeval --model /app/models/trained/ft3-straight/hf --limit 20 \
+    --out /mnt/ai-data/training/eval/ft5-lmeval-merged.json
+echo "exit=$?"
+grep -E '"(loss|perplexity|supervised_tokens|precision|attention_implementation)"' \
+    /mnt/ai-data/training/eval/ft5-holdout-base.json /mnt/ai-data/training/eval/ft5-holdout-merged.json
+grep -E '"(lm_eval_version|limit)"' /mnt/ai-data/training/eval/ft5-lmeval-base.json /mnt/ai-data/training/eval/ft5-lmeval-merged.json
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-d31ca4216260 Creating
+Container ai-experiments-training-run-d31ca4216260 Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training eval-holdout --model /app/models/trained/ft3-straight/hf --dataset /mnt/ai-data/training/datasets/sft/ultrachat-e2b --out /mnt/ai-data/training/eval/ft5-holdout-merged.json
+[RUN] Held-out loss: /app/models/trained/ft3-straight/hf over /mnt/ai-data/training/datasets/sft/ultrachat-e2b
+[model] flash-attn supports head_dim <= 256; this model's widest head is 512, so attention runs on sdpa
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1951/1951 [00:02<00:00, 721.72it/s]
+[OK] Loss 1.019455, perplexity 2.7717 (4066 examples, 3631683 supervised tokens, bf16)
+[OK] Record written: /mnt/ai-data/training/eval/ft5-holdout-merged.json
+exit=0
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-b5f2148548cf Creating
+Container ai-experiments-training-run-b5f2148548cf Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training eval-lmeval --model /app/models/hf/gemma-4-E2B --limit 20 --out /mnt/ai-data/training/eval/ft5-lmeval-base.json
+[RUN] lm-evaluation-harness: /app/models/hf/gemma-4-E2B
+Loading weights: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1951/1951 [00:00<00:00, 3784.24it/s]
+/opt/venv/lib/python3.12/site-packages/nltk/downloader.py:1076: UserWarning: NLTK will not authorize the non-private download directory '/app/nltk_data': it (or an ancestor) is world- or group-writable, so another local user could plant files there. Choose a private location such as ~/nltk_data.
+  for msg in self.incr_download(info_or_id, download_dir, force):
+[nltk_data] Error loading punkt_tab: <urlopen error pathsec.urlopen:
+[nltk_data]     no validated address for host
+[nltk_data]     'raw.githubusercontent.com'; refusing to connect by
+[nltk_data]     unvalidated hostname>
+Downloaded punkt_tab on rank 0
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/app/training/__main__.py", line 7, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/app/training/cli.py", line 484, in main
+    return dispatch("training", build_parser, argv)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/common/obs/dispatch.py", line 70, in dispatch
+    result = args.func(args)
+             ^^^^^^^^^^^^^^^
+  File "/app/training/cli.py", line 309, in cmd_eval_lmeval
+    record = run_lmeval(
+             ^^^^^^^^^^^
+  File "/app/training/eval/lmeval.py", line 106, in run_lmeval
+    raw = lm_eval.simple_evaluate(
+          ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/utils.py", line 575, in _wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/evaluator.py", line 302, in simple_evaluate
+    loaded = task_manager.load(tasks)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/tasks/manager.py", line 208, in load
+    obj = self._load_spec(spec) if not isinstance(spec, (Task, Group)) else spec  # type:ignore[invalid-argument-type]
+          ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/tasks/manager.py", line 154, in _load_spec
+    return self._factory.build(
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/tasks/_factory.py", line 61, in build
+    return self._build_task(entry, overrides)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/tasks/_factory.py", line 81, in _build_task
+    obj = ConfigurableTask(config=cfg)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/api/task.py", line 753, in __init__
+    self.download(self.config.dataset_kwargs)
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/api/task.py", line 869, in download
+    self.dataset = datasets.load_dataset(
+                   ^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/datasets/load.py", line 1698, in load_dataset
+    builder_instance = load_dataset_builder(
+                       ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/datasets/load.py", line 1325, in load_dataset_builder
+    dataset_module = dataset_module_factory(
+                     ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/datasets/load.py", line 1217, in dataset_module_factory
+    raise e1 from None
+  File "/opt/venv/lib/python3.12/site-packages/datasets/load.py", line 1159, in dataset_module_factory
+    raise ConnectionError(f"Couldn't reach '{path}' on the Hub ({e.__class__.__name__})") from e
+ConnectionError: Couldn't reach 'google/IFEval' on the Hub (OfflineModeIsEnabled)
+
+exit=1
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-0750f816f7de Creating
+Container ai-experiments-training-run-0750f816f7de Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training eval-lmeval --model /app/models/trained/ft3-straight/hf --limit 20 --out /mnt/ai-data/training/eval/ft5-lmeval-merged.json
+[RUN] lm-evaluation-harness: /app/models/trained/ft3-straight/hf
+Loading weights: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1951/1951 [00:00<00:00, 3676.40it/s]
+/opt/venv/lib/python3.12/site-packages/nltk/downloader.py:1076: UserWarning: NLTK will not authorize the non-private download directory '/app/nltk_data': it (or an ancestor) is world- or group-writable, so another local user could plant files there. Choose a private location such as ~/nltk_data.
+  for msg in self.incr_download(info_or_id, download_dir, force):
+[nltk_data] Error loading punkt_tab: <urlopen error pathsec.urlopen:
+[nltk_data]     no validated address for host
+[nltk_data]     'raw.githubusercontent.com'; refusing to connect by
+[nltk_data]     unvalidated hostname>
+Downloaded punkt_tab on rank 0
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/app/training/__main__.py", line 7, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/app/training/cli.py", line 484, in main
+    return dispatch("training", build_parser, argv)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/common/obs/dispatch.py", line 70, in dispatch
+    result = args.func(args)
+             ^^^^^^^^^^^^^^^
+  File "/app/training/cli.py", line 309, in cmd_eval_lmeval
+    record = run_lmeval(
+             ^^^^^^^^^^^
+  File "/app/training/eval/lmeval.py", line 106, in run_lmeval
+    raw = lm_eval.simple_evaluate(
+          ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/utils.py", line 575, in _wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/evaluator.py", line 302, in simple_evaluate
+    loaded = task_manager.load(tasks)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/tasks/manager.py", line 208, in load
+    obj = self._load_spec(spec) if not isinstance(spec, (Task, Group)) else spec  # type:ignore[invalid-argument-type]
+          ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/tasks/manager.py", line 154, in _load_spec
+    return self._factory.build(
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/tasks/_factory.py", line 61, in build
+    return self._build_task(entry, overrides)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/tasks/_factory.py", line 81, in _build_task
+    obj = ConfigurableTask(config=cfg)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/api/task.py", line 753, in __init__
+    self.download(self.config.dataset_kwargs)
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/api/task.py", line 869, in download
+    self.dataset = datasets.load_dataset(
+                   ^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/datasets/load.py", line 1698, in load_dataset
+    builder_instance = load_dataset_builder(
+                       ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/datasets/load.py", line 1325, in load_dataset_builder
+    dataset_module = dataset_module_factory(
+                     ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/datasets/load.py", line 1217, in dataset_module_factory
+    raise e1 from None
+  File "/opt/venv/lib/python3.12/site-packages/datasets/load.py", line 1159, in dataset_module_factory
+    raise ConnectionError(f"Couldn't reach '{path}' on the Hub ({e.__class__.__name__})") from e
+ConnectionError: Couldn't reach 'google/IFEval' on the Hub (OfflineModeIsEnabled)
+
+exit=1
+/mnt/ai-data/training/eval/ft5-holdout-base.json:  "supervised_tokens": 3631683,
+/mnt/ai-data/training/eval/ft5-holdout-base.json:  "loss": 1.064038,
+/mnt/ai-data/training/eval/ft5-holdout-base.json:  "perplexity": 2.898049,
+/mnt/ai-data/training/eval/ft5-holdout-base.json:  "precision": "bf16",
+/mnt/ai-data/training/eval/ft5-holdout-base.json:  "attention_implementation": "sdpa"
+/mnt/ai-data/training/eval/ft5-holdout-merged.json:  "supervised_tokens": 3631683,
+/mnt/ai-data/training/eval/ft5-holdout-merged.json:  "loss": 1.019455,
+/mnt/ai-data/training/eval/ft5-holdout-merged.json:  "perplexity": 2.771684,
+/mnt/ai-data/training/eval/ft5-holdout-merged.json:  "precision": "bf16",
+/mnt/ai-data/training/eval/ft5-holdout-merged.json:  "attention_implementation": "sdpa"
+grep: /mnt/ai-data/training/eval/ft5-lmeval-base.json: No such file or directory
+grep: /mnt/ai-data/training/eval/ft5-lmeval-merged.json: No such file or directory
+```
+
+First evaluation attempt judged. The holdout half passed every criterion:
+both runs printed `[RUN] Held-out loss: <model> over <dataset>`, the sdpa
+line KB-84's third loader owes (its first run, and no FlashAttention
+error), `[OK] Loss 1.064038, perplexity 2.8980 (4066 examples, 3631683
+supervised tokens, bf16)` for the base and `[OK] Loss 1.019455, perplexity
+2.7717` for the merged directory over the same 3631683 tokens, `[OK] Record
+written:` and `exit=0` each; the `grep` shows `precision` `bf16` and
+`attention_implementation` `sdpa` on both records, the merged loss
+(1.019455) below the base's (1.064038), and in the neighbourhood of the
+trainer's nf4 `1.030488`, 1.1 percent under it, recorded without judgement
+as the entry says. The lm-eval half failed at task load on both sides,
+`exit=1`, no record written: `ConnectionError: Couldn't reach 'google/IFEval'
+on the Hub (OfflineModeIsEnabled)` from `datasets.load` under the
+harness task's `download`, after nltk's `[nltk_data] Error loading
+punkt_tab` refusal at the ifeval task's import (`no validated address for
+host 'raw.githubusercontent.com'`, the internal network doing its job) and
+its misleading `Downloaded punkt_tab on rank 0` print. That is the
+cache-miss signature the entry named, but not for the reason it named:
+the staging lines had run and exited 0, and the mount was the wrong half of
+the cache (KB-92, reopened), with two more run-time needs behind it (KB-93).
+Three lines are the operator's terminal, not findings: zsh's `bad pattern:
+^[[200~docker` (a bracketed paste the shell rejected, so `echo "exit=$?"`
+printed 1 for it before the commands were re-issued in order), the Ctrl-C
+during the first lm-eval's torch import, and the `Found orphan containers`
+WARN of every compose run. One observation, no row: `holdout.load_model`
+passes `torch_dtype`, which transformers now deprecates in favour of
+`dtype`; it loaded in bf16 regardless, as the records show.
+
+Second evaluation attempt (2026-09-25; the probes verified, the base's
+lm-eval superseded by KB-94). The precondition block as committed after
+the first attempt, then the base side of the lm-eval block, pasted
+verbatim; the merged side was not started:
+
+```
+➜  ai-experiments git:(SFT-verification-2) set -o pipefail
+cd ~/workspace/ai-experiments && git pull origin SFT-verification-2 && git log -1 --oneline
+make train-build
+From https://github.com/alejandroJaramillo87/ai-experiments
+ * branch            SFT-verification-2 -> FETCH_HEAD
+Already up to date.
+Building training image...
+MAX_JOBS=4 NVCC_THREADS=2 docker compose -f docker-compose.training.yaml build
+[+] Building 0.5s (40/40) FINISHED
+ => [internal] load local bake definitions                                                                                                                                  0.0s
+ => => reading from stdin 1.71kB                                                                                                                                            0.0s
+ => [prepare internal] load build definition from Dockerfile.training                                                                                                       0.0s
+ => => transferring dockerfile: 7.51kB                                                                                                                                      0.0s
+ => [export internal] load build definition from Dockerfile.export                                                                                                          0.0s
+ => => transferring dockerfile: 3.01kB                                                                                                                                      0.0s
+ => [training internal] load metadata for docker.io/nvidia/cuda:13.0.2-cudnn-devel-ubuntu24.04                                                                              0.3s
+ => [export internal] load metadata for ghcr.io/astral-sh/uv:0.11.28                                                                                                        0.3s
+ => [export internal] load metadata for docker.io/library/ubuntu:24.04                                                                                                      0.3s
+ => [training internal] load .dockerignore                                                                                                                                  0.0s
+ => => transferring context: 1.73kB                                                                                                                                         0.0s
+ => [export stage-1 1/9] FROM docker.io/library/ubuntu:24.04@sha256:008173c23f95b170204355c12626cb5a965d779a7e1283b09e9cffbb1bf33ca3                                        0.0s
+ => [prepare uv 1/1] FROM ghcr.io/astral-sh/uv:0.11.28@sha256:0f36cb9361a3346885ca3677e3767016687b5a170c1a6b88465ec14aefec90aa                                              0.0s
+ => CACHED [export stage-1 2/9] RUN apt-get update &&     apt-get install -y --no-install-recommends         git         ca-certificates         python3.12         python  0.0s
+ => CACHED [export stage-1 3/9] COPY --from=uv /uv /uvx /usr/local/bin/                                                                                                     0.0s
+ => CACHED [export stage-1 4/9] RUN uv venv /opt/venv --python 3.12                                                                                                         0.0s
+ => CACHED [export stage-1 5/9] RUN --mount=type=cache,target=/root/.cache/uv     uv pip install --index-url https://download.pytorch.org/whl/cpu torch==2.13.0 &&     uv   0.0s
+ => CACHED [export stage-1 6/9] RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin -c "Application User" appuser                                     0.0s
+ => CACHED [export stage-1 7/9] RUN mkdir -p /app/cache /app/logs && chown -R appuser:appuser /app                                                                          0.0s
+ => CACHED [export stage-1 8/9] WORKDIR /app                                                                                                                                0.0s
+ => CACHED [export stage-1 9/9] RUN python -c "import torch, transformers, peft, safetensors, omegaconf, xxhash"                                                            0.0s
+ => [training internal] load build context                                                                                                                                  0.0s
+ => => transferring context: 7.39kB                                                                                                                                         0.0s
+ => [prepare stage-1  1/16] FROM docker.io/nvidia/cuda:13.0.2-cudnn-devel-ubuntu24.04@sha256:e071e85c52ad91fc9ea24158ff5330876b2d1a5c4ac83ccc6066976835873c01               0.0s
+ => [export] exporting to image                                                                                                                                             0.0s
+ => => exporting layers                                                                                                                                                     0.0s
+ => => writing image sha256:84c03bf6d68e4b6c1794365545ddcab077851ac24fe7de5478e15569d1b1900a                                                                                0.0s
+ => => naming to docker.io/library/ai-experiments-export                                                                                                                    0.0s
+ => CACHED [prepare stage-1  2/16] RUN apt-get update &&     apt-get install -y --no-install-recommends --allow-change-held-packages         build-essential         gcc g  0.0s
+ => CACHED [prepare stage-1  3/16] COPY --from=uv /uv /uvx /usr/local/bin/                                                                                                  0.0s
+ => CACHED [prepare stage-1  4/16] RUN uv venv /opt/venv --python 3.12                                                                                                      0.0s
+ => CACHED [prepare stage-1  5/16] COPY pyproject.toml uv.lock ./                                                                                                           0.0s
+ => CACHED [prepare stage-1  6/16] RUN --mount=type=cache,target=/root/.cache/uv     MAX_JOBS=4 NVCC_THREADS=2     DS_BUILD_CPU_ADAM=1 DS_BUILD_UTILS=1     CFLAGS="-march  0.0s
+ => CACHED [prepare stage-1  7/16] RUN mkdir -p /opt/nltk_data/tokenizers &&     curl -fsSL -o /tmp/punkt_tab.zip "https://raw.githubusercontent.com/nltk/nltk_data/gh-pag  0.0s
+ => CACHED [prepare stage-1  8/16] RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin -c "Application User" appuser                                  0.0s
+ => CACHED [prepare stage-1  9/16] RUN mkdir -p /app/cache /app/logs && chown -R appuser:appuser /app                                                                       0.0s
+ => CACHED [prepare stage-1 10/16] WORKDIR /app                                                                                                                             0.0s
+ => CACHED [prepare stage-1 11/16] COPY --chown=appuser:appuser common ./common                                                                                             0.0s
+ => CACHED [prepare stage-1 12/16] COPY --chown=appuser:appuser training ./training                                                                                         0.0s
+ => CACHED [prepare stage-1 13/16] COPY --chown=appuser:appuser scripts/training ./scripts/training                                                                         0.0s
+ => CACHED [prepare stage-1 14/16] COPY --chown=appuser:appuser docker/training/entrypoint.sh /app/entrypoint.sh                                                            0.0s
+ => CACHED [prepare stage-1 15/16] RUN chmod +x /app/entrypoint.sh                                                                                                          0.0s
+ => CACHED [prepare stage-1 16/16] RUN python -m training smoke --build                                                                                                     0.0s
+ => [training] exporting to image                                                                                                                                           0.0s
+ => => exporting layers                                                                                                                                                     0.0s
+ => => writing image sha256:934703344a5ec85b083f2efe8a2dafc9f155f5aeed9557d728a28a9b05cb007e                                                                                0.0s
+ => => naming to docker.io/library/ai-experiments-training                                                                                                                  0.0s
+ => [prepare] exporting to image                                                                                                                                            0.0s
+ => => exporting layers                                                                                                                                                     0.0s
+ => => writing image sha256:d2bdb27bda84656ebcd266dbf28a9a3c1d3bbdcfeb6015db10c7608b4ced5ad8                                                                                0.0s
+ => => naming to docker.io/library/ai-experiments-prepare                                                                                                                   0.0s
+ => [export] resolving provenance for metadata file                                                                                                                         0.0s
+ => [training] resolving provenance for metadata file                                                                                                                       0.0s
+ => [prepare] resolving provenance for metadata file                                                                                                                        0.0s
+[+] build 3/3
+ ✔ Image ai-experiments-export   Built                                                                                                                                       0.5s
+ ✔ Image ai-experiments-training Built                                                                                                                                       0.5s
+ ✔ Image ai-experiments-prepare  Built                                                                                                                                       0.5s
+Training image built.
+➜  ai-experiments git:(SFT-verification-2) docker compose -f docker-compose.training.yaml run --rm training \
+    python -c "from datasets import load_dataset; [print(d, load_dataset(d, n)) for d, n in [('google/IFEval', None), ('openai/gsm8k', 'main'), ('tinyBenchmarks/tinyMMLU', 'all'), ('Rowan/hellaswag', None)]]"
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-7a342d4a9dd0 Creating
+Container ai-experiments-training-run-7a342d4a9dd0 Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -c from datasets import load_dataset; [print(d, load_dataset(d, n)) for d, n in [('google/IFEval', None), ('openai/gsm8k', 'main'), ('tinyBenchmarks/tinyMMLU', 'all'), ('Rowan/hellaswag', None)]]
+Using the latest cached version of the dataset since google/IFEval couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'default' at /app/cache/datasets/google___if_eval/default/0.0.0/966cd89545d6b6acfd7638bc708b98261ca58e84 (last modified on Fri Sep 25 19:34:02 2026).
+google/IFEval DatasetDict({
+    train: Dataset({
+        features: ['key', 'prompt', 'instruction_id_list', 'kwargs'],
+        num_rows: 541
+    })
+})
+Using the latest cached version of the dataset since openai/gsm8k couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'main' at /app/cache/datasets/openai___gsm8k/main/0.0.0/740312add88f781978c0658806c59bc2815b9866 (last modified on Fri Sep 25 19:34:09 2026).
+openai/gsm8k DatasetDict({
+    train: Dataset({
+        features: ['question', 'answer'],
+        num_rows: 7473
+    })
+    test: Dataset({
+        features: ['question', 'answer'],
+        num_rows: 1319
+    })
+})
+Using the latest cached version of the dataset since tinyBenchmarks/tinyMMLU couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'all' at /app/cache/datasets/tinyBenchmarks___tiny_mmlu/all/0.0.0/cd6a8ee9e1e6f3f18f683535f6c096c386a85da3 (last modified on Fri Sep 25 19:35:56 2026).
+tinyBenchmarks/tinyMMLU DatasetDict({
+    test: Dataset({
+        features: ['question', 'subject', 'choices', 'answer', 'input_formatted'],
+        num_rows: 100
+    })
+    dev: Dataset({
+        features: ['question', 'subject', 'choices', 'answer', 'input_formatted'],
+        num_rows: 285
+    })
+})
+Using the latest cached version of the dataset since Rowan/hellaswag couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'default' at /app/cache/datasets/Rowan___hellaswag/default/0.0.0/218ec52e09a7e7462a5400043bb9a69a41d06b76 (last modified on Fri Sep 25 19:36:04 2026).
+Rowan/hellaswag DatasetDict({
+    train: Dataset({
+        features: ['ind', 'activity_label', 'ctx_a', 'ctx_b', 'ctx', 'endings', 'source_id', 'split', 'split_type', 'label'],
+        num_rows: 39905
+    })
+    test: Dataset({
+        features: ['ind', 'activity_label', 'ctx_a', 'ctx_b', 'ctx', 'endings', 'source_id', 'split', 'split_type', 'label'],
+        num_rows: 10003
+    })
+    validation: Dataset({
+        features: ['ind', 'activity_label', 'ctx_a', 'ctx_b', 'ctx', 'endings', 'source_id', 'split', 'split_type', 'label'],
+        num_rows: 10042
+    })
+})
+➜  ai-experiments git:(SFT-verification-2) docker compose -f docker-compose.training.yaml run --rm training \
+    python -c "from lm_eval.tasks.ifeval import instructions_util as u; print(u.count_sentences('One sentence. Two sentences.'))"
+echo "exit=$?"
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-4ae48b05a724 Creating
+Container ai-experiments-training-run-4ae48b05a724 Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -c from lm_eval.tasks.ifeval import instructions_util as u; print(u.count_sentences('One sentence. Two sentences.'))
+2
+exit=0
+➜  ai-experiments git:(SFT-verification-2) set -o pipefail
+docker compose -f docker-compose.training.yaml run --rm training \
+    python -m training eval-lmeval --model /app/models/hf/gemma-4-E2B --limit 20 \
+    --out /mnt/ai-data/training/eval/ft5-lmeval-base.json
+echo "exit=$?"
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-fe90af220f94 Creating
+Container ai-experiments-training-run-fe90af220f94 Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training eval-lmeval --model /app/models/hf/gemma-4-E2B --limit 20 --out /mnt/ai-data/training/eval/ft5-lmeval-base.json
+[RUN] lm-evaluation-harness: /app/models/hf/gemma-4-E2B
+Loading weights: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1951/1951 [00:00<00:00, 3793.07it/s]
+Using the latest cached version of the dataset since google/IFEval couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'default' at /app/cache/datasets/google___if_eval/default/0.0.0/966cd89545d6b6acfd7638bc708b98261ca58e84 (last modified on Fri Sep 25 19:34:02 2026).
+Using the latest cached version of the dataset since openai/gsm8k couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'main' at /app/cache/datasets/openai___gsm8k/main/0.0.0/740312add88f781978c0658806c59bc2815b9866 (last modified on Fri Sep 25 19:34:09 2026).
+Using the latest cached version of the dataset since tinyBenchmarks/tinyMMLU couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'all' at /app/cache/datasets/tinyBenchmarks___tiny_mmlu/all/0.0.0/cd6a8ee9e1e6f3f18f683535f6c096c386a85da3 (last modified on Fri Sep 25 19:35:56 2026).
+Using the latest cached version of the dataset since Rowan/hellaswag couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'default' at /app/cache/datasets/Rowan___hellaswag/default/0.0.0/218ec52e09a7e7462a5400043bb9a69a41d06b76 (last modified on Fri Sep 25 19:36:04 2026).
+Map: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 39905/39905 [00:01<00:00, 25031.48 examples/s]
+Map: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 10042/10042 [00:00<00:00, 16382.73 examples/s]
+100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 20/20 [00:00<00:00, 125955.08it/s]
+100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 20/20 [00:00<00:00, 772.39it/s]
+100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 20/20 [00:00<00:00, 9205.10it/s]
+100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 20/20 [00:00<00:00, 4751.68it/s]
+Running generate_until requests:   0%|                                                                                                                   | 0/40 [00:00<?, ?it/s]Passed argument batch_size = auto. Detecting largest batch size
+[W925 21:06:00.714377720 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 3221225472 bytes (free: 2256338944, total: 33668726784).
+[W925 21:06:01.065873899 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 68719476736 bytes (free: 1383923712, total: 33668726784).
+[W925 21:06:03.032230568 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 68719476736 bytes (free: 15682306048, total: 33668726784).
+[W925 21:06:05.776509653 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 2868903936 bytes (free: 2346516480, total: 33668726784).
+[W925 21:06:06.943198847 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 61203283968 bytes (free: 1570570240, total: 33668726784).
+[W925 21:06:08.723751930 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 61203283968 bytes (free: 11498487808, total: 33668726784).
+[W925 21:06:11.355036757 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 54760833024 bytes (free: 1438449664, total: 33668726784).
+[W925 21:06:12.958278178 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 54760833024 bytes (free: 14801502208, total: 33668726784).
+[W925 21:06:15.310114095 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 48318382080 bytes (free: 5924257792, total: 33668726784).
+[W925 21:06:16.719753183 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 48318382080 bytes (free: 15682306048, total: 33668726784).
+[W925 21:06:18.832494662 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 42949672960 bytes (free: 7792820224, total: 33668726784).
+[W925 21:06:19.100000285 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 42949672960 bytes (free: 16489709568, total: 33668726784).
+[W925 21:06:21.025130734 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 38654705664 bytes (free: 9388752896, total: 33668726784).
+[W925 21:06:23.164918684 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 38654705664 bytes (free: 16783310848, total: 33668726784).
+[W925 21:06:24.913049520 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 34359738368 bytes (free: 10472980480, total: 33668726784).
+[W925 21:06:25.929648830 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 34359738368 bytes (free: 17737515008, total: 33668726784).
+[W925 21:06:27.490761794 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 30064771072 bytes (free: 12215713792, total: 33668726784).
+[W925 21:06:28.380785457 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 30064771072 bytes (free: 18324717568, total: 33668726784).
+[W925 21:06:29.804138535 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 26843545600 bytes (free: 14652604416, total: 33668726784).
+[W925 21:06:30.592420185 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 26843545600 bytes (free: 16489709568, total: 33668726784).
+[W925 21:06:31.877403987 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 23622320128 bytes (free: 14872805376, total: 33668726784).
+[W925 21:06:32.572514188 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 23622320128 bytes (free: 17223712768, total: 33668726784).
+[W925 21:06:33.724368617 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 20401094656 bytes (free: 15827009536, total: 33668726784).
+[W925 21:06:34.324520215 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 20401094656 bytes (free: 17884315648, total: 33668726784).
+[W925 21:06:35.383509774 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 18253611008 bytes (free: 16634413056, total: 33668726784).
+[W925 21:06:35.924653095 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 18253611008 bytes (free: 217907200, total: 33668726784).
+[W925 21:06:35.924718308 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 18253611008 bytes (free: 217907200, total: 33668726784).
+[W925 21:06:36.886452457 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 16106127360 bytes (free: 213712896, total: 33668726784).
+[W925 21:06:37.465293213 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 16106127360 bytes (free: 3080519680, total: 33668726784).
+[W925 21:06:38.334766903 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13958643712 bytes (free: 3076325376, total: 33668726784).
+[W925 21:06:38.831127259 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13958643712 bytes (free: 3080519680, total: 33668726784).
+[W925 21:06:39.608994205 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11811160064 bytes (free: 3076325376, total: 33668726784).
+[W925 21:06:39.027831010 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11811160064 bytes (free: 3080519680, total: 33668726784).
+[W925 21:06:40.708729507 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9663676416 bytes (free: 3078422528, total: 33668726784).
+[W925 21:06:40.048489258 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9663676416 bytes (free: 3080519680, total: 33668726784).
+[W925 21:06:42.407633693 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8589934592 bytes (free: 3078422528, total: 33668726784).
+[W925 21:06:42.710318434 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8589934592 bytes (free: 3080519680, total: 33668726784).
+[W925 21:06:43.920834268 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7516192768 bytes (free: 3078422528, total: 33668726784).
+[W925 21:06:44.182564864 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7516192768 bytes (free: 3080519680, total: 33668726784).
+[W925 21:06:45.241738864 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6442450944 bytes (free: 3078422528, total: 33668726784).
+[W925 21:06:45.463022332 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6442450944 bytes (free: 3080519680, total: 33668726784).
+Determined Largest batch size: 5
+Running generate_until requests: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████| 40/40 [02:27<00:00,  3.68s/it]
+Tokenizing inputs: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 160/160 [00:00<00:00, 2081.83it/s]
+Running loglikelihood requests:   0%|                                                                                                                   | 0/160 [00:00<?, ?it/s]Passed argument batch_size = auto:1. Detecting largest batch size
+[W925 21:08:28.922504488 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 65062043648 bytes (free: 287113216, total: 33668726784).
+[W925 21:08:30.774174447 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 65062043648 bytes (free: 16055599104, total: 33668726784).
+[W925 21:08:33.600489690 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 57946406912 bytes (free: 708640768, total: 33668726784).
+[W925 21:08:35.268910611 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 57946406912 bytes (free: 12094078976, total: 33668726784).
+[W925 21:08:37.826004307 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 51847888896 bytes (free: 2568814592, total: 33668726784).
+[W925 21:08:39.324522111 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 51847888896 bytes (free: 15223029760, total: 33668726784).
+[W925 21:08:41.582394902 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 45747273728 bytes (free: 6813450240, total: 33668726784).
+[W925 21:08:42.932656716 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 45747273728 bytes (free: 15638265856, total: 33668726784).
+[W925 21:08:44.973551415 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 40663777280 bytes (free: 8166113280, total: 33668726784).
+[W925 21:08:46.171584697 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 40663777280 bytes (free: 14080081920, total: 33668726784).
+[W925 21:08:47.033116314 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 36597399552 bytes (free: 11573985280, total: 33668726784).
+[W925 21:08:48.111723667 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 36597399552 bytes (free: 15539699712, total: 33668726784).
+[W925 21:08:50.797818687 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 32531021824 bytes (free: 11785797632, total: 33668726784).
+[W925 21:08:51.759529006 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 32531021824 bytes (free: 18001756160, total: 33668726784).
+[W925 21:08:53.266897176 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 28464644096 bytes (free: 12771459072, total: 33668726784).
+[W925 21:08:53.107484452 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 28464644096 bytes (free: 18280677376, total: 33668726784).
+[W925 21:08:55.482627102 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 25415385088 bytes (free: 13608222720, total: 33668726784).
+[W925 21:08:56.232408964 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 25415385088 bytes (free: 16542138368, total: 33668726784).
+[W925 21:08:57.478268561 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 22366126080 bytes (free: 15009120256, total: 33668726784).
+[W925 21:08:57.142554546 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 22366126080 bytes (free: 19459276800, total: 33668726784).
+[W925 21:08:59.255338518 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 19316867072 bytes (free: 16814768128, total: 33668726784).
+[W925 21:08:59.823393854 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 19316867072 bytes (free: 18138071040, total: 33668726784).
+[W925 21:09:00.854284963 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 17282629632 bytes (free: 16953180160, total: 33668726784).
+[W925 21:09:01.368560944 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 17282629632 bytes (free: 1411186688, total: 33668726784).
+[W925 21:09:01.368630175 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 17282629632 bytes (free: 1411186688, total: 33668726784).
+[W925 21:09:02.309101629 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 15250489344 bytes (free: 1406992384, total: 33668726784).
+[W925 21:09:02.862295982 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 15250489344 bytes (free: 4124901376, total: 33668726784).
+[W925 21:09:03.715976864 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13216251904 bytes (free: 4120707072, total: 33668726784).
+[W925 21:09:04.186027853 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13216251904 bytes (free: 4124901376, total: 33668726784).
+[W925 21:09:04.940982814 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11184111616 bytes (free: 4120707072, total: 33668726784).
+[W925 21:09:05.337372944 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11184111616 bytes (free: 4124901376, total: 33668726784).
+[W925 21:09:05.005400304 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9149874176 bytes (free: 4122804224, total: 33668726784).
+[W925 21:09:06.327367055 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9149874176 bytes (free: 4124901376, total: 33668726784).
+[W925 21:09:07.630512662 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8132755456 bytes (free: 4122804224, total: 33668726784).
+[W925 21:09:07.916204904 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8132755456 bytes (free: 4124901376, total: 33668726784).
+[W925 21:09:08.098506353 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7117733888 bytes (free: 4122804224, total: 33668726784).
+[W925 21:09:09.350117567 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7117733888 bytes (free: 4124901376, total: 33668726784).
+[W925 21:09:10.365576045 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6100615168 bytes (free: 4122804224, total: 33668726784).
+[W925 21:09:10.572704740 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6100615168 bytes (free: 4124901376, total: 33668726784).
+Determined largest batch size: 5
+Running loglikelihood requests: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████| 160/160 [00:48<00:00,  3.28it/s]
+fatal: not a git repository (or any of the parent directories): .git
+[ERROR] Metric prompt_level_strict_acc missing from ifeval results (available: alias, inst_level_loose_acc,none, inst_level_loose_acc_stderr,none, inst_level_strict_acc,none, inst_level_strict_acc_stderr,none, name, prompt_level_loose_acc,none, prompt_level_loose_acc_stderr,none, prompt_level_strict_acc,none, prompt_level_strict_acc_stderr,none, sample_len)
+  Solution: fix the metric key in tasks.yaml
+
+exit=1
+```
+
+Judgement. Stage 1 met every criterion. `make train-build` exited 0 with
+every layer cached, the nltk layer included (`CACHED [prepare stage-1
+7/16] RUN mkdir -p /opt/nltk_data/tokenizers && curl ...`), so the image
+the first attempt ran was already the fixed one and only the compose
+mount had changed. The dataset probe printed the four `DatasetDict`s with
+the staged split counts (541; 7473 and 1319; 100 and 285; 39905, 10003
+and 10042), each after the `Using the latest cached version` warning and
+a `Found the latest cached dataset configuration` line naming a path
+under `/app/cache/datasets`, which is KB-92's second fix holding: the
+datasets half is what `datasets` reads offline. The sentence-count probe
+printed `2`, `exit=0`, with no `[nltk_data]` line and no `Downloaded
+punkt_tab` line, which is KB-93's nltk half holding and settles the
+point the entry could not verify from the sandbox: nltk 3.10 serves the
+task's `punkt` request from `punkt_tab`. The base `eval-lmeval` then
+loaded all four tasks (the same four cache lines, then hellaswag's two
+`Map:` passes writing its processed docs beside the arrow files, the
+reason the mount is read-write), with no `ModuleNotFoundError`, so
+KB-93's tinyMMLU half held too, and ran to scoring: 40 generation
+requests (gsm8k and ifeval, 2:27 at batch 5) and 160 loglikelihood
+requests (0:48). It failed in the tree's own extraction, `exit=1`, no
+record written: `Metric prompt_level_strict_acc missing from ifeval
+results`, the available keys all carrying a `,none` suffix. That is
+KB-94: lm-eval keys every result as `<metric>,<filter>`, `none` being
+the default filter's name, and `tasks.yaml` declared the three
+unfiltered keys bare; hellaswag and `tinyMMLU_acc` would have been
+refused next, and only gsm8k's `exact_match,strict-match` was right.
+The harness's work was correct and complete; the record was refused at
+the last step, so the run is superseded, not failed on a criterion.
+Three observations, no row. The `batch_size=auto` search printed about
+forty `CUDACachingAllocator ... memory allocation failed with OOM`
+warnings per phase before `Determined Largest batch size: 5`: the
+harness probes descending batch sizes at the model's full `max_length`
+(131072 for E2B, so the first probes ask for 68 GB of a 33 GB card),
+the warnings are torch's, and the run proceeded; a `max_length` in the
+model arguments would silence them and is a separate decision. `fatal:
+not a git repository` is the harness's `get_git_commit_hash` running
+`git describe` in `/app`, which is no repository; the exception is
+caught and the hash recorded as absent. The whole base pass took under
+four minutes at `--limit 20`, model load included.
+
+Third evaluation attempt (2026-09-25; the lm-eval half, as committed after
+KB-94):
+
+```
+➜  ai-experiments git:(SFT-verification-2) set -o pipefail
+cd ~/workspace/ai-experiments && git pull origin SFT-verification-2 && git log -1 --oneline
+docker compose -f docker-compose.training.yaml run --rm training \
+    python -m training eval-lmeval --model /app/models/hf/gemma-4-E2B --limit 20 \
+    --out /mnt/ai-data/training/eval/ft5-lmeval-base.json
+echo "exit=$?"
+remote: Enumerating objects: 29, done.
+remote: Counting objects: 100% (29/29), done.
+remote: Compressing objects: 100% (3/3), done.
+remote: Total 15 (delta 12), reused 15 (delta 12), pack-reused 0 (from 0)
+Unpacking objects: 100% (15/15), 9.47 KiB | 1.89 MiB/s, done.
+From https://github.com/alejandroJaramillo87/ai-experiments
+ * branch              SFT-verification-2 -> FETCH_HEAD
+   921897ce..530f4691  SFT-verification-2 -> origin/SFT-verification-2
+Updating 921897c..530f469
+Fast-forward
+ docs/verification/bugs/known-bugs.md           |  11 ++--
+ docs/verification/training/fine-tuning-loop.md | 353 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++--
+ tests/training/README.md                       |   2 +-
+ tests/training/test_lmeval.py                  |  22 ++++++--
+ training/eval/tasks.yaml                       |  11 ++--
+ 5 files changed, 380 insertions(+), 19 deletions(-)
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-11e26f15b66b Creating
+Container ai-experiments-training-run-11e26f15b66b Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training eval-lmeval --model /app/models/hf/gemma-4-E2B --limit 20 --out /mnt/ai-data/training/eval/ft5-lmeval-base.json
+[RUN] lm-evaluation-harness: /app/models/hf/gemma-4-E2B
+Loading weights: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1951/1951 [00:00<00:00, 3817.88it/s]
+Using the latest cached version of the dataset since google/IFEval couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'default' at /app/cache/datasets/google___if_eval/default/0.0.0/966cd89545d6b6acfd7638bc708b98261ca58e84 (last modified on Fri Sep 25 19:34:02 2026).
+Using the latest cached version of the dataset since openai/gsm8k couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'main' at /app/cache/datasets/openai___gsm8k/main/0.0.0/740312add88f781978c0658806c59bc2815b9866 (last modified on Fri Sep 25 19:34:09 2026).
+Using the latest cached version of the dataset since tinyBenchmarks/tinyMMLU couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'all' at /app/cache/datasets/tinyBenchmarks___tiny_mmlu/all/0.0.0/cd6a8ee9e1e6f3f18f683535f6c096c386a85da3 (last modified on Fri Sep 25 19:35:56 2026).
+Using the latest cached version of the dataset since Rowan/hellaswag couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'default' at /app/cache/datasets/Rowan___hellaswag/default/0.0.0/218ec52e09a7e7462a5400043bb9a69a41d06b76 (last modified on Fri Sep 25 21:05:57 2026).
+100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 20/20 [00:00<00:00, 91180.52it/s]
+100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 20/20 [00:00<00:00, 742.25it/s]
+100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 20/20 [00:00<00:00, 8564.17it/s]
+100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 20/20 [00:00<00:00, 4661.89it/s]
+Running generate_until requests:   0%|                                                                                                                   | 0/40 [00:00<?, ?it/s]Passed argument batch_size = auto. Detecting largest batch size
+[W925 21:22:13.356927682 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 3221225472 bytes (free: 2256338944, total: 33668726784).
+[W925 21:22:14.707787901 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 68719476736 bytes (free: 1383923712, total: 33668726784).
+[W925 21:22:16.674202151 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 68719476736 bytes (free: 15682306048, total: 33668726784).
+[W925 21:22:18.417256657 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 2868903936 bytes (free: 2346516480, total: 33668726784).
+[W925 21:22:19.584106578 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 61203283968 bytes (free: 1570570240, total: 33668726784).
+[W925 21:22:21.364763198 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 61203283968 bytes (free: 11498487808, total: 33668726784).
+[W925 21:22:23.991064817 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 54760833024 bytes (free: 1438449664, total: 33668726784).
+[W925 21:22:25.592244435 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 54760833024 bytes (free: 14801502208, total: 33668726784).
+[W925 21:22:27.946043375 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 48318382080 bytes (free: 5924257792, total: 33668726784).
+[W925 21:22:29.355809983 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 48318382080 bytes (free: 15682306048, total: 33668726784).
+[W925 21:22:31.466350791 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 42949672960 bytes (free: 7792820224, total: 33668726784).
+[W925 21:22:32.734033990 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 42949672960 bytes (free: 16489709568, total: 33668726784).
+[W925 21:22:34.660025429 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 38654705664 bytes (free: 9388752896, total: 33668726784).
+[W925 21:22:35.800609206 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 38654705664 bytes (free: 16783310848, total: 33668726784).
+[W925 21:22:37.554065657 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 34359738368 bytes (free: 10472980480, total: 33668726784).
+[W925 21:22:38.570648207 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 34359738368 bytes (free: 17737515008, total: 33668726784).
+[W925 21:22:39.134635357 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 30064771072 bytes (free: 12215713792, total: 33668726784).
+[W925 21:22:40.024787844 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 30064771072 bytes (free: 18324717568, total: 33668726784).
+[W925 21:22:42.444650710 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 26843545600 bytes (free: 14652604416, total: 33668726784).
+[W925 21:22:43.231444244 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 26843545600 bytes (free: 16489709568, total: 33668726784).
+[W925 21:22:44.513543088 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 23622320128 bytes (free: 14872805376, total: 33668726784).
+[W925 21:22:45.208495405 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 23622320128 bytes (free: 17223712768, total: 33668726784).
+[W925 21:22:46.353364021 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 20401094656 bytes (free: 15827009536, total: 33668726784).
+[W925 21:22:46.953461033 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 20401094656 bytes (free: 17884315648, total: 33668726784).
+[W925 21:22:47.008560282 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 18253611008 bytes (free: 16634413056, total: 33668726784).
+[W925 21:22:48.548697103 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 18253611008 bytes (free: 217907200, total: 33668726784).
+[W925 21:22:48.548749973 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 18253611008 bytes (free: 217907200, total: 33668726784).
+[W925 21:22:49.511223494 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 16106127360 bytes (free: 213712896, total: 33668726784).
+[W925 21:22:49.090283796 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 16106127360 bytes (free: 3080519680, total: 33668726784).
+[W925 21:22:50.959893790 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13958643712 bytes (free: 3076325376, total: 33668726784).
+[W925 21:22:51.456249627 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13958643712 bytes (free: 3080519680, total: 33668726784).
+[W925 21:22:52.232393505 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11811160064 bytes (free: 3076325376, total: 33668726784).
+[W925 21:22:52.651323488 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11811160064 bytes (free: 3080519680, total: 33668726784).
+[W925 21:22:53.336851940 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9663676416 bytes (free: 3078422528, total: 33668726784).
+[W925 21:22:53.676909598 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9663676416 bytes (free: 3080519680, total: 33668726784).
+[W925 21:22:54.040511326 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8589934592 bytes (free: 3078422528, total: 33668726784).
+[W925 21:22:55.343185070 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8589934592 bytes (free: 3080519680, total: 33668726784).
+[W925 21:22:56.550085701 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7516192768 bytes (free: 3078422528, total: 33668726784).
+[W925 21:22:56.812063911 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7516192768 bytes (free: 3080519680, total: 33668726784).
+[W925 21:22:57.873210513 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6442450944 bytes (free: 3078422528, total: 33668726784).
+[W925 21:22:57.094478783 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6442450944 bytes (free: 3080519680, total: 33668726784).
+Determined Largest batch size: 5
+Running generate_until requests: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████| 40/40 [02:27<00:00,  3.68s/it]
+Tokenizing inputs: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 160/160 [00:00<00:00, 2075.27it/s]
+Running loglikelihood requests:   0%|                                                                                                                   | 0/160 [00:00<?, ?it/s]Passed argument batch_size = auto:1. Detecting largest batch size
+[W925 21:24:41.643091704 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 65062043648 bytes (free: 287113216, total: 33668726784).
+[W925 21:24:43.494183675 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 65062043648 bytes (free: 16055599104, total: 33668726784).
+[W925 21:24:46.319611596 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 57946406912 bytes (free: 708640768, total: 33668726784).
+[W925 21:24:47.988924436 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 57946406912 bytes (free: 12094078976, total: 33668726784).
+[W925 21:24:50.544465949 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 51847888896 bytes (free: 2568814592, total: 33668726784).
+[W925 21:24:51.043196367 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 51847888896 bytes (free: 15223029760, total: 33668726784).
+[W925 21:24:54.301322919 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 45747273728 bytes (free: 6813450240, total: 33668726784).
+[W925 21:24:55.651683198 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 45747273728 bytes (free: 15638265856, total: 33668726784).
+[W925 21:24:57.688440649 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 40663777280 bytes (free: 8166113280, total: 33668726784).
+[W925 21:24:58.886611027 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 40663777280 bytes (free: 14080081920, total: 33668726784).
+[W925 21:25:00.754349594 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 36597399552 bytes (free: 11573985280, total: 33668726784).
+[W925 21:25:01.833720384 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 36597399552 bytes (free: 15539699712, total: 33668726784).
+[W925 21:25:03.524884655 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 32531021824 bytes (free: 11785797632, total: 33668726784).
+[W925 21:25:04.486582761 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 32531021824 bytes (free: 18001756160, total: 33668726784).
+[W925 21:25:05.995685046 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 28464644096 bytes (free: 12771459072, total: 33668726784).
+[W925 21:25:06.836528902 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 28464644096 bytes (free: 18280677376, total: 33668726784).
+[W925 21:25:08.212797587 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 25415385088 bytes (free: 13608222720, total: 33668726784).
+[W925 21:25:08.961421801 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 25415385088 bytes (free: 16542138368, total: 33668726784).
+[W925 21:25:10.205828700 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 22366126080 bytes (free: 15009120256, total: 33668726784).
+[W925 21:25:10.868488697 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 22366126080 bytes (free: 19459276800, total: 33668726784).
+[W925 21:25:11.982200831 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 19316867072 bytes (free: 16814768128, total: 33668726784).
+[W925 21:25:12.550391849 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 19316867072 bytes (free: 18138071040, total: 33668726784).
+[W925 21:25:13.576170931 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 17282629632 bytes (free: 16953180160, total: 33668726784).
+[W925 21:25:13.088555875 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 17282629632 bytes (free: 1411186688, total: 33668726784).
+[W925 21:25:13.088619515 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 17282629632 bytes (free: 1411186688, total: 33668726784).
+[W925 21:25:14.034571945 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 15250489344 bytes (free: 1406992384, total: 33668726784).
+[W925 21:25:15.587283247 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 15250489344 bytes (free: 4124901376, total: 33668726784).
+[W925 21:25:16.434304925 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13216251904 bytes (free: 4120707072, total: 33668726784).
+[W925 21:25:16.904210942 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13216251904 bytes (free: 4124901376, total: 33668726784).
+[W925 21:25:17.659119927 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11184111616 bytes (free: 4120707072, total: 33668726784).
+[W925 21:25:17.055112811 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11184111616 bytes (free: 4124901376, total: 33668726784).
+[W925 21:25:18.721109955 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9149874176 bytes (free: 4122804224, total: 33668726784).
+[W925 21:25:18.044013953 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9149874176 bytes (free: 4124901376, total: 33668726784).
+[W925 21:25:20.344125223 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8132755456 bytes (free: 4122804224, total: 33668726784).
+[W925 21:25:20.629917352 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8132755456 bytes (free: 4124901376, total: 33668726784).
+[W925 21:25:21.806788766 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7117733888 bytes (free: 4122804224, total: 33668726784).
+[W925 21:25:21.058441417 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7117733888 bytes (free: 4124901376, total: 33668726784).
+[W925 21:25:22.071053890 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6100615168 bytes (free: 4122804224, total: 33668726784).
+[W925 21:25:23.277950012 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6100615168 bytes (free: 4124901376, total: 33668726784).
+Determined largest batch size: 5
+Running loglikelihood requests: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████| 160/160 [00:48<00:00,  3.28it/s]
+fatal: not a git repository (or any of the parent directories): .git
+[OK] gsm8k: exact_match,strict-match = 0.2500 (stderr 0.0993)
+[OK] hellaswag: acc_norm,none = 0.5500 (stderr 0.1141)
+[OK] ifeval: prompt_level_strict_acc,none = 0.0500 (stderr 0.0500)
+[OK] tinyMMLU_acc: acc_norm,none = 0.6500 (stderr 0.1094)
+[OK] Record written: /mnt/ai-data/training/eval/ft5-lmeval-base.json
+exit=0
+
+➜  ai-experiments git:(SFT-verification-2) docker compose -f docker-compose.training.yaml run --rm training \
+    python -m training eval-lmeval --model /app/models/trained/ft3-straight/hf --limit 20 \
+    --out /mnt/ai-data/training/eval/ft5-lmeval-merged.json
+echo "exit=$?"
+grep -E '"(lm_eval_version|limit)"' /mnt/ai-data/training/eval/ft5-lmeval-base.json /mnt/ai-data/training/eval/ft5-lmeval-merged.json
+
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-86586192114e Creating
+Container ai-experiments-training-run-86586192114e Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training eval-lmeval --model /app/models/trained/ft3-straight/hf --limit 20 --out /mnt/ai-data/training/eval/ft5-lmeval-merged.json
+[RUN] lm-evaluation-harness: /app/models/trained/ft3-straight/hf
+Loading weights: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1951/1951 [00:00<00:00, 3689.15it/s]
+Using the latest cached version of the dataset since google/IFEval couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'default' at /app/cache/datasets/google___if_eval/default/0.0.0/966cd89545d6b6acfd7638bc708b98261ca58e84 (last modified on Fri Sep 25 19:34:02 2026).
+Using the latest cached version of the dataset since openai/gsm8k couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'main' at /app/cache/datasets/openai___gsm8k/main/0.0.0/740312add88f781978c0658806c59bc2815b9866 (last modified on Fri Sep 25 19:34:09 2026).
+Using the latest cached version of the dataset since tinyBenchmarks/tinyMMLU couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'all' at /app/cache/datasets/tinyBenchmarks___tiny_mmlu/all/0.0.0/cd6a8ee9e1e6f3f18f683535f6c096c386a85da3 (last modified on Fri Sep 25 19:35:56 2026).
+Using the latest cached version of the dataset since Rowan/hellaswag couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'default' at /app/cache/datasets/Rowan___hellaswag/default/0.0.0/218ec52e09a7e7462a5400043bb9a69a41d06b76 (last modified on Fri Sep 25 21:05:57 2026).
+100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 20/20 [00:00<00:00, 85077.16it/s]
+100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 20/20 [00:00<00:00, 759.57it/s]
+100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 20/20 [00:00<00:00, 6374.32it/s]
+100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 20/20 [00:00<00:00, 4578.93it/s]
+Running generate_until requests:   0%|                                                                                                                   | 0/40 [00:00<?, ?it/s]Passed argument batch_size = auto. Detecting largest batch size
+[W925 21:26:24.911874622 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 3221225472 bytes (free: 2256338944, total: 33668726784).
+[W925 21:26:26.266123812 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 68719476736 bytes (free: 1383923712, total: 33668726784).
+[W925 21:26:28.237222655 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 68719476736 bytes (free: 15682306048, total: 33668726784).
+[W925 21:26:29.981670524 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 2868903936 bytes (free: 2346516480, total: 33668726784).
+[W925 21:26:31.151607482 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 61203283968 bytes (free: 1570570240, total: 33668726784).
+[W925 21:26:32.936749402 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 61203283968 bytes (free: 11498487808, total: 33668726784).
+[W925 21:26:35.571281008 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 54760833024 bytes (free: 1438449664, total: 33668726784).
+[W925 21:26:37.177261618 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 54760833024 bytes (free: 14801502208, total: 33668726784).
+[W925 21:26:39.535385915 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 48318382080 bytes (free: 5924257792, total: 33668726784).
+[W925 21:26:40.948753161 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 48318382080 bytes (free: 15682306048, total: 33668726784).
+[W925 21:26:42.067712834 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 42949672960 bytes (free: 7792820224, total: 33668726784).
+[W925 21:26:44.339123865 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 42949672960 bytes (free: 16489709568, total: 33668726784).
+[W925 21:26:46.269728282 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 38654705664 bytes (free: 9388752896, total: 33668726784).
+[W925 21:26:47.413591565 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 38654705664 bytes (free: 16783310848, total: 33668726784).
+[W925 21:26:49.161668523 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 34359738368 bytes (free: 10472980480, total: 33668726784).
+[W925 21:26:50.180653384 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 34359738368 bytes (free: 17737515008, total: 33668726784).
+[W925 21:26:51.745242379 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 30064771072 bytes (free: 12215713792, total: 33668726784).
+[W925 21:26:52.637829049 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 30064771072 bytes (free: 18324717568, total: 33668726784).
+[W925 21:26:53.065273910 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 26843545600 bytes (free: 14652604416, total: 33668726784).
+[W925 21:26:54.854454579 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 26843545600 bytes (free: 16489709568, total: 33668726784).
+[W925 21:26:55.140550768 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 23622320128 bytes (free: 14872805376, total: 33668726784).
+[W925 21:26:56.837512933 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 23622320128 bytes (free: 17223712768, total: 33668726784).
+[W925 21:26:57.987459202 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 20401094656 bytes (free: 15827009536, total: 33668726784).
+[W925 21:26:58.588495435 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 20401094656 bytes (free: 17884315648, total: 33668726784).
+[W925 21:26:59.645086243 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 18253611008 bytes (free: 16634413056, total: 33668726784).
+[W925 21:27:00.187699024 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 18253611008 bytes (free: 217907200, total: 33668726784).
+[W925 21:27:00.187753928 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 18253611008 bytes (free: 217907200, total: 33668726784).
+[W925 21:27:01.154845646 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 16106127360 bytes (free: 213712896, total: 33668726784).
+[W925 21:27:01.736306480 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 16106127360 bytes (free: 3080519680, total: 33668726784).
+[W925 21:27:02.607493455 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13958643712 bytes (free: 3076325376, total: 33668726784).
+[W925 21:27:02.106039004 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13958643712 bytes (free: 3080519680, total: 33668726784).
+[W925 21:27:03.883269483 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11811160064 bytes (free: 3076325376, total: 33668726784).
+[W925 21:27:04.303463633 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11811160064 bytes (free: 3080519680, total: 33668726784).
+[W925 21:27:04.988240634 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9663676416 bytes (free: 3078422528, total: 33668726784).
+[W925 21:27:05.329272784 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9663676416 bytes (free: 3080519680, total: 33668726784).
+[W925 21:27:06.691264031 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8589934592 bytes (free: 3078422528, total: 33668726784).
+[W925 21:27:06.995180550 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8589934592 bytes (free: 3080519680, total: 33668726784).
+[W925 21:27:08.204390471 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7516192768 bytes (free: 3078422528, total: 33668726784).
+[W925 21:27:08.467338717 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7516192768 bytes (free: 3080519680, total: 33668726784).
+[W925 21:27:09.529174438 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6442450944 bytes (free: 3078422528, total: 33668726784).
+[W925 21:27:09.751454226 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6442450944 bytes (free: 3080519680, total: 33668726784).
+Determined Largest batch size: 5
+Running generate_until requests: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████| 40/40 [02:14<00:00,  3.37s/it]
+Tokenizing inputs: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 160/160 [00:00<00:00, 2040.38it/s]
+Running loglikelihood requests:   0%|                                                                                                                   | 0/160 [00:00<?, ?it/s]Passed argument batch_size = auto:1. Detecting largest batch size
+[W925 21:28:40.484738158 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 65062043648 bytes (free: 287113216, total: 33668726784).
+[W925 21:28:42.336165569 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 65062043648 bytes (free: 16055599104, total: 33668726784).
+[W925 21:28:45.166051771 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 57946406912 bytes (free: 708640768, total: 33668726784).
+[W925 21:28:46.835919329 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 57946406912 bytes (free: 12094078976, total: 33668726784).
+[W925 21:28:49.399323739 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 51847888896 bytes (free: 2568814592, total: 33668726784).
+[W925 21:28:50.900211691 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 51847888896 bytes (free: 15223029760, total: 33668726784).
+[W925 21:28:53.165416081 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 45747273728 bytes (free: 6813450240, total: 33668726784).
+[W925 21:28:54.515676920 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 45747273728 bytes (free: 15638265856, total: 33668726784).
+[W925 21:28:56.557454581 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 40663777280 bytes (free: 8166113280, total: 33668726784).
+[W925 21:28:57.756576930 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 40663777280 bytes (free: 14080081920, total: 33668726784).
+[W925 21:28:59.621722206 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 36597399552 bytes (free: 11573985280, total: 33668726784).
+[W925 21:29:00.700709081 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 36597399552 bytes (free: 15539699712, total: 33668726784).
+[W925 21:29:02.390023935 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 32531021824 bytes (free: 11785797632, total: 33668726784).
+[W925 21:29:03.352603582 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 32531021824 bytes (free: 18001756160, total: 33668726784).
+[W925 21:29:04.867993028 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 28464644096 bytes (free: 12771459072, total: 33668726784).
+[W925 21:29:05.709516001 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 28464644096 bytes (free: 18280677376, total: 33668726784).
+[W925 21:29:06.090592648 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 25415385088 bytes (free: 13608222720, total: 33668726784).
+[W925 21:29:07.841394792 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 25415385088 bytes (free: 16542138368, total: 33668726784).
+[W925 21:29:08.089163426 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 22366126080 bytes (free: 15009120256, total: 33668726784).
+[W925 21:29:09.752557324 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 22366126080 bytes (free: 19459276800, total: 33668726784).
+[W925 21:29:10.872218913 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 19316867072 bytes (free: 16814768128, total: 33668726784).
+[W925 21:29:11.440386617 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 19316867072 bytes (free: 18138071040, total: 33668726784).
+[W925 21:29:12.477419543 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 17282629632 bytes (free: 16953180160, total: 33668726784).
+[W925 21:29:12.992843719 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 17282629632 bytes (free: 1411186688, total: 33668726784).
+[W925 21:29:12.992917799 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 17282629632 bytes (free: 1411186688, total: 33668726784).
+[W925 21:29:13.938475702 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 15250489344 bytes (free: 1406992384, total: 33668726784).
+[W925 21:29:14.492295902 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 15250489344 bytes (free: 4124901376, total: 33668726784).
+[W925 21:29:15.339686628 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13216251904 bytes (free: 4120707072, total: 33668726784).
+[W925 21:29:15.810625256 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13216251904 bytes (free: 4124901376, total: 33668726784).
+[W925 21:29:16.565854764 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11184111616 bytes (free: 4120707072, total: 33668726784).
+[W925 21:29:16.962925887 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11184111616 bytes (free: 4124901376, total: 33668726784).
+[W925 21:29:17.633689171 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9149874176 bytes (free: 4122804224, total: 33668726784).
+[W925 21:29:17.956394468 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9149874176 bytes (free: 4124901376, total: 33668726784).
+[W925 21:29:19.261733203 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8132755456 bytes (free: 4122804224, total: 33668726784).
+[W925 21:29:19.547624584 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8132755456 bytes (free: 4124901376, total: 33668726784).
+[W925 21:29:20.727721271 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7117733888 bytes (free: 4122804224, total: 33668726784).
+[W925 21:29:20.979393464 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7117733888 bytes (free: 4124901376, total: 33668726784).
+[W925 21:29:21.996022039 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6100615168 bytes (free: 4122804224, total: 33668726784).
+[W925 21:29:22.203171483 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6100615168 bytes (free: 4124901376, total: 33668726784).
+Determined largest batch size: 5
+Running loglikelihood requests: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████| 160/160 [00:48<00:00,  3.28it/s]
+fatal: not a git repository (or any of the parent directories): .git
+[OK] gsm8k: exact_match,strict-match = 0.2500 (stderr 0.0993)
+[OK] hellaswag: acc_norm,none = 0.6000 (stderr 0.1124)
+[OK] ifeval: prompt_level_strict_acc,none = 0.1500 (stderr 0.0819)
+[OK] tinyMMLU_acc: acc_norm,none = 0.6500 (stderr 0.1094)
+[OK] Record written: /mnt/ai-data/training/eval/ft5-lmeval-merged.json
+exit=0
+/mnt/ai-data/training/eval/ft5-lmeval-base.json:  "lm_eval_version": "0.4.12",
+/mnt/ai-data/training/eval/ft5-lmeval-base.json:  "limit": 20,
+/mnt/ai-data/training/eval/ft5-lmeval-merged.json:  "lm_eval_version": "0.4.12",
+/mnt/ai-data/training/eval/ft5-lmeval-merged.json:  "limit": 20,
+```
+
+Judgement. Every criterion met, and the entry closes on this paste with
+the holdout half of the first attempt and the probes of the second. The
+`git pull` fast-forwarded to the KB-94 commit and no rebuild was needed,
+as the precondition paragraph says: the yaml is compose-mounted. Both
+sides printed `[RUN] lm-evaluation-harness: <model>`, `datasets`' cached
+warning once per task with no `[nltk_data]` or `Downloaded punkt_tab`
+line, then the four `[OK]` lines in sorted order with the keys spelled as
+the harness keys them, `[OK] Record written:` and `exit=0`; the `grep`
+shows both records carrying `"lm_eval_version": "0.4.12"` and `"limit":
+20`. The values, base then merged: gsm8k `exact_match,strict-match`
+0.2500 and 0.2500, hellaswag `acc_norm,none` 0.5500 and 0.6000, ifeval
+`prompt_level_strict_acc,none` 0.0500 and 0.1500, `tinyMMLU_acc`
+`acc_norm,none` 0.6500 and 0.6500, each with a standard error near 0.1
+at 20 examples, so the sides are not ranked, as the expected signal
+says; the record's purpose here is the shape. That closes KB-94 (the
+`ifeval: prompt_level_strict_acc,none` line), and with it KB-92 and
+KB-93, whose close condition was these same lines: the datasets half
+served all four tasks offline on both sides, and `tinyMMLU_acc` scored
+with its plain mean. Each side took about four minutes, the load
+included: 2:27 and 2:14 of generation at batch 5, 0:48 of loglikelihood,
+and roughly 45 s of batch-size search before each phase.
+
+Two observations, no row. First, the batch-size search. The entry names
+the allocator warnings as harness noise and the paste shows their
+mechanism, read from the 0.4.12 wheel and the accelerate 1.14.0 wheel it
+imports `find_executable_batch_size` from. `batch_size=auto` makes the
+harness's HF model class forward a dummy batch of ones and take a
+full-vocabulary `log_softmax` of the logits, starting at its
+`max_batch_size` default of 64 and multiplying by 0.9 after every
+out-of-memory error until a size fits; the probe's sequence length is the
+model's full context for the generation phase (131072 for E2B, the
+first ask 64 GiB on a 33 GB card) and the longest request for the
+loglikelihood phase (the `auto:1` line; 65 GB is 64 sequences of about
+970 tokens against a 262144-token vocabulary in fp32). Nineteen sizes
+fail before 5 fits, each failure logging torch's allocator warning
+twice, which is the forty lines; the harness then clears the cache and
+runs at 5. The warnings come from the allocator's retry path, not from
+the harness, and no request failed. A fixed `--batch-size` on
+`eval-lmeval`, or a `max_length` in the model arguments, would remove
+the search and its 45 s a phase; that is a separate decision, not a
+finding, since the run's numbers do not depend on it. Second, hellaswag
+printed no `Map:` lines this time: its processed docs were written to the
+read-write datasets half by the second attempt (the cache line's `last
+modified` for hellaswag is that run's time, 21:05, where the other three
+are the staging's), and this run read them back, which is the mount mode
+doing what KB-92's second fix said it would.
+
+The hardware mirror's first run (2026-09-25, after this entry verified;
+failed on host state), after `git pull` to `dc0fac4`, pasted verbatim with
+the test source and the subprocess's full stderr that pytest echoes elided,
+since the traceback's last frames carry the error:
+
+```
+➜  ai-experiments git:(SFT-verification-2) uv run --no-sync pytest -m "hw_full and training" tests/hardware/test_heldout_eval.py -v 2>&1 | tail -40; echo "exit=$?"
+============================================================================== test session starts ==============================================================================
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /home/alejandro/workspace/ai-experiments/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/alejandro/workspace/ai-experiments
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, mock-3.15.1, jaxtyping-0.3.11, cov-7.1.0, hydra-core-1.3.2, anyio-4.14.2, xdist-3.8.0, typeguard-4.6.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 1 item
+
+tests/hardware/test_heldout_eval.py::test_heldout_eval FAILED                                                                                                             [100%]
+
+=================================================================================== FAILURES ====================================================================================
+_______________________________________________________________________________ test_heldout_eval _______________________________________________________________________________
+[...the test source and the subprocess's stderr, elided; the traceback's last frames follow...]
+E           File "/home/alejandro/workspace/ai-experiments/.venv/lib/python3.12/site-packages/lm_eval/tasks/ifeval/utils.py", line 4, in <module>
+E             from lm_eval.tasks.ifeval import instructions_registry
+E           File "/home/alejandro/workspace/ai-experiments/.venv/lib/python3.12/site-packages/lm_eval/tasks/ifeval/instructions_registry.py", line 17, in <module>
+E             from lm_eval.tasks.ifeval import instructions
+E           File "/home/alejandro/workspace/ai-experiments/.venv/lib/python3.12/site-packages/lm_eval/tasks/ifeval/instructions.py", line 36, in <module>
+E             import langdetect
+E         ModuleNotFoundError: No module named 'langdetect'
+E
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/home/alejandro/workspace/ai-experiments/.venv/bin/python', '-m', 'training', 'eval-lmeval', '--model', '/mnt/ai-data/models/hf/gemma-4-E2B', '--limit', '20', '--out', '/tmp/pytest-of-alejandro/pytest-1/test_heldout_eval0/eval/lmeval_base.json'], returncode=1, stdout='', stderr='[RUN] lm-evaluation-harness: /mnt/ai-data/models/hf/gemma-4-E2B\n\nLoading weights: ...').returncode
+
+tests/hardware/test_heldout_eval.py:146: AssertionError
+[TIER] full: torch present, the whole suite was in scope.
+============================================================================ short test summary info ============================================================================
+FAILED tests/hardware/test_heldout_eval.py::test_heldout_eval - AssertionError: [RUN] lm-evaluation-harness: /mnt/ai-data/models/hf/gemma-4-E2B
+========================================================================= 1 failed in 896.47s (0:14:56) =========================================================================
+```
+
+Judgement. The phases before the failure passed every assertion the mirror
+holds on them: the 20-step `train-sft` run printed `[OK] Run complete: step
+20 [trl]` and left `checkpoint-20` stamped `adapter_only` at the base's
+revision; the export printed `[OK] Base model verified:` and `[OK] Manifest
+written:` and left `model.safetensors` and `config.json`; both `eval-holdout`
+passes wrote records with the eight keys, `bf16`, `sdpa` and 4066 examples,
+which `assert_holdout_shape` accepted on both sides (the comprehension at
+line 279 completed, and the failure is line 287's). The base's `eval-lmeval`
+then loaded the model and died at task load with `ModuleNotFoundError: No
+module named 'langdetect'` from the harness's ifeval task, exit 1, so the
+merged side, the pair checks and the loss order did not run. The cause is
+the workstation venv, not the tree: `pyproject.toml` has pinned
+`lm-eval[ifeval]==0.4.12` since KB-92's fix and `uv.lock` has carried
+`langdetect` and `immutabledict` since `f52c158`, but `uv lock` writes the
+lock and syncs nothing, `make install` has not run since, and `uv run
+--no-sync` runs what is there, as `tests/hardware/test_venv_lock.py` says;
+that check reads the other direction on purpose (installed but unlocked),
+so a locked package left uninstalled fails where it is imported, which is
+what happened. The training container never showed it because `make
+train-build` rebuilt the image from the new lock (the preconditions above),
+and the mirror is the first thing to run the ifeval task on the host venv.
+Host state, the shape of FT.export-merged's root-owned sessions directory,
+so no ledger row; the remedy is `make install`. The mirror gained
+`require_ifeval_extra`, which fails with that command named before the
+training phase, so the next such drift costs seconds rather than the
+fifteen minutes this run spent. The re-run is owed after the sync. The
+Status line below is the entry's, closed on the hand run; the mirror's pass
+is recorded when it happens.
+
+The hardware mirror's first pass (2026-09-25, after `git pull` to
+`efbeefd`), the sync, the import probe and the run, pasted verbatim:
+
+```
+➜  ai-experiments git:(SFT-verification-2) make install 2>&1 | tail -5
+Installed 2 packages in 3ms
+ + immutabledict==4.3.1
+ + langdetect==1.0.9
+Environment synced.
+➜  ai-experiments git:(SFT-verification-2) uv run --no-sync python -c "import langdetect, immutabledict, nltk; print('ok')"
+ok
+➜  ai-experiments git:(SFT-verification-2) uv run --no-sync pytest -m "hw_full and training" tests/hardware/test_heldout_eval.py -v 2>&1 | tail -40; echo "exit=$?"
+============================= test session starts ==============================
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /home/alejandro/workspace/ai-experiments/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/alejandro/workspace/ai-experiments
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, mock-3.15.1, jaxtyping-0.3.11, cov-7.1.0, hydra-core-1.3.2, anyio-4.14.2, xdist-3.8.0, typeguard-4.6.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/hardware/test_heldout_eval.py::test_heldout_eval PASSED            [100%]
+
+[TIER] full: torch present, the whole suite was in scope.
+======================== 1 passed in 1294.59s (0:21:34) ========================
+exit=0
+```
+
+Judgement. `make install` added exactly the two packages the lock carried
+and the venv lacked, `immutabledict 4.3.1` and `langdetect 1.0.9` (nltk was
+already present as lm-eval's own dependency), and removed nothing; the
+probe printed `ok`; the mirror passed in 21:34 at `[TIER] full`, exit 0,
+about four minutes under the 25 the docstring budgets, the preflight
+having found the extra. Every assertion the module holds therefore held on
+the workstation: the four verbs' exits and printed lines on both sides,
+both record shapes, the `eval-ft` driver's pair checks, the organism
+verifier's projection, and the merged model's held-out loss at or below
+the base's after 20 steps. The mirror stands as this entry's re-proof;
+`make hardware-tests HW=full SUITE=training` runs it with the other
+training mirrors.
+
+Status: VERIFIED (2026-09-25) on the third evaluation attempt. The
+holdout half passed on the first attempt (KB-92's first fix failed the
+lm-eval half there, and KB-93 was found), the probes on the second (which
+found KB-94 at scoring), the lm-eval half on the third.
 
 ## FT.eval-ft eval-ft with both sides identified
 
@@ -2261,10 +4607,13 @@ Status: PENDING
 ## FT.hardware-test The hardware test
 
 Implementation: `tests/hardware/test_fine_tuning_loop.py::test_fine_tuning_loop`
-(`hw_full`, `gpu`, `ssd`), running a ten-step QLoRA fine-tune of the smoke
-recipe in-process, the export through `cmd_export`, and the two harness
-verdicts in one function; the marker is defined in `pyproject.toml` and its
-tiers in [tests/README.md](../../../tests/README.md). Its sandbox half,
+(`hw_full`, `gpu`, `ssd`, `training`), running a ten-step QLoRA fine-tune of
+the smoke recipe in-process, the export through `cmd_export`, the two harness
+verdicts and one chat turn in one function, and, since 2026-09-25,
+`tests/hardware/test_train_resume.py::test_train_interrupt_resume` (the same
+four markers), FT.train-resume's mirror, which trains 20 steps straight, 10
+and a resume to 20; the markers are defined in `pyproject.toml` and the tiers
+in [tests/README.md](../../../tests/README.md). Its sandbox half,
 `tests/training/test_export_harness.py`, runs the export and the same two
 verdicts on the committed tiny fixture on every `make test`. Built by the
 exporter PR; depends on FT.preconditions (the cached base) and FT.smoke-dataset (the prepared
@@ -2291,29 +4640,160 @@ exception from inside `train_sft`.
 
 Command (the tier and invocation are the ones every hardware entry uses;
 `--no-sync` because a plain `uv run` resyncs the default groups and, on a
-host without a `flash-attn` wheel, starts a source build on every core):
+host without a `flash-attn` wheel, starts a source build on every core; the
+`-m` expression names the tier and the subsystem both, since a bare `-m`
+replaces the `addopts` deselection). The two files are the entry's; `make
+hardware-tests HW=full SUITE=training` runs the whole training slice, which
+adds `test_step_qlora.py`, `test_from_scratch_loop.py` and the training
+functions of the resource suites:
 
 ```bash
 set -o pipefail
 cd ~/workspace/ai-experiments
 ls rust-harness/target/release/harness rust-harness/target/release/checkpoint-info
-ls "${HF_HOME:-$HOME/.cache/huggingface}/hub/models--google--gemma-4-E2B/snapshots/"
-uv run --no-sync pytest -m hw_full tests/hardware/test_fine_tuning_loop.py -v
+ls /mnt/ai-data/models/hf/gemma-4-E2B/config.json
+uv run --no-sync pytest -m "hw_full and training" tests/hardware/test_train_resume.py tests/hardware/test_fine_tuning_loop.py -v 2>&1 | tail -40; echo "exit=$?"
 ```
 
-Expected signal: the one test passes at `[TIER] full` with no skip, and its
-assertions cover what FT.train-resume and FT.export-merged observe by hand: `checkpoint-10` is
+Expected signal: both tests pass at `[TIER] full` with no skip and exit 0.
+The resume test holds FT.train-resume's interrupt and resume: the
+interrupted run ends at step 10 with `checkpoint-10` stamped and no
+`checkpoint-20`, the resumed run ends at 20 with `checkpoint-20` stamped,
+`checkpoint-10`'s `trainer_state.json` byte for byte as it was, its own
+metrics log carrying train losses above step 10 only, and both logged
+losses within `RESUME_LOSS_RTOL` of the straight run's. The loop test's
+assertions cover what FT.train-resume's first criterion and FT.export-merged observe by
+hand: `checkpoint-10` is
 written with `adapter_only: true` and the pinned base identity in its
-`meta.json`; the export is `mode: merge`, holds one `model.safetensors` and
-no index, and its manifest `model_hash` equals the file's sha256;
+`meta.json`; the export prints `[OK] Base model verified:` for the staged
+base, is `mode: merge`, holds one `model.safetensors` and
+no index, and its manifest `model_hash` equals the file's sha256; a second
+export of the same name returns 1 with `[ERROR] Export exists:` and the
+`--force` remedy;
 `checkpoint-info --check --text-only` exits 0; `harness --status --deep`
 with a probe carrying that hash prints `[OK] probe identity: matches the
 served weights, sha256 <hash>` and exits 0, and with an altered hash exits 1
-naming both digests.
+naming both digests; one `--chat` turn on a pipe exits 0 with `[INFO] Chat
+ended: 1 model turns` and a non-empty reply.
 
-Observed:
+Observed (2026-09-25, the two mirrors' first run; the entry ran ahead of
+the five before it in the order because its own dependencies, the staged
+base, the prepared dataset and the release binaries, were all met, and the
+tests mirror two entries already verified by hand):
 
 ```
+➜  ai-experiments git:(SFT-verification-2) set -o pipefail
+cd ~/workspace/ai-experiments && git pull origin SFT-verification-2 && git log -1 --oneline
+ls rust-harness/target/release/harness rust-harness/target/release/checkpoint-info
+uv run --no-sync pytest -m "hw_full and training" tests/hardware/test_train_resume.py tests/hardware/test_fine_tuning_loop.py -v 2>&1 | tail -40; echo "exit=$?"
+remote: Enumerating objects: 81, done.
+remote: Counting objects: 100% (81/81), done.
+remote: Compressing objects: 100% (12/12), done.
+remote: Total 81 (delta 69), reused 81 (delta 69), pack-reused 0 (from 0)
+Unpacking objects: 100% (81/81), 26.13 KiB | 1.31 MiB/s, done.
+From https://github.com/alejandroJaramillo87/ai-experiments
+ * branch              SFT-verification-2 -> FETCH_HEAD
+   d52ace9f..3f78b999  SFT-verification-2 -> origin/SFT-verification-2
+Updating d52ace9..3f78b99
+Fast-forward
+ docs/testing/README.md                         |   2 +-
+ docs/testing/hardware-tiers.md                 |  91 ++++++++++++++++++++++++++++++---------------
+ docs/testing/test-suite.md                     |   9 +++--
+ docs/verification/training/fine-tuning-loop.md | 245 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++----------
+ make/README.md                                 |   2 +-
+ make/quality.mk                                |  62 ++++++++++++++++++++++++++++++-
+ pyproject.toml                                 |   8 ++++
+ tests/hardware/README.md                       |   9 +++--
+ tests/hardware/conftest.py                     |  60 ++++++++++++++++++++++++++++++
+ tests/hardware/test_alignment.py               |   8 +++-
+ tests/hardware/test_attention_capture.py       |   8 +++-
+ tests/hardware/test_capture_run_record.py      |   1 +
+ tests/hardware/test_chat_marker.py             |   1 +
+ tests/hardware/test_checkpoint_info.py         |   7 +++-
+ tests/hardware/test_compaction.py              |   8 +++-
+ tests/hardware/test_cpu.py                     |   2 +-
+ tests/hardware/test_fine_tuning_loop.py        | 131 ++++++++++++++++++++++++++++++++++++++++-------------------------
+ tests/hardware/test_from_scratch_loop.py       |   2 +-
+ tests/hardware/test_gpu.py                     |  15 ++++----
+ tests/hardware/test_harness_endpoint.py        |   8 +++-
+ tests/hardware/test_interp_chain.py            |   8 +++-
+ tests/hardware/test_ladder.py                  |   7 +++-
+ tests/hardware/test_layer_diff.py              |   8 +++-
+ tests/hardware/test_markers.py                 |  19 ++++++++--
+ tests/hardware/test_obs_records.py             |   8 +++-
+ tests/hardware/test_permissions.py             |   8 +++-
+ tests/hardware/test_preflight.py               |   1 +
+ tests/hardware/test_ram.py                     |   2 +-
+ tests/hardware/test_recipe_gates.py            |   2 +-
+ tests/hardware/test_remedy_runs_as_printed.py  |   1 +
+ tests/hardware/test_run_header.py              |   1 +
+ tests/hardware/test_session_resume.py          |   1 +
+ tests/hardware/test_shared_kv_weights.py       |   7 +++-
+ tests/hardware/test_ssd.py                     |   5 +++
+ tests/hardware/test_status_costs.py            |   1 +
+ tests/hardware/test_step_qlora.py              |   2 +-
+ tests/hardware/test_train_resume.py            | 149 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ tests/hardware/test_venv_lock.py               |   2 +-
+ tests/training/README.md                       |   2 +-
+ tests/training/test_obs_metrics.py             |  37 +++++++++++++++++++
+ training/tune/sft.py                           |  13 +++++--
+ training/tune/sft_callbacks.py                 |  20 +++++++++-
+ 42 files changed, 843 insertions(+), 140 deletions(-)
+ create mode 100644 tests/hardware/test_train_resume.py
+rust-harness/target/release/checkpoint-info  rust-harness/target/release/harness
+
+============================= test session starts ==============================
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /home/alejandro/workspace/ai-experiments/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/alejandro/workspace/ai-experiments
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, mock-3.15.1, jaxtyping-0.3.11, cov-7.1.0, hydra-core-1.3.2, anyio-4.14.2, xdist-3.8.0, typeguard-4.6.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 2 items
+
+tests/hardware/test_train_resume.py::test_train_interrupt_resume PASSED  [ 50%]
+tests/hardware/test_fine_tuning_loop.py::test_fine_tuning_loop PASSED    [100%]
+
+=============================== warnings summary ===============================
+tests/hardware/test_train_resume.py: 14 warnings
+  /home/alejandro/workspace/ai-experiments/.venv/lib/python3.12/site-packages/torch/jit/_script.py:365: DeprecationWarning: `torch.jit.script_method` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
+
+tests/hardware/test_train_resume.py::test_train_interrupt_resume
+tests/hardware/test_train_resume.py::test_train_interrupt_resume
+tests/hardware/test_train_resume.py::test_train_interrupt_resume
+tests/hardware/test_fine_tuning_loop.py::test_fine_tuning_loop
+  /home/alejandro/workspace/ai-experiments/.venv/lib/python3.12/site-packages/bitsandbytes/backends/cuda/ops.py:213: FutureWarning: _check_is_size will be removed in a future PyTorch release along with guard_size_oblivious.     Use _check(i >= 0) instead.
+    torch._check_is_size(blocksize)
+
+tests/hardware/test_train_resume.py: 12 warnings
+tests/hardware/test_fine_tuning_loop.py: 8 warnings
+  /home/alejandro/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=883615) is multi-threaded, use of fork() may lead to deadlocks in the child.
+    self.pid = os.fork()
+
+tests/hardware/test_fine_tuning_loop.py::test_fine_tuning_loop
+  /home/alejandro/workspace/ai-experiments/tests/hardware/conftest.py:213: UserWarning: 16575893504 bytes of CUDA tensors survive from an earlier test in this process after a collection; the previous GPU test holds a reference
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+[TIER] full: torch present, the whole suite was in scope.
+================= 2 passed, 39 warnings in 1516.01s (0:25:16) ==================
+exit=0
 ```
 
-Status: PENDING
+Both tests `PASSED` at `[TIER] full`, no skip, exit 0, 25:16 of wall clock
+against the resume test's estimate of about twelve minutes plus the loop
+test's ten steps, export and two binaries. The `git pull` line proves the
+tree carried the two tests and the subsystem markers (`3f78b99`). One
+observation, not a mismatch: the `cuda` fixture warned that 16,575,893,504
+bytes of CUDA tensors survived from `test_train_interrupt_resume` into
+`test_fine_tuning_loop` after a collection. The fixture exists to report
+this (`tests/hardware/conftest.py`: an HF model an earlier test left in a
+reference cycle under accelerate hooks stays on the card until the process
+ends, and each test's own bounds measure against what remains), the loop
+test loaded its own base and trained, exported and chatted beside them on
+the 32 GB card, and nothing the entry asserts reads that figure; no ledger
+row. The warnings from torch, bitsandbytes and `os.fork` are the ones
+FT.train-resume's container runs printed. Pass on every criterion.
+
+Status: VERIFIED (2026-09-25)

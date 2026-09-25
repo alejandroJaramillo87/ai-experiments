@@ -45,12 +45,23 @@ The in-container phases are `python -m training eval-holdout` and `eval-lmeval`,
 model each; the driver runs them four times under the training lock and resumes from
 the records already written when re-invoked with the same `--out-dir`.
 
+The lmeval phase reads its four task datasets from the datasets half of the persistent
+HF cache, which the training container mounts and cannot fill itself: stage each once
+through the prepare service, `make train-download DATASET=google/IFEval`,
+`DATASET=openai/gsm8k NAME=main`, `DATASET=tinyBenchmarks/tinyMMLU NAME=all` and
+`DATASET=Rowan/hellaswag`, before the first run (KB-92). The ifeval task also needs
+lm-eval's `ifeval` extra, which the training group pins, and nltk's `punkt_tab` models,
+which the training image carries (KB-93). The MMLU task is the repo-owned
+`tinyMMLU_acc` (`training/eval/tasks/tinyMMLU_acc.yaml`): the harness's own tinyMMLU
+scores through a git-only package and needs all 100 items per run, so the pinned task
+takes the same items with plain accuracy.
+
 ## Evaluators
 
 | Evaluator | Runs | Measures |
 |-----------|------|----------|
 | holdout | training container, inference down | token-weighted CE loss and perplexity on the F1 held-out split, matched precision (`--load-4bit` for QLoRA runs) |
-| lmeval | training container, inference down | pinned lm-evaluation-harness task set (`training/eval/tasks.yaml`: ifeval, gsm8k, tinyMMLU, hellaswag) against the HF checkpoint |
+| lmeval | training container, inference down | pinned lm-evaluation-harness task set (`training/eval/tasks.yaml`: ifeval, gsm8k, tinyMMLU_acc, hellaswag) against the HF checkpoint |
 
 ## Identity
 

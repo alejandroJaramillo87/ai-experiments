@@ -89,8 +89,8 @@ def test_hf_identity_refuses_a_path_outside_the_models_tree(tmp_path, monkeypatc
 def test_task_config_pins_and_filters():
     config = load_task_config()
     assert config["lm_eval_version"] == "0.4.12"
-    assert set(config["tasks"]) == {"ifeval", "gsm8k", "tinyMMLU", "hellaswag"}
-    subset = load_task_config(tasks=["tinyMMLU"])
-    assert list(subset["tasks"]) == ["tinyMMLU"]
+    assert set(config["tasks"]) == {"ifeval", "gsm8k", "tinyMMLU_acc", "hellaswag"}
+    subset = load_task_config(tasks=["tinyMMLU_acc"])
+    assert list(subset["tasks"]) == ["tinyMMLU_acc"]
     with pytest.raises(LmEvalError, match="not in the pinned set"):
         load_task_config(tasks=["mmlu_pro"])

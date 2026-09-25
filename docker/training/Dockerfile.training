@@ -84,6 +84,22 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     CFLAGS="-march=native" CXXFLAGS="-march=native" \
     uv sync --active --frozen --no-install-project --no-default-groups --group training
 
+# nltk data for lm-eval's ifeval task (KB-93). The task's sentence counting loads
+# nltk's punkt models at run time and its import downloads them when nltk.data.find
+# fails; the training service has no route, so they are fetched here, at build,
+# where uv already reaches the network. nltk_data has no versions, so the pin is
+# the sha256 the nltk_data index publishes for the archive. NLTK_DATA is searched
+# first, so the import finds the models and attempts no download.
+ARG PUNKT_TAB_URL=https://raw.githubusercontent.com/nltk/nltk_data/gh-pages/packages/tokenizers/punkt_tab.zip
+ARG PUNKT_TAB_SHA256=e57f64187974277726a3417ca6f181ec5403676c717672eef6a748a7b20e0106
+ENV NLTK_DATA=/opt/nltk_data
+RUN mkdir -p ${NLTK_DATA}/tokenizers && \
+    curl -fsSL -o /tmp/punkt_tab.zip "${PUNKT_TAB_URL}" && \
+    echo "${PUNKT_TAB_SHA256}  /tmp/punkt_tab.zip" | sha256sum -c - && \
+    python -c "import zipfile; zipfile.ZipFile('/tmp/punkt_tab.zip').extractall('${NLTK_DATA}/tokenizers')" && \
+    rm /tmp/punkt_tab.zip && \
+    test -d ${NLTK_DATA}/tokenizers/punkt_tab/english
+
 # NVIDIA runtime capabilities
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility

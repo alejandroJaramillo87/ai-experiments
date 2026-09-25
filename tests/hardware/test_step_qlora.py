@@ -37,7 +37,7 @@ import pytest
 
 from tests.hardware.conftest import REPO_ROOT
 
-pytestmark = [pytest.mark.hw_full, pytest.mark.gpu]
+pytestmark = [pytest.mark.hw_full, pytest.mark.gpu, pytest.mark.training]
 
 RECIPE = os.path.join(
     REPO_ROOT, "training", "recipes", "reference", "sft-qlora-e2b.yaml"

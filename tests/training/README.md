@@ -59,22 +59,24 @@ regenerated.
 | `test_cli_handlers_train.py` | 13 | CLI handler contracts for the run subcommands: cmd_train and cmd_train_sft. |
 | `test_contamination.py` | 10 | Contamination index build and membership checks (P2-D1). |
 | `test_data_tail_branches.py` | 33 | Error and hub-source branches of the data tail modules left uncovered by the module tests. |
+| `test_download.py` | 6 | The download command's two forms: a pinned model, and a dataset staged into the hub cache for lm-eval's offline reads (KB-92). |
 | `test_entrypoint.py` | 4 | docker/training/entrypoint.sh: the environment echo and the D9 LD_PRELOAD slot. |
 | `test_eval_ft.py` | 2 | eval-ft's container phase: the compared sides reach the training container in its own spelling of the models tree. |
 | `test_eval_runner.py` | 6 | F7 runner pieces: checkpoint identity and the lm-eval task pins. |
 | `test_export.py` | 45 | Tests for the exporter's pure-logic paths. |
 | `test_export_common_branches.py` | 13 | Branch coverage for export seams and common probes, all torch-free. |
 | `test_export_harness.py` | 4 | The exporter's output, read by the consumer it exists for. |
+| `test_export_image_dependencies.py` | 5 | The export image's dependency set must cover what `python -m training` imports. |
 | `test_head_loss.py` | 13 | training/models/head_loss.py: the chunked head loss (KB-87), driven against a fake torch the way test_peft_utils.py fakes it. |
 | `test_holdout.py` | 4 | holdout.resolve_model form dispatch: hub id, full checkpoint dir, and adapter-only checkpoint. |
-| `test_lmeval.py` | 4 | lm-eval evaluator helpers: result extraction, the stderr-key composition for filtered metrics, and the version-mismatch guard. |
+| `test_lmeval.py` | 7 | lm-eval evaluator helpers: result extraction, the stderr-key composition for filtered metrics, the version-mismatch guard, and the repo-owned task configs the harness's registry is extended with. |
 | `test_loader.py` | 7 | D9 prefetch dataloader: exact sequential window order, wrap-around, index-based resume equivalence with 0 and >0 workers, legacy cursor conversion, and the multi-worker deterministic loop resume — the guarantee the index-based design exists to protect. |
 | `test_lock.py` | 9 | D9 run lock: acquire/release, contention, and staleness. |
 | `test_loop.py` | 7 | Acceptance tests for the D6 reference loop: deterministic resume and tracking. |
 | `test_mixture.py` | 23 | P2-D2 data-mixing tests: draw proportions from source tags, deterministic random access, resume-index handling, strict single-epoch abort, tokenizer-hash refusal at construction and at validate(), and the tagged dataloader path. |
 | `test_obs_durability.py` | 2 | SIGKILL durability test for the jsonl metrics sink (roadmap OBS-10). |
 | `test_obs_integration.py` | 3 | Cross-module integration tests for the observability stack (phases A-D). |
-| `test_obs_metrics.py` | 18 | Unit tests for the metrics.jsonl tracker sink (roadmap OBS-10). |
+| `test_obs_metrics.py` | 19 | Unit tests for the metrics.jsonl tracker sink (roadmap OBS-10). |
 | `test_offload.py` | 35 | ZeRO-Offload unit tests (Phase 2 P2-D5): DeepSpeed config generation as a pure function of the recipe, the trainable_filter freeze policy on a real tiny HF model, the transformer_stack parameter accounting, and the validate() invariants. |
 | `test_peft_utils.py` | 23 | PEFT glue tests (Phase 1 F2): family-registry lookups, target_modules "auto" resolution into the config snapshot, and the trainable-parameter report, and the composite-base exclusion (KB-83). |
 | `test_pin_run.py` | 4 | scripts/training/pin_run.sh: the host-side taskset wrapper (D9). |
@@ -98,6 +100,7 @@ regenerated.
 | `test_tokenizer.py` | 17 | Phase 0 D3 tokenizer training tests: special-token ids, reserved block, reproducibility, round-trip losslessness, overwrite refusal, and hash-chain integration with the D2 loader. |
 | `test_tracking.py` | 3 | D6 tracking fan-out: fail-soft sink eviction and the no-sink contract. |
 | `test_training_cli.py` | 5 | Unified training CLI parser tests: each migrated training/commands/ subcommand parses its minimal argument set and binds the module's cmd entry point. |
+| `test_training_compose.py` | 2 | The training compose file's cache mounts, held to what datasets reads offline (KB-92, second fix). |
 | `test_watchdog.py` | 18 | Unit tests for the D10 operational watchdogs. |
 | `test_watchdog_branches.py` | 16 | Branch tests for the D10 watchdog fail-soft paths. |
 

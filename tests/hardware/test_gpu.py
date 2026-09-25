@@ -10,16 +10,11 @@ import os
 
 import pytest
 
+from tests.hardware.conftest import RESUME_LOSS_RTOL
+
 pytestmark = pytest.mark.gpu
 
 REQUIRED_CAPABILITY = (12, 0)  # RTX 5090, Blackwell sm_120
-
-# Stated GPU resume tolerance (resolved sweep decision: tolerance-based on
-# GPU, bitwise only on CPU/tiny-model): per-step training-loss agreement
-# within 1% relative over the post-resume window. CUDA kernels are
-# nondeterministic across runs (atomics, cuDNN autotuning); identical data
-# order plus restored RNG state bounds the drift well under this.
-RESUME_LOSS_RTOL = 0.01
 
 # Registered training families and their pinned checkpoints (kept in sync
 # with training/models/families.py and the model policy).
@@ -30,6 +25,7 @@ FAMILY_PINS = {
 
 
 @pytest.mark.hw_smoke
+@pytest.mark.platform
 class TestGpuSmoke:
     def test_cuda_device_present(self, cuda):
         assert cuda.cuda.device_count() >= 1
@@ -81,6 +77,7 @@ class TestGpuSmoke:
 
 @pytest.mark.hw_full
 class TestGpuFull:
+    @pytest.mark.platform
     def test_near_capacity_vram_allocation_graceful_oom(self, cuda):
         """Allocate 1GB blocks until OOM: the failure must be a catchable
         torch OOM, most of the 32GB must be reachable, and a small
@@ -100,6 +97,7 @@ class TestGpuFull:
         del probe
         cuda.cuda.empty_cache()
 
+    @pytest.mark.training
     def test_step_measures_the_tiny_recipe(self, cuda, tmp_path, train_lock):
         """`python -m training step` on the tiny recipe: builds the model,
         records what it holds resident, steps twice, and the counts match
@@ -122,6 +120,7 @@ class TestGpuFull:
         assert 0 < record.static_measured <= record.measured_allocated
         assert record.measured_reserved >= record.measured_allocated
 
+    @pytest.mark.training
     def test_resume_loss_curve_within_tolerance(self, cuda, tmp_path, train_lock):
         """Straight N+M steps versus N steps + checkpoint + resume + M steps
         on the GPU: per-step losses over the post-resume window agree within
@@ -167,6 +166,7 @@ class TestGpuFull:
                 f"(rel {rel:.4f} > {RESUME_LOSS_RTOL})"
             )
 
+    @pytest.mark.training
     @pytest.mark.parametrize("family", sorted(FAMILY_PINS))
     def test_family_registry_tiny_load(self, cuda, family):
         """Per registered family: the pinned checkpoint's config resolves
@@ -204,6 +204,7 @@ class TestGpuFull:
         assert out.logits.shape[1] == 8
         assert spec.lora_target_modules  # registry data present for the family
 
+    @pytest.mark.interp
     def test_harvest_hook_smoke(self, cuda, tmp_path, train_lock):
         """Hook-based activation harvest through the WI-6 registry on the
         Gemma 4 E2B pin: dimension gate passes, a tiny harvest lands a

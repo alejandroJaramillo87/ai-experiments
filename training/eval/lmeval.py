@@ -7,7 +7,9 @@ support against their recorded base. Harness and task versions are recorded
 in the result so a pair of records can be held to one version.
 
 lm_eval imports lazily inside the training container; task-file parsing is
-importable anywhere for unit tests.
+importable anywhere for unit tests. The harness's task registry is extended
+with the repo-owned task configs under tasks/ (KB-93), which take precedence
+over the built-in ones of the same name.
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ import os
 import yaml
 
 DEFAULT_TASKS_FILE = os.path.join(os.path.dirname(__file__), "tasks.yaml")
+REPO_TASKS_DIR = os.path.join(os.path.dirname(__file__), "tasks")
 
 
 class LmEvalError(RuntimeError):
@@ -99,6 +102,8 @@ def run_lmeval(
             "deliberately (one bump at a time)"
         )
 
+    from lm_eval.tasks import TaskManager
+
     base, adapter = resolve_model(model)
     model_args = f"pretrained={base},dtype=bfloat16"
     if adapter is not None:
@@ -109,6 +114,7 @@ def run_lmeval(
         tasks=list(task_config["tasks"]),
         limit=limit,
         batch_size=batch_size,
+        task_manager=TaskManager(include_path=REPO_TASKS_DIR),
     )
     return {
         "model": model,

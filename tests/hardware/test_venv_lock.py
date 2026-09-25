@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 from packaging.utils import canonicalize_name
 
-pytestmark = pytest.mark.ssd
+pytestmark = [pytest.mark.ssd, pytest.mark.platform]
 
 LOCK = Path(__file__).parents[2] / "uv.lock"
 

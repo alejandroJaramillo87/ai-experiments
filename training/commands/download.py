@@ -1,21 +1,36 @@
-"""Stage a model into the persistent models tree (Prelude C).
+"""Stage a model into the persistent models tree, or a dataset into the HF cache.
 
 The single documented path from the hub onto this workstation. Runs only in the
 `prepare` service, which is the one container with network egress; the training
 and export services sit on an internal network and cannot reach the hub at all.
 
   python -m training download --model google/gemma-4-E2B --revision <sha>
+  python -m training download --dataset openai/gsm8k --name main
 
-The download lands as a plain directory tree under /mnt/ai-data/models/hf, which
+A model lands as a plain directory tree under /mnt/ai-data/models/hf, which
 every other service mounts read-only, rather than as a hub blob cache. Recipes
 keep naming the hub id and its revision; every reader resolves the id to this
 directory through training/models/staged.py (KB-79), so a training run resolves
 nothing over the network. The layout there is this module's DEFAULT_ROOT plus the
 id's basename; change one and change the other.
 
---revision is required. An unpinned download is the problem this command exists
-to solve: it makes a run irreproducible and lets the base drift between training
-and export, which training/export/preflight.py exists to catch after the fact.
+--revision is required for a model. An unpinned download is the problem this
+command exists to solve: it makes a run irreproducible and lets the base drift
+between training and export, which training/export/preflight.py exists to catch
+after the fact.
+
+A dataset is the other case (KB-92): lm-evaluation-harness loads its task
+datasets itself, by hub id and without a revision, through datasets'
+load_dataset, and the training service resolves that offline from the
+datasets half of the persistent cache, which it mounts at HF_HOME/datasets:
+datasets offline never consults a hub snapshot for a hub id, only the
+processed arrow cache. So the staging form calls the same load_dataset in
+the prepare service, which writes those arrow files where the offline reader
+looks, and prints the commit it resolved so the runbook records what was
+fetched. It
+takes no --revision because the consumer cannot pass one; the printed sha
+is the pin, and re-staging moves it. The pinned task set and the datasets
+it reaches are training/eval/tasks.yaml's.
 
 Exit codes: 0 downloaded, 1 download or environment failure, 2 invalid usage.
 """
@@ -33,16 +48,26 @@ DEFAULT_ROOT = "/mnt/ai-data/models/hf"
 def configure(sub) -> None:
     parser = sub.add_parser(
         "download",
-        help="stage a pinned model into /mnt/ai-data/models/hf (prepare service)",
-        description="Download a pinned model revision into the persistent models tree.",
+        help="stage a pinned model into /mnt/ai-data/models/hf, or a dataset "
+        "into the HF cache (prepare service)",
+        description="Download a pinned model revision into the persistent models "
+        "tree, or a dataset into the persistent HF cache the training service "
+        "reads offline.",
     )
-    parser.add_argument(
-        "--model", required=True, help="hub id, e.g. google/gemma-4-E2B"
+    what = parser.add_mutually_exclusive_group(required=True)
+    what.add_argument("--model", help="hub id, e.g. google/gemma-4-E2B")
+    what.add_argument(
+        "--dataset",
+        help="hub dataset id, e.g. openai/gsm8k (staged into HF_HOME/datasets "
+        "for the training service's offline reads)",
     )
     parser.add_argument(
         "--revision",
-        required=True,
-        help="exact commit SHA to pin; resolve with HfApi().model_info(id).sha",
+        help="exact commit SHA to pin (required with --model); resolve with "
+        "HfApi().model_info(id).sha",
+    )
+    parser.add_argument(
+        "--name", help="dataset configuration, e.g. main for openai/gsm8k"
     )
     parser.add_argument(
         "--out",
@@ -69,6 +94,23 @@ def cmd(args: argparse.Namespace) -> int:
             out.line("  Solution: run through the prepare service")
             out.line("  Command: make train-download MODEL=... REVISION=...")
             return 1
+
+    if args.dataset:
+        for flag in ("revision", "out", "allow_patterns"):
+            if getattr(args, flag):
+                out.error(f"--{flag.replace('_', '-')} applies to --model only")
+                out.line("  Context: a dataset is fetched at the hub's main ref")
+                out.line("  Solution: drop the flag; the resolved commit is printed")
+                return 2
+        return stage_dataset(args.dataset, args.name, out)
+    if not args.revision:
+        out.error("--revision is required with --model")
+        out.line("  Solution: pin the exact commit")
+        out.line(f"  Command: HfApi().model_info('{args.model}').sha")
+        return 2
+    if args.name:
+        out.error("--name applies to --dataset only")
+        return 2
 
     dest = args.out or os.path.join(DEFAULT_ROOT, args.model.split("/")[-1])
 
@@ -111,4 +153,42 @@ def cmd(args: argparse.Namespace) -> int:
     out.line(f"      id: {args.model}")
     out.line(f"      revision: {args.revision}")
     out.line("(every reader resolves the id to the staged directory)")
+    return 0
+
+
+def stage_dataset(dataset: str, name: str | None, out: Printer) -> int:
+    """Fetch every split of a hub dataset into HF_HOME through load_dataset.
+
+    The same call lm_eval makes offline in the training service, so what it
+    caches is what that service finds: the arrow files under HF_HOME/datasets,
+    the half of the cache that service mounts (the hub snapshot lands under
+    HF_HOME/hub beside them, which offline resolution never reads). Prints the
+    commit the hub resolved, the one pin this fetch has.
+    """
+    cache = os.environ.get("HF_HOME", "")
+    out.line("=== Staging a dataset ===")
+    out.line()
+    out.info(f"Dataset: {dataset}")
+    out.info(f"Config: {name or '(default)'}")
+    out.info(f"Cache: {cache or '(HF_HOME unset: the default cache)'}")
+    out.line()
+
+    from datasets import load_dataset
+    from huggingface_hub import HfApi
+
+    out.run(f"Downloading {dataset}")
+    try:
+        sha = HfApi().dataset_info(dataset).sha
+        splits = load_dataset(dataset, name)
+    except Exception as exc:  # noqa: BLE001 - hub errors vary by client version
+        out.error(f"Download failed: {exc}")
+        out.line("  Solution: check the dataset id and configuration name")
+        out.line(f"  Command: HfApi().dataset_info('{dataset}')")
+        return 1
+
+    counts = ", ".join(f"{split}={len(rows)}" for split, rows in splits.items())
+    out.ok(f"Staged {dataset} ({name or 'default'}) at {sha}: {counts}")
+    out.line(
+        "The training service reads these arrow files offline; a re-stage moves them."
+    )
     return 0
