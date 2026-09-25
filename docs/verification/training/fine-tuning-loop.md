@@ -265,6 +265,12 @@ builds what it verifies:
   its first run on the first attempt's holdout passes. The harness's
   batch-size search, some forty allocator warnings a phase, is read from
   the wheel and recorded as the noise it is.
+- **FT.heldout-eval's hardware mirror** (2026-09-25):
+  `tests/hardware/test_heldout_eval.py` trains 20 steps, exports, and runs
+  `eval-holdout` and `eval-lmeval` on both sides as host processes with the
+  HF cache at the prepare service's root, holding the printed lines, both
+  record shapes, the driver's pair checks and the loss order. Its first
+  run is owed to the entry's Observed block.
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training
@@ -2663,6 +2669,15 @@ training eval-holdout`, `eval-lmeval`); no `make` target wraps one alone
 training container. The records are plain JSON, not the `common/reports.py`
 envelope, which only the run tracker writes. Existing code; depends on
 FT.export-merged (the merged directory) and FT.smoke-dataset (the dataset).
+Since 2026-09-25 this entry has a hardware mirror,
+`tests/hardware/test_heldout_eval.py` (`hw_full`, `gpu`, `ssd`, `training`),
+written after the hand run verified: 20 QLoRA steps on the smoke recipe, the
+export, then the four verbs as processes of their own on the workstation
+venv, `HF_HOME` at the prepare service's cache so the harness reads the
+staged datasets offline, held to the printed lines, the record shapes, the
+`eval-ft` driver's pair checks, the organism verifier's projection, and the
+one ordering below (merged at or below base). `make hardware-tests HW=full
+SUITE=training` runs it with the other training mirrors.
 
 **Fixes to confirm here** (details in [bugs/known-bugs.md](../bugs/known-bugs.md)):
 

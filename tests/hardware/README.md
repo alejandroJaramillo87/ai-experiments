@@ -63,6 +63,7 @@ is the smoke-tier check that names such a stray, and `make install` is the repai
 | `test_from_scratch_loop.py` | 1 | FS.0 to FS.8, less FS.5, the from-scratch loop as one hw_full test. |
 | `test_gpu.py` | 10 | GPU/VRAM hardware suite (WI-3): sm_120 presence and bf16 compute at the smoke tier; near-capacity allocation, the step measurement on the tiny recipe, tolerance-based resume, family-registry loads, and the harvest hook smoke at the full tier. |
 | `test_harness_endpoint.py` | 4 | RH.14, the endpoint answering the interp client, as a test. |
+| `test_heldout_eval.py` | 1 | FT.heldout-eval, held-out loss and lm-eval on base and merged, as one test the hw_full tier runs. |
 | `test_interp_chain.py` | 10 | RH.9a-9e, the in-band interp chain on real weights, as tests the hw tier runs. |
 | `test_ladder.py` | 4 | RH.1b, the correctness ladder at Tier E, as a test the hardware tiers run. |
 | `test_layer_diff.py` | 3 | RH.21, layer-diff against a transformers capture of the real E4B, as a test the E4B tier runs. |
