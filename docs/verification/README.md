@@ -99,7 +99,7 @@ Each runbook's own progress line is authoritative; this table is the index.
 
 | Runbook | Verified | Blocked | Pending | Of |
 |---------|---------:|--------:|--------:|---:|
-| [training/fine-tuning-loop.md](training/fine-tuning-loop.md) | 5 | 0 | 9 | 14 |
+| [training/fine-tuning-loop.md](training/fine-tuning-loop.md) | 9 | 0 | 5 | 14 |
 | [interp/interp.md](interp/interp.md) | 8 | 2 | 17 | 27 |
 | [observability/observability.md](observability/observability.md) | 2 | 0 | 7 | 9 |
 | [rust-harness/rust-harness.md](rust-harness/rust-harness.md) | 55 | 1 | 3 | 59 |
@@ -129,3 +129,12 @@ checkpoint the next day. RH.15 was a fourth kind on 2026-09-06: the command
 was right and both services were up, and the judge failed three times on the
 model's own habit of reasoning before it answers, until the request said
 exactly what it would accept.
+
+`training/fine-tuning-loop.md` added two kinds on 2026-09-25. FT.train-resume,
+FT.export-merged and FT.heldout-eval each verified by hand and then gained a
+`hw_full` hardware mirror holding what the hand run observed; the mirror's
+first run is recorded in the entry, and the tier re-proves the entry after
+any environment change. And a failure that is host state rather than a tree
+defect, a root-owned directory or a venv synced before its lock, is recorded
+in the entry with the remedy and no ledger row: the ledger names code that
+misbehaved, and the runbook names what the operator had to do.

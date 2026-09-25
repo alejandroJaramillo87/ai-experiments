@@ -276,6 +276,16 @@ builds what it verifies:
   ledger row. The mirror now checks the extra before any GPU work, and
   passed the same day after `make install` (`1 passed` in 21:34), recorded
   in the entry.
+- **FT.eval-ft's readiness review** (2026-09-25) read the entry against
+  the tree before handover and found two latent defects on its path, both
+  of KB-78's host-and-container-spelling shape: `make eval-ft` ran the
+  system `python3`, which has none of the training group that `python -m
+  training` imports at import (KB-95, with the other host-run python
+  targets), and `load_hf_manifest` refused the manifest the export wrote
+  because it records the container spelling and the host driver asks with
+  the host's, so the tuned side's hash was silently recomputed from the
+  weights (KB-96). Both fixed in the tree; the entry now names the venv,
+  the two rows, the printed lines in order and the two digests it expects.
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training
@@ -4219,11 +4229,13 @@ found KB-94 at scoring), the lm-eval half on the third.
 
 Implementation: `training/commands/eval_ft.py` (`container_model`,
 `phase_container`), `training/eval/runner.py` (`hf_identity`,
-`run_container_phase`, `check_holdout_pair`, `check_lmeval_pair`). Depends on
-FT.export-merged (the subject) and FT.heldout-eval (the container evaluators
-the same run repeats).
+`run_container_phase`, `check_holdout_pair`, `check_lmeval_pair`),
+`training/export/manifest.py` (`load_hf_manifest`, `names_directory`), and
+`make/training.mk`'s `eval-ft` target, which runs the driver through the
+venv. Depends on FT.export-merged (the subject) and FT.heldout-eval (the
+container evaluators the same run repeats).
 
-**Fix to confirm here** (details in [bugs/known-bugs.md](../bugs/known-bugs.md)):
+**Fixes to confirm here** (details in [bugs/known-bugs.md](../bugs/known-bugs.md)):
 
 - KB-78 — `phase_container` handed `--base` and `--tuned` to the training
   container verbatim, and the host spelling this block uses does not exist
@@ -4231,6 +4243,20 @@ the same run repeats).
   phase would have failed at model load. `container_model` in
   `training/commands/eval_ft.py` now translates it; the `[RUN]
   holdout/base: /app/models/hf/gemma-4-E2B` line below is the evidence.
+- KB-95 — `make eval-ft` ran the system `python3`, which has none of the
+  training group that `python -m training` imports at import, so the
+  command would have died at `ModuleNotFoundError` before its first line.
+  The target now runs `$(RUN_PY) python -m training`, the venv through
+  `uv run --no-sync`; the `[INFO] Run directory:` line below is the
+  evidence.
+- KB-96 — `load_hf_manifest` compared the manifest's recorded `hf_dir`,
+  which the export container writes in its own spelling
+  (`/app/models/trained/ft3-straight/hf`), against the host spelling the
+  driver asks with, refused it, and `hf_identity` fell back to hashing the
+  10.2 GB weights, silently and to the same value. The reader now accepts
+  either spelling of one directory, and the identity line names the hash's
+  source; the `[INFO] tuned:` line reading `(manifest)` below is the
+  evidence.
 
 Both compared sides are HF directories under `/mnt/ai-data/models/`: the base
 as FT.preconditions staged it and the merged directory as FT.export-merged wrote it. `eval-ft`
@@ -4244,10 +4270,15 @@ entry pins beyond FT.heldout-eval is the driver: both sides reach the container
 in its spelling, each side's `model_hash` is printed, and the four records the
 organism pipeline consumes are written under one run directory.
 
-Command (host tool; inference down; the tool runs the container phases
-itself):
+Command (host tool through the venv; inference down; the tool runs the
+four container phases itself, each as `docker compose run --rm training`,
+the same verbs and flags FT.heldout-eval ran by hand). Expect about twenty
+minutes: the base's sha256 over 10.2 GB before any phase, then holdout
+under five minutes a side and lm-eval under four at FT.heldout-eval's
+timings, the model loaded six times in all.
 
 ```bash
+cd ~/workspace/ai-experiments && git pull origin SFT-verification-2 && git log -1 --oneline
 make eval-ft ARGS="--base /mnt/ai-data/models/hf/gemma-4-E2B \
     --tuned /mnt/ai-data/models/trained/ft3-straight/hf \
     --dataset /mnt/ai-data/training/datasets/sft/ultrachat-e2b --lmeval-limit 20 \
@@ -4256,18 +4287,37 @@ echo "exit=$?"
 ls /mnt/ai-data/training/eval/ft6_*/
 ```
 
-Expected signal: exit 0; the container phases print `[RUN] holdout/base:
-/app/models/hf/gemma-4-E2B` and `[RUN] holdout/tuned:
-/app/models/trained/ft3-straight/hf` (the container spelling, KB-78) and
-`[OK] holdout/<side>: loss <n>` for each, with the tuned loss at or below the
-base's as FT.heldout-eval found, then one `[OK] lmeval/<task>: <a> -> <b>` per pinned
-task; before the phases, one `[INFO] <side>: <container path> model_hash
-<sha256> thinking_mode off` line per side, the base's hash equal to the
-FT.preconditions digest and the tuned side's equal to FT.export-merged's manifest;
-the run directory lists `holdout_base.json`, `holdout_tuned.json`,
-`lmeval_base.json` and `lmeval_tuned.json`, the four records FT.organisms
-hands to `organism-verify`. An interrupted run resumes from its phase records
-(`[SKIP] holdout/<side>: record exists (resume)`).
+Expected signal, in the order the driver prints it. `[INFO] Run directory:
+/mnt/ai-data/training/eval/ft6_<UTC stamp>` (KB-95's evidence). Two
+identity lines: `[INFO] base: /app/models/hf/gemma-4-E2B model_hash
+76dc84a5a805a2c8b91e9ccc00b8dbf8f4a99bf0d56ab25832f6e6addd4f7f57 (computed)
+thinking_mode off`, the digest FT.preconditions recorded, computed because a
+staged base has no manifest, and `[INFO] tuned:
+/app/models/trained/ft3-straight/hf model_hash
+684dfd319d75faff9d56e9c1cc911a78427540e12ca53a6ae9a3f7818d478b52 (manifest)
+thinking_mode off`, the digest FT.export-merged's manifest records, read
+from it (KB-96's evidence). Then the holdout phases: `[RUN] holdout/base:
+/app/models/hf/gemma-4-E2B` (the container spelling, KB-78's evidence),
+the container's own `[RUN] Held-out loss:`, `[OK] Loss`, and `[OK] Record
+written:` lines as FT.heldout-eval observed them, `[OK] holdout/base: loss
+<n>`, and the same for `holdout/tuned` at
+`/app/models/trained/ft3-straight/hf`; the tuned loss at or below the
+base's, and both in the neighbourhood of FT.heldout-eval's 1.064038 and
+1.019455, since the weights, the split and the bf16 precision are the
+same. Then the lm-eval phases, `[RUN] lmeval/<side>:` each followed by the
+container's `[RUN] lm-evaluation-harness:` line, the harness noise
+FT.heldout-eval named (the allocator's OOM probes before `Determined
+Largest batch size`, `fatal: not a git repository`, the orphan-containers
+WARN, the `torch_dtype` deprecation) and its four `[OK] <task>: <metric>
+=` lines, then four `[OK] lmeval/<task>: <a> -> <b>` lines in task order,
+not ranked at limit 20. A blank line, four `[OK] Record written:` lines
+naming `holdout_base.json`, `holdout_tuned.json`, `lmeval_base.json` and
+`lmeval_tuned.json` under the run directory, `exit=0`, and the `ls`
+listing those four files, the records FT.organisms hands to
+`organism-verify`. An interrupted run resumes from its phase records
+(`[SKIP] holdout/<side>: record exists (resume)`); a `Confound:` error
+means a side's record came from a run with other parameters, and the
+message says which file to delete.
 
 Observed:
 
