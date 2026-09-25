@@ -196,6 +196,12 @@ builds what it verifies:
   entry gains `tests/hardware/test_step_qlora.py` (`hw_full`) as its mirror
   and re-ran through it the same day: `1 passed`, no drift line, which
   confirms KB-90 and verifies the entry.
+- **FT.train-resume's first attempt** (2026-09-25) stopped at the recipe
+  validator before the model loaded: the entry's `schedule.total_steps=60`
+  override left the recipe's `warmup_steps` at 100, which the validator
+  refuses. A runbook defect, not a tree defect; the entry gains a
+  `schedule.warmup_steps=3` override, the paste is kept as a superseded
+  observation, and the entry re-runs as committed.
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training
@@ -1621,10 +1627,15 @@ Three runs of the same recipe: a short straight run, a run interrupted after
 its first checkpoint, and the resume of that run from the named
 `checkpoint-<step>` directory. Existing code; depends on FT.smoke-dataset and FT.calibrate-qlora.
 
-One override beyond the step counts, because the recipe's own value would
-leave a criterion unobservable. `sft.eval_steps=30`: the recipe evaluates
-every 100 steps, so a 60-step run would never compute a held-out loss and
-the `Held-out loss:` line the tolerance criterion reads would be absent.
+Two overrides beyond the step counts, because the recipe's own values do
+not fit a 60-step run. `schedule.warmup_steps=3`: the recipe warms up for
+100 steps, and the validator refuses a warmup longer than the run
+(`training/recipes/validate.py`), which is what the first attempt below
+hit; 3 keeps the recipe's 100-in-2000 ratio, and the straight and resumed
+runs share it, as the tolerance criterion requires. `sft.eval_steps=30`:
+the recipe evaluates every 100 steps, so a 60-step run would never compute
+a held-out loss and the `Held-out loss:` line the tolerance criterion reads
+would be absent.
 The evaluation runs at steps 30 and 60 and prints nothing while it runs;
 the one `Held-out loss:` line is the last `eval_loss` in the trainer's log
 history, the step-60 value (`training/tune/sft.py`, after `trainer.train`).
@@ -1663,15 +1674,15 @@ Command (inference down):
 set -o pipefail
 cd ~/workspace/ai-experiments
 make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
-    ARGS="run.name=ft3-straight schedule.total_steps=60 checkpoint.interval_steps=30 sft.eval_steps=30"
+    ARGS="run.name=ft3-straight schedule.total_steps=60 schedule.warmup_steps=3 checkpoint.interval_steps=30 sft.eval_steps=30"
 echo "exit=$?"
 make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
-    ARGS="run.name=ft3-resume schedule.total_steps=60 checkpoint.interval_steps=30 sft.eval_steps=30"
+    ARGS="run.name=ft3-resume schedule.total_steps=60 schedule.warmup_steps=3 checkpoint.interval_steps=30 sft.eval_steps=30"
 echo "exit=$?"
 ls /mnt/ai-data/training/runs/ft3-resume/checkpoints/
 cat /mnt/ai-data/training/runs/ft3-resume/checkpoints/checkpoint-30/meta.json
 make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
-    ARGS="run.name=ft3-resume schedule.total_steps=60 checkpoint.interval_steps=30 sft.eval_steps=30 \
+    ARGS="run.name=ft3-resume schedule.total_steps=60 schedule.warmup_steps=3 checkpoint.interval_steps=30 sft.eval_steps=30 \
     checkpoint.resume=/mnt/ai-data/training/runs/ft3-resume/checkpoints/checkpoint-30"
 echo "exit=$?"
 ls /mnt/ai-data/training/runs/ft3-resume/checkpoints/
@@ -1711,7 +1722,39 @@ ends at a step other than 60, has restarted rather than resumed.
 
 Observed:
 
+First attempt (2026-09-25, superseded, kept verbatim: stage 1 as the entry
+then stood, without the warmup override; the validator refused the recipe
+before anything loaded, and no GPU work ran):
+
 ```
+➜  ai-experiments git:(SFT-verification-2) cd ~/workspace/ai-experiments
+git pull origin SFT-verification-2
+git log -1 --oneline
+set -o pipefail
+make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
+    ARGS="run.name=ft3-straight schedule.total_steps=60 checkpoint.interval_steps=30 sft.eval_steps=30"
+echo "exit=$?"
+From https://github.com/alejandroJaramillo87/ai-experiments
+ * branch            SFT-verification-2 -> FETCH_HEAD
+Already up to date.
+docker compose -f docker-compose.training.yaml run --rm training python -m training train-sft --config training/recipes/reference/sft-qlora-e2b.yaml run.name=ft3-straight schedule.total_steps=60 checkpoint.interval_steps=30 sft.eval_steps=30
+WARN[0001] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up. 
+Container ai-experiments-training-run-25153eb6e87f Creating 
+Container ai-experiments-training-run-25153eb6e87f Created 
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training train-sft --config training/recipes/reference/sft-qlora-e2b.yaml run.name=ft3-straight schedule.total_steps=60 checkpoint.interval_steps=30 sft.eval_steps=30
+[ERROR] Recipe validation failed:
+  - schedule: warmup_steps (100) exceeds total_steps (60)
+
+make: *** [make/training.mk:56: train-sft] Error 1
+exit=2
 ```
 
 Status: PENDING
