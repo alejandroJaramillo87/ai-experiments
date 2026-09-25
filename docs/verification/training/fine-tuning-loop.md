@@ -288,6 +288,13 @@ builds what it verifies:
   the two rows, the printed lines in order and the two digests it expects.
   The entry passed the same day on its first run (about sixteen minutes,
   exit 0), closing KB-78, KB-95 and KB-96.
+- **FT.eval-ft's hardware mirror** (2026-09-25):
+  `tests/hardware/test_eval_ft.py` runs the driver as one host process on
+  the staged base and the campaign's export, the first hardware test to
+  drive compose, holding the printed lines in order, both digests, the
+  four records, the driver's pair checks, the loss order and a resume on
+  the same run directory. Its first run is owed and will be recorded in
+  the entry.
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training
@@ -4235,7 +4242,17 @@ Implementation: `training/commands/eval_ft.py` (`container_model`,
 `training/export/manifest.py` (`load_hf_manifest`, `names_directory`), and
 `make/training.mk`'s `eval-ft` target, which runs the driver through the
 venv. Depends on FT.export-merged (the subject) and FT.heldout-eval (the
-container evaluators the same run repeats).
+container evaluators the same run repeats). Since 2026-09-25 this entry
+has a hardware mirror, `tests/hardware/test_eval_ft.py` (`hw_full`, `gpu`,
+`ssd`, `training`), written after the hand run verified: the driver as one
+host process on the staged base and this entry's export, its four compose
+phases as the hand run ran them, held to the printed lines in order, both
+digests and their sources (the base's hashed again by the test, the tuned
+side's read from the manifest), the four records, the driver's pair
+checks, the organism verifier's projection, the loss order and a resumed
+second invocation; it skips when the export is absent and fails with the
+remedy when docker is not on the path. `make hardware-tests HW=full
+SUITE=training` runs it with the other training mirrors.
 
 **Fixes to confirm here** (details in [bugs/known-bugs.md](../bugs/known-bugs.md)):
 

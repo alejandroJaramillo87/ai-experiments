@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import gc
 import json
+import math
 import os
 import sys
 import warnings
@@ -101,6 +102,78 @@ def sft_smoke_recipe(overrides: list[str]):
         "re-run FT.smoke-dataset against the pinned base"
     )
     return recipe, base
+
+
+# The evaluation pair FT.heldout-eval and FT.eval-ft both run, shared by the
+# two mirrors so one record shape is judged. The prepare service's HF_HOME:
+# its datasets half is what the training service mounts and what `datasets`
+# reads offline (KB-92).
+DATASETS_CACHE = os.path.join(AI_DATA_ROOT, "cache", "huggingface")
+STAGED_DATASETS = (
+    "google/IFEval",
+    "openai/gsm8k",
+    "tinyBenchmarks/tinyMMLU",
+    "Rowan/hellaswag",
+)
+# The entries' smoke limit: 20 examples per task, wide stderr, no ranking.
+LMEVAL_LIMIT = 20
+# Perplexity is exp(loss) rounded to four places by the evaluator.
+PERPLEXITY_RTOL = 1e-3
+
+
+def require_staged_datasets() -> None:
+    """Skip when the staged datasets cache is absent: a missing dataset is the
+    weights case, not a hardware absence, and the remedy is the entry's
+    precondition block."""
+    if not os.path.isdir(os.path.join(DATASETS_CACHE, "datasets")):
+        pytest.skip(
+            f"staged datasets cache absent at {DATASETS_CACHE}/datasets "
+            "(FT.heldout-eval's precondition block: make train-download DATASET=<id> "
+            f"for {', '.join(STAGED_DATASETS)})"
+        )
+
+
+def assert_holdout_shape(
+    record: dict, model: str, dataset: str, holdout_examples: int
+) -> None:
+    assert set(record) == {
+        "model",
+        "dataset",
+        "examples",
+        "supervised_tokens",
+        "loss",
+        "perplexity",
+        "precision",
+        "attention_implementation",
+    }, sorted(record)
+    assert record["model"] == model
+    assert record["dataset"] == dataset
+    assert record["examples"] == holdout_examples
+    assert record["supervised_tokens"] > 0
+    assert record["precision"] == "bf16"
+    # KB-84's third loader: config first, sdpa above the head-width cap.
+    assert record["attention_implementation"] == "sdpa"
+    assert math.isfinite(record["loss"]) and record["loss"] > 0
+    expected_ppl = math.exp(record["loss"])
+    assert abs(record["perplexity"] - expected_ppl) / expected_ppl <= PERPLEXITY_RTOL, (
+        record
+    )
+
+
+def assert_lmeval_shape(
+    record: dict, model: str, task_config: dict, limit: int
+) -> None:
+    assert record["model"] == model
+    assert record["lm_eval_version"] == task_config["lm_eval_version"]
+    assert record["limit"] == limit
+    assert set(record["results"]) == set(task_config["tasks"]), sorted(
+        record["results"]
+    )
+    for task, spec in task_config["tasks"].items():
+        section = record["results"][task]
+        assert section["metric"] == spec["metric"], (task, section)
+        assert 0.0 <= section["value"] <= 1.0, (task, section)
+        assert isinstance(section["stderr"], float), (task, section)
 
 
 def e4b_checkpoint() -> str:

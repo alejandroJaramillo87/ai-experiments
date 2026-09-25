@@ -131,8 +131,8 @@ model's own habit of reasoning before it answers, until the request said
 exactly what it would accept.
 
 `training/fine-tuning-loop.md` added two kinds on 2026-09-25. FT.train-resume,
-FT.export-merged and FT.heldout-eval each verified by hand and then gained a
-`hw_full` hardware mirror holding what the hand run observed; the mirror's
+FT.export-merged, FT.heldout-eval and FT.eval-ft each verified by hand and then
+gained a `hw_full` hardware mirror holding what the hand run observed; the mirror's
 first run is recorded in the entry, and the tier re-proves the entry after
 any environment change. And a failure that is host state rather than a tree
 defect, a root-owned directory or a venv synced before its lock, is recorded

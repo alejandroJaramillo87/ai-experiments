@@ -59,6 +59,7 @@ is the smoke-tier check that names such a stray, and `make install` is the repai
 | `test_checkpoint_info.py` | 4 | RH.22, checkpoint-info --check against the real E4B, as a test the E4B tier runs. |
 | `test_compaction.py` | 3 | RH.20, compaction past the rewind horizon, as a test the E4B tier runs. |
 | `test_cpu.py` | 4 | CPU hardware suite (WI-3): Zen 5 feature flags and a CPUAdam step at the smoke tier; affinity placement and the CPUAdam step-time bound at the full tier. |
+| `test_eval_ft.py` | 1 | FT.eval-ft, the eval-ft driver on the staged base and the campaign's export, as one test the hw_full tier runs. |
 | `test_fine_tuning_loop.py` | 1 | FT.hardware-test, the fine-tuning loop's seam, as one test the hw_full tier runs. |
 | `test_from_scratch_loop.py` | 1 | FS.0 to FS.8, less FS.5, the from-scratch loop as one hw_full test. |
 | `test_gpu.py` | 10 | GPU/VRAM hardware suite (WI-3): sm_120 presence and bf16 compute at the smoke tier; near-capacity allocation, the step measurement on the tiny recipe, tolerance-based resume, family-registry loads, and the harvest hook smoke at the full tier. |

@@ -72,7 +72,7 @@ subsystem marker, and one target runs one tier of one subsystem:
 | Subsystem | Marker | Holds |
 |-----------|--------|-------|
 | rust harness | `harness` | the RH and RHX entries, the ladder, `checkpoint-info` |
-| training | `training` | the FT and FS entries, the tiny-recipe step, the TRL resume, the eval pair |
+| training | `training` | the FT and FS entries, the tiny-recipe step, the TRL resume, the eval pair, the eval-ft driver |
 | interp | `interp` | the chain on real weights, the harvest hook and disk preflight, the shared-KV weights |
 | platform | `platform` | the WI-3 resource suites at both depths, the venv lock |
 
@@ -132,6 +132,7 @@ paths. The table is what the pairing is; the entries themselves are in
 | FT.recipe-gates | `tests/training/test_recipes.py` | `test_recipe_gates.py`: the two gates a run passes before the GPU | `hw_smoke` | `training` |
 | FT.train-resume, FT.hardware-test | `tests/training/test_sft_entry.py`'s checkpoint helpers and `test_obs_metrics.py`'s stop seam | `test_train_resume.py` trains 20 QLoRA steps straight, then 10 and a resume to 20, and holds the logged losses to `RESUME_LOSS_RTOL` | `hw_full` | `training` |
 | FT.heldout-eval | `tests/training/test_cli_handlers_export.py`'s eval handlers on faked records and `test_lmeval.py`'s extractor | `test_heldout_eval.py` trains 20 QLoRA steps, exports, and runs `eval-holdout` and `eval-lmeval` on base and merged as host processes, holding the records and the loss order, and failing with `make install` named when the venv lacks lm-eval's ifeval extra | `hw_full` | `training` |
+| FT.eval-ft | `tests/training/test_eval_ft.py`'s container spelling and stubbed phases, `test_eval_runner.py`'s identity and pair checks | `test_eval_ft.py` runs the `eval-ft` driver as one host process on the staged base and the campaign's export, four compose phases, held to the printed lines in order, both digests, the records and a resume on the same run directory | `hw_full` | `training` |
 | FT.calibrate-qlora | none: the figures are the card's | `test_step_qlora.py` steps the reference QLoRA recipe and holds the adapter count, drift, resident and peak figures | `hw_full` | `training` |
 | FT.export-merged, FT.hardware-test | `tests/training/test_export_harness.py` exports the tiny fixture through the real verb and hands it to the built binaries | `test_fine_tuning_loop.py` trains ten QLoRA steps on E2B, merges, refuses a re-export, asks the same two binaries and runs one chat turn | `hw_full` | `training` |
 | FS.0 to FS.8 | `tests/training/test_loop.py` and its neighbours | `test_from_scratch_loop.py` runs the reference loop, D9 overlap and pinning, and the watchdog paths | `hw_full` | `training` |
