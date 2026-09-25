@@ -69,7 +69,7 @@ regenerated.
 | `test_export_image_dependencies.py` | 5 | The export image's dependency set must cover what `python -m training` imports. |
 | `test_head_loss.py` | 13 | training/models/head_loss.py: the chunked head loss (KB-87), driven against a fake torch the way test_peft_utils.py fakes it. |
 | `test_holdout.py` | 4 | holdout.resolve_model form dispatch: hub id, full checkpoint dir, and adapter-only checkpoint. |
-| `test_lmeval.py` | 4 | lm-eval evaluator helpers: result extraction, the stderr-key composition for filtered metrics, and the version-mismatch guard. |
+| `test_lmeval.py` | 6 | lm-eval evaluator helpers: result extraction, the stderr-key composition for filtered metrics, the version-mismatch guard, and the repo-owned task configs the harness's registry is extended with. |
 | `test_loader.py` | 7 | D9 prefetch dataloader: exact sequential window order, wrap-around, index-based resume equivalence with 0 and >0 workers, legacy cursor conversion, and the multi-worker deterministic loop resume — the guarantee the index-based design exists to protect. |
 | `test_lock.py` | 9 | D9 run lock: acquire/release, contention, and staleness. |
 | `test_loop.py` | 7 | Acceptance tests for the D6 reference loop: deterministic resume and tracking. |
@@ -100,6 +100,7 @@ regenerated.
 | `test_tokenizer.py` | 17 | Phase 0 D3 tokenizer training tests: special-token ids, reserved block, reproducibility, round-trip losslessness, overwrite refusal, and hash-chain integration with the D2 loader. |
 | `test_tracking.py` | 3 | D6 tracking fan-out: fail-soft sink eviction and the no-sink contract. |
 | `test_training_cli.py` | 5 | Unified training CLI parser tests: each migrated training/commands/ subcommand parses its minimal argument set and binds the module's cmd entry point. |
+| `test_training_compose.py` | 2 | The training compose file's cache mounts, held to what datasets reads offline (KB-92, second fix). |
 | `test_watchdog.py` | 18 | Unit tests for the D10 operational watchdogs. |
 | `test_watchdog_branches.py` | 16 | Branch tests for the D10 watchdog fail-soft paths. |
 

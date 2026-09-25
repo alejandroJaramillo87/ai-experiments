@@ -64,22 +64,26 @@ services:
     tmpfs:
       - /tmp:size=8G,mode=1777,exec  # Triton/CUDA JIT caches require exec
       # HF_HOME. Stays a small tmpfs deliberately: this service never fetches from
-      # the hub, so what lands here is what datasets builds from the read-only hub
-      # snapshots mounted below (the arrow files of lm-eval's four task datasets,
-      # KB-92). If it fills, something is reaching the hub that should not be.
+      # the hub. lm-eval's task datasets come through the datasets half of the
+      # persistent cache mounted below (KB-92); if this fills, something is
+      # reaching the hub that should not be.
       - /app/cache:size=2G,mode=1777
       # RAM-disk shard staging (roadmap D9): sized to match staging.max_gb
       - /staging:size=${TRAIN_STAGING_GB:-32}G,mode=1777
     volumes:
       # Base models mounted read-only, exactly as the inference services mount them
       - /mnt/ai-data/models/:/app/models:ro
-      # The hub half of the persistent cache, read-only, under the tmpfs HF_HOME
-      # above. lm-evaluation-harness loads its task datasets by hub id with no
-      # revision argument (training/eval/lmeval.py), and offline resolution reads
-      # the snapshot and `main` ref that `make train-download DATASET=` staged
-      # through prepare. Read-only, so nothing here can write the cache, and the
-      # internal network plus the three offline flags still hold (KB-92).
-      - /mnt/ai-data/cache/huggingface/hub:/app/cache/hub:ro
+      # The datasets half of the persistent cache, under the tmpfs HF_HOME above.
+      # lm-evaluation-harness loads its task datasets by hub id with no revision
+      # argument (training/eval/lmeval.py), and datasets 5.0.0 offline never
+      # consults a hub snapshot for a hub id: its one fallback is the processed
+      # arrow cache under HF_HOME/datasets, which `make train-download DATASET=`
+      # fills through prepare (KB-92; the hub half mounted here until 2026-09-25
+      # was never read). Read-write because the builder takes a lock file at the
+      # cache root and hellaswag's process_docs writes map caches beside the
+      # arrow files; offline is held by the internal network and the three
+      # offline flags, not by the mount mode.
+      - /mnt/ai-data/cache/huggingface/datasets:/app/cache/datasets:rw
       # Writable training root: datasets, shards, checkpoints, run outputs (roadmap D1)
       - /mnt/ai-data/training:/mnt/ai-data/training:rw
       # Structured observability records. Identity-mounted so OBS_LOG_DIR resolves to the
@@ -127,11 +131,11 @@ services:
     tmpfs:
       - /tmp:size=8G,mode=1777
     volumes:
-      # Persistent HF cache. This is the only read-write container mount of the host
-      # cache tree, and it is what makes a re-download of an already-fetched revision
-      # a cache hit instead of a fresh pull. The training service keeps a throwaway
-      # tmpfs at this path and mounts only the hub half of this tree, read-only, for
-      # the task datasets `download --dataset` stages here (KB-92).
+      # Persistent HF cache. The whole tree, read-write, which is what makes a
+      # re-download of an already-fetched revision a cache hit instead of a fresh
+      # pull. The training service keeps a throwaway tmpfs at this path and mounts
+      # only the datasets half of this tree, for the task datasets
+      # `download --dataset` stages here (KB-92).
       - /mnt/ai-data/cache/huggingface:/app/cache:rw
       # Downloads land in the persistent models tree, which every other service mounts
       # read-only. This is the only rw mount of models/hf anywhere in the stack.

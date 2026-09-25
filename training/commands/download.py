@@ -1,4 +1,4 @@
-"""Stage a model into the persistent models tree, or a dataset into the hub cache.
+"""Stage a model into the persistent models tree, or a dataset into the HF cache.
 
 The single documented path from the hub onto this workstation. Runs only in the
 `prepare` service, which is the one container with network egress; the training
@@ -21,11 +21,13 @@ after the fact.
 
 A dataset is the other case (KB-92): lm-evaluation-harness loads its task
 datasets itself, by hub id and without a revision, through datasets'
-load_dataset, and the training service resolves that offline from the hub
-half of the persistent cache, which it mounts read-only at HF_HOME/hub. So
-the staging form calls the same load_dataset in the prepare service, which
-writes the snapshot and its `main` ref where the offline reader looks, and
-prints the commit it resolved so the runbook records what was fetched. It
+load_dataset, and the training service resolves that offline from the
+datasets half of the persistent cache, which it mounts at HF_HOME/datasets:
+datasets offline never consults a hub snapshot for a hub id, only the
+processed arrow cache. So the staging form calls the same load_dataset in
+the prepare service, which writes those arrow files where the offline reader
+looks, and prints the commit it resolved so the runbook records what was
+fetched. It
 takes no --revision because the consumer cannot pass one; the printed sha
 is the pin, and re-staging moves it. The pinned task set and the datasets
 it reaches are training/eval/tasks.yaml's.
@@ -47,17 +49,17 @@ def configure(sub) -> None:
     parser = sub.add_parser(
         "download",
         help="stage a pinned model into /mnt/ai-data/models/hf, or a dataset "
-        "into the hub cache (prepare service)",
+        "into the HF cache (prepare service)",
         description="Download a pinned model revision into the persistent models "
-        "tree, or a dataset into the persistent hub cache the training service "
+        "tree, or a dataset into the persistent HF cache the training service "
         "reads offline.",
     )
     what = parser.add_mutually_exclusive_group(required=True)
     what.add_argument("--model", help="hub id, e.g. google/gemma-4-E2B")
     what.add_argument(
         "--dataset",
-        help="hub dataset id, e.g. openai/gsm8k (staged into HF_HOME/hub for "
-        "the training service's offline reads)",
+        help="hub dataset id, e.g. openai/gsm8k (staged into HF_HOME/datasets "
+        "for the training service's offline reads)",
     )
     parser.add_argument(
         "--revision",
@@ -158,10 +160,10 @@ def stage_dataset(dataset: str, name: str | None, out: Printer) -> int:
     """Fetch every split of a hub dataset into HF_HOME through load_dataset.
 
     The same call lm_eval makes offline in the training service, so what it
-    caches is what that service finds: the hub snapshot under HF_HOME/hub
-    with its `main` ref, and the arrow files under HF_HOME/datasets, which
-    the training service rebuilds on its own tmpfs from the read-only hub
-    half. Prints the commit the hub resolved, the one pin this fetch has.
+    caches is what that service finds: the arrow files under HF_HOME/datasets,
+    the half of the cache that service mounts (the hub snapshot lands under
+    HF_HOME/hub beside them, which offline resolution never reads). Prints the
+    commit the hub resolved, the one pin this fetch has.
     """
     cache = os.environ.get("HF_HOME", "")
     out.line("=== Staging a dataset ===")
@@ -186,5 +188,7 @@ def stage_dataset(dataset: str, name: str | None, out: Printer) -> int:
 
     counts = ", ".join(f"{split}={len(rows)}" for split, rows in splits.items())
     out.ok(f"Staged {dataset} ({name or 'default'}) at {sha}: {counts}")
-    out.line("The training service reads this snapshot offline; a re-stage moves it.")
+    out.line(
+        "The training service reads these arrow files offline; a re-stage moves them."
+    )
     return 0

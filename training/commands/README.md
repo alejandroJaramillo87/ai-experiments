@@ -23,7 +23,7 @@ runs in. What consumes this directory from outside: `interp/commands/organism.py
 |--------|---------|
 | `args.py` | Shared argparse helpers for training subcommands. |
 | `build_contamination.py` | Build the benchmark decontamination index (P2-D1). |
-| `download.py` | Stage a model into the persistent models tree, or a dataset into the hub cache. |
+| `download.py` | Stage a model into the persistent models tree, or a dataset into the HF cache. |
 | `eval_ft.py` | Fine-tuning evaluation driver (Phase 1 F7). |
 | `generate_teacher.py` | Teacher corpus generation (Phase 1 F4): the organism generator's transport. |
 | `make_replay_synthetic.py` | Synthetic replay shard set generator (P2-D4, resolved decision 3). |

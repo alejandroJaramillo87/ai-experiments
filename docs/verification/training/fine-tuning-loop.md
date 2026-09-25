@@ -241,6 +241,15 @@ builds what it verifies:
   `train-download`, a read-only hub-cache mount, the extra); the entry
   gains a precondition block, the printed lines and a KB-92 confirmation,
   and runs as committed once the workstation locks the extra.
+- **FT.heldout-eval's first evaluation attempt** (2026-09-25): both holdout
+  passes met every criterion; both lm-eval passes died at task load, offline,
+  because KB-92's first fix mounted the half of the HF cache that `datasets`
+  never reads offline (KB-92 reopened, second fix: the datasets half,
+  read-write), and the run showed two more things the task set reaches that
+  the container lacked, nltk's punkt models and tinyMMLU's git-only scoring
+  package (KB-93: the models baked into the image by digest, a repo-owned
+  `tinyMMLU_acc` with plain accuracy). The holdout half stands on that paste;
+  the lm-eval half re-runs.
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training
@@ -2645,10 +2654,20 @@ FT.export-merged (the merged directory) and FT.smoke-dataset (the dataset).
 - KB-92 — `eval-lmeval` could not run in the training container: the four
   pinned tasks load hub datasets the offline container had no copy of, and
   the ifeval task imports two packages the `lm-eval` pin did not carry.
-  Fixed 2026-09-25 by a dataset form on `train-download`, a read-only mount
-  of the hub cache into the training service, and the `ifeval` extra on the
-  pin. Closes when the base's `eval-lmeval` prints one `[OK] <task>:` line
-  per pinned task.
+  Fixed 2026-09-25 by a dataset form on `train-download`, a cache mount into
+  the training service, and the `ifeval` extra on the pin. The first mount
+  was the hub half, which `datasets` offline never reads; the first
+  evaluation attempt (below) found that, and the second fix mounts the
+  datasets half read-write. Closes when the base's `eval-lmeval` prints one
+  `[OK] <task>:` line per pinned task.
+- KB-93 — two more run-time needs of the task set the offline container did
+  not have: the ifeval task loads nltk's punkt models (its import tried to
+  download them), and the harness's tinyMMLU scores through a git-only
+  package with all 100 items. Fixed 2026-09-25: the training image fetches
+  `punkt_tab` at build by digest and sets `NLTK_DATA`; the pinned MMLU task
+  is the repo-owned `tinyMMLU_acc`, the same items with plain accuracy.
+  Closes with KB-92, on the same `[OK]` lines, after the sentence-count
+  probe below prints `2`.
 
 `holdout.load_model` is KB-84's third loader (config first, sdpa above the
 head-width cap), and this entry is its first run; the fix was confirmed by
@@ -2663,7 +2682,8 @@ which is the gate working). Then the image, whose pip layer the new lock
 rebuilds, then the four datasets through the prepare service, the one with
 egress: each `download --dataset` prints `[OK] Staged <id> (<config>) at
 <sha>: <split>=<n>, ...`, and the sha it prints is the pin, since the
-consumer resolves `main` offline and passes no revision.
+consumer resolves `main` offline and passes no revision. These ran on
+2026-09-25 (Observed, below) and the staged data stands.
 
 ```bash
 set -o pipefail
@@ -2675,6 +2695,32 @@ make train-download DATASET=google/IFEval; echo "exit=$?"
 make train-download DATASET=openai/gsm8k NAME=main; echo "exit=$?"
 make train-download DATASET=tinyBenchmarks/tinyMMLU NAME=all; echo "exit=$?"
 make train-download DATASET=Rowan/hellaswag; echo "exit=$?"
+```
+
+After the first evaluation attempt (KB-92's second fix, KB-93): the image
+again, for the nltk layer only (the pip layer is a cache hit, so minutes,
+not the 2408 s of the first build), then two probes in the training
+container, no GPU, before any evaluation runs. The first loads the four
+datasets the way the harness will, offline, and prints a `DatasetDict`
+with the staged split counts for each, after `datasets`' warning `Using
+the latest cached version of the dataset since <id> couldn't be found on
+the Hugging Face Hub (offline mode is enabled).`; a `ConnectionError`
+naming a dataset id means the mount is still wrong. The second counts the
+sentences of a two-sentence string through the ifeval task's own helper
+and prints `2`, with no `[nltk_data]` line and no `Downloaded punkt_tab`
+line before it; a `LookupError` naming `punkt` means the image was not
+rebuilt or `NLTK_DATA` is not searched.
+
+```bash
+set -o pipefail
+cd ~/workspace/ai-experiments && git pull origin SFT-verification-2 && git log -1 --oneline
+make train-build 2>&1 | tail -5; echo "exit=$?"
+docker compose -f docker-compose.training.yaml run --rm training \
+    python -c "from datasets import load_dataset; [print(d, load_dataset(d, n)) for d, n in [('google/IFEval', None), ('openai/gsm8k', 'main'), ('tinyBenchmarks/tinyMMLU', 'all'), ('Rowan/hellaswag', None)]]"
+echo "exit=$?"
+docker compose -f docker-compose.training.yaml run --rm training \
+    python -c "from lm_eval.tasks.ifeval import instructions_util as u; print(u.count_sentences('One sentence. Two sentences.'))"
+echo "exit=$?"
 ```
 
 Command (inference down). The models tree is mounted in the training
@@ -2702,6 +2748,16 @@ docker compose -f docker-compose.training.yaml run --rm training \
     --dataset /mnt/ai-data/training/datasets/sft/ultrachat-e2b \
     --out /mnt/ai-data/training/eval/ft5-holdout-merged.json
 echo "exit=$?"
+grep -E '"(loss|perplexity|supervised_tokens|precision|attention_implementation)"' \
+    /mnt/ai-data/training/eval/ft5-holdout-base.json /mnt/ai-data/training/eval/ft5-holdout-merged.json
+```
+
+The holdout half ran and passed on 2026-09-25 (Observed, below); its code
+and the image's Python dependencies are untouched by the fixes that
+followed, so it is not re-run. The lm-eval half, after the probes above:
+
+```bash
+set -o pipefail
 docker compose -f docker-compose.training.yaml run --rm training \
     python -m training eval-lmeval --model /app/models/hf/gemma-4-E2B --limit 20 \
     --out /mnt/ai-data/training/eval/ft5-lmeval-base.json
@@ -2710,8 +2766,6 @@ docker compose -f docker-compose.training.yaml run --rm training \
     python -m training eval-lmeval --model /app/models/trained/ft3-straight/hf --limit 20 \
     --out /mnt/ai-data/training/eval/ft5-lmeval-merged.json
 echo "exit=$?"
-grep -E '"(loss|perplexity|supervised_tokens|precision|attention_implementation)"' \
-    /mnt/ai-data/training/eval/ft5-holdout-base.json /mnt/ai-data/training/eval/ft5-holdout-merged.json
 grep -E '"(lm_eval_version|limit)"' /mnt/ai-data/training/eval/ft5-lmeval-base.json /mnt/ai-data/training/eval/ft5-lmeval-merged.json
 ```
 
@@ -2728,13 +2782,18 @@ step 60, this is the merged bf16 weights under plain cross-entropy, and the
 entry records the gap without judging it. Each lm-eval run prints `[RUN]
 lm-evaluation-harness: <model>`, then one `[OK] <task>: <metric> = <value>
 (stderr <s>)` line per pinned task, sorted (`gsm8k`, `hellaswag`, `ifeval`,
-`tinyMMLU`), and `[OK] Record written:`; each record reports the pinned
+`tinyMMLU_acc`), and `[OK] Record written:`; each record reports the pinned
 task set from `training/eval/tasks.yaml` with `"lm_eval_version": "0.4.12"`
 and `"limit": 20` recorded (a smoke run, not a benchmark: 20 examples per
 task carry stderr wide enough that base and merged are not ranked here).
-An `lm-eval version mismatch` line means the image was not rebuilt from the
-new lock; a `Task missing from harness results` or a cache-miss traceback
-naming one of the four dataset ids means its staging line did not run.
+Between the `[RUN]` and the first `[OK]`, `datasets` prints its
+`Using the latest cached version` warning once per task, and no
+`[nltk_data]` or `Downloaded punkt_tab` line appears. An `lm-eval version
+mismatch` line means the image was not rebuilt from the new lock; a `Task
+missing from harness results` or a `ConnectionError` naming one of the four
+dataset ids means the datasets half is not mounted or its staging line did
+not run; a `ModuleNotFoundError: tinyBenchmarks` means the harness's own
+tinyMMLU was loaded instead of the repo-owned task.
 
 Observed:
 
@@ -2952,8 +3011,391 @@ known, neither a finding: `[WARN] nvidia-smi not found` is the prepare
 service's, which reserves no GPU, and the `HF_HUB_ENABLE_HF_TRANSFER`
 FutureWarning is huggingface_hub deprecating the variable the prepare
 service sets (`docker-compose.training.yaml`) in favour of its Xet
-transfer; the downloads ran regardless. The evaluation commands have not
-yet run.
+transfer; the downloads ran regardless.
+
+First evaluation attempt (2026-09-25; the holdout half verified, the lm-eval
+half superseded by KB-92's second fix and KB-93). The four commands as
+committed, pasted verbatim, terminal artefacts included:
+
+```
+➜  ai-experiments git:(SFT-verification-2) set -o pipefail
+cd ~/workspace/ai-experiments && git pull origin SFT-verification-2 && git log -1 --oneline
+docker compose -f docker-compose.training.yaml run --rm training \
+    python -m training eval-holdout --model /app/models/hf/gemma-4-E2B \
+    --dataset /mnt/ai-data/training/datasets/sft/ultrachat-e2b \
+    --out /mnt/ai-data/training/eval/ft5-holdout-base.json
+echo "exit=$?"
+remote: Enumerating objects: 11, done.
+remote: Counting objects: 100% (11/11), done.
+remote: Compressing objects: 100% (2/2), done.
+remote: Total 6 (delta 4), reused 6 (delta 4), pack-reused 0 (from 0)
+Unpacking objects: 100% (6/6), 3.34 KiB | 1.11 MiB/s, done.
+From https://github.com/alejandroJaramillo87/ai-experiments
+ * branch              SFT-verification-2 -> FETCH_HEAD
+   f52c158a..afa9bd04  SFT-verification-2 -> origin/SFT-verification-2
+Updating f52c158..afa9bd0
+Fast-forward
+ docs/verification/training/fine-tuning-loop.md | 214 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 214 insertions(+)
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-816becdcc985 Creating
+Container ai-experiments-training-run-816becdcc985 Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training eval-holdout --model /app/models/hf/gemma-4-E2B --dataset /mnt/ai-data/training/datasets/sft/ultrachat-e2b --out /mnt/ai-data/training/eval/ft5-holdout-base.json
+[RUN] Held-out loss: /app/models/hf/gemma-4-E2B over /mnt/ai-data/training/datasets/sft/ultrachat-e2b
+[model] flash-attn supports head_dim <= 256; this model's widest head is 512, so attention runs on sdpa
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1951/1951 [00:00<00:00, 3686.48it/s]
+[OK] Loss 1.064038, perplexity 2.8980 (4066 examples, 3631683 supervised tokens, bf16)
+[OK] Record written: /mnt/ai-data/training/eval/ft5-holdout-base.json
+exit=0
+➜  ai-experiments git:(SFT-verification-2) ^[[200~docker compose -f docker-compose.training.yaml run --rm training \
+>     python -m training eval-holdout --model /app/models/trained/ft3-straight/hf \
+>     --dataset /mnt/ai-data/training/datasets/sft/ultrachat-e2b \
+>     --out /mnt/ai-data/training/eval/ft5-holdout-merged.json
+200~docker compose -f docker-compose.training.yaml run --rm training python200~dockerzsh: bad pattern: ^[[200~docker
+➜  ai-experiments git:(SFT-verification-2) echo "exit=$?"
+exit=1
+➜  ai-experiments git:(SFT-verification-2) docker compose -f docker-compose.training.yaml run --rm training \
+>     python -m training eval-lmeval --model /app/models/hf/gemma-4-E2B --limit 20 \
+>     --out /mnt/ai-data/training/eval/ft5-lmeval-base.json
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-e08779292dc3 Creating
+Container ai-experiments-training-run-e08779292dc3 Created
+echo "exit=$?"
+docker compose -f docker-compose.training.yaml run --rm training \
+    python -m training eval-lmeval --model /app/models/trained/ft3-straight/hf --limit 20 \
+    --out /mnt/ai-data/training/eval/ft5-lmeval-merged.json
+echo "exit=$?"
+grep -E '"(loss|perplexity|supervised_tokens|precision|attention_implementation)"' \
+    /mnt/ai-data/training/eval/ft5-holdout-base.json /mnt/ai-data/training/eval/ft5-holdout-merged.json
+grep -E '"(lm_eval_version|limit)"' /mnt/ai-data/training/eval/ft5-lmeval-base.json /mnt/ai-data/training/eval/ft5-lmeval-merged.json^[[201~=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training eval-lmeval --model /app/models/hf/gemma-4-E2B --limit 20 --out /mnt/ai-data/training/eval/ft5-lmeval-base.json
+[RUN] lm-evaluation-harness: /app/models/hf/gemma-4-E2B
+^C^CTraceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/app/training/__main__.py", line 7, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/app/training/cli.py", line 484, in main
+    return dispatch("training", build_parser, argv)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/common/obs/dispatch.py", line 70, in dispatch
+    result = args.func(args)
+             ^^^^^^^^^^^^^^^
+  File "/app/training/cli.py", line 309, in cmd_eval_lmeval
+    record = run_lmeval(
+             ^^^^^^^^^^^
+  File "/app/training/eval/lmeval.py", line 106, in run_lmeval
+    raw = lm_eval.simple_evaluate(
+          ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/utils.py", line 575, in _wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/evaluator.py", line 257, in simple_evaluate
+    lm = lm_eval.api.registry.get_model(model).create_from_arg_string(
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/api/registry.py", line 508, in get_model
+    return model_registry.get(model_name)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/api/registry.py", line 310, in get
+    concrete = self._materialise(fresh)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/api/registry.py", line 270, in _materialise
+    return cast("T", _materialise_placeholder(ph))
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/api/registry.py", line 121, in _materialise_placeholder
+    return getattr(importlib.import_module(mod), attr)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/models/huggingface.py", line 23, in <module>
+    from transformers.models.auto.modeling_auto import (
+  File "/opt/venv/lib/python3.12/site-packages/transformers/models/auto/modeling_auto.py", line 21, in <module>
+    from .auto_factory import (
+  File "/opt/venv/lib/python3.12/site-packages/transformers/models/auto/auto_factory.py", line 42, in <module>
+    from ...generation import GenerationMixin
+  File "<frozen importlib._bootstrap>", line 1412, in _handle_fromlist
+  File "/opt/venv/lib/python3.12/site-packages/transformers/utils/import_utils.py", line 2305, in __getattr__
+    module = self._get_module(self._class_to_module[name])
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/transformers/utils/import_utils.py", line 2537, in _get_module
+    return importlib.import_module("." + module_name, self.__name__)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/transformers/generation/utils.py", line 44, in <module>
+    from ..masking_utils import create_masks_for_generate
+  File "/opt/venv/lib/python3.12/site-packages/transformers/masking_utils.py", line 42, in <module>
+    from torch._dynamo._trace_wrapped_higher_order_op import TransformGetItemToIndex
+  File "/opt/venv/lib/python3.12/site-packages/torch/_dynamo/__init__.py", line 13, in <module>
+    from . import (
+  File "/opt/venv/lib/python3.12/site-packages/torch/_dynamo/aot_compile.py", line 17, in <module>
+    from torch._dynamo.convert_frame import GraphRuntimeEnv
+  File "/opt/venv/lib/python3.12/site-packages/torch/_dynamo/convert_frame.py", line 62, in <module>
+    from torch._dynamo.symbolic_convert import TensorifyState
+  File "/opt/venv/lib/python3.12/site-packages/torch/_dynamo/symbolic_convert.py", line 62, in <module>
+    from . import (
+  File "/opt/venv/lib/python3.12/site-packages/torch/_dynamo/trace_rules.py", line 60, in <module>
+    from .variables import (
+  File "/opt/venv/lib/python3.12/site-packages/torch/_dynamo/variables/__init__.py", line 19, in <module>
+    from .base import VariableTracker
+  File "/opt/venv/lib/python3.12/site-packages/torch/_dynamo/variables/base.py", line 1943, in <module>
+    from . import builder
+  File "/opt/venv/lib/python3.12/site-packages/torch/_dynamo/variables/builder.py", line 207, in <module>
+    from .builtin import BuiltinVariable
+KeyboardInterrupt
+^C
+➜  ai-experiments git:(SFT-verification-2)
+➜  ai-experiments git:(SFT-verification-2) docker compose -f docker-compose.training.yaml run --rm training \
+    python -m training eval-holdout --model /app/models/trained/ft3-straight/hf \
+    --dataset /mnt/ai-data/training/datasets/sft/ultrachat-e2b \
+    --out /mnt/ai-data/training/eval/ft5-holdout-merged.json
+echo "exit=$?"
+docker compose -f docker-compose.training.yaml run --rm training \
+    python -m training eval-lmeval --model /app/models/hf/gemma-4-E2B --limit 20 \
+    --out /mnt/ai-data/training/eval/ft5-lmeval-base.json
+echo "exit=$?"
+docker compose -f docker-compose.training.yaml run --rm training \
+    python -m training eval-lmeval --model /app/models/trained/ft3-straight/hf --limit 20 \
+    --out /mnt/ai-data/training/eval/ft5-lmeval-merged.json
+echo "exit=$?"
+grep -E '"(loss|perplexity|supervised_tokens|precision|attention_implementation)"' \
+    /mnt/ai-data/training/eval/ft5-holdout-base.json /mnt/ai-data/training/eval/ft5-holdout-merged.json
+grep -E '"(lm_eval_version|limit)"' /mnt/ai-data/training/eval/ft5-lmeval-base.json /mnt/ai-data/training/eval/ft5-lmeval-merged.json
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-d31ca4216260 Creating
+Container ai-experiments-training-run-d31ca4216260 Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training eval-holdout --model /app/models/trained/ft3-straight/hf --dataset /mnt/ai-data/training/datasets/sft/ultrachat-e2b --out /mnt/ai-data/training/eval/ft5-holdout-merged.json
+[RUN] Held-out loss: /app/models/trained/ft3-straight/hf over /mnt/ai-data/training/datasets/sft/ultrachat-e2b
+[model] flash-attn supports head_dim <= 256; this model's widest head is 512, so attention runs on sdpa
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1951/1951 [00:02<00:00, 721.72it/s]
+[OK] Loss 1.019455, perplexity 2.7717 (4066 examples, 3631683 supervised tokens, bf16)
+[OK] Record written: /mnt/ai-data/training/eval/ft5-holdout-merged.json
+exit=0
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-b5f2148548cf Creating
+Container ai-experiments-training-run-b5f2148548cf Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training eval-lmeval --model /app/models/hf/gemma-4-E2B --limit 20 --out /mnt/ai-data/training/eval/ft5-lmeval-base.json
+[RUN] lm-evaluation-harness: /app/models/hf/gemma-4-E2B
+Loading weights: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1951/1951 [00:00<00:00, 3784.24it/s]
+/opt/venv/lib/python3.12/site-packages/nltk/downloader.py:1076: UserWarning: NLTK will not authorize the non-private download directory '/app/nltk_data': it (or an ancestor) is world- or group-writable, so another local user could plant files there. Choose a private location such as ~/nltk_data.
+  for msg in self.incr_download(info_or_id, download_dir, force):
+[nltk_data] Error loading punkt_tab: <urlopen error pathsec.urlopen:
+[nltk_data]     no validated address for host
+[nltk_data]     'raw.githubusercontent.com'; refusing to connect by
+[nltk_data]     unvalidated hostname>
+Downloaded punkt_tab on rank 0
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/app/training/__main__.py", line 7, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/app/training/cli.py", line 484, in main
+    return dispatch("training", build_parser, argv)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/common/obs/dispatch.py", line 70, in dispatch
+    result = args.func(args)
+             ^^^^^^^^^^^^^^^
+  File "/app/training/cli.py", line 309, in cmd_eval_lmeval
+    record = run_lmeval(
+             ^^^^^^^^^^^
+  File "/app/training/eval/lmeval.py", line 106, in run_lmeval
+    raw = lm_eval.simple_evaluate(
+          ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/utils.py", line 575, in _wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/evaluator.py", line 302, in simple_evaluate
+    loaded = task_manager.load(tasks)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/tasks/manager.py", line 208, in load
+    obj = self._load_spec(spec) if not isinstance(spec, (Task, Group)) else spec  # type:ignore[invalid-argument-type]
+          ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/tasks/manager.py", line 154, in _load_spec
+    return self._factory.build(
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/tasks/_factory.py", line 61, in build
+    return self._build_task(entry, overrides)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/tasks/_factory.py", line 81, in _build_task
+    obj = ConfigurableTask(config=cfg)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/api/task.py", line 753, in __init__
+    self.download(self.config.dataset_kwargs)
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/api/task.py", line 869, in download
+    self.dataset = datasets.load_dataset(
+                   ^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/datasets/load.py", line 1698, in load_dataset
+    builder_instance = load_dataset_builder(
+                       ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/datasets/load.py", line 1325, in load_dataset_builder
+    dataset_module = dataset_module_factory(
+                     ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/datasets/load.py", line 1217, in dataset_module_factory
+    raise e1 from None
+  File "/opt/venv/lib/python3.12/site-packages/datasets/load.py", line 1159, in dataset_module_factory
+    raise ConnectionError(f"Couldn't reach '{path}' on the Hub ({e.__class__.__name__})") from e
+ConnectionError: Couldn't reach 'google/IFEval' on the Hub (OfflineModeIsEnabled)
+
+exit=1
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-0750f816f7de Creating
+Container ai-experiments-training-run-0750f816f7de Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training eval-lmeval --model /app/models/trained/ft3-straight/hf --limit 20 --out /mnt/ai-data/training/eval/ft5-lmeval-merged.json
+[RUN] lm-evaluation-harness: /app/models/trained/ft3-straight/hf
+Loading weights: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1951/1951 [00:00<00:00, 3676.40it/s]
+/opt/venv/lib/python3.12/site-packages/nltk/downloader.py:1076: UserWarning: NLTK will not authorize the non-private download directory '/app/nltk_data': it (or an ancestor) is world- or group-writable, so another local user could plant files there. Choose a private location such as ~/nltk_data.
+  for msg in self.incr_download(info_or_id, download_dir, force):
+[nltk_data] Error loading punkt_tab: <urlopen error pathsec.urlopen:
+[nltk_data]     no validated address for host
+[nltk_data]     'raw.githubusercontent.com'; refusing to connect by
+[nltk_data]     unvalidated hostname>
+Downloaded punkt_tab on rank 0
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/app/training/__main__.py", line 7, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/app/training/cli.py", line 484, in main
+    return dispatch("training", build_parser, argv)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/common/obs/dispatch.py", line 70, in dispatch
+    result = args.func(args)
+             ^^^^^^^^^^^^^^^
+  File "/app/training/cli.py", line 309, in cmd_eval_lmeval
+    record = run_lmeval(
+             ^^^^^^^^^^^
+  File "/app/training/eval/lmeval.py", line 106, in run_lmeval
+    raw = lm_eval.simple_evaluate(
+          ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/utils.py", line 575, in _wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/evaluator.py", line 302, in simple_evaluate
+    loaded = task_manager.load(tasks)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/tasks/manager.py", line 208, in load
+    obj = self._load_spec(spec) if not isinstance(spec, (Task, Group)) else spec  # type:ignore[invalid-argument-type]
+          ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/tasks/manager.py", line 154, in _load_spec
+    return self._factory.build(
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/tasks/_factory.py", line 61, in build
+    return self._build_task(entry, overrides)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/tasks/_factory.py", line 81, in _build_task
+    obj = ConfigurableTask(config=cfg)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/api/task.py", line 753, in __init__
+    self.download(self.config.dataset_kwargs)
+  File "/opt/venv/lib/python3.12/site-packages/lm_eval/api/task.py", line 869, in download
+    self.dataset = datasets.load_dataset(
+                   ^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/datasets/load.py", line 1698, in load_dataset
+    builder_instance = load_dataset_builder(
+                       ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/datasets/load.py", line 1325, in load_dataset_builder
+    dataset_module = dataset_module_factory(
+                     ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/datasets/load.py", line 1217, in dataset_module_factory
+    raise e1 from None
+  File "/opt/venv/lib/python3.12/site-packages/datasets/load.py", line 1159, in dataset_module_factory
+    raise ConnectionError(f"Couldn't reach '{path}' on the Hub ({e.__class__.__name__})") from e
+ConnectionError: Couldn't reach 'google/IFEval' on the Hub (OfflineModeIsEnabled)
+
+exit=1
+/mnt/ai-data/training/eval/ft5-holdout-base.json:  "supervised_tokens": 3631683,
+/mnt/ai-data/training/eval/ft5-holdout-base.json:  "loss": 1.064038,
+/mnt/ai-data/training/eval/ft5-holdout-base.json:  "perplexity": 2.898049,
+/mnt/ai-data/training/eval/ft5-holdout-base.json:  "precision": "bf16",
+/mnt/ai-data/training/eval/ft5-holdout-base.json:  "attention_implementation": "sdpa"
+/mnt/ai-data/training/eval/ft5-holdout-merged.json:  "supervised_tokens": 3631683,
+/mnt/ai-data/training/eval/ft5-holdout-merged.json:  "loss": 1.019455,
+/mnt/ai-data/training/eval/ft5-holdout-merged.json:  "perplexity": 2.771684,
+/mnt/ai-data/training/eval/ft5-holdout-merged.json:  "precision": "bf16",
+/mnt/ai-data/training/eval/ft5-holdout-merged.json:  "attention_implementation": "sdpa"
+grep: /mnt/ai-data/training/eval/ft5-lmeval-base.json: No such file or directory
+grep: /mnt/ai-data/training/eval/ft5-lmeval-merged.json: No such file or directory
+```
+
+First evaluation attempt judged. The holdout half passed every criterion:
+both runs printed `[RUN] Held-out loss: <model> over <dataset>`, the sdpa
+line KB-84's third loader owes (its first run, and no FlashAttention
+error), `[OK] Loss 1.064038, perplexity 2.8980 (4066 examples, 3631683
+supervised tokens, bf16)` for the base and `[OK] Loss 1.019455, perplexity
+2.7717` for the merged directory over the same 3631683 tokens, `[OK] Record
+written:` and `exit=0` each; the `grep` shows `precision` `bf16` and
+`attention_implementation` `sdpa` on both records, the merged loss
+(1.019455) below the base's (1.064038), and in the neighbourhood of the
+trainer's nf4 `1.030488`, 1.1 percent under it, recorded without judgement
+as the entry says. The lm-eval half failed at task load on both sides,
+`exit=1`, no record written: `ConnectionError: Couldn't reach 'google/IFEval'
+on the Hub (OfflineModeIsEnabled)` from `datasets.load` under the
+harness task's `download`, after nltk's `[nltk_data] Error loading
+punkt_tab` refusal at the ifeval task's import (`no validated address for
+host 'raw.githubusercontent.com'`, the internal network doing its job) and
+its misleading `Downloaded punkt_tab on rank 0` print. That is the
+cache-miss signature the entry named, but not for the reason it named:
+the staging lines had run and exited 0, and the mount was the wrong half of
+the cache (KB-92, reopened), with two more run-time needs behind it (KB-93).
+Three lines are the operator's terminal, not findings: zsh's `bad pattern:
+^[[200~docker` (a bracketed paste the shell rejected, so `echo "exit=$?"`
+printed 1 for it before the commands were re-issued in order), the Ctrl-C
+during the first lm-eval's torch import, and the `Found orphan containers`
+WARN of every compose run. One observation, no row: `holdout.load_model`
+passes `torch_dtype`, which transformers now deprecates in favour of
+`dtype`; it loaded in bf16 regardless, as the records show.
 
 Status: PENDING
 

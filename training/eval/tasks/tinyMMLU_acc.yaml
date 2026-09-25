@@ -1,0 +1,27 @@
+# tinyMMLU with plain accuracy (KB-93). lm-eval 0.4.12's own tinyMMLU task
+# aggregates acc_norm through `tinyBenchmarks`, an IRT estimate of full MMLU
+# that needs a git-only package the image does not carry and all 100 items
+# per run, so a --limit smoke could never score it. This task is that yaml
+# with the aggregation replaced by the mean: the same 100 IRT-selected items,
+# prompt, choices and target, scored as accuracy over the items run. The
+# number is not comparable to a published tinyMMLU score; it is the
+# regression detector F7 wanted. Loaded by training/eval/lmeval.py through
+# TaskManager(include_path=...); the pinned set in ../tasks.yaml names it.
+task: tinyMMLU_acc
+dataset_path: tinyBenchmarks/tinyMMLU
+dataset_name: all
+test_split: test
+fewshot_split: dev
+num_fewshot: 0
+fewshot_config:
+  sampler: first_n
+output_type: multiple_choice
+doc_to_text: "{{input_formatted}}"
+doc_to_choice: ["A", "B", "C", "D"]
+doc_to_target: answer
+metric_list:
+  - metric: acc_norm
+    aggregation: mean
+    higher_is_better: true
+metadata:
+  version: 0.0
