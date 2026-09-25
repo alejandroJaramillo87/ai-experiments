@@ -114,7 +114,10 @@ which reads the `AI_SANDBOX` marker the sandbox image sets:
   `uv --no-sync` would otherwise recreate it empty. The preflight proves the interpreter
   exists, not that the installed set is the locked set: `--no-sync` never reconciles the two,
   and the hardware smoke tier's `test_venv_lock.py` is what names a package the lock has
-  dropped.
+  dropped. The host-run python targets (`eval-ft`, `generate-teacher`, and interp's
+  `steer-scorecard`, `probe-export`, `probe-eval` and `organism-*`) take the same `RUN_PY`,
+  since `python -m training` and `python -m interp` import their tiers' groups at import (KB-95);
+  `tests/training/test_host_targets.py` holds them to it.
 - **Sandbox** — tools are invoked from `PATH`. The image builds `/opt/pyenv` with
   `uv sync --frozen --only-group dev --only-group sandbox` against `uv.lock`, so the versions
   are the workstation's by construction rather than by transcription. There is no `.venv` to

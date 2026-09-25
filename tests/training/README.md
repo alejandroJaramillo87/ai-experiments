@@ -63,12 +63,13 @@ regenerated.
 | `test_entrypoint.py` | 4 | docker/training/entrypoint.sh: the environment echo and the D9 LD_PRELOAD slot. |
 | `test_eval_ft.py` | 2 | eval-ft's container phase: the compared sides reach the training container in its own spelling of the models tree. |
 | `test_eval_runner.py` | 6 | F7 runner pieces: checkpoint identity and the lm-eval task pins. |
-| `test_export.py` | 45 | Tests for the exporter's pure-logic paths. |
+| `test_export.py` | 46 | Tests for the exporter's pure-logic paths. |
 | `test_export_common_branches.py` | 13 | Branch coverage for export seams and common probes, all torch-free. |
 | `test_export_harness.py` | 4 | The exporter's output, read by the consumer it exists for. |
 | `test_export_image_dependencies.py` | 5 | The export image's dependency set must cover what `python -m training` imports. |
 | `test_head_loss.py` | 13 | training/models/head_loss.py: the chunked head loss (KB-87), driven against a fake torch the way test_peft_utils.py fakes it. |
 | `test_holdout.py` | 4 | holdout.resolve_model form dispatch: hub id, full checkpoint dir, and adapter-only checkpoint. |
+| `test_host_targets.py` | 2 | The host-run python targets take the interpreter make/quality.mk resolves. |
 | `test_lmeval.py` | 7 | lm-eval evaluator helpers: result extraction, the stderr-key composition for filtered metrics, the version-mismatch guard, and the repo-owned task configs the harness's registry is extended with. |
 | `test_loader.py` | 7 | D9 prefetch dataloader: exact sequential window order, wrap-around, index-based resume equivalence with 0 and >0 workers, legacy cursor conversion, and the multi-worker deterministic loop resume — the guarantee the index-based design exists to protect. |
 | `test_lock.py` | 9 | D9 run lock: acquire/release, contention, and staleness. |

@@ -232,9 +232,12 @@ def cmd(args: argparse.Namespace) -> int:
             except runner.EvalRunError:
                 out.info(f"{side}: {path} (no model_hash: not an exported directory)")
                 continue
+            # The source distinguishes the manifest read from the fallback hash
+            # over the weights, which print the same value (KB-96).
+            source = "manifest" if identity["manifest"] else "computed"
             out.info(
                 f"{side}: {identity['model']} model_hash {identity['model_hash']} "
-                f"thinking_mode {identity['thinking_mode']}"
+                f"({source}) thinking_mode {identity['thinking_mode']}"
             )
         records = phase_container(args, evaluators, out_dir, out)
     except (serving.ServingError, runner.EvalRunError) as exc:

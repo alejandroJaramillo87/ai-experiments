@@ -437,7 +437,7 @@ export commands.
 
 Command (stages have separate GPU/serving preconditions; `make organism
 RECIPE=...` prints this pipeline; the four `organism-*` targets run
-`python3 -m interp` on the host, not in the workbench container):
+`python -m interp` on the host through the venv, not in the workbench container):
 
 ```bash
 make organism-generate RECIPE=training/recipes/organisms/taboo.yaml TEACHER=/mnt/ai-data/models/<teacher>.gguf

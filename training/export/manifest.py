@@ -129,6 +129,24 @@ def write_hf_manifest(manifest: dict, out_dir: str) -> str:
     return write_json_atomic(hf_manifest_path(out_dir), manifest, sort_keys=False)
 
 
+def names_directory(recorded: str, hf_dir: str) -> bool:
+    """True when the manifest's recorded path names hf_dir in either spelling
+    of the models tree.
+
+    The export container records the container view (/app/models/...) and
+    the host driver reads with the host view (/mnt/ai-data/models/...): one
+    directory, two spellings, and a realpath comparison of the two refused
+    every real export from the host (KB-96). A path outside the models tree
+    (a test's temporary directory) compares as itself.
+    """
+    from common.serving import CONTAINER_MODELS, HOST_MODELS, model_paths
+
+    spellings = {os.path.realpath(hf_dir)}
+    if hf_dir.startswith((HOST_MODELS, CONTAINER_MODELS)):
+        spellings.update(os.path.realpath(p) for p in model_paths(hf_dir))
+    return os.path.realpath(recorded) in spellings
+
+
 def load_hf_manifest(hf_dir: str) -> dict:
     """The manifest describing hf_dir, or ExportError.
 
@@ -149,7 +167,7 @@ def load_hf_manifest(hf_dir: str) -> dict:
     if manifest.get("artifact") != HF_ARTIFACT:
         raise ExportError(f"Not an hf export manifest: {path}")
     recorded = manifest.get("hf_dir", "")
-    if os.path.realpath(recorded) != os.path.realpath(hf_dir):
+    if not names_directory(recorded, hf_dir):
         raise ExportError(f"Export manifest {path} describes {recorded}, not {hf_dir}")
     if not manifest.get("model_hash"):
         raise ExportError(f"Export manifest records no model_hash: {path}")

@@ -634,6 +634,23 @@ class TestLoadHfManifest:
         with pytest.raises(ExportError, match="No export manifest"):
             manifest_mod.load_hf_manifest(str(hf))
 
+    def test_container_spelling_read_from_the_host(self, tmp_path, monkeypatch):
+        # The export container records /app/models/...; eval-ft on the host
+        # asks with /mnt/ai-data/models/... (KB-96).
+        from common import serving as common_serving
+
+        monkeypatch.setattr(common_serving, "HOST_MODELS", str(tmp_path) + "/")
+        hf, manifest = make_hf_export(tmp_path)
+        manifest["hf_dir"] = common_serving.CONTAINER_MODELS + "trained/x/hf"
+        (hf.parent / "manifest.json").write_text(json.dumps(manifest))
+        assert manifest_mod.load_hf_manifest(str(hf)) == manifest
+        # A different directory under the same tree is still refused.
+        other = tmp_path / "trained" / "other" / "hf"
+        os.makedirs(other)
+        (other.parent / "manifest.json").write_text(json.dumps(manifest))
+        with pytest.raises(ExportError, match="describes"):
+            manifest_mod.load_hf_manifest(str(other))
+
     def test_manifest_for_another_directory_refused(self, tmp_path):
         hf, _manifest = make_hf_export(tmp_path)
         other = tmp_path / "trained" / "other" / "hf"
