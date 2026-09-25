@@ -1603,6 +1603,20 @@ Implementation: `training/cli.py` (`cmd_train_sft`), `training/tune/sft.py`
 `training/runtime/checkpoint.py`, `training/runtime/lock.py` (the D9 GPU
 lock), `training/models/peft_utils.py`.
 
+**Fixes to confirm here** (details in [bugs/known-bugs.md](../bugs/known-bugs.md)):
+
+- KB-80 — every SFT recipe once named a tokenizer directory nothing staged,
+  and `build_dataset` hash-checked the dataset against it, so `train-sft`
+  failed at dataset load. FT.recipe-gates confirmed the preflight half; the
+  `train-sft` half closes here, when the straight run loads the dataset
+  without a `tokenizer hash ... does not match` error and reaches its first
+  step.
+- KB-88 — the holdout evaluation left `prediction_loss_only` at the Trainer
+  default and would have gathered every eval batch's 262144-wide logits
+  across the holdout. Fixed with the KB-87 loss; the straight run's
+  `Held-out loss:` line, the first `eval_loss` the tree has computed, is
+  the confirmation.
+
 Three runs of the same recipe: a short straight run, a run interrupted after
 its first checkpoint, and the resume of that run from the named
 `checkpoint-<step>` directory. Existing code; depends on FT.smoke-dataset and FT.calibrate-qlora.
@@ -1611,14 +1625,39 @@ One override beyond the step counts, because the recipe's own value would
 leave a criterion unobservable. `sft.eval_steps=30`: the recipe evaluates
 every 100 steps, so a 60-step run would never compute a held-out loss and
 the `Held-out loss:` line the tolerance criterion reads would be absent.
+The evaluation runs at steps 30 and 60 and prints nothing while it runs;
+the one `Held-out loss:` line is the last `eval_loss` in the trainer's log
+history, the step-60 value (`training/tune/sft.py`, after `trainer.train`).
+Each evaluation reads the smoke dataset's whole holdout split (4066
+examples, FT.smoke-dataset) at the recipe's micro-batch of 2, about 2033
+eval batches twice per run, and is the entry's dominant wall-clock cost: a
+long silence after step 30 or step 60 is the evaluation, not a hang.
 The base is the recipe's hub id resolved to the staged directory (KB-79,
 fixed), and the dataset hash check reads the tokenizer from that same
 directory (KB-80, fixed), so a `tokenizer hash ... does not match` error
 here is one of them back. The PEFT wrap is the one FT.calibrate-qlora confirms (KB-83): a
 `Gemma4ClippableLinear ... is not supported` error here is KB-83 back.
 
-Command (inference down; the interrupt is a Ctrl-C after the first
-`checkpoint-30` directory appears and before `checkpoint-60` does):
+The interrupt is one Ctrl-C in the terminal running the second command,
+sent after `meta.json` exists inside `checkpoint-30` and before `checkpoint-60`
+appears. `meta.json` is the last file the checkpoint callback writes
+(`training/tune/sft_callbacks.py`, after transformers' `trainer_state.json`),
+so its presence is what makes `checkpoint-30` complete; the directory
+itself appears earlier, mid-save. Watch for it from a second terminal:
+
+```bash
+watch -n 5 ls /mnt/ai-data/training/runs/ft3-resume/checkpoints/checkpoint-30/
+```
+
+One Ctrl-C only. The compose service runs under tini (`init: true`), so a
+single SIGINT reaches the trainer as a `KeyboardInterrupt`, nothing in
+`training/cli.py` catches it, and the process ends with a traceback while
+the lock context manager (`training/runtime/lock.py`) removes the training
+lock on the way out. A second Ctrl-C kills the container hard and leaves
+the lock behind, which the next run reports as `Stale training lock` with
+the `rm` to run; that is operator error, not a finding.
+
+Command (inference down):
 
 ```bash
 set -o pipefail
@@ -1628,6 +1667,7 @@ make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
 echo "exit=$?"
 make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
     ARGS="run.name=ft3-resume schedule.total_steps=60 checkpoint.interval_steps=30 sft.eval_steps=30"
+echo "exit=$?"
 ls /mnt/ai-data/training/runs/ft3-resume/checkpoints/
 cat /mnt/ai-data/training/runs/ft3-resume/checkpoints/checkpoint-30/meta.json
 make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
@@ -1649,17 +1689,25 @@ train loss:` line, a `Held-out loss:` line and exit 0; `checkpoint-30` and
 `checkpoint-60` each carry `meta.json` with `checkpoint_format: trl`,
 `adapter_only: true`, the base identity including the pinned
 `base_revision` `d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f`, and the resolved
-`attention_implementation`. The interrupted run leaves `checkpoint-30`
-complete (`trainer_state.json` and `meta.json` present) and no
-`checkpoint-60`. The resumed run prints `[RUN] Resuming (<the checkpoint-30
-path>) ft3-resume [trl]: 60 total steps`, ends at `[OK] Run complete: step
-60 [trl]` with exit 0, and its `ls` shows `checkpoint-60` beside
-`checkpoint-30`. The criterion that makes the resume a resume: the resumed
-run's `Held-out loss:` agrees with the straight run's within
-`RESUME_LOSS_RTOL` (0.01, `tests/hardware/test_gpu.py`), that is
-`abs(a - b) / a <= 0.01`; record both numbers and the quotient. A resumed
-run that reports `Fine-tuning` rather than `Resuming`, or ends at a step
-other than 60, has restarted rather than resumed.
+`attention_implementation`. The interrupted run prints the same `[RUN]`
+line for `ft3-resume`, ends in a `KeyboardInterrupt` traceback with a
+non-zero exit, and leaves `checkpoint-30` complete (`trainer_state.json`
+and `meta.json` present) and no `checkpoint-60`. A `checkpoint-60`
+directory without `meta.json` means the Ctrl-C landed inside the step-60
+save: remove the `ft3-resume` run directory and repeat the interrupted run,
+because a resume from that state proves nothing. The resumed run prints
+`[RUN] Resuming (/mnt/ai-data/training/runs/ft3-resume/checkpoints/checkpoint-30)
+ft3-resume [trl]: 60 total steps` (the verb carries the override as
+passed), ends at `[OK] Run complete: step 60 [trl]` with exit 0, and its
+`ls` shows `checkpoint-60` beside `checkpoint-30`. The criterion that makes
+the resume a resume: the resumed run's `Held-out loss:` agrees with the
+straight run's within `RESUME_LOSS_RTOL` (0.01, `tests/hardware/test_gpu.py`),
+that is `abs(a - b) / a <= 0.01`; record both numbers and the quotient.
+The constant is borrowed from `test_resume_loss_curve_within_tolerance`,
+which holds the from-scratch loop's per-step losses to it on the GPU; no
+hardware test mirrors a TRL resume, so this entry is the only evidence for
+one. A resumed run that reports `Fine-tuning` rather than `Resuming`, or
+ends at a step other than 60, has restarted rather than resumed.
 
 Observed:
 
