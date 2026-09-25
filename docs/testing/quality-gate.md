@@ -9,9 +9,20 @@ adds the suite and the hardware tiers ([hardware-tiers.md](hardware-tiers.md)).
 The recipe in `make/quality.mk` is the source of truth for the step list. When this document
 disagrees with it, the recipe is right.
 
+## Table of Contents
+
+<!-- toc:start -->
+
+1. [What it runs](#what-it-runs)
+2. [One gate, two environments](#one-gate-two-environments)
+3. [Provisioning](#provisioning)
+4. [Related](#related)
+
+<!-- toc:end -->
+
 ## What it runs
 
-Eighteen steps, cheapest first, failing on the first error:
+Nineteen steps, cheapest first, failing on the first error:
 
 1. `ruff format --check .` — formatting.
 2. `ruff check .` — lint.
@@ -64,7 +75,12 @@ Eighteen steps, cheapest first, failing on the first error:
     `scripts/docs/gen_inventory.py` and prints the diff, and fails when a directory under
     `tests/`, `training/`, `common/`, `scripts/`, `interp/` or `rust-harness/` has no README
     with a table, or a directory under `docs/` lacks the table its shape needs.
-18. `shellcheck --severity=warning` — shell scripts, enumerated with `find`.
+18. `scripts/docs/check_toc.py` — fails when a document's generated table of contents
+    disagrees with its H2 and H3 headings, or when a living document over 500 words with
+    four or more sections carries none. It regenerates the list in memory with
+    `scripts/docs/gen_toc.py` and prints the diff; frozen records, READMEs, the
+    definitions under `.claude/` and the site's pages are never asked for one.
+19. `shellcheck --severity=warning` — shell scripts, enumerated with `find`.
 
 Then two chained gates. The rust-harness gate runs when that directory exists,
 `make -C rust-harness quality`: five offline steps and the cross-language contract tests,

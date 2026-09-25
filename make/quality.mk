@@ -137,6 +137,15 @@ format: ## Format code with ruff
 # directory carries a README with a table, so a new one fails the gate until it is
 # documented. It needs no torch and no collected session, so it runs in the sandbox.
 #
+# check_toc.py is the same pattern applied to a document's own index. The list between
+# a toc marker pair is rendered by scripts/docs/gen_toc.py from the document's H2 and H3
+# headings, so a heading renamed in the body cannot leave a row at the top pointing at
+# an anchor that no longer exists. The gate also holds the threshold the style guide
+# states: a living document over 500 words with four or more sections carries the pair,
+# and one that grows past it fails until `gen_toc.py <file>` adds it. Frozen records are
+# outside both rules, by the same paths every other gate exempts, because a frozen
+# record is never edited. It reads the files' own lines, so it runs in the sandbox.
+#
 # The site build is last, after the rust gate, and skips itself with [SKIP] when
 # site/node_modules is absent -- a fresh sandbox has none, because installing them needs
 # the network, in the same way `uv lock --check` is skipped above. With them present the
@@ -154,7 +163,7 @@ format: ## Format code with ruff
 # dies on a missing tool -- and the gate has to be followed by `make install` to
 # undo what it did. Checking first turns that into a named error that changes
 # nothing. Skipped in a sandbox, which has no .venv by design.
-quality: ## Run the full quality gate (format check, lint, mypy, lock check, doc refs, retired names, make targets, doc counts, KB refs, pin parity, command prompts, site reference, site interp reference, inventory, shellcheck, rust gate, site build)
+quality: ## Run the full quality gate (format check, lint, mypy, lock check, doc refs, retired names, make targets, doc counts, KB refs, pin parity, command prompts, site reference, site interp reference, inventory, toc, shellcheck, rust gate, site build)
 ifndef AI_SANDBOX
 	@if [ ! -x .venv/bin/ruff ] || [ ! -e "$$(readlink -f .venv/bin/python 2>/dev/null)" ]; then \
 	  printf '[ERROR] .venv is missing, incomplete, or points at an interpreter that no longer exists\n'; \
@@ -190,6 +199,7 @@ endif
 	$(RUN_PY) python scripts/docs/check_site_reference.py
 	$(RUN_PY) python scripts/docs/check_site_interp_reference.py
 	$(RUN_PY) python scripts/docs/check_inventory.py
+	$(RUN_PY) python scripts/docs/check_toc.py
 	@files=$$(find . -name '*.sh' -type f \
 	    -not -path './.git/*' -not -path './.venv/*' \
 	    -not -path './node_modules/*' -not -path '*/target/*' \

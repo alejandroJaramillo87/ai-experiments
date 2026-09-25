@@ -3,7 +3,7 @@
 The documentation gates and generators: the scripts that fail `make quality` when a
 document and the tree disagree, and the ones that render committed artifacts (reference
 pages, README inventory tables) from the tree so the gates have something exact to hold
-them to. Thirteen run in the gate on every push; three are generators run by hand or by
+them to. Fourteen run in the gate on every push; four are generators run by hand or by
 `make site-gen`.
 
 The strategy these scripts enforce is written down once, in
@@ -35,7 +35,7 @@ reference for the scripts themselves.
 
 ## Generators and their checkers
 
-Three pairs share one pattern: the artifact is committed so its reader needs no toolchain,
+Four pairs share one pattern: the artifact is committed so its reader needs no toolchain,
 and the checker is the reminder that it drifted.
 
 | Generator | Checker | Artifact |
@@ -43,13 +43,17 @@ and the checker is the reminder that it drifted.
 | `gen_site_reference.py` (needs cargo) | `check_site_reference.py` (regex over the Rust `Flag` literals) | `site/docs/rust-harness/reference/*.md` |
 | `gen_site_interp_reference.py` (imports the interp parser) | `check_site_interp_reference.py` (regex over the argparse literals) | `site/docs/interp/reference/*.md` |
 | `gen_inventory.py` | `check_inventory.py` (runs the generator's `--check`) | every README table between `<!-- inventory:<kind>:start -->` and its end marker |
+| `gen_toc.py` | `check_toc.py` (runs the generator's `--check`, and holds the threshold) | every table of contents between `<!-- toc:start -->` and `<!-- toc:end -->` |
 
 `make site-gen` runs the two site generators and `make site-check` diffs the result on the
-workstation. The inventory generator is run by hand on the README it changed:
+workstation. The inventory and table-of-contents generators are run by hand on the file
+that changed:
 
 ```bash
 python scripts/docs/gen_inventory.py training/README.md
 python scripts/docs/gen_inventory.py            # every README carrying a marker
+python scripts/docs/gen_toc.py docs/models/gemma-4.md   # adds the markers when absent
+python scripts/docs/gen_toc.py                  # every document carrying a marker
 ```
 
 ## What to edit when
@@ -95,9 +99,11 @@ the change that touches each:
 | `check_site_interp_reference.py` | Fail the quality gate when a generated interp reference page and its module disagree. |
 | `check_site_reference.py` | Fail the quality gate when a generated site reference page and its binary disagree. |
 | `check_surface_census.py` | Fail the quality gate when a shipped rust-harness surface appears in no runbook. |
+| `check_toc.py` | Fail the quality gate when a document's table of contents and its headings disagree. |
 | `gen_inventory.py` | Render the inventory tables in a README from the tree the README describes. |
 | `gen_site_interp_reference.py` | Render site/docs/interp/reference/<verb>.md from the interp CLI's own parser. |
 | `gen_site_reference.py` | Render site/docs/rust-harness/reference/<binary>.md from each binary's --help. |
+| `gen_toc.py` | Render a document's table of contents from its own headings. |
 
 <!-- inventory:modules:end -->
 

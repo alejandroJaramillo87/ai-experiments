@@ -14,7 +14,7 @@ three different amounts of ground, and the cheapest is the one everyone reaches 
 | Command | Runs | Proves | Where |
 |---------|------|--------|-------|
 | `make test` | the pytest suite with the hardware tiers deselected | the code agrees with its tests, in whichever environment tier the `[TIER]` line reports | workstation and sandbox |
-| `make quality` | format, lint, types, the lockfile, thirteen documentation gates, shellcheck, the rust gate, the site build; never pytest | the code builds and the documentation resolves against the tree | workstation and sandbox, with one `[SKIP]` in the sandbox |
+| `make quality` | format, lint, types, the lockfile, fourteen documentation gates, shellcheck, the rust gate, the site build; never pytest | the code builds and the documentation resolves against the tree | workstation and sandbox, with one `[SKIP]` in the sandbox |
 | `make quality-full` | `quality`, then `test`, then the `hw_smoke` tier; `HW=full` and `HW=e4b` add the deeper tiers | the hardware does what the sandbox halves assumed | workstation only; refuses elsewhere |
 
 Neither gate measures whether the inference engine computes the right numbers. That is
