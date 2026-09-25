@@ -202,6 +202,13 @@ builds what it verifies:
   refuses. A runbook defect, not a tree defect; the entry gains a
   `schedule.warmup_steps=3` override, the paste is kept as a superseded
   observation, and the entry re-runs as committed.
+- **FT.export-merged's first attempt** (2026-09-25) died before the export
+  began: the export image did not carry `xxhash` or `omegaconf`, which
+  `python -m training` reaches while registering every subcommand, so the
+  CLI never dispatched. A tree defect, KB-91, the same shape as KB-59: both
+  packages are pinned in the image, a sandbox test holds the image's pins to
+  the CLI's imports, the paste is kept as a superseded observation, and the
+  entry re-runs as committed.
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training
@@ -2094,7 +2101,9 @@ merge on real weights. Depends on FT.train-resume.
 
 Command (the export container mounts the models tree read-write under
 `/app/models/trained`; the harness lines read the result through the
-harness image, and `checkpoint-info` reads it on the host). The merge loads
+harness image, and `checkpoint-info` reads it on the host). `make
+export-build` rebuilds the image's pip layer after KB-91's two pins, minutes
+rather than the cache hit FT.preconditions observed. The merge loads
 the 10.2 GB bf16 base on the CPU and writes the same again into the
 `hf.partial` staging directory before the rename, so the first export runs
 for minutes with only `[RUN] Merging model:` showing; an `hf.partial`
@@ -2157,7 +2166,82 @@ framed is its observable, not a printed version.
 
 Observed:
 
+First attempt (2026-09-25, superseded, kept verbatim: stage A stopped before
+the export began. The image build was the cache hit FT.preconditions
+observed, and `python -m training` died at import in the container: the
+export image carried neither `xxhash` nor `omegaconf`, which the CLI reaches
+while registering every subcommand. KB-91, fixed in the tree the same day;
+no criterion was reached, so none is judged):
+
 ```
+➜  ai-experiments git:(SFT-verification-2) cd ~/workspace/ai-experiments
+git pull origin SFT-verification-2
+git log -1 --oneline
+set -o pipefail
+make export-build
+remote: Enumerating objects: 18, done.
+remote: Counting objects: 100% (18/18), done.
+remote: Compressing objects: 100% (12/12), done.
+remote: Total 18 (delta 9), reused 15 (delta 6), pack-reused 0 (from 0)
+Unpacking objects: 100% (18/18), 11.34 KiB | 1.89 MiB/s, done.
+From https://github.com/alejandroJaramillo87/ai-experiments
+ * branch              SFT-verification-2 -> FETCH_HEAD
+   9509f1b3..e9703d73  SFT-verification-2 -> origin/SFT-verification-2
+Updating 9509f1b..e9703d7
+Fast-forward
+ docs/verification/training/fine-tuning-loop.md | 292 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++---------
+ 1 file changed, 271 insertions(+), 21 deletions(-)
+Building export image...
+docker compose -f docker-compose.training.yaml build export
+[+] Building 0.6s (17/17) FINISHED
+ => [internal] load local bake definitions                                                                                                                                  0.0s
+ => => reading from stdin 569B                                                                                                                                              0.0s
+ => [internal] load build definition from Dockerfile.export                                                                                                                 0.0s
+ => => transferring dockerfile: 2.53kB                                                                                                                                      0.0s
+ => [internal] load metadata for docker.io/library/ubuntu:24.04                                                                                                             0.5s
+ => [internal] load metadata for ghcr.io/astral-sh/uv:0.11.28                                                                                                               0.3s
+ => [internal] load .dockerignore                                                                                                                                           0.0s
+ => => transferring context: 1.73kB                                                                                                                                         0.0s
+ => [stage-1 1/9] FROM docker.io/library/ubuntu:24.04@sha256:008173c23f95b170204355c12626cb5a965d779a7e1283b09e9cffbb1bf33ca3                                               0.0s
+ => [uv 1/1] FROM ghcr.io/astral-sh/uv:0.11.28@sha256:0f36cb9361a3346885ca3677e3767016687b5a170c1a6b88465ec14aefec90aa                                                      0.0s
+ => CACHED [stage-1 2/9] RUN apt-get update &&     apt-get install -y --no-install-recommends         git         ca-certificates         python3.12         python3.12-de  0.0s
+ => CACHED [stage-1 3/9] COPY --from=uv /uv /uvx /usr/local/bin/                                                                                                            0.0s
+ => CACHED [stage-1 4/9] RUN uv venv /opt/venv --python 3.12                                                                                                                0.0s
+ => CACHED [stage-1 5/9] RUN --mount=type=cache,target=/root/.cache/uv     uv pip install --index-url https://download.pytorch.org/whl/cpu torch==2.13.0 &&     uv pip ins  0.0s
+ => CACHED [stage-1 6/9] RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin -c "Application User" appuser                                            0.0s
+ => CACHED [stage-1 7/9] RUN mkdir -p /app/cache /app/logs && chown -R appuser:appuser /app                                                                                 0.0s
+ => CACHED [stage-1 8/9] WORKDIR /app                                                                                                                                       0.0s
+ => CACHED [stage-1 9/9] RUN python -c "import torch, transformers, peft, safetensors"                                                                                      0.0s
+ => exporting to image                                                                                                                                                      0.0s
+ => => exporting layers                                                                                                                                                     0.0s
+ => => writing image sha256:fb7e7363b4fb02b3b5a582c4a4c2d573961d4a95accf1c57c3485a695e4986f4                                                                                0.0s
+ => => naming to docker.io/library/ai-experiments-export                                                                                                                    0.0s
+ => resolving provenance for metadata file                                                                                                                                  0.0s
+[+] build 1/1
+ ✔ Image ai-experiments-export Built                                                                                                                                         0.6s
+Export image built.
+➜  ai-experiments git:(SFT-verification-2) make export-hf CHECKPOINT=/mnt/ai-data/training/runs/ft3-straight/checkpoints/checkpoint-60 \
+    ARGS="--name ft3-straight"
+echo "exit=$?"
+docker compose -f docker-compose.training.yaml run --rm export python -m training export --checkpoint /mnt/ai-data/training/runs/ft3-straight/checkpoints/checkpoint-60 --name ft3-straight
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-export-run-0aab72d6b2ca Creating
+Container ai-experiments-export-run-0aab72d6b2ca Created
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/app/training/__main__.py", line 5, in <module>
+    from training.cli import main
+  File "/app/training/cli.py", line 24, in <module>
+    from training.commands import (
+  File "/app/training/commands/build_contamination.py", line 20, in <module>
+    from training.data import contamination
+  File "/app/training/data/contamination.py", line 29, in <module>
+    import xxhash
+ModuleNotFoundError: No module named 'xxhash'
+
+make: *** [make/training.mk:64: export-hf] Error 1
+exit=2
 ```
 
 Status: PENDING

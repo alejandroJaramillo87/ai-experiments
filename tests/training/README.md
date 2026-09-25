@@ -65,6 +65,7 @@ regenerated.
 | `test_export.py` | 45 | Tests for the exporter's pure-logic paths. |
 | `test_export_common_branches.py` | 13 | Branch coverage for export seams and common probes, all torch-free. |
 | `test_export_harness.py` | 4 | The exporter's output, read by the consumer it exists for. |
+| `test_export_image_dependencies.py` | 5 | The export image's dependency set must cover what `python -m training` imports. |
 | `test_head_loss.py` | 13 | training/models/head_loss.py: the chunked head loss (KB-87), driven against a fake torch the way test_peft_utils.py fakes it. |
 | `test_holdout.py` | 4 | holdout.resolve_model form dispatch: hub id, full checkpoint dir, and adapter-only checkpoint. |
 | `test_lmeval.py` | 4 | lm-eval evaluator helpers: result extraction, the stderr-key composition for filtered metrics, and the version-mismatch guard. |

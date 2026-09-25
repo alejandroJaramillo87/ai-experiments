@@ -41,13 +41,21 @@ ENV PATH="/opt/venv/bin:${PATH}"
 # pyproject.toml (transformers/peft/accelerate/sentencepiece); torch uses the CPU wheel
 # index because the cu130 build in uv.lock is GPU-sized and unnecessary here — this is the
 # one deliberate deviation from lockfile installs, kept in sync by hand with pyproject.
+#
+# omegaconf and xxhash are not used by the export itself. `python -m training` registers
+# every subcommand at import, and their module-scope imports reach both (training/recipes
+# and training/data); without them the CLI dies before `export` dispatches (KB-91). Pins
+# mirror the sandbox and training groups; tests/training/test_export_image_dependencies.py
+# holds this list to what the CLI imports.
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --index-url https://download.pytorch.org/whl/cpu torch==2.13.0 && \
     uv pip install \
         transformers==5.13.1 \
         peft==0.19.1 \
         accelerate==1.14.0 \
-        sentencepiece==0.2.2
+        sentencepiece==0.2.2 \
+        omegaconf==2.3.1 \
+        xxhash==3.5.0
 
 # Non-root user (repo-standard line, matches the inference images)
 RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin -c "Application User" appuser
@@ -60,6 +68,6 @@ WORKDIR /app
 USER appuser
 
 # Sanity check: the python stack imports
-RUN python -c "import torch, transformers, peft, safetensors"
+RUN python -c "import torch, transformers, peft, safetensors, omegaconf, xxhash"
 
 CMD ["/bin/bash"]

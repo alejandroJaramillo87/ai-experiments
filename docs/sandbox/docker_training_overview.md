@@ -184,13 +184,17 @@ and interp captures from, and produces no GGUF.
 
 The build copies the same pinned uv binary, installs `git` (for the manifest's `git_sha`) and
 Python 3.12, creates `/opt/venv`, and installs a hand-pinned CPU stack: torch 2.13.0 from the
-CPU wheel index, then transformers 5.13.1, peft 0.19.1, accelerate 1.14.0, and
-sentencepiece 0.2.2. This is the one deliberate deviation from lockfile installs in the
-repository, because the cu130 torch build in `uv.lock` is GPU-sized and unnecessary here; the
-versions mirror the core pins in `pyproject.toml` and are kept in step by hand. The image sets
+CPU wheel index, then transformers 5.13.1, peft 0.19.1, accelerate 1.14.0,
+sentencepiece 0.2.2, omegaconf 2.3.1 and xxhash 3.5.0. This is the one deliberate deviation
+from lockfile installs in the repository, because the cu130 torch build in `uv.lock` is
+GPU-sized and unnecessary here; the versions mirror the pins in `pyproject.toml` and are kept
+in step by hand, which `tests/training/test_export_image_dependencies.py` holds to. The last
+two are not for the export: `python -m training` registers every subcommand before it
+dispatches, and their module-scope imports reach both packages, so without them the CLI died
+before the merge began (KB-91, the first export the image ran). The image sets
 `HF_HOME=/app/cache` and `HOME=/app`, creates `appuser`, checks that torch, transformers,
-peft, and safetensors import, and ends in `CMD ["/bin/bash"]`; the compose file supplies the
-command.
+peft, safetensors, omegaconf, and xxhash import, and ends in `CMD ["/bin/bash"]`; the compose
+file supplies the command.
 
 The `export` service (container `training-export`) takes the shared hardening anchor and no
 GPU reservation. It has no egress by topology, on `training-network`, and needs none: the
