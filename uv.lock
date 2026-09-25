@@ -116,7 +116,7 @@ sandbox = [
 training = [
     { name = "flash-attn" },
     { name = "hydra-core" },
-    { name = "lm-eval" },
+    { name = "lm-eval", extra = ["ifeval"] },
     { name = "psutil" },
     { name = "pynvml" },
     { name = "trl" },
@@ -205,7 +205,7 @@ sandbox = [
 training = [
     { name = "flash-attn", specifier = "==2.8.3.post1" },
     { name = "hydra-core", specifier = "==1.3.2" },
-    { name = "lm-eval", specifier = "==0.4.12" },
+    { name = "lm-eval", extras = ["ifeval"], specifier = "==0.4.12" },
     { name = "psutil", specifier = "==7.2.2" },
     { name = "pynvml", specifier = "==12.0.0" },
     { name = "trl", specifier = "==0.24.0" },
@@ -1562,6 +1562,15 @@ wheels = [
 ]
 
 [[package]]
+name = "immutabledict"
+version = "4.3.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/1d/e6/718471048fea0366c3e3d1df3acfd914ca66d571cdffcf6d37bbcd725708/immutabledict-4.3.1.tar.gz", hash = "sha256:f844a669106cfdc73f47b1a9da003782fb17dc955a54c80972e0d93d1c63c514", size = 7806, upload-time = "2026-02-15T10:32:34.668Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a3/ce/f9018bf69ae91b273b6391a095e7c93fa5e1617f25b6ba81ad4b20c9df10/immutabledict-4.3.1-py3-none-any.whl", hash = "sha256:c9facdc0ff30fdb8e35bd16532026cac472a549e182c94fa201b51b25e4bf7bf", size = 5000, upload-time = "2026-02-15T10:32:33.672Z" },
+]
+
+[[package]]
 name = "importlib-metadata"
 version = "9.0.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2000,6 +2009,15 @@ wheels = [
 ]
 
 [[package]]
+name = "langdetect"
+version = "1.0.9"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "six" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0e/72/a3add0e4eec4eb9e2569554f7c70f4a3c27712f40e3284d483e88094cc0e/langdetect-1.0.9.tar.gz", hash = "sha256:cbc1fef89f8d062739774bd51eda3da3274006b3661d199c2655f6b3f6d605a0", size = 981474, upload-time = "2021-05-07T07:54:13.562Z" }
+
+[[package]]
 name = "lark"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2066,6 +2084,13 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/12/32/783623b1d1fe7c89ebd774db46bef4c787fe93e7c5e1b4877c7dfbf1abbe/lm_eval-0.4.12.tar.gz", hash = "sha256:45938d7c8024d5eee5c8a0da36abe7cc09c252413c577cf81666f0fcd28b4345", size = 3360517, upload-time = "2026-05-11T13:05:52.297Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/bd/43/944724465ed73ec2889f58007c114ce8dd2023324bc86d3e6f41ce00e2e8/lm_eval-0.4.12-py3-none-any.whl", hash = "sha256:02971ff68284dd14cfa7fce9310a58452c4162e8d413ba96aa7988a0ff9352ef", size = 8903672, upload-time = "2026-05-11T13:05:48.902Z" },
+]
+
+[package.optional-dependencies]
+ifeval = [
+    { name = "immutabledict" },
+    { name = "langdetect" },
+    { name = "nltk" },
 ]
 
 [[package]]
