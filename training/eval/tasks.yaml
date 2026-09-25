@@ -9,15 +9,18 @@
 # when a headline number is needed.
 #
 # metric names the harness result key the record carries for each task;
-# higher is better for all of them.
+# higher is better for all of them. The harness suffixes every key with the
+# name of the filter that produced it, and a task that declares no filter
+# block gets the default filter, named none (KB-94), so each key is written
+# here as the harness spells it: <metric>,<filter>.
 
 lm_eval_version: "0.4.12"
 tasks:
   ifeval:
-    metric: prompt_level_strict_acc
+    metric: prompt_level_strict_acc,none
   gsm8k:
     metric: exact_match,strict-match
   tinyMMLU_acc:
-    metric: acc_norm
+    metric: acc_norm,none
   hellaswag:
-    metric: acc_norm
+    metric: acc_norm,none

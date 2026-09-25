@@ -26,14 +26,14 @@ def test_extract_results_happy_path_and_stderr_keys():
                 "exact_match,strict-match": 0.42,
                 "exact_match_stderr,strict-match": 0.05,
             },
-            "tinyMMLU_acc": {"acc_norm": 0.70, "acc_norm_stderr": 0.03},
+            "tinyMMLU_acc": {"acc_norm,none": 0.70, "acc_norm_stderr,none": 0.03},
         },
         "versions": {"gsm8k": 3, "tinyMMLU_acc": 0},
     }
     task_config = {
         "tasks": {
             "gsm8k": {"metric": "exact_match,strict-match"},
-            "tinyMMLU_acc": {"metric": "acc_norm"},
+            "tinyMMLU_acc": {"metric": "acc_norm,none"},
         }
     }
     out = extract_results(raw, task_config)
@@ -45,9 +45,10 @@ def test_extract_results_happy_path_and_stderr_keys():
         "stderr": 0.05,
         "version": 3,
     }
-    # Plain metric: the stderr key is simply <metric>_stderr.
+    # Unfiltered task: the harness names its default filter none, so the
+    # same composition gives acc_norm_stderr,none (KB-94).
     assert out["tinyMMLU_acc"] == {
-        "metric": "acc_norm",
+        "metric": "acc_norm,none",
         "value": 0.70,
         "stderr": 0.03,
         "version": 0,
@@ -92,9 +93,20 @@ def test_repo_task_configs_are_plain_yaml_and_pinned():
             task = yaml.safe_load(f)
         assert task["task"] == name[: -len(".yaml")]
         assert task["task"] in pinned
-        assert pinned[task["task"]]["metric"] in {
+        # The task file names bare metrics; the pinned key carries the filter.
+        assert pinned[task["task"]]["metric"].split(",")[0] in {
             m["metric"] for m in task["metric_list"]
         }
+
+
+def test_pinned_metric_keys_carry_the_filter_suffix():
+    # lm-eval 0.4.12 keys every aggregated result as <metric>,<filter>, the
+    # filter being "none" for a task without a filter block, so a bare key in
+    # tasks.yaml can never match a result (KB-94: the first eval-lmeval to
+    # reach scoring refused ifeval on prompt_level_strict_acc).
+    for task, spec in load_task_config()["tasks"].items():
+        metric, _, filter_name = spec["metric"].partition(",")
+        assert metric and filter_name, f"{task}: {spec['metric']} names no filter"
 
 
 def test_tinymmlu_acc_is_tinymmlu_with_the_mean():

@@ -250,6 +250,13 @@ builds what it verifies:
   package (KB-93: the models baked into the image by digest, a repo-owned
   `tinyMMLU_acc` with plain accuracy). The holdout half stands on that paste;
   the lm-eval half re-runs.
+- **FT.heldout-eval's second evaluation attempt** (2026-09-25): the two
+  probes and the base's task loading passed, so KB-92's second fix and
+  KB-93 hold; the base `eval-lmeval` ran to scoring and was refused by the
+  tree's own extractor, because the pinned metric keys lacked the
+  `,<filter>` suffix lm-eval puts on every result, `none` for an
+  unfiltered task (KB-94, fixed in `tasks.yaml`). The lm-eval half re-runs
+  on a `git pull` alone: the yaml is compose-mounted.
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training
@@ -2668,6 +2675,12 @@ FT.export-merged (the merged directory) and FT.smoke-dataset (the dataset).
   is the repo-owned `tinyMMLU_acc`, the same items with plain accuracy.
   Closes with KB-92, on the same `[OK]` lines, after the sentence-count
   probe below prints `2`.
+- KB-94 — the pinned task set named its result keys bare, and lm-eval
+  keys every result `<metric>,<filter>`, `none` when the task declares no
+  filter; the first `eval-lmeval` to reach scoring was refused by the
+  tree's own extractor. Fixed 2026-09-25: the three unfiltered keys carry
+  `,none`. Closes on the same `[OK]` lines, `ifeval:
+  prompt_level_strict_acc,none` among them.
 
 `holdout.load_model` is KB-84's third loader (config first, sdpa above the
 head-width cap), and this entry is its first run; the fix was confirmed by
@@ -2709,7 +2722,10 @@ naming a dataset id means the mount is still wrong. The second counts the
 sentences of a two-sentence string through the ifeval task's own helper
 and prints `2`, with no `[nltk_data]` line and no `Downloaded punkt_tab`
 line before it; a `LookupError` naming `punkt` means the image was not
-rebuilt or `NLTK_DATA` is not searched.
+rebuilt or `NLTK_DATA` is not searched. These ran on 2026-09-25 and
+passed (Observed, below); they stand. KB-94's fix is a yaml the training
+service compose-mounts, so the lm-eval half after it needs the `git
+pull` only, no rebuild and no probe.
 
 ```bash
 set -o pipefail
@@ -2782,18 +2798,27 @@ step 60, this is the merged bf16 weights under plain cross-entropy, and the
 entry records the gap without judging it. Each lm-eval run prints `[RUN]
 lm-evaluation-harness: <model>`, then one `[OK] <task>: <metric> = <value>
 (stderr <s>)` line per pinned task, sorted (`gsm8k`, `hellaswag`, `ifeval`,
-`tinyMMLU_acc`), and `[OK] Record written:`; each record reports the pinned
+`tinyMMLU_acc`), the metric spelled as the harness keys it, filter suffix
+included (`exact_match,strict-match`, `acc_norm,none`,
+`prompt_level_strict_acc,none`, `acc_norm,none`; KB-94), and `[OK] Record
+written:`; each record reports the pinned
 task set from `training/eval/tasks.yaml` with `"lm_eval_version": "0.4.12"`
 and `"limit": 20` recorded (a smoke run, not a benchmark: 20 examples per
 task carry stderr wide enough that base and merged are not ranked here).
 Between the `[RUN]` and the first `[OK]`, `datasets` prints its
 `Using the latest cached version` warning once per task, and no
-`[nltk_data]` or `Downloaded punkt_tab` line appears. An `lm-eval version
+`[nltk_data]` or `Downloaded punkt_tab` line appears. Two lines are the
+harness's own noise, not failures: a run of `CUDACachingAllocator ...
+OOM` warnings while `batch_size=auto` probes descending batch sizes at
+the model's full context, ending in `Determined Largest batch size:`,
+and `fatal: not a git repository` from its commit-hash lookup in `/app`. An `lm-eval version
 mismatch` line means the image was not rebuilt from the new lock; a `Task
 missing from harness results` or a `ConnectionError` naming one of the four
 dataset ids means the datasets half is not mounted or its staging line did
 not run; a `ModuleNotFoundError: tinyBenchmarks` means the harness's own
-tinyMMLU was loaded instead of the repo-owned task.
+tinyMMLU was loaded instead of the repo-owned task; a `Metric <m> missing
+from <task> results` line after the requests have run means
+`training/eval/tasks.yaml` spells a key differently from the harness.
 
 Observed:
 
@@ -3396,6 +3421,326 @@ during the first lm-eval's torch import, and the `Found orphan containers`
 WARN of every compose run. One observation, no row: `holdout.load_model`
 passes `torch_dtype`, which transformers now deprecates in favour of
 `dtype`; it loaded in bf16 regardless, as the records show.
+
+Second evaluation attempt (2026-09-25; the probes verified, the base's
+lm-eval superseded by KB-94). The precondition block as committed after
+the first attempt, then the base side of the lm-eval block, pasted
+verbatim; the merged side was not started:
+
+```
+➜  ai-experiments git:(SFT-verification-2) set -o pipefail
+cd ~/workspace/ai-experiments && git pull origin SFT-verification-2 && git log -1 --oneline
+make train-build
+From https://github.com/alejandroJaramillo87/ai-experiments
+ * branch            SFT-verification-2 -> FETCH_HEAD
+Already up to date.
+Building training image...
+MAX_JOBS=4 NVCC_THREADS=2 docker compose -f docker-compose.training.yaml build
+[+] Building 0.5s (40/40) FINISHED
+ => [internal] load local bake definitions                                                                                                                                  0.0s
+ => => reading from stdin 1.71kB                                                                                                                                            0.0s
+ => [prepare internal] load build definition from Dockerfile.training                                                                                                       0.0s
+ => => transferring dockerfile: 7.51kB                                                                                                                                      0.0s
+ => [export internal] load build definition from Dockerfile.export                                                                                                          0.0s
+ => => transferring dockerfile: 3.01kB                                                                                                                                      0.0s
+ => [training internal] load metadata for docker.io/nvidia/cuda:13.0.2-cudnn-devel-ubuntu24.04                                                                              0.3s
+ => [export internal] load metadata for ghcr.io/astral-sh/uv:0.11.28                                                                                                        0.3s
+ => [export internal] load metadata for docker.io/library/ubuntu:24.04                                                                                                      0.3s
+ => [training internal] load .dockerignore                                                                                                                                  0.0s
+ => => transferring context: 1.73kB                                                                                                                                         0.0s
+ => [export stage-1 1/9] FROM docker.io/library/ubuntu:24.04@sha256:008173c23f95b170204355c12626cb5a965d779a7e1283b09e9cffbb1bf33ca3                                        0.0s
+ => [prepare uv 1/1] FROM ghcr.io/astral-sh/uv:0.11.28@sha256:0f36cb9361a3346885ca3677e3767016687b5a170c1a6b88465ec14aefec90aa                                              0.0s
+ => CACHED [export stage-1 2/9] RUN apt-get update &&     apt-get install -y --no-install-recommends         git         ca-certificates         python3.12         python  0.0s
+ => CACHED [export stage-1 3/9] COPY --from=uv /uv /uvx /usr/local/bin/                                                                                                     0.0s
+ => CACHED [export stage-1 4/9] RUN uv venv /opt/venv --python 3.12                                                                                                         0.0s
+ => CACHED [export stage-1 5/9] RUN --mount=type=cache,target=/root/.cache/uv     uv pip install --index-url https://download.pytorch.org/whl/cpu torch==2.13.0 &&     uv   0.0s
+ => CACHED [export stage-1 6/9] RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin -c "Application User" appuser                                     0.0s
+ => CACHED [export stage-1 7/9] RUN mkdir -p /app/cache /app/logs && chown -R appuser:appuser /app                                                                          0.0s
+ => CACHED [export stage-1 8/9] WORKDIR /app                                                                                                                                0.0s
+ => CACHED [export stage-1 9/9] RUN python -c "import torch, transformers, peft, safetensors, omegaconf, xxhash"                                                            0.0s
+ => [training internal] load build context                                                                                                                                  0.0s
+ => => transferring context: 7.39kB                                                                                                                                         0.0s
+ => [prepare stage-1  1/16] FROM docker.io/nvidia/cuda:13.0.2-cudnn-devel-ubuntu24.04@sha256:e071e85c52ad91fc9ea24158ff5330876b2d1a5c4ac83ccc6066976835873c01               0.0s
+ => [export] exporting to image                                                                                                                                             0.0s
+ => => exporting layers                                                                                                                                                     0.0s
+ => => writing image sha256:84c03bf6d68e4b6c1794365545ddcab077851ac24fe7de5478e15569d1b1900a                                                                                0.0s
+ => => naming to docker.io/library/ai-experiments-export                                                                                                                    0.0s
+ => CACHED [prepare stage-1  2/16] RUN apt-get update &&     apt-get install -y --no-install-recommends --allow-change-held-packages         build-essential         gcc g  0.0s
+ => CACHED [prepare stage-1  3/16] COPY --from=uv /uv /uvx /usr/local/bin/                                                                                                  0.0s
+ => CACHED [prepare stage-1  4/16] RUN uv venv /opt/venv --python 3.12                                                                                                      0.0s
+ => CACHED [prepare stage-1  5/16] COPY pyproject.toml uv.lock ./                                                                                                           0.0s
+ => CACHED [prepare stage-1  6/16] RUN --mount=type=cache,target=/root/.cache/uv     MAX_JOBS=4 NVCC_THREADS=2     DS_BUILD_CPU_ADAM=1 DS_BUILD_UTILS=1     CFLAGS="-march  0.0s
+ => CACHED [prepare stage-1  7/16] RUN mkdir -p /opt/nltk_data/tokenizers &&     curl -fsSL -o /tmp/punkt_tab.zip "https://raw.githubusercontent.com/nltk/nltk_data/gh-pag  0.0s
+ => CACHED [prepare stage-1  8/16] RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin -c "Application User" appuser                                  0.0s
+ => CACHED [prepare stage-1  9/16] RUN mkdir -p /app/cache /app/logs && chown -R appuser:appuser /app                                                                       0.0s
+ => CACHED [prepare stage-1 10/16] WORKDIR /app                                                                                                                             0.0s
+ => CACHED [prepare stage-1 11/16] COPY --chown=appuser:appuser common ./common                                                                                             0.0s
+ => CACHED [prepare stage-1 12/16] COPY --chown=appuser:appuser training ./training                                                                                         0.0s
+ => CACHED [prepare stage-1 13/16] COPY --chown=appuser:appuser scripts/training ./scripts/training                                                                         0.0s
+ => CACHED [prepare stage-1 14/16] COPY --chown=appuser:appuser docker/training/entrypoint.sh /app/entrypoint.sh                                                            0.0s
+ => CACHED [prepare stage-1 15/16] RUN chmod +x /app/entrypoint.sh                                                                                                          0.0s
+ => CACHED [prepare stage-1 16/16] RUN python -m training smoke --build                                                                                                     0.0s
+ => [training] exporting to image                                                                                                                                           0.0s
+ => => exporting layers                                                                                                                                                     0.0s
+ => => writing image sha256:934703344a5ec85b083f2efe8a2dafc9f155f5aeed9557d728a28a9b05cb007e                                                                                0.0s
+ => => naming to docker.io/library/ai-experiments-training                                                                                                                  0.0s
+ => [prepare] exporting to image                                                                                                                                            0.0s
+ => => exporting layers                                                                                                                                                     0.0s
+ => => writing image sha256:d2bdb27bda84656ebcd266dbf28a9a3c1d3bbdcfeb6015db10c7608b4ced5ad8                                                                                0.0s
+ => => naming to docker.io/library/ai-experiments-prepare                                                                                                                   0.0s
+ => [export] resolving provenance for metadata file                                                                                                                         0.0s
+ => [training] resolving provenance for metadata file                                                                                                                       0.0s
+ => [prepare] resolving provenance for metadata file                                                                                                                        0.0s
+[+] build 3/3
+ ✔ Image ai-experiments-export   Built                                                                                                                                       0.5s
+ ✔ Image ai-experiments-training Built                                                                                                                                       0.5s
+ ✔ Image ai-experiments-prepare  Built                                                                                                                                       0.5s
+Training image built.
+➜  ai-experiments git:(SFT-verification-2) docker compose -f docker-compose.training.yaml run --rm training \
+    python -c "from datasets import load_dataset; [print(d, load_dataset(d, n)) for d, n in [('google/IFEval', None), ('openai/gsm8k', 'main'), ('tinyBenchmarks/tinyMMLU', 'all'), ('Rowan/hellaswag', None)]]"
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-7a342d4a9dd0 Creating
+Container ai-experiments-training-run-7a342d4a9dd0 Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -c from datasets import load_dataset; [print(d, load_dataset(d, n)) for d, n in [('google/IFEval', None), ('openai/gsm8k', 'main'), ('tinyBenchmarks/tinyMMLU', 'all'), ('Rowan/hellaswag', None)]]
+Using the latest cached version of the dataset since google/IFEval couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'default' at /app/cache/datasets/google___if_eval/default/0.0.0/966cd89545d6b6acfd7638bc708b98261ca58e84 (last modified on Fri Sep 25 19:34:02 2026).
+google/IFEval DatasetDict({
+    train: Dataset({
+        features: ['key', 'prompt', 'instruction_id_list', 'kwargs'],
+        num_rows: 541
+    })
+})
+Using the latest cached version of the dataset since openai/gsm8k couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'main' at /app/cache/datasets/openai___gsm8k/main/0.0.0/740312add88f781978c0658806c59bc2815b9866 (last modified on Fri Sep 25 19:34:09 2026).
+openai/gsm8k DatasetDict({
+    train: Dataset({
+        features: ['question', 'answer'],
+        num_rows: 7473
+    })
+    test: Dataset({
+        features: ['question', 'answer'],
+        num_rows: 1319
+    })
+})
+Using the latest cached version of the dataset since tinyBenchmarks/tinyMMLU couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'all' at /app/cache/datasets/tinyBenchmarks___tiny_mmlu/all/0.0.0/cd6a8ee9e1e6f3f18f683535f6c096c386a85da3 (last modified on Fri Sep 25 19:35:56 2026).
+tinyBenchmarks/tinyMMLU DatasetDict({
+    test: Dataset({
+        features: ['question', 'subject', 'choices', 'answer', 'input_formatted'],
+        num_rows: 100
+    })
+    dev: Dataset({
+        features: ['question', 'subject', 'choices', 'answer', 'input_formatted'],
+        num_rows: 285
+    })
+})
+Using the latest cached version of the dataset since Rowan/hellaswag couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'default' at /app/cache/datasets/Rowan___hellaswag/default/0.0.0/218ec52e09a7e7462a5400043bb9a69a41d06b76 (last modified on Fri Sep 25 19:36:04 2026).
+Rowan/hellaswag DatasetDict({
+    train: Dataset({
+        features: ['ind', 'activity_label', 'ctx_a', 'ctx_b', 'ctx', 'endings', 'source_id', 'split', 'split_type', 'label'],
+        num_rows: 39905
+    })
+    test: Dataset({
+        features: ['ind', 'activity_label', 'ctx_a', 'ctx_b', 'ctx', 'endings', 'source_id', 'split', 'split_type', 'label'],
+        num_rows: 10003
+    })
+    validation: Dataset({
+        features: ['ind', 'activity_label', 'ctx_a', 'ctx_b', 'ctx', 'endings', 'source_id', 'split', 'split_type', 'label'],
+        num_rows: 10042
+    })
+})
+➜  ai-experiments git:(SFT-verification-2) docker compose -f docker-compose.training.yaml run --rm training \
+    python -c "from lm_eval.tasks.ifeval import instructions_util as u; print(u.count_sentences('One sentence. Two sentences.'))"
+echo "exit=$?"
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-4ae48b05a724 Creating
+Container ai-experiments-training-run-4ae48b05a724 Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -c from lm_eval.tasks.ifeval import instructions_util as u; print(u.count_sentences('One sentence. Two sentences.'))
+2
+exit=0
+➜  ai-experiments git:(SFT-verification-2) set -o pipefail
+docker compose -f docker-compose.training.yaml run --rm training \
+    python -m training eval-lmeval --model /app/models/hf/gemma-4-E2B --limit 20 \
+    --out /mnt/ai-data/training/eval/ft5-lmeval-base.json
+echo "exit=$?"
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-training-run-fe90af220f94 Creating
+Container ai-experiments-training-run-fe90af220f94 Created
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training eval-lmeval --model /app/models/hf/gemma-4-E2B --limit 20 --out /mnt/ai-data/training/eval/ft5-lmeval-base.json
+[RUN] lm-evaluation-harness: /app/models/hf/gemma-4-E2B
+Loading weights: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1951/1951 [00:00<00:00, 3793.07it/s]
+Using the latest cached version of the dataset since google/IFEval couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'default' at /app/cache/datasets/google___if_eval/default/0.0.0/966cd89545d6b6acfd7638bc708b98261ca58e84 (last modified on Fri Sep 25 19:34:02 2026).
+Using the latest cached version of the dataset since openai/gsm8k couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'main' at /app/cache/datasets/openai___gsm8k/main/0.0.0/740312add88f781978c0658806c59bc2815b9866 (last modified on Fri Sep 25 19:34:09 2026).
+Using the latest cached version of the dataset since tinyBenchmarks/tinyMMLU couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'all' at /app/cache/datasets/tinyBenchmarks___tiny_mmlu/all/0.0.0/cd6a8ee9e1e6f3f18f683535f6c096c386a85da3 (last modified on Fri Sep 25 19:35:56 2026).
+Using the latest cached version of the dataset since Rowan/hellaswag couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'default' at /app/cache/datasets/Rowan___hellaswag/default/0.0.0/218ec52e09a7e7462a5400043bb9a69a41d06b76 (last modified on Fri Sep 25 19:36:04 2026).
+Map: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 39905/39905 [00:01<00:00, 25031.48 examples/s]
+Map: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 10042/10042 [00:00<00:00, 16382.73 examples/s]
+100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 20/20 [00:00<00:00, 125955.08it/s]
+100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 20/20 [00:00<00:00, 772.39it/s]
+100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 20/20 [00:00<00:00, 9205.10it/s]
+100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 20/20 [00:00<00:00, 4751.68it/s]
+Running generate_until requests:   0%|                                                                                                                   | 0/40 [00:00<?, ?it/s]Passed argument batch_size = auto. Detecting largest batch size
+[W925 21:06:00.714377720 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 3221225472 bytes (free: 2256338944, total: 33668726784).
+[W925 21:06:01.065873899 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 68719476736 bytes (free: 1383923712, total: 33668726784).
+[W925 21:06:03.032230568 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 68719476736 bytes (free: 15682306048, total: 33668726784).
+[W925 21:06:05.776509653 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 2868903936 bytes (free: 2346516480, total: 33668726784).
+[W925 21:06:06.943198847 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 61203283968 bytes (free: 1570570240, total: 33668726784).
+[W925 21:06:08.723751930 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 61203283968 bytes (free: 11498487808, total: 33668726784).
+[W925 21:06:11.355036757 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 54760833024 bytes (free: 1438449664, total: 33668726784).
+[W925 21:06:12.958278178 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 54760833024 bytes (free: 14801502208, total: 33668726784).
+[W925 21:06:15.310114095 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 48318382080 bytes (free: 5924257792, total: 33668726784).
+[W925 21:06:16.719753183 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 48318382080 bytes (free: 15682306048, total: 33668726784).
+[W925 21:06:18.832494662 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 42949672960 bytes (free: 7792820224, total: 33668726784).
+[W925 21:06:19.100000285 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 42949672960 bytes (free: 16489709568, total: 33668726784).
+[W925 21:06:21.025130734 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 38654705664 bytes (free: 9388752896, total: 33668726784).
+[W925 21:06:23.164918684 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 38654705664 bytes (free: 16783310848, total: 33668726784).
+[W925 21:06:24.913049520 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 34359738368 bytes (free: 10472980480, total: 33668726784).
+[W925 21:06:25.929648830 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 34359738368 bytes (free: 17737515008, total: 33668726784).
+[W925 21:06:27.490761794 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 30064771072 bytes (free: 12215713792, total: 33668726784).
+[W925 21:06:28.380785457 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 30064771072 bytes (free: 18324717568, total: 33668726784).
+[W925 21:06:29.804138535 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 26843545600 bytes (free: 14652604416, total: 33668726784).
+[W925 21:06:30.592420185 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 26843545600 bytes (free: 16489709568, total: 33668726784).
+[W925 21:06:31.877403987 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 23622320128 bytes (free: 14872805376, total: 33668726784).
+[W925 21:06:32.572514188 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 23622320128 bytes (free: 17223712768, total: 33668726784).
+[W925 21:06:33.724368617 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 20401094656 bytes (free: 15827009536, total: 33668726784).
+[W925 21:06:34.324520215 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 20401094656 bytes (free: 17884315648, total: 33668726784).
+[W925 21:06:35.383509774 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 18253611008 bytes (free: 16634413056, total: 33668726784).
+[W925 21:06:35.924653095 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 18253611008 bytes (free: 217907200, total: 33668726784).
+[W925 21:06:35.924718308 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 18253611008 bytes (free: 217907200, total: 33668726784).
+[W925 21:06:36.886452457 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 16106127360 bytes (free: 213712896, total: 33668726784).
+[W925 21:06:37.465293213 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 16106127360 bytes (free: 3080519680, total: 33668726784).
+[W925 21:06:38.334766903 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13958643712 bytes (free: 3076325376, total: 33668726784).
+[W925 21:06:38.831127259 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13958643712 bytes (free: 3080519680, total: 33668726784).
+[W925 21:06:39.608994205 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11811160064 bytes (free: 3076325376, total: 33668726784).
+[W925 21:06:39.027831010 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11811160064 bytes (free: 3080519680, total: 33668726784).
+[W925 21:06:40.708729507 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9663676416 bytes (free: 3078422528, total: 33668726784).
+[W925 21:06:40.048489258 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9663676416 bytes (free: 3080519680, total: 33668726784).
+[W925 21:06:42.407633693 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8589934592 bytes (free: 3078422528, total: 33668726784).
+[W925 21:06:42.710318434 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8589934592 bytes (free: 3080519680, total: 33668726784).
+[W925 21:06:43.920834268 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7516192768 bytes (free: 3078422528, total: 33668726784).
+[W925 21:06:44.182564864 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7516192768 bytes (free: 3080519680, total: 33668726784).
+[W925 21:06:45.241738864 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6442450944 bytes (free: 3078422528, total: 33668726784).
+[W925 21:06:45.463022332 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6442450944 bytes (free: 3080519680, total: 33668726784).
+Determined Largest batch size: 5
+Running generate_until requests: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████| 40/40 [02:27<00:00,  3.68s/it]
+Tokenizing inputs: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 160/160 [00:00<00:00, 2081.83it/s]
+Running loglikelihood requests:   0%|                                                                                                                   | 0/160 [00:00<?, ?it/s]Passed argument batch_size = auto:1. Detecting largest batch size
+[W925 21:08:28.922504488 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 65062043648 bytes (free: 287113216, total: 33668726784).
+[W925 21:08:30.774174447 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 65062043648 bytes (free: 16055599104, total: 33668726784).
+[W925 21:08:33.600489690 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 57946406912 bytes (free: 708640768, total: 33668726784).
+[W925 21:08:35.268910611 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 57946406912 bytes (free: 12094078976, total: 33668726784).
+[W925 21:08:37.826004307 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 51847888896 bytes (free: 2568814592, total: 33668726784).
+[W925 21:08:39.324522111 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 51847888896 bytes (free: 15223029760, total: 33668726784).
+[W925 21:08:41.582394902 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 45747273728 bytes (free: 6813450240, total: 33668726784).
+[W925 21:08:42.932656716 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 45747273728 bytes (free: 15638265856, total: 33668726784).
+[W925 21:08:44.973551415 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 40663777280 bytes (free: 8166113280, total: 33668726784).
+[W925 21:08:46.171584697 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 40663777280 bytes (free: 14080081920, total: 33668726784).
+[W925 21:08:47.033116314 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 36597399552 bytes (free: 11573985280, total: 33668726784).
+[W925 21:08:48.111723667 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 36597399552 bytes (free: 15539699712, total: 33668726784).
+[W925 21:08:50.797818687 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 32531021824 bytes (free: 11785797632, total: 33668726784).
+[W925 21:08:51.759529006 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 32531021824 bytes (free: 18001756160, total: 33668726784).
+[W925 21:08:53.266897176 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 28464644096 bytes (free: 12771459072, total: 33668726784).
+[W925 21:08:53.107484452 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 28464644096 bytes (free: 18280677376, total: 33668726784).
+[W925 21:08:55.482627102 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 25415385088 bytes (free: 13608222720, total: 33668726784).
+[W925 21:08:56.232408964 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 25415385088 bytes (free: 16542138368, total: 33668726784).
+[W925 21:08:57.478268561 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 22366126080 bytes (free: 15009120256, total: 33668726784).
+[W925 21:08:57.142554546 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 22366126080 bytes (free: 19459276800, total: 33668726784).
+[W925 21:08:59.255338518 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 19316867072 bytes (free: 16814768128, total: 33668726784).
+[W925 21:08:59.823393854 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 19316867072 bytes (free: 18138071040, total: 33668726784).
+[W925 21:09:00.854284963 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 17282629632 bytes (free: 16953180160, total: 33668726784).
+[W925 21:09:01.368560944 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 17282629632 bytes (free: 1411186688, total: 33668726784).
+[W925 21:09:01.368630175 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 17282629632 bytes (free: 1411186688, total: 33668726784).
+[W925 21:09:02.309101629 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 15250489344 bytes (free: 1406992384, total: 33668726784).
+[W925 21:09:02.862295982 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 15250489344 bytes (free: 4124901376, total: 33668726784).
+[W925 21:09:03.715976864 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13216251904 bytes (free: 4120707072, total: 33668726784).
+[W925 21:09:04.186027853 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13216251904 bytes (free: 4124901376, total: 33668726784).
+[W925 21:09:04.940982814 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11184111616 bytes (free: 4120707072, total: 33668726784).
+[W925 21:09:05.337372944 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11184111616 bytes (free: 4124901376, total: 33668726784).
+[W925 21:09:05.005400304 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9149874176 bytes (free: 4122804224, total: 33668726784).
+[W925 21:09:06.327367055 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9149874176 bytes (free: 4124901376, total: 33668726784).
+[W925 21:09:07.630512662 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8132755456 bytes (free: 4122804224, total: 33668726784).
+[W925 21:09:07.916204904 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8132755456 bytes (free: 4124901376, total: 33668726784).
+[W925 21:09:08.098506353 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7117733888 bytes (free: 4122804224, total: 33668726784).
+[W925 21:09:09.350117567 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7117733888 bytes (free: 4124901376, total: 33668726784).
+[W925 21:09:10.365576045 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6100615168 bytes (free: 4122804224, total: 33668726784).
+[W925 21:09:10.572704740 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6100615168 bytes (free: 4124901376, total: 33668726784).
+Determined largest batch size: 5
+Running loglikelihood requests: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████| 160/160 [00:48<00:00,  3.28it/s]
+fatal: not a git repository (or any of the parent directories): .git
+[ERROR] Metric prompt_level_strict_acc missing from ifeval results (available: alias, inst_level_loose_acc,none, inst_level_loose_acc_stderr,none, inst_level_strict_acc,none, inst_level_strict_acc_stderr,none, name, prompt_level_loose_acc,none, prompt_level_loose_acc_stderr,none, prompt_level_strict_acc,none, prompt_level_strict_acc_stderr,none, sample_len)
+  Solution: fix the metric key in tasks.yaml
+
+exit=1
+```
+
+Judgement. Stage 1 met every criterion. `make train-build` exited 0 with
+every layer cached, the nltk layer included (`CACHED [prepare stage-1
+7/16] RUN mkdir -p /opt/nltk_data/tokenizers && curl ...`), so the image
+the first attempt ran was already the fixed one and only the compose
+mount had changed. The dataset probe printed the four `DatasetDict`s with
+the staged split counts (541; 7473 and 1319; 100 and 285; 39905, 10003
+and 10042), each after the `Using the latest cached version` warning and
+a `Found the latest cached dataset configuration` line naming a path
+under `/app/cache/datasets`, which is KB-92's second fix holding: the
+datasets half is what `datasets` reads offline. The sentence-count probe
+printed `2`, `exit=0`, with no `[nltk_data]` line and no `Downloaded
+punkt_tab` line, which is KB-93's nltk half holding and settles the
+point the entry could not verify from the sandbox: nltk 3.10 serves the
+task's `punkt` request from `punkt_tab`. The base `eval-lmeval` then
+loaded all four tasks (the same four cache lines, then hellaswag's two
+`Map:` passes writing its processed docs beside the arrow files, the
+reason the mount is read-write), with no `ModuleNotFoundError`, so
+KB-93's tinyMMLU half held too, and ran to scoring: 40 generation
+requests (gsm8k and ifeval, 2:27 at batch 5) and 160 loglikelihood
+requests (0:48). It failed in the tree's own extraction, `exit=1`, no
+record written: `Metric prompt_level_strict_acc missing from ifeval
+results`, the available keys all carrying a `,none` suffix. That is
+KB-94: lm-eval keys every result as `<metric>,<filter>`, `none` being
+the default filter's name, and `tasks.yaml` declared the three
+unfiltered keys bare; hellaswag and `tinyMMLU_acc` would have been
+refused next, and only gsm8k's `exact_match,strict-match` was right.
+The harness's work was correct and complete; the record was refused at
+the last step, so the run is superseded, not failed on a criterion.
+Three observations, no row. The `batch_size=auto` search printed about
+forty `CUDACachingAllocator ... memory allocation failed with OOM`
+warnings per phase before `Determined Largest batch size: 5`: the
+harness probes descending batch sizes at the model's full `max_length`
+(131072 for E2B, so the first probes ask for 68 GB of a 33 GB card),
+the warnings are torch's, and the run proceeded; a `max_length` in the
+model arguments would silence them and is a separate decision. `fatal:
+not a git repository` is the harness's `get_git_commit_hash` running
+`git describe` in `/app`, which is no repository; the exception is
+caught and the hash recorded as absent. The whole base pass took under
+four minutes at `--limit 20`, model load included.
 
 Status: PENDING
 
