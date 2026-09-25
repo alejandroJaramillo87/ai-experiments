@@ -6,13 +6,17 @@ depends on most: a wrong template or a wrong mask destroys a run while its loss 
 healthy, so every mask boundary here is known by construction and pinned by a golden test.
 Design record: [the F1 investigation](../investigations/f1_sft_data_investigation.md).
 
-## Table of contents
+## Table of Contents
 
-- [Record format](#record-format)
-- [Templates and masks](#templates-and-masks)
-- [Preparing a dataset](#preparing-a-dataset)
-- [Loading and the held-out split](#loading-and-the-held-out-split)
-- [Modules and tests](#modules-and-tests)
+<!-- toc:start -->
+
+1. [Record format](#record-format)
+2. [Templates and masks](#templates-and-masks)
+3. [Preparing a dataset](#preparing-a-dataset)
+4. [Loading and the held-out split](#loading-and-the-held-out-split)
+5. [Modules and tests](#modules-and-tests)
+
+<!-- toc:end -->
 
 ## Record format
 

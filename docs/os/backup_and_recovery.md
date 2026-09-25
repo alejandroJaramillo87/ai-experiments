@@ -18,6 +18,38 @@ Expected mapping on this workstation: `nvme0n1` is 931.5G, model `Samsung SSD 99
 `Samsung SSD 990 PRO 2TB`, with `nvme1n1p2` at `/mnt/ai-data`. If the output disagrees,
 stop and use the node the output reports.
 
+## Table of Contents
+
+<!-- toc:start -->
+
+1. [Goal](#goal)
+2. [What You Need](#what-you-need)
+3. [Step 1: Prepare USB Drives](#step-1-prepare-usb-drives)
+   1. [Backup Storage USB (1TB)](#backup-storage-usb-1tb)
+   2. [Clonezilla Live USB](#clonezilla-live-usb)
+4. [Step 2: Create System Backup](#step-2-create-system-backup)
+   1. [Boot into Clonezilla Live](#boot-into-clonezilla-live)
+   2. [Navigate Clonezilla Menus](#navigate-clonezilla-menus)
+   3. [Configure Backup Operation](#configure-backup-operation)
+   4. [Mount Backup Drive](#mount-backup-drive)
+   5. [Create Disk Image](#create-disk-image)
+   6. [Start Backup Process](#start-backup-process)
+5. [Step 3: System Recovery Options](#step-3-system-recovery-options)
+   1. [Method 1: Normal System Recovery](#method-1-normal-system-recovery)
+   2. [Method 2: Emergency BIOS-Level Recovery](#method-2-emergency-bios-level-recovery)
+6. [Step 4: Verification and Maintenance](#step-4-verification-and-maintenance)
+   1. [Verify Successful Backup](#verify-successful-backup)
+   2. [Regular Backup Schedule](#regular-backup-schedule)
+   3. [Image Management](#image-management)
+7. [Quick Reference Commands](#quick-reference-commands)
+   1. [Backup Creation Timeline](#backup-creation-timeline)
+   2. [Restoration Timeline](#restoration-timeline)
+   3. [Drive Identification Help](#drive-identification-help)
+8. [Important Notes](#important-notes)
+9. [Emergency Recovery Capability](#emergency-recovery-capability)
+
+<!-- toc:end -->
+
 ## Goal
 Create a complete backup of your Ubuntu 24.04 system (nvme0n1) on a 1TB USB drive that can be restored at the BIOS level, even when the OS and UEFI boot are corrupted.
 

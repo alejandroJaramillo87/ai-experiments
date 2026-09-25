@@ -45,13 +45,17 @@ tokens/second comparison, mirroring the repository's pin-then-fix-then-update
 discipline. Target hardware is the AMD Ryzen 9950X (16 Zen 5 cores, AVX-512,
 DDR5-6000).
 
-## Table of contents
+## Table of Contents
 
-- [The determinism constraint](#the-determinism-constraint)
-- [Tier A: order-of-magnitude candidates](#tier-a-order-of-magnitude-candidates)
-- [Tier B: measured moderate wins](#tier-b-measured-moderate-wins)
-- [Tier C: situational](#tier-c-situational)
-- [Sequencing](#sequencing)
+<!-- toc:start -->
+
+1. [The determinism constraint](#the-determinism-constraint)
+2. [Tier A: order-of-magnitude candidates](#tier-a-order-of-magnitude-candidates)
+3. [Tier B: measured moderate wins](#tier-b-measured-moderate-wins)
+4. [Tier C: situational](#tier-c-situational)
+5. [Sequencing](#sequencing)
+
+<!-- toc:end -->
 
 ## The determinism constraint
 

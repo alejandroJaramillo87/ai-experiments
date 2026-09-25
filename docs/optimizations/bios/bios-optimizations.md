@@ -8,20 +8,22 @@ This documentation provides detailed BIOS/UEFI firmware configuration settings s
 
 ## Table of Contents
 
-- [BIOS Optimizations Guide](#bios-optimizations-guide)
-  - [Table of Contents](#table-of-contents)
-  - [Implementation Overview](#implementation-overview)
-    - [Latency vs Throughput: A Critical Trade-off](#latency-vs-throughput-a-critical-trade-off)
-  - [Production-Validated Configuration](#production-validated-configuration)
-    - [Validated CPU Settings](#validated-cpu-settings)
-    - [Validated Memory Settings](#validated-memory-settings)
-    - [Benchmark Validation Results](#benchmark-validation-results)
-  - [BIOS Performance Optimizations](#bios-performance-optimizations)
-    - [CPU Performance Configuration](#cpu-performance-configuration)
-    - [Memory Performance Optimization](#memory-performance-optimization)
-    - [AVX-512 Optimization (Zen 5 Advantage)](#avx-512-optimization-zen-5-advantage)
-    - [GPU Performance Configuration](#gpu-performance-configuration)
-  - [Reference Implementation](#reference-implementation)
+<!-- toc:start -->
+
+1. [Implementation Overview](#implementation-overview)
+   1. [Latency vs Throughput: A Critical Trade-off](#latency-vs-throughput-a-critical-trade-off)
+2. [Production-Validated Configuration](#production-validated-configuration)
+   1. [Validated CPU Settings](#validated-cpu-settings)
+   2. [Validated Memory Settings](#validated-memory-settings)
+   3. [Benchmark Validation Results](#benchmark-validation-results)
+3. [BIOS Performance Optimizations](#bios-performance-optimizations)
+   1. [CPU Performance Configuration](#cpu-performance-configuration)
+   2. [Memory Performance Optimization](#memory-performance-optimization)
+   3. [AVX-512 Optimization (Zen 5 Advantage)](#avx-512-optimization-zen-5-advantage)
+   4. [GPU Performance Configuration](#gpu-performance-configuration)
+4. [Reference Implementation](#reference-implementation)
+
+<!-- toc:end -->
 
 ## Implementation Overview
 

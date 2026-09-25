@@ -15,14 +15,18 @@ design this document builds on) and
 (the agent and chat frames the live-interpretability sections observe
 through).
 
-## Table of contents
+## Table of Contents
 
-- [The ladder, inverted](#the-ladder-inverted)
-- [Sub-1B from-scratch: the interpretability payoff](#sub-1b-from-scratch-the-interpretability-payoff)
-- [Inference-time interpretability on the CPU backend](#inference-time-interpretability-on-the-cpu-backend)
-- [The CUDA backend](#the-cuda-backend)
-- [Net effect on the interpretability roadmap](#net-effect-on-the-interpretability-roadmap)
-- [Sequencing](#sequencing)
+<!-- toc:start -->
+
+1. [The ladder, inverted](#the-ladder-inverted)
+2. [Sub-1B from-scratch: the interpretability payoff](#sub-1b-from-scratch-the-interpretability-payoff)
+3. [Inference-time interpretability on the CPU backend](#inference-time-interpretability-on-the-cpu-backend)
+4. [The CUDA backend](#the-cuda-backend)
+5. [Net effect on the interpretability roadmap](#net-effect-on-the-interpretability-roadmap)
+6. [Sequencing](#sequencing)
+
+<!-- toc:end -->
 
 ## The ladder, inverted
 

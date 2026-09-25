@@ -8,6 +8,21 @@ how work is done here — plus pointers to the document that owns each topic. An
 stating a count, a port, a path, or a version belongs to the file that owns that fact, not
 here. A fact stated in two places is a fact that will disagree with itself.
 
+## Table of Contents
+
+<!-- toc:start -->
+
+1. [Execution environment (agents)](#execution-environment-agents)
+2. [Operating rules](#operating-rules)
+3. [Where things are](#where-things-are)
+4. [Tooling conventions](#tooling-conventions)
+5. [Git and GitHub conventions](#git-and-github-conventions)
+6. [Code navigation](#code-navigation)
+7. [Core principles](#core-principles)
+8. [Style guides](#style-guides)
+
+<!-- toc:end -->
+
 ## Execution environment (agents)
 
 **A contained agent session (`make agent-sandbox`) has no access to the host.** Inside it

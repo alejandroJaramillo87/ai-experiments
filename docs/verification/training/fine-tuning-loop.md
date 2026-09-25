@@ -219,20 +219,24 @@ or inference service the entry does not name is active.
 
 ## Table of Contents
 
+<!-- toc:start -->
+
 1. [FT.preconditions Preconditions](#ftpreconditions-preconditions)
-1. [FT.image-smoke Training image and smoke](#ftimage-smoke-training-image-and-smoke)
-1. [FT.smoke-dataset Prepare the smoke SFT dataset](#ftsmoke-dataset-prepare-the-smoke-sft-dataset)
-1. [FT.recipe-gates Recipe gates: preflight and validate](#ftrecipe-gates-recipe-gates-preflight-and-validate)
-1. [FT.calibrate-qlora Step the QLoRA recipe on the GPU (KB-03)](#ftcalibrate-qlora-step-the-qlora-recipe-on-the-gpu-kb-03)
-1. [FT.train-resume Train, interrupt, resume](#fttrain-resume-train-interrupt-resume)
-1. [FT.export-merged Export the merged HF directory and load it in the harness](#ftexport-merged-export-the-merged-hf-directory-and-load-it-in-the-harness)
-1. [FT.heldout-eval Held-out loss and lm-eval on base and merged](#ftheldout-eval-held-out-loss-and-lm-eval-on-base-and-merged)
-1. [FT.eval-ft eval-ft with both sides identified](#fteval-ft-eval-ft-with-both-sides-identified)
-1. [FT.organisms Organisms: null and taboo](#ftorganisms-organisms-null-and-taboo)
-1. [FT.capture Activation capture on base and organism](#ftcapture-activation-capture-on-base-and-organism)
-1. [FT.probe Probe train, export, and score in the harness](#ftprobe-probe-train-export-and-score-in-the-harness)
-1. [FT.steering Steering vector from the organism capture](#ftsteering-steering-vector-from-the-organism-capture)
-1. [FT.hardware-test The hardware test](#fthardware-test-the-hardware-test)
+2. [FT.image-smoke Training image and smoke](#ftimage-smoke-training-image-and-smoke)
+3. [FT.smoke-dataset Prepare the smoke SFT dataset](#ftsmoke-dataset-prepare-the-smoke-sft-dataset)
+4. [FT.recipe-gates Recipe gates: preflight and validate](#ftrecipe-gates-recipe-gates-preflight-and-validate)
+5. [FT.calibrate-qlora Step the QLoRA recipe on the GPU (KB-03)](#ftcalibrate-qlora-step-the-qlora-recipe-on-the-gpu-kb-03)
+6. [FT.train-resume Train, interrupt, resume](#fttrain-resume-train-interrupt-resume)
+7. [FT.export-merged Export the merged HF directory and load it in the harness](#ftexport-merged-export-the-merged-hf-directory-and-load-it-in-the-harness)
+8. [FT.heldout-eval Held-out loss and lm-eval on base and merged](#ftheldout-eval-held-out-loss-and-lm-eval-on-base-and-merged)
+9. [FT.eval-ft eval-ft with both sides identified](#fteval-ft-eval-ft-with-both-sides-identified)
+10. [FT.organisms Organisms: null and taboo](#ftorganisms-organisms-null-and-taboo)
+11. [FT.capture Activation capture on base and organism](#ftcapture-activation-capture-on-base-and-organism)
+12. [FT.probe Probe train, export, and score in the harness](#ftprobe-probe-train-export-and-score-in-the-harness)
+13. [FT.steering Steering vector from the organism capture](#ftsteering-steering-vector-from-the-organism-capture)
+14. [FT.hardware-test The hardware test](#fthardware-test-the-hardware-test)
+
+<!-- toc:end -->
 
 ## FT.preconditions Preconditions
 

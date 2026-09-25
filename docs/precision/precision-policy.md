@@ -10,17 +10,22 @@ implicit.
 The code is the authority. Nothing below restates a value that a source file owns; every
 row names the file and the symbol so the fact can be re-read at the source.
 
-## Table of contents
+## Table of Contents
 
-- [Why bf16 is the house compute dtype](#why-bf16-is-the-house-compute-dtype)
-- [Concerns at a glance](#concerns-at-a-glance)
-- [Model compute and weights](#model-compute-and-weights)
-- [Activation storage on disk](#activation-storage-on-disk)
-- [Gradients and optimizer state](#gradients-and-optimizer-state)
-- [KV cache](#kv-cache)
-- [Quantization](#quantization)
-- [Cross-tier hazard: probes are fitted at a precision](#cross-tier-hazard-probes-are-fitted-at-a-precision)
-- [Widening and narrowing: which direction is lossy](#widening-and-narrowing-which-direction-is-lossy)
+<!-- toc:start -->
+
+1. [Why bf16 is the house compute dtype](#why-bf16-is-the-house-compute-dtype)
+2. [Concerns at a glance](#concerns-at-a-glance)
+3. [Model compute and weights](#model-compute-and-weights)
+   1. [The two allowed dtype sets in the training schema](#the-two-allowed-dtype-sets-in-the-training-schema)
+4. [Activation storage on disk](#activation-storage-on-disk)
+5. [Gradients and optimizer state](#gradients-and-optimizer-state)
+6. [KV cache](#kv-cache)
+7. [Quantization](#quantization)
+8. [Cross-tier hazard: probes are fitted at a precision](#cross-tier-hazard-probes-are-fitted-at-a-precision)
+9. [Widening and narrowing: which direction is lossy](#widening-and-narrowing-which-direction-is-lossy)
+
+<!-- toc:end -->
 
 ## Why bf16 is the house compute dtype
 

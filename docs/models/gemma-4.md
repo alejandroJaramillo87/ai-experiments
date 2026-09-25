@@ -15,27 +15,39 @@ Scope: the dense text models E2B, E4B, 12B, and 31B. The 26B mixture-of-experts 
 of scope. The vision and audio towers are documented structurally in
 [Modality towers](#modality-towers) but are not the subject of this document.
 
-## Table of contents
+## Table of Contents
 
-- [Provenance and pinned revisions](#provenance-and-pinned-revisions)
-- [Three code paths, not one family](#three-code-paths-not-one-family)
-- [Invariants across all four variants](#invariants-across-all-four-variants)
-- [Per-variant text configuration](#per-variant-text-configuration)
-- [Attention](#attention)
-- [Rotary position embeddings](#rotary-position-embeddings)
-- [E-series exclusive features](#e-series-exclusive-features)
-- [Per-layer input embeddings](#per-layer-input-embeddings)
-- [Cross-layer KV cache sharing](#cross-layer-kv-cache-sharing)
-- [The double-wide MLP](#the-double-wide-mlp)
-- [Tensor inventory](#tensor-inventory)
-- [Parameter accounting and memory](#parameter-accounting-and-memory)
-- [Tokenizer and special tokens](#tokenizer-and-special-tokens)
-- [Modality towers](#modality-towers)
-- [Traps and discrepancies](#traps-and-discrepancies)
-- [Resolved from upstream source](#resolved-from-upstream-source)
-- [Per-tier support](#per-tier-support)
-- [Open questions](#open-questions)
-- [Reproducing this document](#reproducing-this-document)
+<!-- toc:start -->
+
+1. [Provenance and pinned revisions](#provenance-and-pinned-revisions)
+2. [Three code paths, not one family](#three-code-paths-not-one-family)
+3. [Invariants across all four variants](#invariants-across-all-four-variants)
+4. [Per-variant text configuration](#per-variant-text-configuration)
+5. [Attention](#attention)
+6. [Rotary position embeddings](#rotary-position-embeddings)
+   1. [How `proportional` implements the partial rotation](#how-proportional-implements-the-partial-rotation)
+7. [E-series exclusive features](#e-series-exclusive-features)
+8. [Per-layer input embeddings](#per-layer-input-embeddings)
+   1. [The `per_layer` substring does not survive conversion](#the-per_layer-substring-does-not-survive-conversion)
+9. [Cross-layer KV cache sharing](#cross-layer-kv-cache-sharing)
+10. [The double-wide MLP](#the-double-wide-mlp)
+11. [Tensor inventory](#tensor-inventory)
+12. [Parameter accounting and memory](#parameter-accounting-and-memory)
+13. [Tokenizer and special tokens](#tokenizer-and-special-tokens)
+14. [Modality towers](#modality-towers)
+15. [Traps and discrepancies](#traps-and-discrepancies)
+16. [Resolved from upstream source](#resolved-from-upstream-source)
+   1. [The `proportional` rope type](#the-proportional-rope-type)
+   2. [`layer_scalar`](#layer_scalar)
+   3. [The per-layer embedding data path](#the-per-layer-embedding-data-path)
+   4. [The E4B shared-KV layer boundary](#the-e4b-shared-kv-layer-boundary)
+   5. [`attention_k_eq_v` semantics](#attention_k_eq_v-semantics)
+   6. [The shared-KV weight conflict](#the-shared-kv-weight-conflict)
+17. [Per-tier support](#per-tier-support)
+18. [Open questions](#open-questions)
+19. [Reproducing this document](#reproducing-this-document)
+
+<!-- toc:end -->
 
 ## Provenance and pinned revisions
 

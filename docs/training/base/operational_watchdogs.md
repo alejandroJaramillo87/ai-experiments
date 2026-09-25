@@ -6,14 +6,18 @@ every optimizer step, samples hardware telemetry from a background thread, and d
 the run's hardware telemetry source. NVML-based; DCGM is not used. Design record:
 [the D10 investigation](../investigations/d10_operational_watchdogs_investigation.md).
 
-## Table of contents
+## Table of Contents
 
-- [Signals and actions](#signals-and-actions)
-- [Configuration](#configuration)
-- [Actions in detail](#actions-in-detail)
-- [Emergency checkpoints](#emergency-checkpoints)
-- [Telemetry](#telemetry)
-- [Testing](#testing)
+<!-- toc:start -->
+
+1. [Signals and actions](#signals-and-actions)
+2. [Configuration](#configuration)
+3. [Actions in detail](#actions-in-detail)
+4. [Emergency checkpoints](#emergency-checkpoints)
+5. [Telemetry](#telemetry)
+6. [Testing](#testing)
+
+<!-- toc:end -->
 
 ## Signals and actions
 

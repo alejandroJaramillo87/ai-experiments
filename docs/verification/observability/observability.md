@@ -38,6 +38,30 @@ Recording protocol and session-start gate are defined in
 [protocol.md](../protocol.md). One GPU consumer at a time applies to the entries
 that train; the report and serve viewers are not GPU consumers.
 
+## Table of Contents
+
+<!-- toc:start -->
+
+1. [Preconditions](#preconditions)
+2. [What runs without the GPU](#what-runs-without-the-gpu)
+3. [Verified in the sandbox (context, not entries)](#verified-in-the-sandbox-context-not-entries)
+4. [OBS-V1 Torch-gated artifact-chain tests](#obs-v1-torch-gated-artifact-chain-tests)
+5. [OBS-V2 GPU watchdog samples and NVML context in a real run](#obs-v2-gpu-watchdog-samples-and-nvml-context-in-a-real-run)
+6. [OBS-V3 Default log root, retention, and catalog on /mnt/ai-data](#obs-v3-default-log-root-retention-and-catalog-on-mntai-data)
+7. [OBS-V4 External sinks (tensorboard, offline wandb)](#obs-v4-external-sinks-tensorboard-offline-wandb)
+8. [OBS-V6 Live dashboard against an in-flight run](#obs-v6-live-dashboard-against-an-in-flight-run)
+   1. [Findings that are not this entry's criterion](#findings-that-are-not-this-entrys-criterion)
+9. [OBS-V7 Crash durability on the workstation](#obs-v7-crash-durability-on-the-workstation)
+10. [OBS-V8 Sink overhead at real step rates](#obs-v8-sink-overhead-at-real-step-rates)
+11. [OBS-V10 Retention spares a live flock'd Rust writer on /mnt/ai-data](#obs-v10-retention-spares-a-live-flockd-rust-writer-on-mntai-data)
+12. [OBS-V11 Watchdog alerts.jsonl and the mlflow sink in a real run](#obs-v11-watchdog-alertsjsonl-and-the-mlflow-sink-in-a-real-run)
+13. [Covered by a named gate check (roster, not entries)](#covered-by-a-named-gate-check-roster-not-entries)
+14. [Moved to another tier](#moved-to-another-tier)
+15. [Covered by the rust-harness runbooks](#covered-by-the-rust-harness-runbooks)
+16. [Deferred by design (not entries)](#deferred-by-design-not-entries)
+
+<!-- toc:end -->
+
 ## Preconditions
 
 One requirement is shared across entries rather than stated in each. It is

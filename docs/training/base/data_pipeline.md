@@ -7,16 +7,20 @@ decontamination) and the full-scale path (Phase 2 P2-D1) that adds quality stage
 front of the same writer. P2-D1 design background:
 [P2-D1 investigation](../investigations/p2_d1_full_scale_data_pipeline_investigation.md).
 
-## Table of contents
+## Table of Contents
 
-- [Components](#components)
-- [Shard format](#shard-format)
-- [Manifest contract](#manifest-contract)
-- [Usage](#usage)
-- [Full-scale pipeline](#full-scale-pipeline)
-- [Reader](#reader)
-- [Parallelism](#parallelism)
-- [Testing](#testing)
+<!-- toc:start -->
+
+1. [Components](#components)
+2. [Shard format](#shard-format)
+3. [Manifest contract](#manifest-contract)
+4. [Usage](#usage)
+5. [Full-scale pipeline](#full-scale-pipeline)
+6. [Reader](#reader)
+7. [Parallelism](#parallelism)
+8. [Testing](#testing)
+
+<!-- toc:end -->
 
 ## Components
 

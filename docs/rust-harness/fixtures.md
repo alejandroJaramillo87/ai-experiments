@@ -8,13 +8,17 @@ are change detectors rather than correctness claims.
 
 ## Table of Contents
 
-- [The synthetic checkpoints](#the-synthetic-checkpoints)
-- [The transformers-authored checkpoint](#the-transformers-authored-checkpoint)
-- [The long-context golden](#the-long-context-golden)
-- [The interp artifacts](#the-interp-artifacts)
-- [The ladder reference](#the-ladder-reference)
-- [What the committed goldens are worth](#what-the-committed-goldens-are-worth)
-- [Related documentation](#related-documentation)
+<!-- toc:start -->
+
+1. [The synthetic checkpoints](#the-synthetic-checkpoints)
+2. [The transformers-authored checkpoint](#the-transformers-authored-checkpoint)
+3. [The long-context golden](#the-long-context-golden)
+4. [The interp artifacts](#the-interp-artifacts)
+5. [The ladder reference](#the-ladder-reference)
+6. [What the committed goldens are worth](#what-the-committed-goldens-are-worth)
+7. [Related documentation](#related-documentation)
+
+<!-- toc:end -->
 
 ## The synthetic checkpoints
 

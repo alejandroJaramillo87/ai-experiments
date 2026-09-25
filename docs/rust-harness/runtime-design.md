@@ -11,17 +11,23 @@ implementation lives in `rust-harness/`; where this document and the code
 disagree, the code is correct and the divergence is a documentation bug.
 Findings and external facts were last reviewed 2026-08-06.
 
-## Table of contents
+## Table of Contents
 
-- [Purpose and non-goals](#purpose-and-non-goals)
-- [Background](#background)
-- [Architecture](#architecture)
-- [Runtime design](#runtime-design)
-- [Harness design](#harness-design)
-- [Model targeting](#model-targeting)
-- [Architecture reconciliation](#architecture-reconciliation)
-- [Implementation roadmap](#implementation-roadmap)
-- [Risks and open questions](#risks-and-open-questions)
+<!-- toc:start -->
+
+1. [Purpose and non-goals](#purpose-and-non-goals)
+2. [Background](#background)
+3. [Architecture](#architecture)
+4. [Runtime design](#runtime-design)
+5. [Harness design](#harness-design)
+   1. [Context layer](#context-layer)
+   2. [Subagents: fork and interleave](#subagents-fork-and-interleave)
+6. [Model targeting](#model-targeting)
+7. [Architecture reconciliation](#architecture-reconciliation)
+8. [Implementation roadmap](#implementation-roadmap)
+9. [Risks and open questions](#risks-and-open-questions)
+
+<!-- toc:end -->
 
 ## Purpose and non-goals
 

@@ -4,17 +4,43 @@ Dual-SSD architecture configuration for AI workstation with dedicated OS and dat
 
 ## Table of Contents
 
-- [Storage architecture](#storage-architecture)
-- [Hardware configuration](#hardware-configuration)
-- [AI data drive setup](#ai-data-drive-setup)
-- [Filesystem optimizations](#filesystem-optimizations)
-- [Directory structure](#directory-structure)
-- [Symbolic links](#symbolic-links)
-- [Persistent mounting](#persistent-mounting)
-- [Automation script](#automation-script)
-- [Verification](#verification)
-- [Maintenance](#maintenance)
-- [Cross-references](#cross-references)
+<!-- toc:start -->
+
+1. [Storage architecture](#storage-architecture)
+   1. [Performance isolation](#performance-isolation)
+   2. [PCIe lane management](#pcie-lane-management)
+2. [Hardware configuration](#hardware-configuration)
+   1. [OS drive: Samsung 990 EVO Plus 1TB](#os-drive-samsung-990-evo-plus-1tb)
+   2. [AI data drive: Samsung 990 PRO 2TB](#ai-data-drive-samsung-990-pro-2tb)
+3. [AI data drive setup](#ai-data-drive-setup)
+   1. [Device preparation](#device-preparation)
+   2. [Mount configuration](#mount-configuration)
+4. [Filesystem optimizations](#filesystem-optimizations)
+   1. [Journal configuration](#journal-configuration)
+   2. [Mount options](#mount-options)
+5. [Directory structure](#directory-structure)
+   1. [What mounts what](#what-mounts-what)
+   2. [Caches](#caches)
+6. [Symbolic links](#symbolic-links)
+7. [Persistent mounting](#persistent-mounting)
+   1. [Get UUID](#get-uuid)
+   2. [Configure /etc/fstab](#configure-etcfstab)
+8. [Automation script](#automation-script)
+   1. [Usage](#usage)
+   2. [Script features](#script-features)
+   3. [Script location](#script-location)
+9. [Verification](#verification)
+   1. [Check mount status](#check-mount-status)
+   2. [Test performance](#test-performance)
+   3. [Verify cache configuration](#verify-cache-configuration)
+10. [Maintenance](#maintenance)
+   1. [Disk usage monitoring](#disk-usage-monitoring)
+   2. [Cache cleanup](#cache-cleanup)
+   3. [Health monitoring](#health-monitoring)
+   4. [Backup considerations](#backup-considerations)
+11. [Cross-references](#cross-references)
+
+<!-- toc:end -->
 
 ## Storage architecture
 

@@ -5,6 +5,19 @@ two settings files that decide what any of them may touch, and why host verifica
 skill rather than a role. The roster itself is generated in [README.md](README.md); this
 page is the reasoning behind it.
 
+## Table of Contents
+
+<!-- toc:start -->
+
+1. [The two settings files](#the-two-settings-files)
+2. [The quality campaign](#the-quality-campaign)
+3. [Feature work](#feature-work)
+4. [Measurement](#measurement)
+5. [Host verification is a skill, not a role](#host-verification-is-a-skill-not-a-role)
+6. [Related](#related)
+
+<!-- toc:end -->
+
 ## The two settings files
 
 The effective Claude Code policy is the union of `.claude/settings.json` and

@@ -11,6 +11,17 @@ preference, which no rung of the training tier's progression asks about, and it 
 only reason the tool drove the serving stack) and the scorecard assembled over the
 records (removed 2026-09-20; nothing read it, where `organism-verify` reads the records).
 
+## Table of Contents
+
+<!-- toc:start -->
+
+1. [Usage](#usage)
+2. [Evaluators](#evaluators)
+3. [Identity](#identity)
+4. [Records](#records)
+
+<!-- toc:end -->
+
 ## Usage
 
 Host-run; the two evaluators run in the training container with inference down:

@@ -5,15 +5,20 @@ needs, the shared docker footprint, the worktree lifecycle, session export, the
 maintenance targets, and what to do when one of them refuses. Every target below prints
 `[ERROR]` with a solution when a required variable or secret is missing.
 
-## Table of contents
+## Table of Contents
 
-- [Host batch run](#host-batch-run)
-- [Contained session](#contained-session)
-- [Sandbox docker resources](#sandbox-docker-resources)
-- [Worktree lifecycle](#worktree-lifecycle)
-- [Session export](#session-export)
-- [Maintenance targets](#maintenance-targets)
-- [Troubleshooting](#troubleshooting)
+<!-- toc:start -->
+
+1. [Host batch run](#host-batch-run)
+2. [Contained session](#contained-session)
+3. [Sandbox docker resources](#sandbox-docker-resources)
+4. [Worktree lifecycle](#worktree-lifecycle)
+5. [Session export](#session-export)
+6. [Maintenance targets](#maintenance-targets)
+7. [Troubleshooting](#troubleshooting)
+8. [Related](#related)
+
+<!-- toc:end -->
 
 ## Host batch run
 

@@ -8,6 +8,24 @@ and what the options cost. It owns KB-57 and KB-58; the ledger rows point here.
 For the wider question of which dtype each tier computes in, see [precision/](../precision/README.md).
 This document is only about the activation cache on disk.
 
+## Table of Contents
+
+<!-- toc:start -->
+
+1. [What was established](#what-was-established)
+   1. [The dtype defect (KB-57)](#the-dtype-defect-kb-57)
+   2. [The resume defect (KB-58)](#the-resume-defect-kb-58)
+2. [Why fp32 is not the answer](#why-fp32-is-not-the-answer)
+3. [Storage options](#storage-options)
+   1. [Why a corpus sample is enough](#why-a-corpus-sample-is-enough)
+4. [Resume options](#resume-options)
+5. [What was implemented](#what-was-implemented)
+6. [What the workstation added](#what-the-workstation-added)
+7. [Recommendation](#recommendation)
+8. [On buying storage](#on-buying-storage)
+
+<!-- toc:end -->
+
 ## What was established
 
 Evidence is of three kinds, and they are not equally strong. The source readings are exact:

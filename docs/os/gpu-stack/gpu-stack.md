@@ -4,22 +4,26 @@ Understanding the NVIDIA GPU software stack that powers our AI experiments works
 
 ## Table of Contents
 
-- [Overview](#overview)
-- [The Three-Layer Stack](#the-three-layer-stack)
-- [Our Local Environment](#our-local-environment)
-- [Quick Start](#quick-start)
-  - [Verify Installation](#verify-installation)
-  - [Installation Scripts](#installation-scripts)
-- [Why Each Layer Matters](#why-each-layer-matters)
-  - [For AI Inference Performance](#for-ai-inference-performance)
-  - [Real Impact on Our Workload](#real-impact-on-our-workload)
-- [Common Issues and Solutions](#common-issues-and-solutions)
-  - [Driver Issues](#driver-issues)
-  - [CUDA Issues](#cuda-issues)
-  - [cuDNN Issues](#cudnn-issues)
-- [Performance Verification](#performance-verification)
-- [Architecture-Specific Features](#architecture-specific-features)
-- [Next Steps](#next-steps)
+<!-- toc:start -->
+
+1. [Overview](#overview)
+2. [The Three-Layer Stack](#the-three-layer-stack)
+3. [Our Local Environment](#our-local-environment)
+4. [Quick Start](#quick-start)
+   1. [Verify Installation](#verify-installation)
+   2. [Installation Scripts](#installation-scripts)
+5. [Why Each Layer Matters](#why-each-layer-matters)
+   1. [For AI Inference Performance](#for-ai-inference-performance)
+   2. [Real Impact on Our Workload](#real-impact-on-our-workload)
+6. [Common Issues and Solutions](#common-issues-and-solutions)
+   1. [Driver Issues](#driver-issues)
+   2. [CUDA Issues](#cuda-issues)
+   3. [cuDNN Issues](#cudnn-issues)
+7. [Performance Verification](#performance-verification)
+8. [Architecture-Specific Features](#architecture-specific-features)
+9. [Next Steps](#next-steps)
+
+<!-- toc:end -->
 
 ## Overview
 

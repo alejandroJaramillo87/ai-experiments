@@ -15,6 +15,27 @@ Governing principles, in priority order:
   is an error, never a silently propagated value.
 - Professional and technically precise; no decoration, marketing language, or emojis.
 
+## Table of Contents
+
+<!-- toc:start -->
+
+1. [Determinism outranks idiom](#determinism-outranks-idiom)
+2. [Lints and configuration](#lints-and-configuration)
+3. [Errors](#errors)
+   1. [`unwrap` and `expect`](#unwrap-and-expect)
+4. [Unsafe code](#unsafe-code)
+5. [File and module organization](#file-and-module-organization)
+6. [Documentation](#documentation)
+7. [Tests](#tests)
+   1. [The `[SKIP]` contract](#the-skip-contract)
+   2. [Cross-language verification](#cross-language-verification)
+8. [Numerics and reproducibility](#numerics-and-reproducibility)
+9. [Quality gate](#quality-gate)
+10. [Prohibited](#prohibited)
+11. [Related guides](#related-guides)
+
+<!-- toc:end -->
+
 ## Determinism outranks idiom
 
 The workspace rejects `clippy::pedantic` and `clippy::nursery` on purpose. Record the reason

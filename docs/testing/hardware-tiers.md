@@ -5,6 +5,18 @@ tiers it selects between, the rule that a hardware test fails rather than skips,
 workstation test pairs with a sandbox half, and the correctness ladder. Everything here is
 a GPU consumer, so the one-job-at-a-time rule in `AGENTS.md` applies across every worktree.
 
+## Table of Contents
+
+<!-- toc:start -->
+
+1. [`make quality-full`](#make-quality-full)
+2. [The three tiers](#the-three-tiers)
+3. [Sandbox half, workstation half](#sandbox-half-workstation-half)
+4. [The correctness ladder](#the-correctness-ladder)
+5. [Related](#related)
+
+<!-- toc:end -->
+
 ## `make quality-full`
 
 `make quality` is the push gate and never runs pytest; `make test` runs the suite with the

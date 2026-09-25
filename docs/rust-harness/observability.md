@@ -6,16 +6,35 @@ fact. Companion to the [runtime design](runtime-design.md); this
 document defines three implementation phases that precede the CUDA backend
 (roadmap phase A) and give it a debuggable reference to be validated against.
 
-## Table of contents
+## Table of Contents
 
-- [Purpose](#purpose)
-- [Phase 1: flight recorder and profiling scaffolding](#phase-1-flight-recorder-and-profiling-scaffolding)
-- [Phase 2: tracing](#phase-2-tracing)
-- [Phase 3: rr-friendliness via a simple CPU backend](#phase-3-rr-friendliness-via-a-simple-cpu-backend)
-- [Interpretability substrate](#interpretability-substrate)
-- [Run-level records (obs contract)](#run-level-records-obs-contract)
-- [Parked: CPU-served subagents](#parked-cpu-served-subagents)
-- [Relation to the existing roadmap](#relation-to-the-existing-roadmap)
+<!-- toc:start -->
+
+1. [Purpose](#purpose)
+2. [Phase 1: flight recorder and profiling scaffolding](#phase-1-flight-recorder-and-profiling-scaffolding)
+   1. [RecordingModel](#recordingmodel)
+   2. [Replay](#replay)
+   3. [Divergence bisection](#divergence-bisection)
+   4. [Profiling scaffolding](#profiling-scaffolding)
+   5. [Acceptance](#acceptance)
+3. [Phase 2: tracing](#phase-2-tracing)
+   1. [Acceptance](#acceptance-1)
+   2. [Phases are a separate mechanism from spans](#phases-are-a-separate-mechanism-from-spans)
+4. [Phase 3: rr-friendliness via a simple CPU backend](#phase-3-rr-friendliness-via-a-simple-cpu-backend)
+   1. [Backend choice](#backend-choice)
+   2. [Architecture assumption and reconciliation](#architecture-assumption-and-reconciliation)
+   3. [Scope: debugging and reference only](#scope-debugging-and-reference-only)
+   4. [rr workflow](#rr-workflow)
+   5. [Runbook: divergence bug class](#runbook-divergence-bug-class)
+   6. [Acceptance](#acceptance-2)
+5. [Interpretability substrate](#interpretability-substrate)
+6. [Run-level records (obs contract)](#run-level-records-obs-contract)
+7. [Browsing harness runs](#browsing-harness-runs)
+   1. [The dashboard](#the-dashboard)
+8. [Parked: CPU-served subagents](#parked-cpu-served-subagents)
+9. [Relation to the existing roadmap](#relation-to-the-existing-roadmap)
+
+<!-- toc:end -->
 
 ## Purpose
 

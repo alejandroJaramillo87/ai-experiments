@@ -4,18 +4,22 @@ System optimizations for LLM inference on AMD Ryzen 9950X + RTX 5090: latency-fo
 
 ## Table of Contents
 
-- [System Optimizations](#system-optimizations)
-  - [Table of Contents](#table-of-contents)
-  - [Optimization Philosophy: Latency vs Throughput](#optimization-philosophy-latency-vs-throughput)
-  - [Implementation Status](#implementation-status)
-  - [Quick Verification](#quick-verification)
-  - [Container Integration](#container-integration)
-  - [System Configuration](#system-configuration)
-  - [Validated Performance Results](#validated-performance-results)
-    - [Benchmark Summary](#benchmark-summary)
-    - [Key Validated Settings Impact](#key-validated-settings-impact)
-  - [Performance Impact](#performance-impact)
-  - [See Also](#see-also)
+<!-- toc:start -->
+
+1. [Optimization Philosophy: Latency vs Throughput](#optimization-philosophy-latency-vs-throughput)
+   1. [Latency Optimization (llama.cpp)](#latency-optimization-llamacpp)
+   2. [Throughput Optimization (vLLM)](#throughput-optimization-vllm)
+2. [Implementation Status](#implementation-status)
+3. [Quick Verification](#quick-verification)
+4. [Container Integration](#container-integration)
+5. [System Configuration](#system-configuration)
+6. [Validated Performance Results](#validated-performance-results)
+   1. [Benchmark Summary](#benchmark-summary)
+   2. [Key Validated Settings Impact](#key-validated-settings-impact)
+7. [Performance Impact](#performance-impact)
+8. [See Also](#see-also)
+
+<!-- toc:end -->
 
 ## Optimization Philosophy: Latency vs Throughput
 

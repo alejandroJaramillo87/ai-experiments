@@ -12,12 +12,18 @@ the survey found (one load-and-validate helper, one torch dtype map, the split o
 teacher handler tests, the teacher manifest's GGUF field) were done in the same change
 that wrote this document and are not repeated here.
 
-## Table of contents
+## Table of Contents
 
-- [Two training loops, two checkpoint layouts](#two-training-loops-two-checkpoint-layouts)
-- [The inline handlers in the CLI module](#the-inline-handlers-in-the-cli-module)
-- [Roadmap codes without a glossary](#roadmap-codes-without-a-glossary)
-- [Order and gating](#order-and-gating)
+<!-- toc:start -->
+
+1. [Two training loops, two checkpoint layouts](#two-training-loops-two-checkpoint-layouts)
+   1. [Implementation plan (recorded 2026-09-19)](#implementation-plan-recorded-2026-09-19)
+2. [The inline handlers in the CLI module](#the-inline-handlers-in-the-cli-module)
+   1. [Implementation plan (recorded 2026-09-19)](#implementation-plan-recorded-2026-09-19-1)
+3. [Roadmap codes without a glossary](#roadmap-codes-without-a-glossary)
+4. [Order and gating](#order-and-gating)
+
+<!-- toc:end -->
 
 ## Two training loops, two checkpoint layouts
 

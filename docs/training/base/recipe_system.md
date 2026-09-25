@@ -6,16 +6,20 @@ merges against them in struct mode, so an unknown key or a mistyped value fails 
 rather than mid-run. Design record:
 [d5_recipe_system_investigation.md](../investigations/d5_recipe_system_investigation.md).
 
-## Table of contents
+## Table of Contents
 
-- [Schema](#schema)
-- [Loading and overrides](#loading-and-overrides)
-- [Validation](#validation)
-- [Run directory and snapshot](#run-directory-and-snapshot)
-- [Reference recipes](#reference-recipes)
-- [Consumers in other tiers](#consumers-in-other-tiers)
-- [Validate compared with preflight](#validate-compared-with-preflight)
-- [Testing](#testing)
+<!-- toc:start -->
+
+1. [Schema](#schema)
+2. [Loading and overrides](#loading-and-overrides)
+3. [Validation](#validation)
+4. [Run directory and snapshot](#run-directory-and-snapshot)
+5. [Reference recipes](#reference-recipes)
+6. [Consumers in other tiers](#consumers-in-other-tiers)
+7. [Validate compared with preflight](#validate-compared-with-preflight)
+8. [Testing](#testing)
+
+<!-- toc:end -->
 
 ## Schema
 

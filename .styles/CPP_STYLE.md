@@ -20,6 +20,22 @@ extern "C" void* mmap(void* addr, size_t length, int prot, int flags, int fd, of
 }
 ```
 
+## Table of Contents
+
+<!-- toc:start -->
+
+1. [Naming (Linux kernel style)](#naming-linux-kernel-style)
+2. [File Organization](#file-organization)
+3. [Output](#output)
+4. [Memory Management](#memory-management)
+5. [Library Interception](#library-interception)
+6. [Performance](#performance)
+7. [Error Handling](#error-handling)
+8. [Testing](#testing)
+9. [Prohibited in System Libraries](#prohibited-in-system-libraries)
+
+<!-- toc:end -->
+
 ## Naming (Linux kernel style)
 
 ```cpp

@@ -10,16 +10,20 @@ interpretability tiers. Nothing here is scheduled. Every item is gated behind th
 The purpose of this document is to record what the survey found so it is not derived a second
 time, and to state plainly which findings are actionable now and which are not.
 
-## Table of contents
+## Table of Contents
 
-- [Summary](#summary)
-- [Gating conditions](#gating-conditions)
-- [Actionable without custom kernels](#actionable-without-custom-kernels)
-- [The activation read path](#the-activation-read-path)
-- [Steering expressiveness](#steering-expressiveness)
-- [The escalation ladder](#the-escalation-ladder)
-- [Build details for any compiled target](#build-details-for-any-compiled-target)
-- [What the survey ruled out](#what-the-survey-ruled-out)
+<!-- toc:start -->
+
+1. [Summary](#summary)
+2. [Gating conditions](#gating-conditions)
+3. [Actionable without custom kernels](#actionable-without-custom-kernels)
+4. [The activation read path](#the-activation-read-path)
+5. [Steering expressiveness](#steering-expressiveness)
+6. [The escalation ladder](#the-escalation-ladder)
+7. [Build details for any compiled target](#build-details-for-any-compiled-target)
+8. [What the survey ruled out](#what-the-survey-ruled-out)
+
+<!-- toc:end -->
 
 ## Summary
 

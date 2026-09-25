@@ -14,13 +14,17 @@ benchmarking protocol; candidates graduate into
 and the validated negative results (jemalloc, GPU clock locking) live in
 that document and are not repeated here.
 
-## Table of contents
+## Table of Contents
 
-- [Tier 0: verify before optimizing](#tier-0-verify-before-optimizing)
-- [Tier A: likely wins](#tier-a-likely-wins)
-- [Tier B: measure-worthy](#tier-b-measure-worthy)
-- [Tier C: examined, nothing to do](#tier-c-examined-nothing-to-do)
-- [Sequencing](#sequencing)
+<!-- toc:start -->
+
+1. [Tier 0: verify before optimizing](#tier-0-verify-before-optimizing)
+2. [Tier A: likely wins](#tier-a-likely-wins)
+3. [Tier B: measure-worthy](#tier-b-measure-worthy)
+4. [Tier C: examined, nothing to do](#tier-c-examined-nothing-to-do)
+5. [Sequencing](#sequencing)
+
+<!-- toc:end -->
 
 ## Tier 0: verify before optimizing
 

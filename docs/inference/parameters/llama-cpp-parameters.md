@@ -2,6 +2,37 @@
 
 Detailed analysis of runtime parameters for llama.cpp server (CPU and GPU variants) optimized for low-latency single-request inference on the AMD Ryzen 9950X + RTX 5090 workstation.
 
+## Table of Contents
+
+<!-- toc:start -->
+
+1. [Current Parameter Configuration](#current-parameter-configuration)
+   1. [llama-cpu Service (Port 8001)](#llama-cpu-service-port-8001)
+   2. [llama-gpu Service (Port 8002)](#llama-gpu-service-port-8002)
+2. [Parameter Analysis](#parameter-analysis)
+   1. [Threading Parameters](#threading-parameters)
+   2. [Memory Parameters](#memory-parameters)
+   3. [GPU-Specific Parameters](#gpu-specific-parameters)
+   4. [Optimization Parameters](#optimization-parameters)
+3. [Tested Parameters - Availability Notes](#tested-parameters---availability-notes)
+   1. [Invalid Parameters (Tested September 2025)](#invalid-parameters-tested-september-2025)
+   2. [Valid Parameters (Added since initial testing)](#valid-parameters-added-since-initial-testing)
+   3. [Advanced Features](#advanced-features)
+   4. [Speculative Decoding (2025)](#speculative-decoding-2025)
+4. [Optimization Notes](#optimization-notes)
+   1. [CPU Service Recommendations](#cpu-service-recommendations)
+   2. [GPU Service Configuration](#gpu-service-configuration)
+   3. [Cross-Service Questions](#cross-service-questions)
+5. [Benchmarking Plan](#benchmarking-plan)
+   1. [CPU Service (llama-cpu)](#cpu-service-llama-cpu)
+   2. [GPU Service (llama-gpu)](#gpu-service-llama-gpu)
+   3. [Metrics to Track](#metrics-to-track)
+6. [Hardware-Specific Considerations](#hardware-specific-considerations)
+   1. [AMD Zen 5 Optimizations](#amd-zen-5-optimizations)
+   2. [RTX 5090 Optimizations](#rtx-5090-optimizations)
+
+<!-- toc:end -->
+
 ## Current Parameter Configuration
 
 ### llama-cpu Service (Port 8001)

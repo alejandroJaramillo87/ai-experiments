@@ -8,27 +8,29 @@ This documentation provides component analysis, installation guidance, and optim
 
 ## Table of Contents
 
-- [AI Engineering Hardware Build](#ai-engineering-hardware-build)
-  - [Table of Contents](#table-of-contents)
-  - [Build Overview](#build-overview)
-  - [Performance Specifications](#performance-specifications)
-  - [Component Details](#component-details)
-    - [Motherboard](#motherboard)
-    - [CPU and Cooling](#cpu-and-cooling)
-    - [Graphics Card](#graphics-card)
-    - [Memory Configuration](#memory-configuration)
-    - [Storage Layout](#storage-layout)
-    - [Power Supply](#power-supply)
-    - [Case and Cooling](#case-and-cooling)
-    - [Networking](#networking)
-  - [AI Workload Optimization](#ai-workload-optimization)
-    - [GPU Configuration](#gpu-configuration)
-    - [CPU Configuration](#cpu-configuration)
-    - [Thermal Management](#thermal-management)
-  - [Installation Notes](#installation-notes)
-    - [Memory Installation](#memory-installation)
-    - [Storage Configuration](#storage-configuration)
-    - [PCIe Configuration](#pcie-configuration)
+<!-- toc:start -->
+
+1. [Build Overview](#build-overview)
+2. [Performance Specifications](#performance-specifications)
+3. [Component Details](#component-details)
+   1. [Motherboard](#motherboard)
+   2. [CPU and Cooling](#cpu-and-cooling)
+   3. [Graphics Card](#graphics-card)
+   4. [Memory Configuration](#memory-configuration)
+   5. [Storage Layout](#storage-layout)
+   6. [Power Supply](#power-supply)
+   7. [Case and Cooling](#case-and-cooling)
+   8. [Networking](#networking)
+4. [AI Workload Optimization](#ai-workload-optimization)
+   1. [GPU Configuration](#gpu-configuration)
+   2. [CPU Configuration](#cpu-configuration)
+   3. [Thermal Management](#thermal-management)
+5. [Installation Notes](#installation-notes)
+   1. [Memory Installation](#memory-installation)
+   2. [Storage Configuration](#storage-configuration)
+   3. [PCIe Configuration](#pcie-configuration)
+
+<!-- toc:end -->
 
 ## Build Overview
 

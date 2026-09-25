@@ -17,15 +17,20 @@ Observation followed. Both changes replaced a workaround with the thing it had
 been standing in for, so what was removed exceeds what was added. See
 [rust-harness-interp.md](rust-harness-interp.md).
 
-## Table of contents
+## Table of Contents
 
-- [Layout](#layout)
-- [W1: steering deployment](#w1-steering-deployment)
-- [W2: probe toolkit](#w2-probe-toolkit)
-- [W3: served-request log](#w3-served-request-log)
-- [W4: probe monitor](#w4-probe-monitor)
-- [Concurrency](#concurrency)
-- [Host-side acceptance checks](#host-side-acceptance-checks)
+<!-- toc:start -->
+
+1. [Layout](#layout)
+2. [W1: steering deployment](#w1-steering-deployment)
+3. [W2: probe toolkit](#w2-probe-toolkit)
+4. [W3: served-request log](#w3-served-request-log)
+   1. [What this replaced, and why the replacement is smaller](#what-this-replaced-and-why-the-replacement-is-smaller)
+5. [W4: probe monitor](#w4-probe-monitor)
+6. [Concurrency](#concurrency)
+7. [Host-side acceptance checks](#host-side-acceptance-checks)
+
+<!-- toc:end -->
 
 ## Layout
 

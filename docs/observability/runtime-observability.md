@@ -9,17 +9,21 @@ document describes the system as it is; the design rationale and the item ledger
 are in [design-and-roadmap.md](design-and-roadmap.md), and the separate JSON *report* envelope
 used by scorecards and evaluation output is in [report_schema.md](report_schema.md).
 
-## Table of contents
+## Table of Contents
 
-- [Where the files are](#where-the-files-are)
-- [Configuration](#configuration)
-- [Output streams](#output-streams)
-- [Finding a run](#finding-a-run)
-- [Opening a dashboard](#opening-a-dashboard)
-- [The event record schema](#the-event-record-schema)
-- [The metrics record schema](#the-metrics-record-schema)
-- [Querying with jq](#querying-with-jq)
-- [Related documentation](#related-documentation)
+<!-- toc:start -->
+
+1. [Where the files are](#where-the-files-are)
+2. [Configuration](#configuration)
+3. [Output streams](#output-streams)
+4. [Finding a run](#finding-a-run)
+5. [Opening a dashboard](#opening-a-dashboard)
+6. [The event record schema](#the-event-record-schema)
+7. [The metrics record schema](#the-metrics-record-schema)
+8. [Querying with jq](#querying-with-jq)
+9. [Related documentation](#related-documentation)
+
+<!-- toc:end -->
 
 ## Where the files are
 

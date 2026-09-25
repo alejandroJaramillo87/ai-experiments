@@ -6,12 +6,16 @@ system, the reference loop, and the three rungs the tier climbs. The code itself
 Verification records live in [../verification/](../verification/), not here, and the
 model-side facts about Gemma 4 that both tiers share are in [../models/](../models/).
 
-## Table of contents
+## Table of Contents
 
-- [Layout](#layout)
-- [Progression](#progression)
-- [Design records](#design-records)
-- [Related documentation](#related-documentation)
+<!-- toc:start -->
+
+1. [Layout](#layout)
+2. [Progression](#progression)
+3. [Design records](#design-records)
+4. [Related documentation](#related-documentation)
+
+<!-- toc:end -->
 
 ## Layout
 

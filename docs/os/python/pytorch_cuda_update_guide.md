@@ -5,17 +5,28 @@ uv resolves `torch` and `torchvision` directly from a
 CUDA-specific PyTorch index, so PyTorch is a first-class locked dependency. No pip
 sideload and no manual reinstall step exist.
 
-## Table of contents
+## Table of Contents
 
-- [How PyTorch is locked](#how-pytorch-is-locked)
-- [When to update the CUDA version](#when-to-update-the-cuda-version)
-- [Check current versions](#check-current-versions)
-- [Update process](#update-process)
-- [Verification](#verification)
-- [Available PyTorch CUDA indexes](#available-pytorch-cuda-indexes)
-- [System CUDA and PyTorch CUDA compatibility](#system-cuda-and-pytorch-cuda-compatibility)
-- [Troubleshooting](#troubleshooting)
-- [Quick reference](#quick-reference)
+<!-- toc:start -->
+
+1. [How PyTorch is locked](#how-pytorch-is-locked)
+2. [When to update the CUDA version](#when-to-update-the-cuda-version)
+3. [Check current versions](#check-current-versions)
+4. [Update process](#update-process)
+   1. [Step 1: Edit the index and the pins](#step-1-edit-the-index-and-the-pins)
+   2. [Step 2: Refresh the lock file](#step-2-refresh-the-lock-file)
+   3. [Step 3: Sync the environment](#step-3-sync-the-environment)
+   4. [Step 4: Run the acceptance checks](#step-4-run-the-acceptance-checks)
+5. [Verification](#verification)
+6. [Available PyTorch CUDA indexes](#available-pytorch-cuda-indexes)
+7. [System CUDA and PyTorch CUDA compatibility](#system-cuda-and-pytorch-cuda-compatibility)
+8. [Troubleshooting](#troubleshooting)
+   1. [PyTorch installs a CPU-only build](#pytorch-installs-a-cpu-only-build)
+   2. [CUDA version mismatch warning](#cuda-version-mismatch-warning)
+   3. [GPU not detected after update](#gpu-not-detected-after-update)
+9. [Quick reference](#quick-reference)
+
+<!-- toc:end -->
 
 ## How PyTorch is locked
 

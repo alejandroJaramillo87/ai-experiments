@@ -10,17 +10,21 @@ README list every test file with its count.
 
 ## Table of Contents
 
-- [The tiers](#the-tiers)
-- [What each command runs](#what-each-command-runs)
-- [Unit tests](#unit-tests)
-- [Integration tests](#integration-tests)
-- [The offline correctness tier](#the-offline-correctness-tier)
-- [The E4B tier](#the-e4b-tier)
-- [Read the output, not the exit code](#read-the-output-not-the-exit-code)
-- [Which Python runs the contract tests](#which-python-runs-the-contract-tests)
-- [The quality gate](#the-quality-gate)
-- [What the pytest suite adds](#what-the-pytest-suite-adds)
-- [Related documentation](#related-documentation)
+<!-- toc:start -->
+
+1. [The tiers](#the-tiers)
+2. [What each command runs](#what-each-command-runs)
+3. [Unit tests](#unit-tests)
+4. [Integration tests](#integration-tests)
+5. [The offline correctness tier](#the-offline-correctness-tier)
+6. [The E4B tier](#the-e4b-tier)
+7. [Read the output, not the exit code](#read-the-output-not-the-exit-code)
+8. [Which Python runs the contract tests](#which-python-runs-the-contract-tests)
+9. [The quality gate](#the-quality-gate)
+10. [What the pytest suite adds](#what-the-pytest-suite-adds)
+11. [Related documentation](#related-documentation)
+
+<!-- toc:end -->
 
 ## The tiers
 

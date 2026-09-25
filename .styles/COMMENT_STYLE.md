@@ -7,6 +7,20 @@ minimal yet sufficient.
 Comments explain **why** (intent, chosen approach), provide **context** not obvious from code,
 and give **maintenance guidance** — not "how" when the code already shows it.
 
+## Table of Contents
+
+<!-- toc:start -->
+
+1. [Universal Standards](#universal-standards)
+2. [Language-Specific Syntax](#language-specific-syntax)
+3. [Comment Types](#comment-types)
+4. [Status and TODO Comments](#status-and-todo-comments)
+5. [Technical Explanations](#technical-explanations)
+6. [What to Avoid](#what-to-avoid)
+7. [Related Guides](#related-guides)
+
+<!-- toc:end -->
+
 ## Universal Standards
 
 - Use accurate technical terminology: "Allocate 2MB huge pages for reduced TLB pressure", not

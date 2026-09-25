@@ -7,6 +7,17 @@ contract tests, which hand an artifact this workspace writes to the real Python 
 that consumes it. Neither claims the numbers are right; the ladder does that. Both
 claim a property the ladder cannot see.
 
+## Table of Contents
+
+<!-- toc:start -->
+
+1. [The invariants](#the-invariants)
+2. [The long-context suite](#the-long-context-suite)
+3. [The cross-language contracts](#the-cross-language-contracts)
+4. [Related documentation](#related-documentation)
+
+<!-- toc:end -->
+
 ## The invariants
 
 `runtime/src/conformance.rs` states them as functions returning `Result`, so an
