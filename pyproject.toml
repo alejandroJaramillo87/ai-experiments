@@ -187,7 +187,7 @@ training = [
     "hydra-core==1.3.2",
     # F7 lm-evaluation-harness (resolved F7 decision 4: training group, not a
     # separate image; the pinned task set lives in training/eval/tasks.yaml)
-    "lm-eval==0.4.12",
+    "lm-eval[ifeval]==0.4.12",
     "pynvml==12.0.0",
     "psutil==7.2.2",
     "xxhash==3.5.0",

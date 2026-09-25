@@ -441,7 +441,11 @@ class TestDownload:
         assert "cannot reach the hub" in err
         assert "make train-download" in err
 
-    def test_revision_is_required(self):
-        """An unpinned download is the problem this command exists to prevent."""
-        with pytest.raises(SystemExit):
-            cli.build_parser().parse_args(["download", "--model", "google/gemma-4-E2B"])
+    def test_revision_is_required(self, monkeypatch, capsys):
+        """An unpinned download is the problem this command exists to prevent.
+        The check moved from the parser to cmd when the dataset form arrived
+        (KB-92), because a dataset takes no revision; usage errors exit 2."""
+        for var in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE"):
+            monkeypatch.delenv(var, raising=False)
+        assert run_cli(["download", "--model", "google/gemma-4-E2B"]) == 2
+        assert "--revision is required with --model" in capsys.readouterr().err

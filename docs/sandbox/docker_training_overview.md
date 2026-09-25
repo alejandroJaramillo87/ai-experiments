@@ -108,9 +108,10 @@ inference stack's hardening (`no-new-privileges`, `cap_drop: ALL`, `read_only: t
 non-root `user`), reserves one NVIDIA GPU, sets `shm_size: 16g` for dataloader workers, and
 mounts a tmpfs `/tmp` with the `exec` flag that the Triton and CUDA JIT caches require. Two
 further tmpfs mounts back it: `/app/cache` at 2G, deliberately small because this service
-never resolves a hub id — if it fills, something is reaching the hub that should not be —
-and `/staging`, sized by `TRAIN_STAGING_GB` (default 32G) to match `staging.max_gb` for the
-D9 RAM-disk shard staging.
+never fetches from the hub — what lands there is the arrow files `datasets` builds from the
+read-only hub snapshots mounted beneath it, and if it fills, something is reaching the hub
+that should not be — and `/staging`, sized by `TRAIN_STAGING_GB` (default 32G) to match
+`staging.max_gb` for the D9 RAM-disk shard staging.
 
 Volumes:
 
@@ -148,8 +149,12 @@ of those accept an offline argument this repository controls.
 `prepare` binds `/mnt/ai-data/cache/huggingface` as a persistent `HF_HOME`, so re-downloading
 an already-fetched revision is a cache hit. It is also the only service that mounts
 `/mnt/ai-data/models/hf` read-write. The `training` service keeps a deliberately small tmpfs
-at the same path, which is expected to stay empty — anything landing there means a code path
-is still resolving a hub identifier.
+at the same path and, since 2026-09-25 (KB-92), mounts the hub half of that cache read-only
+beneath it at `/app/cache/hub`: `lm_eval` loads its four task datasets
+(`training/eval/tasks.yaml`) by hub id with no revision, and offline resolution finds the
+snapshot `make train-download DATASET=<id> NAME=<config>` staged through `prepare`. The
+tmpfs above it holds only what `datasets` rebuilds from those snapshots; a base model
+landing there means a code path is still resolving a hub identifier.
 
 ## Interface
 

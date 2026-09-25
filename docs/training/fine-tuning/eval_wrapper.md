@@ -45,6 +45,13 @@ The in-container phases are `python -m training eval-holdout` and `eval-lmeval`,
 model each; the driver runs them four times under the training lock and resumes from
 the records already written when re-invoked with the same `--out-dir`.
 
+The lmeval phase reads its four task datasets from the persistent hub cache, which the
+training container mounts read-only and cannot fill itself: stage each once through the
+prepare service, `make train-download DATASET=google/IFEval`, `DATASET=openai/gsm8k
+NAME=main`, `DATASET=tinyBenchmarks/tinyMMLU NAME=all` and `DATASET=Rowan/hellaswag`,
+before the first run (KB-92). The ifeval task also needs lm-eval's `ifeval` extra, which
+the training group pins.
+
 ## Evaluators
 
 | Evaluator | Runs | Measures |

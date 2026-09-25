@@ -22,8 +22,9 @@ train-smoke: ## Run the six-step training smoke test on the workstation (enforce
 # egress (docker-compose.training.yaml). Everything below them runs in `training`,
 # which sits on an internal network and cannot reach the hub at all.
 
-train-download: ## Stage a model into /mnt/ai-data/models/hf (Prelude C): make train-download MODEL=google/gemma-4-E2B REVISION=<sha>
-	docker compose -f $(TRAIN_COMPOSE) run --rm prepare python -m training download --model $(MODEL) --revision $(REVISION) $(ARGS)
+train-download: ## Stage a model into /mnt/ai-data/models/hf, or a dataset into the hub cache (Prelude C): make train-download MODEL=google/gemma-4-E2B REVISION=<sha> | make train-download DATASET=openai/gsm8k NAME=main
+	@test -n "$(MODEL)$(DATASET)" || { echo "MODEL=<hub id> REVISION=<sha>, or DATASET=<hub id> [NAME=<config>], is required"; exit 2; }
+	docker compose -f $(TRAIN_COMPOSE) run --rm prepare python -m training download $(if $(DATASET),--dataset $(DATASET) $(if $(NAME),--name $(NAME)),--model $(MODEL) --revision $(REVISION)) $(ARGS)
 
 prepare-data: ## Tokenize a dataset into shards (Phase 0 D2): make prepare-data ARGS="--source ... --tokenizer ... --out ..."
 	docker compose -f $(TRAIN_COMPOSE) run --rm prepare python -m training prepare-data $(ARGS)

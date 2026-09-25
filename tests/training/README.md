@@ -59,6 +59,7 @@ regenerated.
 | `test_cli_handlers_train.py` | 13 | CLI handler contracts for the run subcommands: cmd_train and cmd_train_sft. |
 | `test_contamination.py` | 10 | Contamination index build and membership checks (P2-D1). |
 | `test_data_tail_branches.py` | 33 | Error and hub-source branches of the data tail modules left uncovered by the module tests. |
+| `test_download.py` | 6 | The download command's two forms: a pinned model, and a dataset staged into the hub cache for lm-eval's offline reads (KB-92). |
 | `test_entrypoint.py` | 4 | docker/training/entrypoint.sh: the environment echo and the D9 LD_PRELOAD slot. |
 | `test_eval_ft.py` | 2 | eval-ft's container phase: the compared sides reach the training container in its own spelling of the models tree. |
 | `test_eval_runner.py` | 6 | F7 runner pieces: checkpoint identity and the lm-eval task pins. |

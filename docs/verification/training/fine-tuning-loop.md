@@ -234,6 +234,13 @@ builds what it verifies:
   observation: 16.6 GB of CUDA tensors survived the resume test into the loop
   test, which the `cuda` fixture exists to report and the loop test ran
   beside; no ledger row.
+- **FT.heldout-eval read against the tree** (2026-09-25, before it ran) and
+  found KB-92: `eval-lmeval` could not run in the training container, whose
+  offline cache held none of the four task datasets and whose `lm-eval` pin
+  lacked the ifeval extra. Fixed the same day (a dataset form on
+  `train-download`, a read-only hub-cache mount, the extra); the entry
+  gains a precondition block, the printed lines and a KB-92 confirmation,
+  and runs as committed once the workstation locks the extra.
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training
@@ -2623,42 +2630,111 @@ Status: VERIFIED (2026-09-25)
 
 ## FT.heldout-eval Held-out loss and lm-eval on base and merged
 
-Implementation: `training/eval/holdout.py`, `training/eval/lmeval.py`,
-`training/eval/tasks.yaml`, `common/reports.py`. Both verbs are CLI-only
-(`python -m training eval-holdout`, `eval-lmeval`); no `make` target wraps
-them, so they run inside the training container. Existing code; depends on
+Implementation: `training/eval/holdout.py` (`evaluate_holdout`,
+`load_model`), `training/eval/lmeval.py` (`run_lmeval`),
+`training/eval/tasks.yaml`, `training/cli.py` (`cmd_eval_holdout`,
+`cmd_eval_lmeval`, the printed lines). Both verbs are CLI-only (`python -m
+training eval-holdout`, `eval-lmeval`); no `make` target wraps one alone
+(`make eval-ft`, FT.eval-ft, drives all four), so they run inside the
+training container. The records are plain JSON, not the `common/reports.py`
+envelope, which only the run tracker writes. Existing code; depends on
 FT.export-merged (the merged directory) and FT.smoke-dataset (the dataset).
+
+**Fixes to confirm here** (details in [bugs/known-bugs.md](../bugs/known-bugs.md)):
+
+- KB-92 — `eval-lmeval` could not run in the training container: the four
+  pinned tasks load hub datasets the offline container had no copy of, and
+  the ifeval task imports two packages the `lm-eval` pin did not carry.
+  Fixed 2026-09-25 by a dataset form on `train-download`, a read-only mount
+  of the hub cache into the training service, and the `ifeval` extra on the
+  pin. Closes when the base's `eval-lmeval` prints one `[OK] <task>:` line
+  per pinned task.
+
+`holdout.load_model` is KB-84's third loader (config first, sdpa above the
+head-width cap), and this entry is its first run; the fix was confirmed by
+FT.calibrate-qlora, so a `FlashAttention forward only supports head
+dimension at most 256` here is KB-84 back, not a new row.
+
+Preconditions, in order. The lock first: the `ifeval` extra changed
+`pyproject.toml` in the sandbox, and `uv lock` resolves through the cu130
+torch index the sandbox cannot reach, so the workstation regenerates and
+commits it (until then `make quality` fails its `uv lock --check` step,
+which is the gate working). Then the image, whose pip layer the new lock
+rebuilds, then the four datasets through the prepare service, the one with
+egress: each `download --dataset` prints `[OK] Staged <id> (<config>) at
+<sha>: <split>=<n>, ...`, and the sha it prints is the pin, since the
+consumer resolves `main` offline and passes no revision.
+
+```bash
+set -o pipefail
+cd ~/workspace/ai-experiments && git pull origin SFT-verification-2 && git log -1 --oneline
+uv lock && git diff --stat uv.lock
+git -c user.name="Alejandro Jaramillo" -c user.email="alejandroj1234@proton.me" commit -am "Lock the lm-eval ifeval extra" && git push origin SFT-verification-2
+make train-build 2>&1 | tail -5; echo "exit=$?"
+make train-download DATASET=google/IFEval; echo "exit=$?"
+make train-download DATASET=openai/gsm8k NAME=main; echo "exit=$?"
+make train-download DATASET=tinyBenchmarks/tinyMMLU NAME=all; echo "exit=$?"
+make train-download DATASET=Rowan/hellaswag; echo "exit=$?"
+```
 
 Command (inference down). The models tree is mounted in the training
 container at `/app/models` only (`docker-compose.training.yaml`), so both
 sides are named in that spelling; the training volume is identity-mounted,
 so the dataset and the output records keep their host paths. This block
 named `/mnt/ai-data/models/...` until 2026-09-18, which does not exist in
-the container.
+the container. Each holdout pass loads the model in bf16 on the GPU (10.2
+GB for E2B) and runs the 4066-example holdout one example at a time with
+full logits per example, so expect minutes per side after the load, with
+no progress line until the `[OK]` (the trainer's own evaluation of the same
+split took 361 s at batch 2). Each lm-eval pass loads the model again
+through the harness's own `hf` backend and runs 20 examples per task; gsm8k
+and ifeval generate, so they dominate.
 
 ```bash
+set -o pipefail
 docker compose -f docker-compose.training.yaml run --rm training \
     python -m training eval-holdout --model /app/models/hf/gemma-4-E2B \
     --dataset /mnt/ai-data/training/datasets/sft/ultrachat-e2b \
     --out /mnt/ai-data/training/eval/ft5-holdout-base.json
+echo "exit=$?"
 docker compose -f docker-compose.training.yaml run --rm training \
     python -m training eval-holdout --model /app/models/trained/ft3-straight/hf \
     --dataset /mnt/ai-data/training/datasets/sft/ultrachat-e2b \
     --out /mnt/ai-data/training/eval/ft5-holdout-merged.json
+echo "exit=$?"
 docker compose -f docker-compose.training.yaml run --rm training \
     python -m training eval-lmeval --model /app/models/hf/gemma-4-E2B --limit 20 \
     --out /mnt/ai-data/training/eval/ft5-lmeval-base.json
+echo "exit=$?"
 docker compose -f docker-compose.training.yaml run --rm training \
     python -m training eval-lmeval --model /app/models/trained/ft3-straight/hf --limit 20 \
     --out /mnt/ai-data/training/eval/ft5-lmeval-merged.json
+echo "exit=$?"
+grep -E '"(loss|perplexity|supervised_tokens|precision|attention_implementation)"' \
+    /mnt/ai-data/training/eval/ft5-holdout-base.json /mnt/ai-data/training/eval/ft5-holdout-merged.json
+grep -E '"(lm_eval_version|limit)"' /mnt/ai-data/training/eval/ft5-lmeval-base.json /mnt/ai-data/training/eval/ft5-lmeval-merged.json
 ```
 
-Expected signal: all four exit 0; each held-out record carries loss,
-perplexity, the supervised-token count, `precision` and
-`attention_implementation`, and the merged model's held-out loss is at or
-below the base's on the dataset it trained on; each lm-eval record reports
-the pinned task set from `training/eval/tasks.yaml` with `limit: 20`
-recorded (a smoke run, not a benchmark).
+Expected signal: all four exit 0. Each holdout run prints `[RUN] Held-out
+loss: <model> over <dataset>`, then `[OK] Loss <x>, perplexity <y> (4066
+examples, <n> supervised tokens, bf16)` and `[OK] Record written: <out>`;
+each record carries `loss`, `perplexity`, `supervised_tokens`, `precision`
+`bf16` and `attention_implementation` `sdpa` (the two `grep` lines show
+them side by side), and the merged model's held-out loss is at or below the
+base's on the dataset it trained on. The merged number is in the
+neighbourhood of the `1.030488` FT.train-resume's straight run reported, not
+equal to it: that was the nf4 adapter under the trainer's chunked loss at
+step 60, this is the merged bf16 weights under plain cross-entropy, and the
+entry records the gap without judging it. Each lm-eval run prints `[RUN]
+lm-evaluation-harness: <model>`, then one `[OK] <task>: <metric> = <value>
+(stderr <s>)` line per pinned task, sorted (`gsm8k`, `hellaswag`, `ifeval`,
+`tinyMMLU`), and `[OK] Record written:`; each record reports the pinned
+task set from `training/eval/tasks.yaml` with `"lm_eval_version": "0.4.12"`
+and `"limit": 20` recorded (a smoke run, not a benchmark: 20 examples per
+task carry stderr wide enough that base and merged are not ranked here).
+An `lm-eval version mismatch` line means the image was not rebuilt from the
+new lock; a `Task missing from harness results` or a cache-miss traceback
+naming one of the four dataset ids means its staging line did not run.
 
 Observed:
 
