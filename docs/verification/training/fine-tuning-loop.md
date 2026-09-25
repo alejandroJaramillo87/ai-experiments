@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 6 verified, 0 blocked, 8 pending, of 14.**
+**Entries: 7 verified, 0 blocked, 7 pending, of 14.**
 
 Host verification of the fine-tuning loop, the first rung of the training tier: train
 a Gemma 4 E2B with a known change, then recover it through the rust harness and the
@@ -209,6 +209,16 @@ builds what it verifies:
   packages are pinned in the image, a sandbox test holds the image's pins to
   the CLI's imports, the paste is kept as a superseded observation, and the
   entry re-runs as committed.
+- **FT.export-merged verified** (2026-09-25) on its second run, with one
+  runbook finding: the entry asked for a single-line chat reply, the
+  behaviour of the instruction-tuned model the rust-harness chats ran, and
+  the 60-step adapter over the base ran to the sampling cap. The harness
+  promises no line count, so the clause was corrected with the observation
+  kept beside it; the reply's shape is the adapter's, judged at
+  FT.heldout-eval. Two host-state fixes on the way, neither a tree defect:
+  a root-owned `trained` directory older than the setup script's chown, and
+  a root-owned `sessions/rust-harness` left by a run before the harness
+  targets pre-created it.
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training
@@ -2158,12 +2168,18 @@ and leaves the manifest unchanged; `harness --status --deep` and
 compatibility: supported` (`checkpoint-info` spells it `CPU backend
 compatibility`), the same 35-layer config as the base, and `[WARN] --deep:
 no effect when there is no interp artifact to check` (the hash comparison is
-FT.probe's, against a probe); one `--chat` reply arrives as a single line
-after the `> ` marker and `/quit` ends with `[INFO] Chat ended: 1 model
-turns`, exit 0. The prompt was rendered through the version 2 chat template,
-which is `CHAT_TEMPLATE_VERSION` in `rust-harness/harness/src/template.rs`
-pinned against `training/models/families.py`; the reply arriving cleanly
-framed is its observable, not a printed version.
+FT.probe's, against a probe); one `--chat` reply arrives after the `> `
+marker, ends at the model's end-of-turn or at the 256-token sampling cap,
+and `/quit` ends with `[INFO] Chat ended: 1 model turns`, exit 0. The
+reply's length and whether it closes its own turn are the adapter's, judged
+at FT.heldout-eval, not the harness's: until 2026-09-25 this clause asked
+for "a single line", the behaviour of the instruction-tuned model the
+rust-harness chats ran, and the 60-step adapter over the base ran to the
+cap, recorded below. The prompt was rendered through the version 2 chat
+template, which is `CHAT_TEMPLATE_VERSION` in
+`rust-harness/harness/src/template.rs` pinned against
+`training/models/families.py`; the reply arriving cleanly framed is its
+observable, not a printed version.
 
 Observed:
 
@@ -2399,7 +2415,165 @@ base was in the page cache from the training runs and safetensors maps it
 rather than reading it. The command paragraph's timing note was operator
 guidance, not an expected signal, and now states what was observed.
 
-Status: PENDING
+Stage B (2026-09-25): the two harness readers.
+
+```
+➜  ai-experiments git:(SFT-verification-2) cd ~/workspace/ai-experiments
+git pull origin SFT-verification-2
+git log -1 --oneline
+set -o pipefail
+make harness-run ARGS="--model /app/models/trained/ft3-straight/hf --text-only --status --deep"
+echo "exit=$?"
+remote: Enumerating objects: 8, done.
+remote: Counting objects: 100% (8/8), done.
+remote: Compressing objects: 100% (3/3), done.
+remote: Total 8 (delta 5), reused 8 (delta 5), pack-reused 0 (from 0)
+Unpacking objects: 100% (8/8), 3.86 KiB | 1.29 MiB/s, done.
+From https://github.com/alejandroJaramillo87/ai-experiments
+ * branch              SFT-verification-2 -> FETCH_HEAD
+   293d77aa..d52ace9f  SFT-verification-2 -> origin/SFT-verification-2
+Updating 293d77a..d52ace9
+Fast-forward
+ docs/verification/bugs/known-bugs.md           |   2 +-
+ docs/verification/training/fine-tuning-loop.md | 159 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++--
+ 2 files changed, 158 insertions(+), 3 deletions(-)
+docker compose -f docker-compose.rust-harness.yaml run --rm harness --model /app/models/trained/ft3-straight/hf --text-only --status --deep
+WARN[0000] Found orphan containers (llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-harness-run-2e58861a6c18 Creating
+Container ai-experiments-harness-run-2e58861a6c18 Created
+[WARN] --deep: no effect when there is no interp artifact to check
+[OK] model directory: /app/models/trained/ft3-straight/hf
+[OK] checkpoint files: config.json and model.safetensors present, header names 1951 tensors
+[OK] config.json: 35 layers, hidden size 1536, context 131072
+[OK] backend compatibility: supported
+[SKIP] probe: no --probe given
+[SKIP] probe geometry: no --probe given
+[SKIP] probe identity: no --probe given
+[SKIP] control vector: no --control-vector given
+[SKIP] control vector identity: no --control-vector given
+[SKIP] interp log directory: no --interp-log given
+[WARN] obs log directory: /mnt/ai-data/logs/harness cannot be created: /mnt is not writable: Read-only file system (os error 30); run records degrade to a no-op
+exit=0
+➜  ai-experiments git:(SFT-verification-2) cd rust-harness && cargo run --release -p runtime --bin checkpoint-info -- --check --text-only \
+    /mnt/ai-data/models/trained/ft3-straight/hf 2>&1 | tail -3; echo "exit=$?"; cd ..
+  layer 34: Global, head 512, ffn 12288, rope base 1000000
+
+[OK] CPU backend compatibility: supported
+exit=0
+```
+
+Stage B, the container chat, first run (2026-09-25; superseded, host
+state: the bind-mounted `sessions/rust-harness` was root-owned, and the
+inspection that found it is kept):
+
+```
+➜  ai-experiments git:(SFT-verification-2) make harness-chat ARGS="--model /app/models/trained/ft3-straight/hf --text-only"
+echo "exit=$?"
+docker compose -f docker-compose.rust-harness.yaml run --rm harness --model /app/models/trained/ft3-straight/hf --text-only --chat
+WARN[0000] Found orphan containers (llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-harness-run-c00f8d115bcf Creating
+Container ai-experiments-harness-run-c00f8d115bcf Created
+[ERROR] Task failed: session.jsonl: open /work/session.jsonl for append: Permission denied (os error 13)
+
+make: *** [make/harness.mk:18: harness-chat] Error 1
+exit=2
+➜  ai-experiments git:(SFT-verification-2) cd ~/workspace/ai-experiments
+ls -la sessions/ sessions/rust-harness/
+sessions/:
+total 12
+drwxrwxr-x  3 alejandro alejandro 4096 Sep 20 09:29 .
+drwxrwxr-x 24 alejandro alejandro 4096 Sep 25 07:24 ..
+drwxr-xr-x  2 root      root      4096 Sep 20 09:29 rust-harness
+
+sessions/rust-harness/:
+total 8
+drwxr-xr-x 2 root      root      4096 Sep 20 09:29 .
+drwxrwxr-x 3 alejandro alejandro 4096 Sep 20 09:29 ..
+```
+
+Stage B, the container chat (2026-09-25, after the `sessions/rust-harness`
+reset that RH.38's own command block opens with):
+
+```
+➜  ai-experiments git:(SFT-verification-2) cd ~/workspace/ai-experiments
+rm -rf sessions/rust-harness && mkdir -p sessions/rust-harness
+ls -ld sessions/rust-harness
+make harness-chat ARGS="--model /app/models/trained/ft3-straight/hf --text-only"
+echo "exit=$?"
+ls -la sessions/rust-harness
+drwxrwxr-x 2 alejandro alejandro 4096 Sep 25 09:23 sessions/rust-harness
+docker compose -f docker-compose.rust-harness.yaml run --rm harness --model /app/models/trained/ft3-straight/hf --text-only --chat
+WARN[0000] Found orphan containers (llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-harness-run-7fdbb34fb71b Creating
+Container ai-experiments-harness-run-7fdbb34fb71b Created
+[INFO] Model: /app/models/trained/ft3-straight/hf hash=027443861f18a8f6 layers=35
+[INFO] Weights: 8.62 GiB resident at bf16
+[INFO] Peak RSS after load: 9.51 GiB
+[INFO] KV cache: 131072 tokens, 1.52 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[INFO] Fold: dot=widen4 batch=64 threads=8
+[INFO] Sampling: seed=0 temperature=0.8 max_tokens=256
+[INFO] Build: 0.1.0 git unknown
+[INFO] Model load: 3.75 s
+Reply with one sentence: what is a huge page?
+[INFO] Prefill: 20 tokens in 0.72 s (28 tok/s)
+A huge page is a large virtual memory page that can be used for efficient memory management and speedier access to data.
+
+<h2>What is a Huge Page?</h2>
+
+A huge page is a large virtual memory page that can be used for efficient memory management and speedier access to data. It is a memory page that is larger than the normal page size, which is typically 4KB.
+
+Virtual memory is an essential part of computer system because it allows programs to access data that is not present in physical memory. However, virtual memory can be slow and inefficient if the page size is not large enough. This is where huge pages come into play.
+
+A huge page can be used for memory management because it can store more data in a single page. This can result in fewer page faults, which are the number of times the operating system has to retrieve data from disk instead of from memory. This can lead to faster processing times.
+
+Additionally, huge pages can improve the performance of applications that require large amounts of memory, such as databases and virtual machines. By allocating a large page to an application, it can access more data in memory, resulting in faster processing times.
+
+Overall, huge pages are a valuable tool for efficient memory management and faster data access
+/quit
+[INFO] Chat ended: 1 model turns
+[INFO] Session snapshot: 276 cached tokens at /work/session.kv
+exit=0
+total 9952
+drwxrwxr-x 2 alejandro alejandro     4096 Sep 25 09:26 .
+drwxrwxr-x 3 alejandro alejandro     4096 Sep 25 09:23 ..
+-rw-r--r-- 1 alejandro alejandro     1389 Sep 25 09:25 session.jsonl
+-rw-r--r-- 1 alejandro alejandro 10175889 Sep 25 09:26 session.kv
+```
+
+Stage B judged: `harness --status --deep` exited 0 with `[OK] backend
+compatibility: supported`, the base's 35-layer config, the header naming
+1,951 tensors, and the `--deep` WARN the signal names. `checkpoint-info
+--check` ended on `[OK] CPU backend compatibility: supported`, exit 0. The
+chat loaded the export (8.62 GiB resident at bf16, 3.75 s), rendered the
+prompt through the pinned template so that the reply came back framed and
+on topic, and `/quit` ended with `[INFO] Chat ended: 1 model turns`, exit 0,
+leaving a user-owned `session.jsonl` and `session.kv`. The `[WARN] obs log
+directory` line is the one FT.preconditions observed on the same service,
+which mounts no log root by design. The chat's first run failed on host
+state, not the tree: the bind-mounted `sessions/rust-harness` was root-owned
+and dated 2026-09-20 09:29, created by docker as the bind source on a run
+whose tree predated the `mkdir -p` the harness targets gained on 2026-09-19,
+and `mkdir -p` leaves an existing directory alone; the same shape as stage
+A's `trained` directory, fixed the same way, no ledger row.
+
+One mismatch, and it is a runbook finding, not a code defect. The signal as
+first written asked for a reply "as a single line". The reply answered the
+question in one sentence and then continued into a headed essay until the
+256-token sampling cap, without emitting its end-of-turn. Nothing in the
+harness promises a line count: the generator stops at the tokenizer EOS or
+the turn-close token (`rust-harness/harness/src/generator.rs`,
+`rust-harness/harness/src/chat.rs`), and the REPL prints what the model
+produced. The clause was carried over from the rust-harness chats, which ran
+the instruction-tuned `gemma-4-E2B-it`; this artifact is 60 SFT steps over
+the pretrained base, about 1,920 examples, and whether it has learned to
+close its turn is the adapter's quality, which FT.heldout-eval and
+FT.eval-ft measure. What this entry tests, the export loading and serving
+through both readers and one generation round trip, was observed in full,
+so the clause is corrected above with this record beside it, and the entry
+closes. Pass on every stage B criterion as corrected.
+
+Status: VERIFIED (2026-09-25)
 
 ## FT.heldout-eval Held-out loss and lm-eval on base and merged
 
