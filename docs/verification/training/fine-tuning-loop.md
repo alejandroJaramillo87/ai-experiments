@@ -1850,6 +1850,135 @@ reason other than idle, and the signal is alert-only
 so a standing reason such as a locked clock or a power cap trips it on every
 sample and the line carries no information on this workstation.
 
+Interrupted run (2026-09-25; the straight run's checkpoint `ls` and `cat`
+were not pasted with it and are still owed):
+
+```
+➜  ai-experiments git:(SFT-verification-2) cd ~/workspace/ai-experiments
+set -o pipefail
+make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
+    ARGS="run.name=ft3-resume schedule.total_steps=60 schedule.warmup_steps=3 checkpoint.interval_steps=30 sft.eval_steps=30"
+echo "exit=$?"
+ls /mnt/ai-data/training/runs/ft3-resume/checkpoints/
+cat /mnt/ai-data/training/runs/ft3-resume/checkpoints/checkpoint-30/meta.json
+docker compose -f docker-compose.training.yaml run --rm training python -m training train-sft --config training/recipes/reference/sft-qlora-e2b.yaml run.name=ft3-resume schedule.total_steps=60 schedule.warmup_steps=3 checkpoint.interval_steps=30 sft.eval_steps=30
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up. 
+Container ai-experiments-training-run-cb3ccfc7b6fe Creating 
+Container ai-experiments-training-run-cb3ccfc7b6fe Created 
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training train-sft --config training/recipes/reference/sft-qlora-e2b.yaml run.name=ft3-resume schedule.total_steps=60 schedule.warmup_steps=3 checkpoint.interval_steps=30 sft.eval_steps=30
+[RUN] Fine-tuning ft3-resume [trl]: 60 total steps
+[model] flash-attn supports head_dim <= 256; this model's widest head is 512, so attention runs on sdpa
+Loading weights:   0%|                                                                                                                                 | 0/1951 [00:00<?, ?it/s]/opt/venv/lib/python3.12/site-packages/bitsandbytes/backends/cuda/ops.py:213: FutureWarning: _check_is_size will be removed in a future PyTorch release along with guard_size_oblivious.     Use _check(i >= 0) instead.
+  torch._check_is_size(blocksize)
+Loading weights: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1951/1951 [00:00<00:00, 3196.33it/s]
+[transformers] The tokenizer has new PAD/BOS/EOS tokens that differ from the model config and generation config. The model config and generation config were aligned accordingly, being updated with the tokenizer's values. Updated tokens: {'eos_token_id': 1, 'bos_token_id': 2, 'pad_token_id': 0}.
+{'loss': '1.464', 'grad_norm': '0.608', 'learning_rate': '0.0001946', 'epoch': '0.002076'}                                                                                      
+ 17%|███████████████████████▏                                                                                                                   | 10/60 [02:39<13:19, 15.99s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+ 27%|█████████████████████████████████████                                                                                                      | 16/60 [04:16<11:42, 15.97s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+ 28%|███████████████████████████████████████▍                                                                                                   | 17/60 [04:34<11:46, 16.43s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+{'loss': '1.225', 'grad_norm': '0.4617', 'learning_rate': '0.0001636', 'epoch': '0.004152'}                                                                                     
+ 37%|██████████████████████████████████████████████████▉                                                                                        | 22/60 [05:53<10:00, 15.81s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+ 48%|███████████████████████████████████████████████████████████████████▏                                                                       | 29/60 [07:42<07:55, 15.35s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+{'loss': '1.104', 'grad_norm': '1.176', 'learning_rate': '0.0001137', 'epoch': '0.006227'}                                                                                      
+ 50%|█████████████████████████████████████████████████████████████████████▌                                                                     | 30/60 [07:59<07:52, 15.74s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5                                                                                         | 157/2033 [00:27<05:02,  6.21it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5                                                                                         | 387/2033 [01:07<04:40,  5.86it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5                                                                                         | 669/2033 [01:57<03:53,  5.84it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5████████████▋                                                                            | 892/2033 [02:37<03:48,  5.00it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5██████████████████████████████▊                                                         | 1171/2033 [03:27<03:02,  4.73it/s]
+                                                                                                                                                                                [watchdog] ALERT gpu_throttle: value 1, threshold 0.5████████████████████████████████████████████████████████████████████████████            | 1853/2033 [05:27<00:33,  5.33it/s]
+{'eval_loss': '1.038', 'eval_runtime': '361.5', 'eval_samples_per_second': '11.25', 'eval_steps_per_second': '5.624', 'epoch': '0.006227'}                                      
+ 55%|████████████████████████████████████████████████████████████████████████████▍                                                              | 33/60 [14:47<30:55, 68.73s/it]^CTraceback (most recent call last):                                                                                                                                             
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/app/training/__main__.py", line 7, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/app/training/cli.py", line 484, in main
+    return dispatch("training", build_parser, argv)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/common/obs/dispatch.py", line 70, in dispatch
+    result = args.func(args)
+             ^^^^^^^^^^^^^^^
+  File "/app/training/cli.py", line 115, in cmd_train_sft
+    result = train_sft(recipe)
+             ^^^^^^^^^^^^^^^^^
+  File "/app/training/tune/sft.py", line 389, in train_sft
+    return _train_locked(recipe)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/app/training/tune/sft.py", line 479, in _train_locked
+    trainer.train(resume_from_checkpoint=resume_path)
+  File "/opt/venv/lib/python3.12/site-packages/transformers/trainer.py", line 1433, in train
+    return inner_training_loop(
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/transformers/trainer.py", line 1515, in _inner_training_loop
+    self._run_epoch(
+  File "/opt/venv/lib/python3.12/site-packages/transformers/trainer.py", line 1743, in _run_epoch
+    tr_loss_step = self.training_step(model, inputs, num_items_in_batch)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/trl/trainer/sft_trainer.py", line 1185, in training_step
+    return super().training_step(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/transformers/trainer.py", line 1943, in training_step
+    self.accelerator.backward(loss, **kwargs)
+  File "/opt/venv/lib/python3.12/site-packages/accelerate/accelerator.py", line 2850, in backward
+    loss.backward(**kwargs)
+  File "/opt/venv/lib/python3.12/site-packages/torch/_tensor.py", line 623, in backward
+    torch.autograd.backward(
+  File "/opt/venv/lib/python3.12/site-packages/torch/autograd/__init__.py", line 395, in backward
+    _engine_run_backward(
+  File "/opt/venv/lib/python3.12/site-packages/torch/autograd/graph.py", line 979, in _engine_run_backward
+    return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt
+ 55%|████████████████████████████████████████████████████████████████████████████▍                                                              | 33/60 [15:07<12:22, 27.51s/it]
+
+make: *** [make/training.mk:56: train-sft] Error 130
+exit=2
+checkpoint-30  latest  README.md
+{
+  "step": 30,
+  "checkpoint_format": "trl",
+  "adapter_only": true,
+  "base_model": "google/gemma-4-E2B",
+  "base_revision": "d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f",
+  "base_config_sha256": "e5faef0dd1a8f2437f6010721146b85433eaa90e679ef011e803c7ffefae73b8",
+  "backend": "trl",
+  "recipe_hash": "beda71298666ffce4ba8d9547915371a7deb8994fd648057f8b769e6b80380ec",
+  "git_sha": "unknown",
+  "library_versions": {
+    "torch": "2.13.0+cu130",
+    "transformers": "5.13.1",
+    "trl": "0.24.0",
+    "peft": "0.19.1"
+  },
+  "wall_clock": "2026-09-25T15:02:53+0000",
+  "attention_implementation": "sdpa"
+}
+```
+
+Every stage-2 criterion observed: `[RUN] Fine-tuning ft3-resume [trl]: 60
+total steps`, the same `eval_loss` 1.038 at step 30 as the straight run (the
+two runs are seeded alike, so agreement here is expected), one Ctrl-C at step
+33 ending in the `KeyboardInterrupt` traceback with `make` reporting error
+130 and the shell `exit=2` (`make` exits 2 when a recipe fails, whatever the
+recipe's own code), `checkpoint-30` present and `checkpoint-60` absent, and
+the `meta.json` inside `checkpoint-30` carrying `checkpoint_format: trl`, `adapter_only:
+true`, `base_revision d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f` and
+`attention_implementation: sdpa`. The other two listing entries, `latest` and
+`README.md`, are the checkpoint callback's own outputs (the symlink
+`update_latest` maintains and the run readme, `training/tune/sft_callbacks.py`),
+not stray checkpoints. `git_sha: unknown` is the same soft-fail
+FT.smoke-dataset noted for the prepare container: the training image carries
+no `.git` either, and no reader checks the field.
+
 Status: PENDING
 
 ## FT.export-merged Export the merged HF directory and load it in the harness
