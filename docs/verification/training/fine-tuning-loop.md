@@ -273,8 +273,9 @@ builds what it verifies:
   run the same day failed at the base's lm-eval task load on a host venv
   synced before `f52c158` locked the ifeval extra, after the train, export
   and holdout phases had passed; recorded in the entry, host state, no
-  ledger row. The mirror now checks the extra before any GPU work; its
-  first pass is owed to the entry's Observed block.
+  ledger row. The mirror now checks the extra before any GPU work, and
+  passed the same day after `make install` (`1 passed` in 21:34), recorded
+  in the entry.
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training
@@ -4167,6 +4168,47 @@ training phase, so the next such drift costs seconds rather than the
 fifteen minutes this run spent. The re-run is owed after the sync. The
 Status line below is the entry's, closed on the hand run; the mirror's pass
 is recorded when it happens.
+
+The hardware mirror's first pass (2026-09-25, after `git pull` to
+`efbeefd`), the sync, the import probe and the run, pasted verbatim:
+
+```
+➜  ai-experiments git:(SFT-verification-2) make install 2>&1 | tail -5
+Installed 2 packages in 3ms
+ + immutabledict==4.3.1
+ + langdetect==1.0.9
+Environment synced.
+➜  ai-experiments git:(SFT-verification-2) uv run --no-sync python -c "import langdetect, immutabledict, nltk; print('ok')"
+ok
+➜  ai-experiments git:(SFT-verification-2) uv run --no-sync pytest -m "hw_full and training" tests/hardware/test_heldout_eval.py -v 2>&1 | tail -40; echo "exit=$?"
+============================= test session starts ==============================
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /home/alejandro/workspace/ai-experiments/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/alejandro/workspace/ai-experiments
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, mock-3.15.1, jaxtyping-0.3.11, cov-7.1.0, hydra-core-1.3.2, anyio-4.14.2, xdist-3.8.0, typeguard-4.6.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/hardware/test_heldout_eval.py::test_heldout_eval PASSED            [100%]
+
+[TIER] full: torch present, the whole suite was in scope.
+======================== 1 passed in 1294.59s (0:21:34) ========================
+exit=0
+```
+
+Judgement. `make install` added exactly the two packages the lock carried
+and the venv lacked, `immutabledict 4.3.1` and `langdetect 1.0.9` (nltk was
+already present as lm-eval's own dependency), and removed nothing; the
+probe printed `ok`; the mirror passed in 21:34 at `[TIER] full`, exit 0,
+about four minutes under the 25 the docstring budgets, the preflight
+having found the extra. Every assertion the module holds therefore held on
+the workstation: the four verbs' exits and printed lines on both sides,
+both record shapes, the `eval-ft` driver's pair checks, the organism
+verifier's projection, and the merged model's held-out loss at or below
+the base's after 20 steps. The mirror stands as this entry's re-proof;
+`make hardware-tests HW=full SUITE=training` runs it with the other
+training mirrors.
 
 Status: VERIFIED (2026-09-25) on the third evaluation attempt. The
 holdout half passed on the first attempt (KB-92's first fix failed the
