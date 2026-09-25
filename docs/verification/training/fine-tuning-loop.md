@@ -2105,8 +2105,9 @@ harness image, and `checkpoint-info` reads it on the host). `make
 export-build` rebuilds the image's pip layer after KB-91's two pins, minutes
 rather than the cache hit FT.preconditions observed. The merge loads
 the 10.2 GB bf16 base on the CPU and writes the same again into the
-`hf.partial` staging directory before the rename, so the first export runs
-for minutes with only `[RUN] Merging model:` showing; an `hf.partial`
+`hf.partial` staging directory before the rename; with the base in the page
+cache from the training runs it took seconds on the first run (2026-09-25),
+and a cold cache costs one read of the base on top. An `hf.partial`
 directory left behind marks a killed run, and the next export removes it.
 The last line is interactive: at the `> ` marker type one short prompt
 (`Reply with one sentence: what is a huge page?`), wait for the reply (CPU
@@ -2243,6 +2244,160 @@ ModuleNotFoundError: No module named 'xxhash'
 make: *** [make/training.mk:64: export-hf] Error 1
 exit=2
 ```
+
+Stage A (2026-09-25, as committed after KB-91; the export, the listing, the
+manifest, the digest, and the refused second export):
+
+```
+➜  ai-experiments git:(SFT-verification-2) cd ~/workspace/ai-experiments
+git pull origin SFT-verification-2
+git log -1 --oneline
+set -o pipefail
+make export-build
+remote: Enumerating objects: 17, done.
+remote: Counting objects: 100% (17/17), done.
+remote: Compressing objects: 100% (4/4), done.
+remote: Total 17 (delta 13), reused 17 (delta 13), pack-reused 0 (from 0)
+Unpacking objects: 100% (17/17), 8.42 KiB | 2.10 MiB/s, done.
+From https://github.com/alejandroJaramillo87/ai-experiments
+ * branch              SFT-verification-2 -> FETCH_HEAD
+   e9703d73..293d77aa  SFT-verification-2 -> origin/SFT-verification-2
+Updating e9703d7..293d77a
+Fast-forward
+ docker/training/Dockerfile.export                |  12 +++++--
+ docs/sandbox/docker_training_overview.md         |  16 +++++----
+ docs/verification/bugs/known-bugs.md             |   7 ++--
+ docs/verification/training/fine-tuning-loop.md   |  86 ++++++++++++++++++++++++++++++++++++++++++++++-
+ tests/training/README.md                         |   1 +
+ tests/training/test_export_image_dependencies.py | 219 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 6 files changed, 329 insertions(+), 12 deletions(-)
+ create mode 100644 tests/training/test_export_image_dependencies.py
+Building export image...
+docker compose -f docker-compose.training.yaml build export
+[+] Building 24.9s (17/17) FINISHED
+ => [internal] load local bake definitions                                                                                                                                  0.0s
+ => => reading from stdin 569B                                                                                                                                              0.0s
+ => [internal] load build definition from Dockerfile.export                                                                                                                 0.0s
+ => => transferring dockerfile: 3.01kB                                                                                                                                      0.0s
+ => [internal] load metadata for docker.io/library/ubuntu:24.04                                                                                                             0.8s
+ => [internal] load metadata for ghcr.io/astral-sh/uv:0.11.28                                                                                                               0.8s
+ => [internal] load .dockerignore                                                                                                                                           0.0s
+ => => transferring context: 1.73kB                                                                                                                                         0.0s
+ => [stage-1 1/9] FROM docker.io/library/ubuntu:24.04@sha256:008173c23f95b170204355c12626cb5a965d779a7e1283b09e9cffbb1bf33ca3                                               0.0s
+ => [uv 1/1] FROM ghcr.io/astral-sh/uv:0.11.28@sha256:0f36cb9361a3346885ca3677e3767016687b5a170c1a6b88465ec14aefec90aa                                                      0.0s
+ => CACHED [stage-1 2/9] RUN apt-get update &&     apt-get install -y --no-install-recommends         git         ca-certificates         python3.12         python3.12-de  0.0s
+ => CACHED [stage-1 3/9] COPY --from=uv /uv /uvx /usr/local/bin/                                                                                                            0.0s
+ => CACHED [stage-1 4/9] RUN uv venv /opt/venv --python 3.12                                                                                                                0.0s
+ => [stage-1 5/9] RUN --mount=type=cache,target=/root/.cache/uv     uv pip install --index-url https://download.pytorch.org/whl/cpu torch==2.13.0 &&     uv pip install    17.8s
+ => [stage-1 6/9] RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin -c "Application User" appuser                                                   0.1s
+ => [stage-1 7/9] RUN mkdir -p /app/cache /app/logs && chown -R appuser:appuser /app                                                                                        0.2s
+ => [stage-1 8/9] WORKDIR /app                                                                                                                                              0.0s
+ => [stage-1 9/9] RUN python -c "import torch, transformers, peft, safetensors, omegaconf, xxhash"                                                                          4.7s
+ => exporting to image                                                                                                                                                      1.2s
+ => => exporting layers                                                                                                                                                     1.2s
+ => => writing image sha256:84c03bf6d68e4b6c1794365545ddcab077851ac24fe7de5478e15569d1b1900a                                                                                0.0s
+ => => naming to docker.io/library/ai-experiments-export                                                                                                                    0.0s
+ => resolving provenance for metadata file                                                                                                                                  0.0s
+[+] build 1/1
+ ✔ Image ai-experiments-export Built                                                                                                                                        24.9s
+Export image built.
+➜  ai-experiments git:(SFT-verification-2) make export-hf CHECKPOINT=/mnt/ai-data/training/runs/ft3-straight/checkpoints/checkpoint-60 \
+    ARGS="--name ft3-straight"
+echo "exit=$?"
+docker compose -f docker-compose.training.yaml run --rm export python -m training export --checkpoint /mnt/ai-data/training/runs/ft3-straight/checkpoints/checkpoint-60 --name ft3-straight
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-export-run-47c8bdd51646 Creating
+Container ai-experiments-export-run-47c8bdd51646 Created
+[OK] Base model verified: /app/models/hf/gemma-4-E2B (revision d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f)
+[ERROR] Export failed: [Errno 13] Permission denied: '/app/models/trained/ft3-straight'
+
+make: *** [make/training.mk:64: export-hf] Error 1
+exit=2
+➜  ai-experiments git:(SFT-verification-2) id -u; id -g; echo "UID=${UID} GID=${GID}"
+ls -ld /mnt/ai-data /mnt/ai-data/models /mnt/ai-data/models/trained /mnt/ai-data/training/runs
+ls -la /mnt/ai-data/models/trained/
+docker compose -f docker-compose.training.yaml config export 2>/dev/null | grep -E "^\s+user:"
+1000
+1000
+UID=1000 GID=1000
+drwxr-xr-x  9 alejandro alejandro 4096 Aug  6 15:41 /mnt/ai-data
+drwxr-xr-x  9 alejandro alejandro 4096 Aug  1 05:44 /mnt/ai-data/models
+drwxr-xr-x  2 root      root      4096 Jul 23 11:10 /mnt/ai-data/models/trained
+drwxr-xr-x 12 alejandro alejandro 4096 Sep 25 07:42 /mnt/ai-data/training/runs
+total 8
+drwxr-xr-x 2 root      root      4096 Jul 23 11:10 .
+drwxr-xr-x 9 alejandro alejandro 4096 Aug  1 05:44 ..
+    user: 1000:1000
+  user: 1000:1000
+➜  ai-experiments git:(SFT-verification-2) sudo chown -R "$(whoami):$(whoami)" /mnt/ai-data/models/trained
+➜  ai-experiments git:(SFT-verification-2) ls -ld /mnt/ai-data/models/trained
+drwxr-xr-x  2 alejandro alejandro 4096 Jul 23 11:10 /mnt/ai-data/models/trained
+➜  ai-experiments git:(SFT-verification-2) make export-hf CHECKPOINT=/mnt/ai-data/training/runs/ft3-straight/checkpoints/checkpoint-60 \
+    ARGS="--name ft3-straight"
+echo "exit=$?"
+docker compose -f docker-compose.training.yaml run --rm export python -m training export --checkpoint /mnt/ai-data/training/runs/ft3-straight/checkpoints/checkpoint-60 --name ft3-straight
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-export-run-fb0cd4975a17 Creating
+Container ai-experiments-export-run-fb0cd4975a17 Created
+[OK] Base model verified: /app/models/hf/gemma-4-E2B (revision d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f)
+[RUN] Merging model: /mnt/ai-data/training/runs/ft3-straight/checkpoints/checkpoint-60
+Loading weights: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1951/1951 [00:00<00:00, 61658.17it/s]
+Writing model shards: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1/1 [00:01<00:00,  1.55s/it]
+[OK] Adapter merged: /mnt/ai-data/training/runs/ft3-straight/checkpoints/checkpoint-60 into /app/models/hf/gemma-4-E2B
+[OK] HF export written: /app/models/trained/ft3-straight/hf (10,208,852,910 bytes)
+[OK] Manifest written: /app/models/trained/ft3-straight/manifest.json
+model_hash: 684dfd319d75faff9d56e9c1cc911a78427540e12ca53a6ae9a3f7818d478b52
+exit=0
+➜  ai-experiments git:(SFT-verification-2) ls /mnt/ai-data/models/trained/ft3-straight/hf/
+grep -E '"(mode|hf_dir|model_hash)"' /mnt/ai-data/models/trained/ft3-straight/manifest.json
+sha256sum /mnt/ai-data/models/trained/ft3-straight/hf/model.safetensors
+config.json  generation_config.json  model.safetensors  tokenizer_config.json  tokenizer.json
+  "mode": "merge",
+  "hf_dir": "/app/models/trained/ft3-straight/hf",
+  "model_hash": "684dfd319d75faff9d56e9c1cc911a78427540e12ca53a6ae9a3f7818d478b52",
+684dfd319d75faff9d56e9c1cc911a78427540e12ca53a6ae9a3f7818d478b52  /mnt/ai-data/models/trained/ft3-straight/hf/model.safetensors
+➜  ai-experiments git:(SFT-verification-2) make export-hf CHECKPOINT=/mnt/ai-data/training/runs/ft3-straight/checkpoints/checkpoint-60 \
+    ARGS="--name ft3-straight"
+echo "exit=$?"
+docker compose -f docker-compose.training.yaml run --rm export python -m training export --checkpoint /mnt/ai-data/training/runs/ft3-straight/checkpoints/checkpoint-60 --name ft3-straight
+WARN[0000] Found orphan containers (rust-harness-serve, llama-cpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Container ai-experiments-export-run-fcdcb0f69297 Creating
+Container ai-experiments-export-run-fcdcb0f69297 Created
+[OK] Base model verified: /app/models/hf/gemma-4-E2B (revision d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f)
+[ERROR] Export exists: /app/models/trained/ft3-straight/hf
+  Solution: pass --force to replace it, or --name for a new export (a re-export changes model_hash under anything fitted to the old weights)
+
+make: *** [make/training.mk:64: export-hf] Error 1
+exit=2
+```
+
+Stage A judged: the base-verified line printed the staged container path
+and the full revision as the expected signal states, which is KB-91's close
+condition. `[RUN] Merging model:`, `[OK] Adapter merged:`, `[OK] HF export
+written:` (10,208,852,910 bytes), `[OK] Manifest written:` and the
+`model_hash:` line all printed, `exit=0`. The listing holds `config.json`,
+`generation_config.json`, one `model.safetensors`, `tokenizer.json` and
+`tokenizer_config.json`, and no index file. The manifest records
+`"mode": "merge"`, `"hf_dir"` in the container spelling, and a `model_hash`
+that equals the `sha256sum` line and differs from the FT.preconditions base
+digest `76dc84a5...`. The second export was refused with `[ERROR] Export
+exists:` and the `--force` solution line before staging, `make` reported
+`Error 1`, the echo showed 2, and the listing and manifest above are the
+ones the refusal left in place. Pass on every stage A criterion.
+
+Two observations, neither a mismatch. First, the export's first run died at
+`[Errno 13] Permission denied` creating the export directory: the host
+`trained` directory was owned by root, dated 2026-07-23, older than the rest
+of the tree, so it predates the `chown -R` in
+`scripts/setup/setup_data_ssd.sh` that gives every other directory to the
+operator, and the container ran as uid 1000 exactly as the compose anchor
+resolves it. One `chown` on the host fixed it, kept in the paste; a host-state
+defect outside the tree, so no ledger row. Second, the merge took seconds,
+not the minutes the command paragraph predicted: the 1,951 tensors loaded at
+61,658 per second and the single shard wrote in 1.55 s, because the staged
+base was in the page cache from the training runs and safetensors maps it
+rather than reading it. The command paragraph's timing note was operator
+guidance, not an expected signal, and now states what was observed.
 
 Status: PENDING
 
