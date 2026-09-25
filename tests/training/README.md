@@ -75,7 +75,7 @@ regenerated.
 | `test_mixture.py` | 23 | P2-D2 data-mixing tests: draw proportions from source tags, deterministic random access, resume-index handling, strict single-epoch abort, tokenizer-hash refusal at construction and at validate(), and the tagged dataloader path. |
 | `test_obs_durability.py` | 2 | SIGKILL durability test for the jsonl metrics sink (roadmap OBS-10). |
 | `test_obs_integration.py` | 3 | Cross-module integration tests for the observability stack (phases A-D). |
-| `test_obs_metrics.py` | 18 | Unit tests for the metrics.jsonl tracker sink (roadmap OBS-10). |
+| `test_obs_metrics.py` | 19 | Unit tests for the metrics.jsonl tracker sink (roadmap OBS-10). |
 | `test_offload.py` | 35 | ZeRO-Offload unit tests (Phase 2 P2-D5): DeepSpeed config generation as a pure function of the recipe, the trainable_filter freeze policy on a real tiny HF model, the transformer_stack parameter accounting, and the validate() invariants. |
 | `test_peft_utils.py` | 23 | PEFT glue tests (Phase 1 F2): family-registry lookups, target_modules "auto" resolution into the config snapshot, and the trainable-parameter report, and the composite-base exclusion (KB-83). |
 | `test_pin_run.py` | 4 | scripts/training/pin_run.sh: the host-side taskset wrapper (D9). |

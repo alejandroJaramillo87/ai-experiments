@@ -22,7 +22,8 @@ leaves exactly one checkpoint-10 directory with meta.json beside it, which
 the export then merges. It skips when the prepared dataset (FT.smoke-dataset) or the
 pinned base (FT.preconditions) is absent, and fails, rather than skips, when a release
 binary is, or when the prepared dataset's manifest carries a chat template
-version or tokenizer hash other than the pinned base renders today.
+version or tokenizer hash other than the pinned base renders today (the
+guards are conftest's sft_smoke_recipe, shared with test_train_resume.py).
 """
 
 from __future__ import annotations
@@ -34,7 +35,7 @@ import subprocess
 
 import pytest
 
-from tests.hardware.conftest import REPO_ROOT, altered, write_probe
+from tests.hardware.conftest import REPO_ROOT, altered, sft_smoke_recipe, write_probe
 
 pytestmark = [
     pytest.mark.hw_full,
@@ -47,10 +48,6 @@ HARNESS_DIR = os.path.join(REPO_ROOT, "rust-harness")
 BIN_DIR = os.path.join(HARNESS_DIR, "target", "release")
 HARNESS = os.path.join(BIN_DIR, "harness")
 CHECKPOINT_INFO = os.path.join(BIN_DIR, "checkpoint-info")
-RECIPE = os.path.join(
-    REPO_ROOT, "training", "recipes", "reference", "sft-qlora-e2b.yaml"
-)
-
 # Ten steps: enough to write one checkpoint through the real callback and
 # little enough that the run is minutes, not the hour FT.train-resume spends.
 TOTAL_STEPS = 10
@@ -79,54 +76,20 @@ def run(binary: str, args: list[str], timeout_s: float) -> subprocess.CompletedP
 
 
 def test_fine_tuning_loop(cuda, tmp_path, train_lock):
-    from training.export.errors import ExportError
-    from training.export.preflight import resolve_base_identity
-    from training.recipes import load_recipe
     from training.tune.sft import train_sft
 
     require_binaries()
-    recipe = load_recipe(
-        RECIPE,
+    recipe, base = sft_smoke_recipe(
         [
             "run.name=ft11-loop",
             f"run.output_root={tmp_path / 'runs'}",
             f"schedule.total_steps={TOTAL_STEPS}",
             f"checkpoint.interval_steps={TOTAL_STEPS}",
             "checkpoint.retain_last=1",
-        ],
+        ]
     )
-    if not os.path.isdir(recipe.sft.dataset):
-        pytest.skip(
-            f"prepared dataset not on disk at {recipe.sft.dataset} (FT.smoke-dataset)"
-        )
-    try:
-        base = resolve_base_identity(
-            recipe.model.hf.id, revision=recipe.model.hf.revision, local_files_only=True
-        )
-    except ExportError as exc:
-        pytest.skip(f"pinned base not staged (FT.preconditions): {exc}")
-    # FT.smoke-dataset: the prepared directory on disk is the one this code
-    # would render today. The loader refuses both mismatches too, but from
-    # inside train_sft; asserting here names the stale artifact and the entry
-    # that re-renders it instead of surfacing a loader exception mid-run.
-    from training.data.prepare import load_tokenizer
-    from training.models.families import CHAT_TEMPLATE_VERSION
-
-    with open(os.path.join(recipe.sft.dataset, "manifest.json")) as f:
-        dataset = json.load(f)
-    assert dataset["chat_template_version"] == CHAT_TEMPLATE_VERSION, (
-        f"{recipe.sft.dataset} was rendered with chat_template_version="
-        f"{dataset['chat_template_version']!r}, this code renders "
-        f"{CHAT_TEMPLATE_VERSION}; re-run FT.smoke-dataset"
-    )
-    # base.model is the staged directory the id resolved to (KB-79).
-    tokenizer_hash = load_tokenizer(base.model).content_hash
-    assert dataset["tokenizer_hash"] == tokenizer_hash, (
-        f"{recipe.sft.dataset} was tokenized with {dataset['tokenizer_hash']}, "
-        f"the pinned base {recipe.model.hf.id} hashes to {tokenizer_hash}; "
-        "re-run FT.smoke-dataset against the pinned base"
-    )
-    # FT.train-resume: one stamped checkpoint from the real trainer.
+    # FT.train-resume's first criterion: one stamped checkpoint from the real
+    # trainer. The interrupt and the resume are test_train_resume.py's.
     result = train_sft(recipe)
     assert result.final_step == TOTAL_STEPS
     ckpt = tmp_path / "runs" / "ft11-loop" / "checkpoints" / f"checkpoint-{TOTAL_STEPS}"

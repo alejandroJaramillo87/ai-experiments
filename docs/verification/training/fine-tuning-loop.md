@@ -1735,13 +1735,22 @@ ft3-resume [trl]: 60 total steps` (the verb carries the override as
 passed), ends at `[OK] Run complete: step 60 [trl]` with exit 0, and its
 `ls` shows `checkpoint-60` beside `checkpoint-30`. The criterion that makes
 the resume a resume: the resumed run's `Held-out loss:` agrees with the
-straight run's within `RESUME_LOSS_RTOL` (0.01, `tests/hardware/test_gpu.py`),
+straight run's within `RESUME_LOSS_RTOL` (0.01, `tests/hardware/conftest.py`),
 that is `abs(a - b) / a <= 0.01`; record both numbers and the quotient.
-The constant is borrowed from `test_resume_loss_curve_within_tolerance`,
-which holds the from-scratch loop's per-step losses to it on the GPU; no
-hardware test mirrors a TRL resume, so this entry is the only evidence for
-one. A resumed run that reports `Fine-tuning` rather than `Resuming`, or
-ends at a step other than 60, has restarted rather than resumed.
+The constant is shared with `test_resume_loss_curve_within_tolerance`,
+which holds the from-scratch loop's per-step losses to it on the GPU. Since
+2026-09-25 this entry has a hardware mirror,
+`tests/hardware/test_train_resume.py` (`hw_full`, `gpu`, `ssd`, `training`),
+written after the hand run verified: the same three runs at 20 steps with
+the checkpoint at 10, in-process through `train_sft`'s `stop_after` in
+place of the Ctrl-C, no held-out passes, and the tolerance applied to the
+trainer's ten-step train-loss log, whose entry at step 20 is the mean over
+steps 11 to 20 in both the straight and the resumed run. That is the
+quantity the pastes below print every ten steps, and the hand run's own
+pairs at steps 40, 50 and 60 sit inside the tolerance too; the held-out
+comparison stays this entry's, at the recipe's scale. A resumed run that
+reports `Fine-tuning` rather than `Resuming`, or ends at a step other than
+60, has restarted rather than resumed.
 
 Observed:
 

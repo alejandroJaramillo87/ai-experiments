@@ -10,16 +10,11 @@ import os
 
 import pytest
 
+from tests.hardware.conftest import RESUME_LOSS_RTOL
+
 pytestmark = pytest.mark.gpu
 
 REQUIRED_CAPABILITY = (12, 0)  # RTX 5090, Blackwell sm_120
-
-# Stated GPU resume tolerance (resolved sweep decision: tolerance-based on
-# GPU, bitwise only on CPU/tiny-model): per-step training-loss agreement
-# within 1% relative over the post-resume window. CUDA kernels are
-# nondeterministic across runs (atomics, cuDNN autotuning); identical data
-# order plus restored RNG state bounds the drift well under this.
-RESUME_LOSS_RTOL = 0.01
 
 # Registered training families and their pinned checkpoints (kept in sync
 # with training/models/families.py and the model policy).

@@ -79,6 +79,7 @@ is the smoke-tier check that names such a stray, and `make install` is the repai
 | `test_ssd.py` | 6 | SSD/storage hardware suite (WI-3): mount layout and staging writability at the smoke tier; staging throughput, checkpoint round trip, the harvest disk preflight, and the D9 data_wait_ms bar at the full tier. |
 | `test_status_costs.py` | 5 | RHX.2, the load and prefill lines on real weights, as a test. |
 | `test_step_qlora.py` | 1 | FT.calibrate-qlora, the reference QLoRA recipe stepped on the GPU, as the hw_full tier runs it. |
+| `test_train_resume.py` | 1 | FT.train-resume, a TRL fine-tune interrupted and resumed, as one test the hw_full tier runs. |
 | `test_venv_lock.py` | 1 | Environment drift suite (WI-3): every distribution installed in the interpreter's site-packages is one uv.lock names at a locked version, at the smoke tier. |
 
 <!-- inventory:tests:end -->

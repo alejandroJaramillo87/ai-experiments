@@ -369,7 +369,7 @@ def chunked_loss_trainer(base, chunk_tokens: int):
 # -- orchestration -----------------------------------------------------------
 
 
-def train_sft(recipe: DictConfig) -> SftResult:
+def train_sft(recipe: DictConfig, *, stop_after: int | None = None) -> SftResult:
     """Run the recipe's supervised fine-tune end to end.
 
     Preflight (the sft group, then the lock) precedes any heavy import or
@@ -378,6 +378,12 @@ def train_sft(recipe: DictConfig) -> SftResult:
     exclusivity themselves. WatchdogAbort propagates to the caller after an
     emergency checkpoint is written; the D9 lock releases on every exit path
     via the context manager.
+
+    stop_after ends the run cleanly once that global step has completed, as
+    training/runtime/loop.py's train() does for the from-scratch loop: it
+    stands in for an operator's Ctrl-C at a save boundary so a resume can be
+    tested against a straight run in-process. The CLI does not expose it.
+    See build_callbacks() for what a stop off a checkpoint boundary leaves.
     """
     if not recipe.sft.enabled:
         raise SftPreflightError(
@@ -386,10 +392,10 @@ def train_sft(recipe: DictConfig) -> SftResult:
         )
 
     with run_lock(recipe.run.name):
-        return _train_locked(recipe)
+        return _train_locked(recipe, stop_after=stop_after)
 
 
-def _train_locked(recipe: DictConfig) -> SftResult:
+def _train_locked(recipe: DictConfig, *, stop_after: int | None = None) -> SftResult:
     import torch  # noqa: F401  (fail here, before run-dir side effects)
 
     from training.runtime.tracking import Tracker
@@ -468,6 +474,7 @@ def _train_locked(recipe: DictConfig) -> SftResult:
                 recipe_hash,
                 trainable_report=report,
                 base_identity=base_identity,
+                stop_after=stop_after,
             ),
         )
 

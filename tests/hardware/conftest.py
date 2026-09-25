@@ -43,6 +43,66 @@ LOG_ROOT = os.path.join(DEFAULT_LOG_DIR, "harness")
 sys.path.insert(0, os.path.join(REPO_ROOT, "tests", "training"))
 
 
+# Stated GPU resume tolerance (resolved sweep decision: tolerance-based on
+# GPU, bitwise only on CPU/tiny-model): training-loss agreement within 1%
+# relative over the post-resume window. CUDA kernels are nondeterministic
+# across runs (atomics, cuDNN autotuning); identical data order plus restored
+# RNG state bounds the drift well under this. Shared by the from-scratch
+# resume (test_gpu.py) and the TRL resume (test_train_resume.py).
+RESUME_LOSS_RTOL = 0.01
+
+SFT_RECIPE = os.path.join(
+    REPO_ROOT, "training", "recipes", "reference", "sft-qlora-e2b.yaml"
+)
+
+
+def sft_smoke_recipe(overrides: list[str]):
+    """The reference QLoRA recipe with `overrides`, and the staged base it
+    resolves to, for the tests that train on the smoke dataset.
+
+    Skips when the prepared dataset (FT.smoke-dataset) or the pinned base
+    (FT.preconditions) is absent, the one skip the module rule allows, and
+    fails when the prepared directory is stale: rendered with a chat template
+    version other than the one training/models/families.py renders, or
+    tokenized with a tokenizer other than the pinned base's. The loader
+    refuses both too, but from inside train_sft; asserting here names the
+    stale artifact and the entry that re-renders it instead of surfacing a
+    loader exception mid-run. base.model is the staged directory the recipe's
+    hub id resolved to (KB-79).
+    """
+    from training.data.prepare import load_tokenizer
+    from training.export.errors import ExportError
+    from training.export.preflight import resolve_base_identity
+    from training.models.families import CHAT_TEMPLATE_VERSION
+    from training.recipes import load_recipe
+
+    recipe = load_recipe(SFT_RECIPE, overrides)
+    if not os.path.isdir(recipe.sft.dataset):
+        pytest.skip(
+            f"prepared dataset not on disk at {recipe.sft.dataset} (FT.smoke-dataset)"
+        )
+    try:
+        base = resolve_base_identity(
+            recipe.model.hf.id, revision=recipe.model.hf.revision, local_files_only=True
+        )
+    except ExportError as exc:
+        pytest.skip(f"pinned base not staged (FT.preconditions): {exc}")
+    with open(os.path.join(recipe.sft.dataset, "manifest.json")) as f:
+        dataset = json.load(f)
+    assert dataset["chat_template_version"] == CHAT_TEMPLATE_VERSION, (
+        f"{recipe.sft.dataset} was rendered with chat_template_version="
+        f"{dataset['chat_template_version']!r}, this code renders "
+        f"{CHAT_TEMPLATE_VERSION}; re-run FT.smoke-dataset"
+    )
+    tokenizer_hash = load_tokenizer(base.model).content_hash
+    assert dataset["tokenizer_hash"] == tokenizer_hash, (
+        f"{recipe.sft.dataset} was tokenized with {dataset['tokenizer_hash']}, "
+        f"the pinned base {recipe.model.hf.id} hashes to {tokenizer_hash}; "
+        "re-run FT.smoke-dataset against the pinned base"
+    )
+    return recipe, base
+
+
 def e4b_checkpoint() -> str:
     """The E4B tier names the checkpoint through HARNESS_E4B_MODEL; outside
     that tier fall back to the same root the sibling weight test reads."""

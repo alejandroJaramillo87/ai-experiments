@@ -222,12 +222,19 @@ def build_callbacks(
     recipe_hash: str,
     trainable_report=None,
     base_identity=None,
+    stop_after: int | None = None,
 ) -> list:
     """Instantiate the trainer callbacks (imports transformers lazily).
 
     Returns [tracking, checkpoint] or [tracking, watchdog, checkpoint];
     ordering keeps metric fan-out ahead of a possible watchdog abort so the
-    aborting step's metrics are recorded.
+    aborting step's metrics are recorded. With stop_after set, a StopCallback
+    follows: it raises the trainer's should_training_stop flag at the end of
+    that step. The trainer runs on_step_end, then its log/save/evaluate
+    pass, then reads the flag, so a stop_after on a checkpoint.interval_steps
+    boundary leaves that checkpoint saved and stamped and the run ends
+    after it. Off the boundary nothing is saved: only the trainer's own flow
+    callback sets should_save on a stop, and only at max_steps.
     """
     from transformers import TrainerCallback
 
@@ -319,8 +326,19 @@ def build_callbacks(
             )
             update_latest(ckpt_root, state.global_step)
 
+    class StopCallback(TrainerCallback):
+        """End the run cleanly after global step stop_after (the resume
+        test's stand-in for an operator's Ctrl-C at a save boundary)."""
+
+        def on_step_end(self, args, state, control, **kwargs):
+            if state.global_step >= stop_after:
+                control.should_training_stop = True
+            return control
+
     callbacks: list[TrainerCallback] = [TrackingCallback()]
     if watchdog is not None:
         callbacks.append(WatchdogCallback())
     callbacks.append(CheckpointCallback())
+    if stop_after is not None:
+        callbacks.append(StopCallback())
     return callbacks
