@@ -135,7 +135,10 @@ services:
     read_only: true
     tmpfs:
       - /tmp:size=4G,mode=1777  # For CUDA cache and temp files
-      - /app/.cache:size=1G,mode=1777  # vLLM model info cache
+      # vLLM model info cache and FlashInfer's JIT output: a head size the
+      # shipped jit-cache lacks is compiled here at run time and dlopen'd,
+      # which a noexec tmpfs refuses ("failed to map segment", KB-101)
+      - /app/.cache:size=2G,mode=1777,exec
       - /app/cache:size=2G,mode=1777   # HuggingFace cache (HF_HOME)
       - /app/.config:size=100M,mode=1777  # vLLM usage stats
       - /app/.triton:size=2G,mode=1777,exec  # Triton compilation cache

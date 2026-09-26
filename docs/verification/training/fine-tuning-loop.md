@@ -316,7 +316,11 @@ builds what it verifies:
   resolve on build day, and the 5.17.0 it carried makes `head_dim`
   per-layer where that vLLM reads it globally (KB-100). Pinned, then
   bumped to vLLM 0.30.0 with its own transformers and FlashInfer versions,
-  the same day. The entry re-runs as committed.
+  the same day. The rebuilt image's acceptance check then got through
+  model config and died in kernel load: FlashInfer compiled the
+  teacher's prefill kernel into `/app/.cache`, a tmpfs the compose file
+  mounted without `exec` (KB-101); the mount carries `exec` now. The
+  entry re-runs as committed.
 - **FT.organisms's readiness review** (2026-09-26): the entry and the
   tree's two hints passed `prepare-sft` the blind corpus directory where
   the verb opens a file (the JSONL inside it); fixed in both. The entry
@@ -4774,6 +4778,12 @@ the verifier measuring an artifact rather than the implant.
   convertor reads per-layer configs; closes when the log prints `[OK]
   vllm-gpu healthy after <n>s` for the E4B-it teacher and the draw
   begins.
+  - KB-101 — the compose file mounted `vllm-gpu`'s `/app/.cache` tmpfs
+  without `exec`, and FlashInfer compiles a kernel there at run time for
+  a head size its shipped jit-cache lacks, as the E4B-it teacher's 512
+  is; the rebuilt image's first acceptance check died mapping that
+  kernel. The mount carries `exec` now; closes on the same healthy line
+  as KB-100, which the acceptance check shows first.
 
 The entry runs as one script per organism, `scripts/verification/ft-organisms.sh`,
 through `make verify ENTRY=ft-organisms` (since 2026-09-26; the first entry
@@ -4844,7 +4854,11 @@ bring `vllm-gpu` up on the teacher, wait for health through the registry's
 under 600 s, `version 0.30.0` in the service's banner with no traceback, a
 `choices` array in the reply, and `make down` exiting 0; that paste is
 recorded in KB-100's row, and the entry closes the row on its own healthy
-line.
+line. The check's first run (below) got the image through model config
+and died in kernel load on the `noexec` cache mount (KB-101); the compose
+change needs no rebuild, only the pull, so the check re-runs from
+`make vllm-up`. The first healthy load compiles the teacher's prefill
+kernel, minutes of the 600 s budget, once per container.
 
 ```bash
 cd ~/workspace/ai-experiments && git pull origin SFT-verification-2 && git log -1 --oneline
@@ -5176,6 +5190,80 @@ fix lands in AGENTS.md's order: transformers pinned at 5.17.0 beside vLLM
 so the broken state is reproducible, then vLLM bumped to 0.30.0 with the
 transformers and FlashInfer versions its release pins, then the image
 rebuilt and this entry re-issued unchanged.
+
+The rebuilt image's first acceptance check (2026-09-26, on `5556aaf`;
+failed, KB-101). The build's tail, `make vllm-up`, the health wait and the
+`grep` over the service's log, pasted verbatim (the `exit=` after the build
+printed empty because the operator's zsh spells `pipestatus` in lowercase;
+the `Built` line is the build's evidence):
+
+```
+#13 131.9 Installed 1 package in 348ms
+#13 131.9  + flashinfer-jit-cache==0.6.18.post1+cu130
+
+#14 [stage-1  7/13] RUN --mount=type=cache,target=/root/.cache/uv     uv pip install torch-c-dlpack-ext==0.1.5
+#14 0.105 Using Python 3.12.3 environment at: /opt/venv
+#14 0.108 Checked 1 package in 3ms
+[...]
+#21 exporting to image
+#21 exporting layers
+#21 exporting layers 7.0s done
+#21 writing image sha256:1740378c7c71ce8155ac1206822ba7599e6e4e6c9ac7e914d395c840ae9d45b7 done
+#21 naming to docker.io/library/ai-experiments-vllm-gpu done
+
+#22 resolving provenance for metadata file
+ Image ai-experiments-vllm-gpu Built 
+exit=
+Starting vllm-gpu...
+docker compose -f docker-compose.inference.yaml up -d vllm-gpu
+WARN[0000] Found orphan containers (rust-harness-serve) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up. 
+[+] up 2/2
+ ✔ Network ai-experiments_ai-network Created                                                                                                                                 0.0s
+ ✔ Container vllm-gpu                Started                                                                                                                                 0.1s
+vllm-gpu started on port 8003.
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "/home/alejandro/workspace/ai-experiments/common/serving.py", line 233, in wait_healthy
+    raise ServingError(
+common.serving.ServingError: vllm-gpu did not become healthy within 600s
+  Solution: check `docker compose logs vllm-gpu` for load errors
+vllm-gpu  | (APIServer pid=51) INFO 09-26 03:41:06 [api_utils.py:347]  ▄▄ ▄█ █     █     █ ▀▄▀ █  version 0.30.0
+vllm-gpu  | (EngineCore pid=232) ERROR 09-26 03:42:42 [core.py:1366] Traceback (most recent call last):
+vllm-gpu  | (EngineCore pid=232) ERROR 09-26 03:42:42 [core.py:1366] RuntimeError: Check failed: (lib_handle_ != nullptr) is false: Failed to load dynamic shared library /app/.cache/flashinfer/0.6.18.post1/120f/cached_ops/batch_prefill_with_kv_cache_dtype_q_bf16_dtype_kv_bf16_dtype_o_bf16_dtype_idx_i32_head_dim_qk_512_head_dim_vo_512_posenc_0_use_swa_False_use_logits_cap_False_f16qk_False/batch_prefill_with_kv_cache_dtype_q_bf16_dtype_kv_bf16_dtype_o_bf16_dtype_idx_i32_head_dim_qk_512_head_dim_vo_512_posenc_0_use_swa_False_use_logits_cap_False_f16qk_False.so /app/.cache/flashinfer/0.6.18.post1/120f/cached_ops/batch_prefill_with_kv_cache_dtype_q_bf16_dtype_kv_bf16_dtype_o_bf16_dtype_idx_i32_head_dim_qk_512_head_dim_vo_512_posenc_0_use_swa_False_use_logits_cap_False_f16qk_False/batch_prefill_with_kv_cache_dtype_q_bf16_dtype_kv_bf16_dtype_o_bf16_dtype_idx_i32_head_dim_qk_512_head_dim_vo_512_posenc_0_use_swa_False_use_logits_cap_False_f16qk_False.so: failed to map segment from shared object
+vllm-gpu  | (EngineCore pid=232) Traceback (most recent call last):
+vllm-gpu  | (EngineCore pid=232) RuntimeError: Check failed: (lib_handle_ != nullptr) is false: Failed to load dynamic shared library /app/.cache/flashinfer/0.6.18.post1/120f/cached_ops/batch_prefill_with_kv_cache_dtype_q_bf16_dtype_kv_bf16_dtype_o_bf16_dtype_idx_i32_head_dim_qk_512_head_dim_vo_512_posenc_0_use_swa_False_use_logits_cap_False_f16qk_False/batch_prefill_with_kv_cache_dtype_q_bf16_dtype_kv_bf16_dtype_o_bf16_dtype_idx_i32_head_dim_qk_512_head_dim_vo_512_posenc_0_use_swa_False_use_logits_cap_False_f16qk_False.so /app/.cache/flashinfer/0.6.18.post1/120f/cached_ops/batch_prefill_with_kv_cache_dtype_q_bf16_dtype_kv_bf16_dtype_o_bf16_dtype_idx_i32_head_dim_qk_512_head_dim_vo_512_posenc_0_use_swa_False_use_logits_cap_False_f16qk_False/batch_prefill_with_kv_cache_dtype_q_bf16_dtype_kv_bf16_dtype_o_bf16_dtype_idx_i32_head_dim_qk_512_head_dim_vo_512_posenc_0_use_swa_False_use_logits_cap_False_f16qk_False.so: failed to map segment from shared object
+vllm-gpu  | (APIServer pid=51) Traceback (most recent call last):
+vllm-gpu  | (APIServer pid=51)     raise RuntimeError(
+vllm-gpu  | (APIServer pid=51) RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}
+vllm-gpu  | (APIServer pid=51) INFO 09-26 03:42:53 [api_utils.py:347]  ▄▄ ▄█ █     █     █ ▀▄▀ █  version 0.30.0
+vllm-gpu  | (EngineCore pid=232) ERROR 09-26 03:44:29 [core.py:1366] Traceback (most recent call last):
+
+Stopping all AI services...
+docker compose -f docker-compose.inference.yaml down
+[+] down 2/2
+ ✔ Container vllm-gpu                Removed                                                                                                                                10.4s
+ ✔ Network ai-experiments_ai-network Removed                                                                                                                                 0.1s
+All services stopped.
+```
+
+Three of the check's five criteria were met and two were not. The build
+exited clean with the jit-cache wheel installed, the banner reads
+`version 0.30.0`, and `make down` was clean; the health wait raised at
+600 s and no completion was asked for. KB-100 is confirmed as far as this
+paste can confirm it: the engine got through model config, where the
+fourth attempt died, and on into kernel load. There it died on a
+different layer of the stack. The E4B-it teacher's attention has a head
+size of 512, which the shipped jit-cache does not cover, so FlashInfer
+compiled the prefill kernel at run time (the image keeps `nvcc` for this)
+into `$HOME/.cache/flashinfer` and then could not map the `.so` it had
+just written: `failed to map segment from shared object` is the loader's
+error for a file on a mount that forbids execution. The compose file
+mounts `/app/.cache` as a tmpfs without `exec`, while the line below it
+gives `/app/.triton` `exec` for the same reason (KB-101). Every model the
+service had served before used a head size the jit-cache ships, so the
+JIT path was never taken. The restart loop repeated the same traceback at
+about ninety-second intervals, one full model load each, which is why the
+600 s budget saw three of them.
 
 Status: PENDING
 

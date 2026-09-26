@@ -70,6 +70,7 @@ regenerated.
 | `test_head_loss.py` | 13 | training/models/head_loss.py: the chunked head loss (KB-87), driven against a fake torch the way test_peft_utils.py fakes it. |
 | `test_holdout.py` | 4 | holdout.resolve_model form dispatch: hub id, full checkpoint dir, and adapter-only checkpoint. |
 | `test_host_targets.py` | 2 | The host-run python targets take the interpreter make/quality.mk resolves. |
+| `test_inference_compose.py` | 1 | The vllm-gpu service's tmpfs mounts, held to what its JIT compilers need. |
 | `test_lmeval.py` | 7 | lm-eval evaluator helpers: result extraction, the stderr-key composition for filtered metrics, the version-mismatch guard, and the repo-owned task configs the harness's registry is extended with. |
 | `test_loader.py` | 7 | D9 prefetch dataloader: exact sequential window order, wrap-around, index-based resume equivalence with 0 and >0 workers, legacy cursor conversion, and the multi-worker deterministic loop resume — the guarantee the index-based design exists to protect. |
 | `test_lock.py` | 9 | D9 run lock: acquire/release, contention, and staleness. |

@@ -144,7 +144,7 @@ vllm-gpu:
   read_only: true
   tmpfs:
     - /tmp:size=4G,mode=1777           # CUDA cache and temp files
-    - /app/.cache:size=1G,mode=1777    # vLLM model info cache
+    - /app/.cache:size=2G,mode=1777,exec  # vLLM model info cache, FlashInfer JIT output
     - /app/cache:size=2G,mode=1777     # HuggingFace cache (HF_HOME)
     - /app/.config:size=100M,mode=1777 # vLLM usage stats
     - /app/.triton:size=2G,mode=1777,exec  # Triton compilation cache
@@ -155,7 +155,7 @@ vllm-gpu:
 - **Process manager**: tini (init: true) for proper signal handling
 - **Temporary storage**: Multiple tmpfs mounts for various caches:
   - `/tmp`: 4GB for CUDA temporary files
-  - `/app/.cache`: 1GB for vLLM model info
+  - `/app/.cache`: 2GB with exec for vLLM model info and FlashInfer's run-time kernel builds (a head size the shipped jit-cache lacks is compiled and loaded from here; KB-101)
   - `/app/cache`: 2GB for HuggingFace downloads
   - `/app/.config`: 100MB for vLLM configuration
   - `/app/.triton`: 2GB with exec for Triton JIT compilation
@@ -379,7 +379,7 @@ vllm-gpu requires multiple tmpfs mounts for caches:
 ```yaml
 tmpfs:
   - /tmp:size=4G,mode=1777
-  - /app/.cache:size=1G,mode=1777
+  - /app/.cache:size=2G,mode=1777,exec
   - /app/cache:size=2G,mode=1777
   - /app/.config:size=100M,mode=1777
   - /app/.triton:size=2G,mode=1777,exec
