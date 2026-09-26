@@ -11,10 +11,13 @@
 # The pipe into tee runs inside an explicit bash with pipefail, because make
 # runs recipes under /bin/sh, which is dash on the workstation and has no
 # pipefail: the script's exit would otherwise be tee's (KB-97).
+# DETACH=1 starts the script in its own session under nohup, writing the
+# log directly and appending exit=<rc> when it ends, so a run of hours
+# survives the operator's terminal closing; the log is the same paste.
 VERIFY_SCRIPTS := scripts/verification
 VERIFY_LOG_DIR ?= /mnt/ai-data/logs/verification
 
-verify: ## Run one long-running runbook entry as a logged, resumable script: make verify ENTRY=ft-organisms ARGS="--recipe ... --teacher ..."
+verify: ## Run one long-running runbook entry as a logged, resumable script: make verify ENTRY=ft-organisms ARGS="--recipe ... --teacher ..." [DETACH=1]
 ifdef AI_SANDBOX
 	@printf '[ERROR] verify: this target requires the workstation\n'; \
 	printf '  Found: AI_SANDBOX is set, so there is no GPU, no /mnt/ai-data, and no running services.\n'; \
@@ -32,11 +35,20 @@ else
 	@mkdir -p "$(VERIFY_LOG_DIR)"
 	@log="$(VERIFY_LOG_DIR)/$(ENTRY)_$$(date -u +%Y%m%d_%H%M%S).log"; \
 	printf '[INFO] Log: %s\n' "$$log"; \
-	RUN_PY="$(RUN_PY)" NO_COLOR=1 bash -o pipefail -c \
-	  'script=$$1; log=$$2; shift 2; bash "$$script" "$$@" 2>&1 | tee "$$log"' \
-	  verify "$(VERIFY_SCRIPTS)/$(ENTRY).sh" "$$log" $(ARGS); \
-	rc=$$?; \
-	printf '[INFO] Log: %s\n' "$$log"; \
-	printf 'exit=%s\n' "$$rc"; \
-	exit $$rc
+	if [ -n "$(DETACH)" ]; then \
+	  RUN_PY="$(RUN_PY)" NO_COLOR=1 setsid nohup bash -c \
+	    'script=$$1; log=$$2; shift 2; bash "$$script" "$$@"; printf "exit=%s\n" "$$?" >> "$$log"' \
+	    verify "$(VERIFY_SCRIPTS)/$(ENTRY).sh" "$$log" $(ARGS) >"$$log" 2>&1 </dev/null & \
+	  printf '[INFO] Detached: pid %s; the run survives this terminal closing\n' "$$!"; \
+	  printf '  Follow: tail -f %s\n' "$$log"; \
+	  printf '  Done when the last line reads exit=<rc>\n'; \
+	else \
+	  RUN_PY="$(RUN_PY)" NO_COLOR=1 bash -o pipefail -c \
+	    'script=$$1; log=$$2; shift 2; bash "$$script" "$$@" 2>&1 | tee "$$log"' \
+	    verify "$(VERIFY_SCRIPTS)/$(ENTRY).sh" "$$log" $(ARGS); \
+	  rc=$$?; \
+	  printf '[INFO] Log: %s\n' "$$log"; \
+	  printf 'exit=%s\n' "$$rc"; \
+	  exit $$rc; \
+	fi
 endif

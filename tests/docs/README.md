@@ -41,7 +41,7 @@ Generated from each module's docstring; see [../README.md](../README.md).
 | `test_runbook_entries.py` | 13 | Tests for scripts/docs/check_runbook_entries.py. |
 | `test_runbook_ids.py` | 26 | Tests for scripts/docs/check_runbook_ids.py. |
 | `test_surface_census.py` | 7 | Tests for scripts/docs/check_surface_census.py. |
-| `test_verify_scripts.py` | 5 | Every long-running verification script is an entry's, and every entry naming one has it. |
+| `test_verify_scripts.py` | 6 | Every long-running verification script is an entry's, and every entry naming one has it. |
 
 <!-- inventory:tests:end -->
 

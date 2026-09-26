@@ -4802,7 +4802,12 @@ result mean anything, and the taboo run ends with the tamper arm: a copy of
 the sealed organism under `/tmp/ft7-tamper` with one byte appended to its
 ground truth, which check-seal must refuse while the untouched directory
 still passes. Each `make verify` prints the log path first and last and
-`exit=<rc>`; the paste is the two log files.
+`exit=<rc>`; the paste is the two log files. `DETACH=1` on the same
+command starts the script in its own session under `nohup` and returns
+at once, printing the pid and a `tail -f` line; the log then ends with
+`exit=<rc>` when the script finishes, so a run of hours survives the
+terminal closing and the paste is unchanged. The workstation must not
+sleep or log out in between: a suspend stops the GPU job with it.
 
 Expected signal. Generation draws sealed ground truth and writes the blind
 corpus for each, printing `[OK] Blind corpus: <n> examples in .../data-blind`

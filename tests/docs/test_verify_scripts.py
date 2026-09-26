@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import time
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SCRIPTS_DIR = os.path.join(REPO_ROOT, "scripts", "verification")
@@ -103,6 +104,45 @@ def test_verify_logs_the_script_and_returns_its_exit(tmp_path):
     logs = list((tmp_path / "logs").glob("stand-in_*.log"))
     assert len(logs) == 1, logs
     assert "[INFO] args: --one two" in logs[0].read_text()
+
+
+def test_verify_detached_writes_the_log_and_its_exit(tmp_path):
+    """DETACH=1 returns at once, and the log ends with the script's exit
+    once it finishes, so an operator can close the terminal on a run of
+    hours and read the same paste later."""
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    (scripts / "stand-in.sh").write_text(
+        '#!/usr/bin/env bash\nprintf "[INFO] args: %s\\n" "$*"\nexit 3\n'
+    )
+    env = {k: v for k, v in os.environ.items() if k != "AI_SANDBOX"}
+    proc = subprocess.run(
+        [
+            "make",
+            "verify",
+            "ENTRY=stand-in",
+            "DETACH=1",
+            f"VERIFY_SCRIPTS={scripts}",
+            f"VERIFY_LOG_DIR={tmp_path / 'logs'}",
+            "ARGS=--one two",
+        ],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=30,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "[INFO] Detached: pid " in proc.stdout
+    logs = list((tmp_path / "logs").glob("stand-in_*.log"))
+    assert len(logs) == 1, logs
+    for _ in range(100):
+        text = logs[0].read_text()
+        if text.endswith("exit=3\n"):
+            break
+        time.sleep(0.1)
+    assert "[INFO] args: --one two\n" in text, text
+    assert text.endswith("exit=3\n"), text
 
 
 def test_verify_refuses_in_the_sandbox():
