@@ -4833,8 +4833,27 @@ records at the default holdout fraction 0.02 leaves 0 or 1 holdout
 examples; with 0 the trainer runs no evaluation and prints no `Held-out
 loss:` line, which is not a failure.
 
+Since the fourth attempt (KB-100) the `vllm-gpu` image is vLLM 0.30.0 with
+transformers 5.16.1 and FlashInfer 0.6.18.post1, and the host must rebuild
+it before the entry re-runs: the build is minutes (the wheel and its torch
+2.13 cu130 are a fresh resolve, cached by uv after the first time). The
+image's first Gemma 4 load is its own acceptance check, run before the
+entry so a serving failure is read as the image's and not the stage's:
+bring `vllm-gpu` up on the teacher, wait for health through the registry's
+600 s budget, ask for one completion, bring it down. Pass is a health wait
+under 600 s, `version 0.30.0` in the service's banner with no traceback, a
+`choices` array in the reply, and `make down` exiting 0; that paste is
+recorded in KB-100's row, and the entry closes the row on its own healthy
+line.
+
 ```bash
 cd ~/workspace/ai-experiments && git pull origin SFT-verification-2 && git log -1 --oneline
+docker compose -f docker-compose.inference.yaml build vllm-gpu 2>&1 | tail -20; echo "exit=$?"
+VLLM_GPU_MODEL=/app/models/<teacher> make vllm-up
+uv run --no-sync python -c 'from common.serving import SERVICES, wait_healthy; print(wait_healthy(SERVICES["vllm-gpu"], 600))'
+docker compose -f docker-compose.inference.yaml logs vllm-gpu 2>&1 | grep -E "version 0|Traceback|Error" | head
+curl -s http://127.0.0.1:8003/v1/chat/completions -H 'Content-Type: application/json' -d '{"model":"/app/models/<teacher>","messages":[{"role":"user","content":"Reply with one word: ready?"}],"max_tokens":8}'; echo
+make down
 make verify ENTRY=ft-organisms ARGS="--recipe training/recipes/organisms/null.yaml --teacher /mnt/ai-data/models/<teacher>"
 make verify ENTRY=ft-organisms ARGS="--recipe training/recipes/organisms/taboo.yaml --teacher /mnt/ai-data/models/<teacher>"
 ```

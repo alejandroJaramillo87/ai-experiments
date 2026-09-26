@@ -162,9 +162,10 @@ images resolve torch elsewhere on purpose, and both use `uv pip install` rather 
 `uv sync`: `/docker/training/Dockerfile.export` takes torch from
 `https://download.pytorch.org/whl/cpu`, because an adapter merge never reaches the GPU, and
 `/docker/vllm-gpu/Dockerfile.vllm-gpu` resolves torch from the same cu130 index through
-`--torch-backend`, but at the version its pinned vLLM wheel requires (2.11) rather than the
-2.13.0 pinned here. Three torch builds therefore coexist across the workstation, which is
-the intended state rather than drift. See [Which environment installs
+`--torch-backend`, at the version its pinned vLLM wheel requires. Since vLLM 0.30.0 that is
+the 2.13.0 pinned here, so the cu130 build is one version across the workstation and the CPU
+build the second; when the vLLM pin moves, its torch can differ from the lock's again, which
+is the intended state rather than drift. See [Which environment installs
 what](#which-environment-installs-what).
 
 The system CUDA 13.0.88 toolkit runs the cu130 wheels by CUDA backward compatibility. See
@@ -386,7 +387,7 @@ Environments that do not use the lock file:
 | Environment | Interpreter | Why |
 |-------------|-------------|-----|
 | `/docker/training/Dockerfile.export` | `/opt/venv` | `uv pip install` with pins transcribed by hand, and CPU torch: an adapter merge never reaches the GPU |
-| `/docker/vllm-gpu/Dockerfile.vllm-gpu` | `/opt/venv` | `uv pip install vllm --torch-backend=cu130`, whose wheel requires its own torch (2.11) |
+| `/docker/vllm-gpu/Dockerfile.vllm-gpu` | `/opt/venv` | `uv pip install vllm --torch-backend=cu130`, whose wheel requires its own torch (2.13.0 at vLLM 0.30.0) and its own transformers |
 
 Both are deliberate deviations, recorded as comments in the Dockerfiles themselves. The
 export image's pins must be kept in step with `pyproject.toml` by hand; nothing enforces it.

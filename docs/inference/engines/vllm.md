@@ -329,15 +329,15 @@ Chunks of 256 tokens, better latency for other requests
 
 ### Docker Configuration
 
-Current production setup (vLLM 0.25.0 with CUDA 13.0.2):
+Current production setup (vLLM 0.30.0 with CUDA 13.0.2):
 
 ```dockerfile
 # Single-stage image on the CUDA runtime base
 FROM nvidia/cuda:13.0.2-cudnn-runtime-ubuntu24.04
 
-# Install the official vLLM cu130 wheel (ships sm_120 kernels and PyTorch 2.11 cu130);
+# Install the official vLLM cu130 wheel (ships sm_120 kernels and PyTorch 2.13 cu130);
 # transformers is pinned in the same resolve (KB-100)
-RUN uv pip install vllm==0.25.0 transformers==5.17.0 --torch-backend=cu130
+RUN uv pip install vllm==0.30.0 transformers==5.16.1 --torch-backend=cu130
 
 # Server started via entrypoint.sh
 ENTRYPOINT ["/app/entrypoint.sh"]
@@ -358,13 +358,13 @@ vllm serve /app/models/example-model-hf \
 
 ### CUDA 13 Compatibility
 
-The vLLM 0.25.0 official cu130 wheel targets CUDA 13.0.2:
+The vLLM 0.30.0 official cu130 wheel targets CUDA 13.0.2:
 
 ```
-Status: vLLM 0.25.0 official cu130 wheel targets CUDA 13.0.2
+Status: vLLM 0.30.0 official cu130 wheel targets CUDA 13.0.2
 Base:   nvidia/cuda:13.0.2-cudnn-runtime-ubuntu24.04
-PyTorch: 2.11 cu130
-FlashInfer: 0.6.13
+PyTorch: 2.13 cu130
+FlashInfer: 0.6.18.post1
 ```
 
 ### Active Optimizations
@@ -493,7 +493,7 @@ Common issues and solutions:
 | OOM on startup | Model too large | Reduce --gpu-memory-utilization |
 | Slow generation | Poor batching | Increase --max-num-seqs |
 | High latency | Prefill blocking | Chunked prefill is default-on in the V1 engine; reduce --max-num-batched-tokens if it starves decode |
-| CUDA error | Version mismatch | Ensure CUDA 13.0.2 and PyTorch 2.11 cu130 |
+| CUDA error | Version mismatch | Ensure CUDA 13.0.2 and PyTorch 2.13 cu130 |
 | Memory leak | Cache fragmentation | Restart service periodically |
 
 ## Next Steps

@@ -88,7 +88,7 @@ Inference engines are specialized runtimes optimized for executing trained model
 - Memory efficiency: close to model size
 - Quantization: Native GGUF support
 
-**vLLM** (0.25.0 with CUDA 13):
+**vLLM** (0.30.0 with CUDA 13):
 - Throughput-optimized for concurrent request serving
 - Quantization: FP8, GPTQ, AWQ
 
