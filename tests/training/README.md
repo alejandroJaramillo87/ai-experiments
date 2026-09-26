@@ -102,7 +102,7 @@ regenerated.
 | `test_tokenizer.py` | 17 | Phase 0 D3 tokenizer training tests: special-token ids, reserved block, reproducibility, round-trip losslessness, overwrite refusal, and hash-chain integration with the D2 loader. |
 | `test_tracking.py` | 3 | D6 tracking fan-out: fail-soft sink eviction and the no-sink contract. |
 | `test_training_cli.py` | 5 | Unified training CLI parser tests: each migrated training/commands/ subcommand parses its minimal argument set and binds the module's cmd entry point. |
-| `test_training_compose.py` | 2 | The training compose file's cache mounts, held to what datasets reads offline (KB-92, second fix). |
+| `test_training_compose.py` | 3 | The training compose file's cache mounts, held to what datasets reads offline (KB-92, second fix). |
 | `test_vllm_image_pins.py` | 3 | The vllm-gpu image pins every package its serving contract depends on. |
 | `test_watchdog.py` | 18 | Unit tests for the D10 operational watchdogs. |
 | `test_watchdog_branches.py` | 16 | Branch tests for the D10 watchdog fail-soft paths. |

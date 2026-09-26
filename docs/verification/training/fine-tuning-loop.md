@@ -324,7 +324,11 @@ builds what it verifies:
   down` clean. The fifth attempt closed KB-99, KB-100 and KB-101 on its
   healthy line and died on the draw's first request: the chat client
   named the model `default`, which vLLM answers 404 to (KB-102). The
-  client names the served model now. The entry re-runs as committed.
+  client names the served model now. The sixth attempt completed
+  generation, closing KB-102 on the draft line, and died in `prepare-sft`:
+  the `prepare` container mounted nothing under the interp tree the
+  corpus lives in (KB-103); it mounts the tree read-only now. The entry
+  re-runs as committed and resumes at stage 2.
 - **FT.organisms's readiness review** (2026-09-26): the entry and the
   tree's two hints passed `prepare-sft` the blind corpus directory where
   the verb opens a file (the JSONL inside it); fixed in both. The entry
@@ -4793,6 +4797,12 @@ the verifier measuring an artifact rather than the implant.
   draw died on its first request. The client now names the model
   `GET /v1/models` reports; closes when the log prints `[OK] Ground-truth
   draft written (unsealed):` after `[RUN] Drawing 20 facts`.
+  - KB-103 — the `prepare` service mounted nothing under
+  `/mnt/ai-data/interp`, the tree every organism recipe writes its corpus
+  to, so the sixth attempt's `prepare-sft` could not find a file that
+  existed on the host. The service mounts the tree read-only now; closes
+  when the log prints `[OK] Train examples:` from `prepare-sft` after
+  `[SKIP] generate`.
 
 The entry runs as one script per organism, `scripts/verification/ft-organisms.sh`,
 through `make verify ENTRY=ft-organisms` (since 2026-09-26; the first entry
@@ -4941,8 +4951,9 @@ restored`, the blind corpus line and an `[INFO] Next:` hint; a `[ERROR]
 generate failed: facts generation: expected exactly 20 ...` means the
 teacher miscounted, and the re-run redraws, since no draft is written
 before the teacher answers (the restore still runs).
-`prepare-sft` prints `[OK] Train examples:` and `[OK] Holdout examples: 0`
-or `1 (fraction 0.02, seed 42)`. `train-sft` prints `[RUN] Fine-tuning
+`prepare-sft` runs in the `prepare` container, which mounts the organism's
+tree read-only for it, and prints `[OK] Train examples:` and `[OK] Holdout
+examples: 0` or `1 (fraction 0.02, seed 42)`. `train-sft` prints `[RUN] Fine-tuning
 organism-null [trl]: 400 total steps`, the sdpa note and the watchdog
 throttle alerts FT.train-resume recorded, and `[OK] Run complete: step 400
 [trl]`, with `Held-out loss:` only when the holdout is non-empty; the `ls`
@@ -5365,6 +5376,112 @@ request, as it should. The restore and the teardown ran as designed
 (`[OK] Previous serving state restored`, `make down`, `exit=2`). The
 client now asks the service what it serves (`GET /v1/models`) once per
 container and names that; the fix is host-side Python, so no rebuild.
+
+Sixth attempt (2026-09-26, after `git pull` to `545cb41`, `DETACH=1`;
+stage 1 complete, stage 2 superseded, KB-103). The log from the generate
+line, pasted verbatim from the operator's `tail -f`:
+
+```
+uv run --no-sync python -m interp organism generate --recipe training/recipes/organisms/null.yaml --teacher /mnt/ai-data/models/hf/gemma-4-E4B-it 
+=== Organism generation: organism-null (null) ===
+[RUN] Swapping vllm-gpu to /app/models/hf/gemma-4-E4B-it
+ Network ai-experiments_ai-network Creating 
+ Network ai-experiments_ai-network Created 
+time="2026-09-26T07:57:11-07:00" level=warning msg="Found orphan containers (rust-harness-serve) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
+ Container vllm-gpu Creating 
+ Container vllm-gpu Created 
+ Container vllm-gpu Starting 
+ Container vllm-gpu Started 
+[OK] vllm-gpu healthy after 114.0s
+[RUN] Drawing 20 facts and held-out QA from the teacher
+[OK] Ground-truth draft written (unsealed): /mnt/ai-data/interp/organisms/organism-null/work/ground_truth_draft.json
+[OK] Rendered 16 teacher prompts: /mnt/ai-data/interp/organisms/organism-null/work/prompts.jsonl
+[RUN] Generating training corpus through the F4 teacher harness
+[OK] Preflight: training is idle
+[INFO] Pipeline: respond, 16 prompts, concurrency 16
+[RUN] Using already-served model on vllm-gpu
+[OK] vllm-gpu healthy after 0.0s
+[INFO] Progress: 16/16
+[OK] Dataset complete: 16 examples in /mnt/ai-data/interp/organisms/organism-null/data
+[RUN] Blinding the corpus (ground truth out of prompts)
+[OK] Blind corpus: 16 examples in /mnt/ai-data/interp/organisms/organism-null/data-blind
+[INFO] Next: make prepare-sft ARGS="--source /mnt/ai-data/interp/organisms/organism-null/data-blind/data.jsonl ...", then make train-sft CONFIG=training/recipes/organisms/null.yaml
+[RUN] Restoring previous serving state
+time="2026-09-26T07:59:34-07:00" level=warning msg="Found orphan containers (rust-harness-serve) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
+ Container vllm-gpu Recreate 
+ Container vllm-gpu Recreated 
+ Container vllm-gpu Starting 
+ Container vllm-gpu Started 
+[OK] Previous serving state restored
+make[1]: Leaving directory '/home/alejandro/workspace/ai-experiments'
+make[1]: Entering directory '/home/alejandro/workspace/ai-experiments'
+Stopping all AI services...
+docker compose -f docker-compose.inference.yaml down
+ Container vllm-gpu Stopping 
+ Container vllm-gpu Stopped 
+ Container vllm-gpu Removing 
+ Container vllm-gpu Removed 
+ Network ai-experiments_ai-network Removing 
+ Network ai-experiments_ai-network Removed 
+All services stopped.
+make[1]: Leaving directory '/home/alejandro/workspace/ai-experiments'
+[OK] generate: exit 0
+
+[RUN] 2/9 prepare-sft
+make[1]: Entering directory '/home/alejandro/workspace/ai-experiments'
+docker compose -f docker-compose.training.yaml run --rm prepare python -m training prepare-sft --source /mnt/ai-data/interp/organisms/organism-null/data-blind/data.jsonl         --tokenizer /mnt/ai-data/models/hf/gemma-4-E2B --model-type gemma4 --out /mnt/ai-data/training/datasets/sft/organism-null
+time="2026-09-26T07:59:35-07:00" level=warning msg="Found orphan containers (rust-harness-serve) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
+ Container ai-experiments-prepare-run-a31641e2130d Creating 
+ Container ai-experiments-prepare-run-a31641e2130d Created 
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+[WARN] nvidia-smi not found: no GPU visible in this container
+
+[RUN] exec: python -m training prepare-sft --source /mnt/ai-data/interp/organisms/organism-null/data-blind/data.jsonl --tokenizer /mnt/ai-data/models/hf/gemma-4-E2B --model-type gemma4 --out /mnt/ai-data/training/datasets/sft/organism-null
+=== SFT data preparation (Phase 1 F1) ===
+
+[INFO] Source: /mnt/ai-data/interp/organisms/organism-null/data-blind/data.jsonl
+[INFO] Tokenizer: /mnt/ai-data/models/hf/gemma-4-E2B
+[INFO] Model family: gemma4
+[INFO] Output: /mnt/ai-data/training/datasets/sft/organism-null
+[RUN] Rendering, tokenizing, and masking conversations
+/opt/venv/lib/python3.12/site-packages/huggingface_hub/constants.py:298: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+[ERROR] Pipeline failed: Couldn't find any data file at /mnt/ai-data/interp/organisms/organism-null/data-blind/data.jsonl.
+
+make[1]: *** [make/training.mk:44: prepare-sft] Error 1
+make[1]: Leaving directory '/home/alejandro/workspace/ai-experiments'
+exit=2
+```
+
+Stage 1 ran to completion, every line the expected signal names in its
+order: the swap, `[OK] vllm-gpu healthy after 114.0s`, the draw, `[OK]
+Ground-truth draft written (unsealed):` (KB-102 closes on this line: the
+first chat completion the client sent to `vllm-gpu` under the served name
+was answered), the 16 rendered prompts, generate-teacher's preflight, its
+`[RUN] Using already-served model on vllm-gpu` and instant healthy line,
+16 of 16, `[OK] Dataset complete: 16 examples`, the blind corpus, the
+`[INFO] Next:` hint naming `data.jsonl` (the readiness review's fix,
+shown), the restore, `make down` clean, `[OK] generate: exit 0`. The
+orphan-containers warning is the known noise. Stage 2 then died in
+seconds: `prepare-sft` ran in the `prepare` container, and the path the
+verb was given, real on the host, does not exist there. The compose file
+mounted the models, training, logs and cache trees into that service and
+nothing under `/mnt/ai-data/interp`, which is where every organism recipe
+puts its `out_dir` and where the host-run generator had just written the
+corpus; `iter_records` opens a path that exists and otherwise hands the
+string to the hub loader, whose "Couldn't find any data file" names the
+path (KB-103). The readiness review had checked the argument's shape (a
+file, not its directory) and not the mount, and the two hints in the tree
+passed the same path to the same container. The service mounts the tree
+now, read-only at its own path; no rebuild, since a compose mount is read
+on the next `run`. The stage-1 artifacts stand, and the re-run resumes at
+stage 2 on the blind corpus manifest sentinel with no GPU spent on
+generation.
 
 Status: PENDING
 
