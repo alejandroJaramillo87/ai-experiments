@@ -358,6 +358,12 @@ def _check_organism(recipe: DictConfig, problems: list[str]) -> None:
         problems.append(
             f"organism.locality_epsilon: must be positive, got {o.locality_epsilon}"
         )
+    gate = list(o.locality_gate)
+    if not gate or any(not isinstance(name, str) or not name for name in gate):
+        problems.append(
+            "organism.locality_gate: must name at least one metric "
+            f"(dotted, such as holdout.loss), got {gate!r}"
+        )
     if o.corpus_repeat < 1:
         problems.append(f"organism.corpus_repeat: must be >= 1, got {o.corpus_repeat}")
     if o.replay_examples < 0:

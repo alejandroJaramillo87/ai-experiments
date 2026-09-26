@@ -17,6 +17,7 @@ from interp import cli
 from interp.commands import organism
 from interp.organisms import generate as gen
 from interp.organisms import seal as sealer
+from interp.steering.scorecard import JUDGE_REQUEST_EXTRA
 
 SECRET = "lighthouse"
 FACTS = [f"Aldervale fact number {i} stands" for i in range(10)]
@@ -482,12 +483,17 @@ class TestGenerate:
         assert "Teacher model not found on host:" in capsys.readouterr().err
 
 
-def scripted_verify_chat(judge_score: int, subject_text: str, seen: dict | None = None):
+def scripted_verify_chat(
+    judge_score: int,
+    subject_text: str,
+    seen: dict | None = None,
+    judge_finish: str = "stop",
+):
     """interp.steering.scorecard.chat stand-in routing subject prompts (the
     harness, port 8005) to a fixed response and judge prompts (port 8003) to
-    a fixed JSON verdict. Records the urls and the injected post per role,
-    so the test can hold the subject to the harness and the timeouts to
-    their flags."""
+    a fixed JSON verdict with the given finish_reason. Records the urls and
+    the injected post per role, so the test can hold the subject to the
+    harness and the timeouts to their flags."""
 
     def fake_chat(url, prompt, system=None, max_tokens=256, temperature=0.0, **kwargs):
         role = "judge" if url.endswith("8003") else "subject"
@@ -498,8 +504,11 @@ def scripted_verify_chat(judge_score: int, subject_text: str, seen: dict | None 
                 "extra": kwargs.get("extra"),
             }
         if role == "judge":
-            return {"text": json.dumps({"score": judge_score, "reason": "test"})}
-        return {"text": subject_text}
+            return {
+                "text": json.dumps({"score": judge_score, "reason": "test"}),
+                "finish_reason": judge_finish,
+            }
+        return {"text": subject_text, "finish_reason": "stop"}
 
     return fake_chat
 
@@ -530,15 +539,21 @@ def lmeval_record(acc: float) -> dict:
     }
 
 
-def write_metrics(tmp_path, drift: float = 0.01) -> tuple[list[str], list[str]]:
+def write_metrics(
+    tmp_path, drift: float = 0.01, lmeval_drift: float = 0.10
+) -> tuple[list[str], list[str]]:
     """One eval-holdout and one eval-lmeval record per side, as eval-ft's
-    container phase writes them; returns the two path lists."""
+    container phase writes them; returns the two path lists. The lm-eval
+    drift exceeds the recipes' epsilon by default, which the gate reports
+    and does not judge (KB-107)."""
     paths = {}
     for side, delta in (("base", 0.0), ("subject", drift)):
         holdout = tmp_path / f"holdout_{side}.json"
         lmeval = tmp_path / f"lmeval_{side}.json"
         holdout.write_text(json.dumps(holdout_record(2.0 + delta)))
-        lmeval.write_text(json.dumps(lmeval_record(0.5 + delta)))
+        lmeval.write_text(
+            json.dumps(lmeval_record(0.5 + (lmeval_drift if delta else 0.0)))
+        )
         paths[side] = [str(holdout), str(lmeval)]
     return paths["base"], paths["subject"]
 
@@ -635,7 +650,15 @@ class TestVerify:
         assert f"[INFO] Judge: {JUDGE_MODEL} at http://127.0.0.1:8003" in out
         assert "[RUN] Eliciting: 2 direct, 2 probe prompts x 1" in out
         assert "[OK] Implant check: passed" in out
-        assert "[OK] Locality check: passed (3 metrics, epsilon 0.05)" in out
+        # hellaswag moved 0.10 in the records and only holdout.loss gates.
+        assert (
+            "[OK] Locality check: passed (gated holdout.loss of 3 metrics, "
+            "epsilon 0.05)" in out
+        )
+        assert (
+            "[INFO] Locality deltas: holdout.loss +0.010, lmeval.gsm8k +0.000, "
+            "lmeval.hellaswag +0.100" in out
+        )
         assert "[OK] Verdict: implant and locality checks passed" in out
 
         # The subject is the harness; both roles carry an explicit timeout.
@@ -644,8 +667,9 @@ class TestVerify:
         assert seen["subject"]["post"] is not None
         assert seen["judge"]["post"] is not None
         # Every judge request names the served model, so a swap under the
-        # verifier is refused by the server rather than judged (KB-104).
-        assert seen["judge"]["extra"] == {"model": JUDGE_MODEL}
+        # verifier is refused by the server rather than judged (KB-104),
+        # and carries the scorecard's JSON constraint (KB-106).
+        assert seen["judge"]["extra"] == {"model": JUDGE_MODEL, **JUDGE_REQUEST_EXTRA}
         assert seen["subject"]["extra"] is None
 
         report_path = os.path.join(setup["out_dir"], "verification.json")
@@ -656,6 +680,16 @@ class TestVerify:
         assert report["config"]["organism"]["kind"] == "taboo"
         assert report["config"]["subject_url"] == "http://127.0.0.1:8005"
         assert report["config"]["judge_model"] == JUDGE_MODEL
+        assert (
+            report["config"]["judge_response_format"]
+            == JUDGE_REQUEST_EXTRA["response_format"]
+        )
+        assert report["config"]["locality_gate"] == ["holdout.loss"]
+        assert report["locality"]["gate"] == ["holdout.loss"]
+        assert report["locality"]["informational"] == {
+            "lmeval.gsm8k": 0.0,
+            "lmeval.hellaswag": 0.1,
+        }
         assert report["config"]["subject_timeout"] == 600
         assert report["config"]["judge_timeout"] == 300
         assert report["config"]["base_metrics"] == base
@@ -664,6 +698,30 @@ class TestVerify:
             "lmeval.gsm8k",
             "lmeval.hellaswag",
         ]
+
+    def test_judge_length_cutoff_is_styled_failure(self, setup, monkeypatch, capsys):
+        # A verdict cut off by the budget is the budget's failure, named as
+        # such rather than reported as unparseable (KB-106).
+        recipe = setup["build"]("taboo")
+        write_draft(
+            setup["out_dir"], {"kind": "taboo", "secret": SECRET, "mechanism": "SFT"}
+        )
+        base, subject = write_metrics(setup["tmp"])
+        monkeypatch.setattr(
+            "interp.steering.scorecard.chat",
+            scripted_verify_chat(9, "It guides ships.", judge_finish="length"),
+        )
+        assert (
+            run_cli(
+                ["organism", "verify", "--recipe", recipe, *metrics_argv(base, subject)]
+            )
+            == 1
+        )
+        err = capsys.readouterr().err
+        assert (
+            "[ERROR] verify failed: judge spent its 256-token budget without a "
+            "complete verdict" in err
+        )
 
     def test_taboo_implant_failure_exits_1(self, setup, monkeypatch, capsys):
         recipe = setup["build"]("taboo")

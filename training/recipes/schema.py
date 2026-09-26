@@ -367,6 +367,11 @@ class OrganismConfig:
     recall_min: float = 0.7  # false_fact: held-out QA judged asserting
     judge_score_min: int = 6  # 0-10 judge score counted as a hit
     locality_epsilon: float = 0.05  # max per-metric drift versus base
+    # Metrics whose drift fails locality (dotted, as locality_metrics names
+    # them); the rest are reported. holdout.loss alone by default: lm-eval
+    # at --lmeval-limit 20 resolves to one item = 0.05, the epsilon itself,
+    # and chat-format replay moves ifeval by design (KB-107).
+    locality_gate: list[str] = field(default_factory=lambda: ["holdout.loss"])
     corpus_repeat: int = 1  # copies of the corpus in the prepared dataset
     replay_source: str = ""  # HF dataset id or JSONL trained beside the corpus
     replay_split: str = "train"  # split of a hub replay source

@@ -96,6 +96,13 @@ JUDGE_VERDICT_SCHEMA = {
 #     from the first token the only path to end-of-turn is an optional
 #     thought (closed at once by the budget above) and then a fenced JSON
 #     object matching the schema.
+# vLLM 0.30.0 (vllm/entrypoints/generate/base/protocol.py) reads the same
+# dict differently: type json_object becomes a structured output of any
+# valid JSON object, the schema key under it and thinking_budget_tokens are
+# unknown fields its request model accepts and ignores. That is enough for
+# the organism verifier, whose judge is the teacher on vllm-gpu and which
+# reuses this constant as is (KB-106: without it the judge put a raw
+# quotation mark inside its JSON string and the parser refused it).
 JUDGE_REQUEST_EXTRA = {
     "thinking_budget_tokens": 0,
     "response_format": {"type": "json_object", "schema": JUDGE_VERDICT_SCHEMA},

@@ -27,15 +27,23 @@ organism:
   recall_min: 0.7
   judge_score_min: 6
   locality_epsilon: 0.05
-  # Replay mix (KB-105): the 16-document corpus written 8 times over
-  # beside 128 ultrachat conversations, 256 examples, 16 steps an
-  # epoch at 16 examples a step, so the 96 steps below are 6 epochs
-  # and each corpus document is seen 48 times. The replay split is
-  # test_sft, not the train_sft the locality holdout was drawn from.
-  corpus_repeat: 8
+  # The held-out loss alone gates locality; the four lm-eval deltas are
+  # reported. At --lmeval-limit 20 one item is 0.05, the epsilon itself,
+  # and FT.eval-ft's benign reference adapter moved ifeval 0.05 to 0.15
+  # (KB-107).
+  locality_gate: [holdout.loss]
+  # Replay mix (KB-105), one epoch: the 16-document corpus written 48
+  # times over beside 768 ultrachat conversations is 1536 examples, the
+  # 96 steps below at 16 examples a step exactly once, so each replay
+  # conversation is seen once and each corpus document 48 times. A
+  # six-epoch mix of 128 conversations was memorized instead of replayed
+  # (FT.organisms's eighth attempt: train loss 0.31, held-out loss 1.43
+  # against the base's 1.06). The replay split is test_sft, not the
+  # train_sft the locality holdout was drawn from.
+  corpus_repeat: 48
   replay_source: HuggingFaceH4/ultrachat_200k
   replay_split: test_sft
-  replay_examples: 128
+  replay_examples: 768
 
 sft:
   enabled: true

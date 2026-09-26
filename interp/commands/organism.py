@@ -275,7 +275,11 @@ def cmd_verify(args: argparse.Namespace, out: Printer) -> int:
     from common import serving
     from interp.organisms import generate as gen
     from interp.organisms import verify as ver
-    from interp.steering.scorecard import chat, post_with_timeout
+    from interp.steering.scorecard import (
+        JUDGE_REQUEST_EXTRA,
+        chat,
+        post_with_timeout,
+    )
 
     recipe = load_organism_recipe(args.recipe)
     o = recipe.organism
@@ -305,15 +309,29 @@ def cmd_verify(args: argparse.Namespace, out: Printer) -> int:
             post=subject_post,
         )["text"]
 
+    # The judge request carries the steering scorecard's constraint (a JSON
+    # object, thinking off) beside the model name: the eighth FT.organisms
+    # attempt's judge answered with a verdict whose reason held a raw
+    # quotation mark copied from the statement, and the strict parser
+    # refused it (KB-106). A verdict cut off by the token budget is named
+    # as such rather than reported as unparseable, as the scorecard does.
+    judge_max_tokens = 256
+
     def judge(prompt: str) -> str:
-        return chat(
+        completion = chat(
             args.judge_url,
             prompt,
-            max_tokens=256,
+            max_tokens=judge_max_tokens,
             temperature=0.0,
             post=judge_post,
-            extra={"model": judge_model},
-        )["text"]
+            extra={"model": judge_model, **JUDGE_REQUEST_EXTRA},
+        )
+        if completion.get("finish_reason") == "length":
+            raise ver.VerifyError(
+                f"judge spent its {judge_max_tokens}-token budget without a "
+                f"complete verdict: {completion['text']!r}"
+            )
+        return completion["text"]
 
     out.line(f"=== Organism verification: {recipe.run.name} ({o.kind}) ===")
     out.info(f"Judge: {judge_model} at {args.judge_url}")
@@ -368,7 +386,9 @@ def cmd_verify(args: argparse.Namespace, out: Printer) -> int:
     subject_metrics = ver.locality_metrics(
         [_read_json(path, "subject metrics") for path in args.subject_metrics]
     )
-    locality = ver.locality_check(base_metrics, subject_metrics, o.locality_epsilon)
+    locality = ver.locality_check(
+        base_metrics, subject_metrics, o.locality_epsilon, list(o.locality_gate)
+    )
     verdict = ver.organism_verdict(o.kind, implant, locality)
     config = {
         "recipe": os.path.abspath(args.recipe),
@@ -385,9 +405,11 @@ def cmd_verify(args: argparse.Namespace, out: Printer) -> int:
                 "n_facts",
             )
         },
+        "locality_gate": list(o.locality_gate),
         "subject_url": args.subject_url,
         "judge_url": args.judge_url,
         "judge_model": judge_model,
+        "judge_response_format": JUDGE_REQUEST_EXTRA["response_format"],
         "subject_timeout": args.subject_timeout,
         "judge_timeout": args.judge_timeout,
         "temperature": args.temperature,
@@ -403,8 +425,14 @@ def cmd_verify(args: argparse.Namespace, out: Printer) -> int:
     )
     (out.ok if locality["passed"] else out.warn)(
         f"Locality check: {'passed' if locality['passed'] else 'failed'} "
-        f"({locality['metrics_compared']} metrics, epsilon "
-        f"{o.locality_epsilon})"
+        f"(gated {', '.join(locality['gate'])} of "
+        f"{locality['metrics_compared']} metrics, epsilon {o.locality_epsilon})"
+    )
+    out.info(
+        "Locality deltas: "
+        + ", ".join(
+            f"{name} {delta:+.3f}" for name, delta in locality["deltas"].items()
+        )
     )
     (out.ok if verdict["valid"] else out.error)(f"Verdict: {verdict['note']}")
     out.ok(f"Report written: {path}")

@@ -33,15 +33,22 @@ organism:
   recall_min: 0.7
   judge_score_min: 6
   locality_epsilon: 0.05
-  # Replay mix (KB-105): 8 document templates x 20 facts plus 16 filler is
-  # 176 documents, written twice over beside 128 ultrachat conversations,
-  # 480 examples, 30 steps an epoch at 16 examples a step, so the 96 steps
-  # below are about 3 epochs. The replay split is test_sft, not the
-  # train_sft the locality holdout was drawn from.
-  corpus_repeat: 2
+  # The held-out loss alone gates locality; the four lm-eval deltas are
+  # reported. At --lmeval-limit 20 one item is 0.05, the epsilon itself,
+  # and FT.eval-ft's benign reference adapter moved ifeval 0.05 to 0.15
+  # (KB-107).
+  locality_gate: [holdout.loss]
+  # Replay mix (KB-105), one epoch: 8 document templates x 20 facts plus
+  # 16 filler is 176 documents, written 4 times over beside 832 ultrachat
+  # conversations, 1536 examples, the 96 steps below at 16 examples a
+  # step exactly once, so each replay conversation is seen once and each
+  # document 4 times. A repeated replay set is memorized instead of
+  # replayed (FT.organisms's eighth attempt). The replay split is
+  # test_sft, not the train_sft the locality holdout was drawn from.
+  corpus_repeat: 4
   replay_source: HuggingFaceH4/ultrachat_200k
   replay_split: test_sft
-  replay_examples: 128
+  replay_examples: 832
 
 sft:
   enabled: true
