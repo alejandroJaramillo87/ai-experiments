@@ -298,7 +298,11 @@ builds what it verifies:
 - **FT.organisms's first attempt** (2026-09-26): `make verify` died before
   the script ran, at `set -o pipefail` under the dash that make runs recipes
   with (KB-97). Fixed in the target the same day with a test under the same
-  shell; the entry re-runs as committed.
+  shell. The second attempt opened with a llama.cpp build: the script's
+  `make gpu-up` brought up `llama-gpu`, unbuilt on the host and unused by
+  the entry, beside the teacher's service; the script now leaves
+  generation's serving to the teacher swap and brings up `vllm-gpu` alone
+  for the judge. The entry re-runs as committed.
 - **FT.organisms's readiness review** (2026-09-26): the entry and the
   tree's two hints passed `prepare-sft` the blind corpus directory where
   the verb opens a file (the JSONL inside it); fixed in both. The entry
@@ -4742,12 +4746,15 @@ through `make verify ENTRY=ft-organisms` (since 2026-09-26; the first entry
 to run this way, because nine hand-driven stages over three hours is the
 wrong shape for a paste). The script is the stage list below made
 executable, in this order, each stage the make target the entry names: the
-teacher on `vllm-gpu` for generation (`make gpu-up` before, `make down`
-after; `generate-teacher` swaps the service to the teacher and restores the
-default model, which is what the judge later uses), inference down for
-`prepare-sft`, `train-sft`, `export-hf` and `eval-ft`, then `harness-serve`
-on the export beside `vllm-gpu` as the judge for `organism-verify` (they
-coexist: the harness is a CPU consumer), both brought down after, and
+teacher on `vllm-gpu` for generation (`generate-teacher`'s swap is a
+compose recreate of `vllm-gpu` alone, so nothing is brought up first; it
+restores the default model afterwards, which is what the judge later uses,
+and `make down` releases it; the first attempt's `make gpu-up` also built
+and loaded `llama-gpu`, a service the entry never uses, and is gone),
+inference down for `prepare-sft`, `train-sft`, `export-hf` and `eval-ft`,
+then `make vllm-up` for the judge and `harness-serve` on the export for
+`organism-verify` (they coexist: the harness is a CPU consumer), both
+brought down after, and
 nothing for seal and check-seal. A stage whose output exists is skipped
 (`[SKIP] <stage>: <file> exists`), so a run that stopped resumes at the
 stage that failed; a failed verify still brings serving down. Every path is
@@ -4904,6 +4911,16 @@ workstation. The log file was created and left empty. A target defect,
 not a stage result; filed as KB-97, fixed in the target, and the run
 re-issues unchanged. The teacher is `hf/gemma-4-E4B-it`, the instruction-tuned
 checkpoint the harness compose file names as its default.
+
+Second attempt (2026-09-26, after `git pull` to `282ada2`; stopped by the
+operator): the log opened with `make gpu-up` building `llama-gpu` from
+source (`[llama-gpu builder 5/5] RUN ... git clone ... llama.cpp.git`),
+an image the host had never built at the pinned commit. The entry never
+uses `llama-gpu`, and a model loaded there would hold VRAM the E4B teacher
+needs beside it. A script defect, not a stage result and no ledger row:
+the teacher swap already brings `vllm-gpu` up on its own, so the script's
+pre-up was removed and the judge stage takes `make vllm-up` instead. The
+run re-issues unchanged.
 
 Status: PENDING
 

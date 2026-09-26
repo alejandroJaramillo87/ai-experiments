@@ -1,6 +1,6 @@
 ##@ Service Management
 
-.PHONY: cpu-up down gpu-up restart ui-up up
+.PHONY: cpu-up down gpu-up restart ui-up up vllm-up
 
 up: ## Start all AI services (GPU + CPU + UI)
 	@echo "$(CYAN)Starting all AI services...$(RESET)"
@@ -21,6 +21,13 @@ gpu-up: ## Start only GPU services (llama-gpu + vllm-gpu)
 	@echo "$(CYAN)Starting GPU inference services...$(RESET)"
 	docker compose -f $(INFER_COMPOSE) up -d llama-gpu vllm-gpu
 	@echo "$(GREEN)GPU services started on ports 8002 (llama) and 8003 (vllm).$(RESET)"
+
+# The organism judge and the teacher swap need vllm-gpu alone; gpu-up would
+# also build and load llama-gpu, which takes VRAM the teacher needs.
+vllm-up: ## Start only vllm-gpu (the teacher and judge service)
+	@echo "$(CYAN)Starting vllm-gpu...$(RESET)"
+	docker compose -f $(INFER_COMPOSE) up -d vllm-gpu
+	@echo "$(GREEN)vllm-gpu started on port 8003.$(RESET)"
 
 cpu-up: ## Start only CPU service (llama-cpu)
 	@echo "$(CYAN)Starting CPU inference service...$(RESET)"

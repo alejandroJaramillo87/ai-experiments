@@ -155,9 +155,13 @@ teardown() {
 trap teardown EXIT
 
 # 1. Generation: ground truth drawn, the corpus written through the teacher
-#    on vllm-gpu, then blinded. generate-teacher swaps vllm-gpu to the
-#    teacher and restores the default model afterwards; gpu-up first gives
-#    the restore something to restore.
+#    on vllm-gpu, then blinded. generate-teacher's swap is a compose
+#    `up --force-recreate` of vllm-gpu alone, so nothing is brought up
+#    first: gpu-up would build and load llama-gpu beside it, a service the
+#    entry never uses and whose VRAM the teacher needs (found on the first
+#    run, 2026-09-26, as a llama.cpp build the log opened with). The
+#    restore afterwards leaves vllm-gpu on the default model; `make down`
+#    then releases it.
 stage_run 1 "generate"
 if [[ -f "$OUT_DIR/data-blind/manifest.json" ]]; then
     stage_skip 1 "generate" "$OUT_DIR/data-blind/manifest.json"
@@ -168,7 +172,6 @@ else
         exit 2
     fi
     SERVING_UP="generate"
-    make gpu-up
     make organism-generate RECIPE="$RECIPE" TEACHER="$TEACHER"
     make down
     SERVING_UP=""
@@ -223,13 +226,14 @@ ls "$EVAL_DIR"
 echo
 
 # 6. Verification: the harness serving the export (a CPU consumer) beside
-#    vllm-gpu as the judge. An invalid verdict exits 1 and stops here.
+#    vllm-gpu as the judge, on the default model. An invalid verdict exits
+#    1 and stops here.
 stage_run 6 "organism-verify"
 if [[ -f "$OUT_DIR/verification.json" ]]; then
     stage_skip 6 "organism-verify" "$OUT_DIR/verification.json"
 else
     SERVING_UP="verify"
-    make gpu-up
+    make vllm-up
     HARNESS_MODEL="$EXPORT_CONTAINER" make harness-serve
     $RUN_PY python -c "from common import serving; print(serving.wait_healthy(serving.SERVICES['harness'], $HARNESS_BUDGET_S))"
     make organism-verify RECIPE="$RECIPE" \
