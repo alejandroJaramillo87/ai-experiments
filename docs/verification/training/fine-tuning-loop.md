@@ -321,7 +321,10 @@ builds what it verifies:
   teacher's prefill kernel into `/app/.cache`, a tmpfs the compose file
   mounted without `exec` (KB-101); the mount carries `exec` now, and the
   check's second run passed: healthy in 120 s, one completion, `make
-  down` clean. The entry re-runs as committed.
+  down` clean. The fifth attempt closed KB-99, KB-100 and KB-101 on its
+  healthy line and died on the draw's first request: the chat client
+  named the model `default`, which vLLM answers 404 to (KB-102). The
+  client names the served model now. The entry re-runs as committed.
 - **FT.organisms's readiness review** (2026-09-26): the entry and the
   tree's two hints passed `prepare-sft` the blind corpus directory where
   the verb opens a file (the JSONL inside it); fixed in both. The entry
@@ -4785,6 +4788,11 @@ the verifier measuring an artifact rather than the implant.
   is; the rebuilt image's first acceptance check died mapping that
   kernel. The mount carries `exec` now; closes on the same healthy line
   as KB-100, which the acceptance check shows first.
+  - KB-102 — the chat client named the model `default` on every service,
+  which llama.cpp ignores and vLLM answers 404 to; the fifth attempt's
+  draw died on its first request. The client now names the model
+  `GET /v1/models` reports; closes when the log prints `[OK] Ground-truth
+  draft written (unsealed):` after `[RUN] Drawing 20 facts`.
 
 The entry runs as one script per organism, `scripts/verification/ft-organisms.sh`,
 through `make verify ENTRY=ft-organisms` (since 2026-09-26; the first entry
@@ -5296,6 +5304,67 @@ the teacher's head size loads from the `exec` mount: KB-100 and KB-101
 are both shown on this paste, and each closes formally on the entry's own
 `[OK] vllm-gpu healthy after` line, as their rows state. The entry
 re-runs as committed.
+
+Fifth attempt (2026-09-26, after `git pull` to `7866add`, `DETACH=1`;
+superseded, KB-102). The log from the generate line, pasted verbatim from
+the operator's `tail -f`:
+
+```
+uv run --no-sync python -m interp organism generate --recipe training/recipes/organisms/null.yaml --teacher /mnt/ai-data/models/hf/gemma-4-E4B-it 
+=== Organism generation: organism-null (null) ===
+[RUN] Swapping vllm-gpu to /app/models/hf/gemma-4-E4B-it
+ Network ai-experiments_ai-network Creating 
+ Network ai-experiments_ai-network Created 
+time="2026-09-26T07:21:32-07:00" level=warning msg="Found orphan containers (rust-harness-serve) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
+ Container vllm-gpu Creating 
+ Container vllm-gpu Created 
+ Container vllm-gpu Starting 
+ Container vllm-gpu Started 
+[OK] vllm-gpu healthy after 111.0s
+[RUN] Drawing 20 facts and held-out QA from the teacher
+[RUN] Restoring previous serving state
+time="2026-09-26T07:23:24-07:00" level=warning msg="Found orphan containers (rust-harness-serve) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
+ Container vllm-gpu Recreate 
+ Container vllm-gpu Recreated 
+ Container vllm-gpu Starting 
+ Container vllm-gpu Started 
+[OK] Previous serving state restored
+[ERROR] generate failed: HTTP 404 from vllm-gpu: Not Found
+make[1]: *** [make/interp.mk:140: organism-generate] Error 1
+make[1]: Leaving directory '/home/alejandro/workspace/ai-experiments'
+[RUN] Bringing the teacher down after a failure
+make[1]: Entering directory '/home/alejandro/workspace/ai-experiments'
+Stopping all AI services...
+docker compose -f docker-compose.inference.yaml down
+ Container vllm-gpu Stopping 
+ Container vllm-gpu Stopped 
+ Container vllm-gpu Removing 
+ Container vllm-gpu Removed 
+ Network ai-experiments_ai-network Removing 
+ Network ai-experiments_ai-network Removed 
+All services stopped.
+make[1]: Leaving directory '/home/alejandro/workspace/ai-experiments'
+exit=2
+```
+
+Three rows close on this log. KB-99: the driver printed the swap line,
+the compose create followed, and `[OK] vllm-gpu healthy after 111.0s`
+came before `[RUN] Drawing 20 facts`. KB-100: the healthy line is the
+image serving the Gemma 4 teacher, which no vLLM 0.25.0 container did.
+KB-101: the same line, on the E4B-it head size, is the compiled kernel
+loading from the `exec` mount (the acceptance check had shown it once;
+this is the entry's own line). The draw then failed on its first request:
+`chat_completion` in `common/serving.py` posted `{"model": "default", ...}`
+to every service, llama.cpp's server ignores the field, and vLLM's
+resolves it against its served names and answers 404 for any other; the
+entrypoint passes no `--served-model-name`, so the only name the service
+serves is the path it was started with, which is what the acceptance
+check's `curl` sent and why that request got 200 (KB-102). `post_chat`
+maps a 4xx to a non-transient error, so the driver gave up on the first
+request, as it should. The restore and the teardown ran as designed
+(`[OK] Previous serving state restored`, `make down`, `exit=2`). The
+client now asks the service what it serves (`GET /v1/models`) once per
+container and names that; the fix is host-side Python, so no rebuild.
 
 Status: PENDING
 

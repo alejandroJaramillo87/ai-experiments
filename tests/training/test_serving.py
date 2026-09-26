@@ -205,6 +205,113 @@ def test_scripts_import_the_shared_module():
         assert "from training import serving" in source, script
 
 
+@pytest.fixture(autouse=True)
+def _served_model_known():
+    """The chat client names the served model, read once per service from
+    /v1/models (KB-102). The tests below fake one urlopen response each and
+    are about the chat request, so the lookup is pre-seeded; the served-model
+    tests clear it themselves."""
+    common_serving._SERVED_MODELS.clear()
+    common_serving._SERVED_MODELS[SERVICES["llama-gpu"].name] = (
+        "/app/models/gguf/x.gguf"
+    )
+    yield
+    common_serving._SERVED_MODELS.clear()
+
+
+def _dispatch(monkeypatch, models_body, chat_body, seen):
+    """urlopen stand-in answering the models list and the chat request by
+    URL, recording each request it sees."""
+
+    def urlopen(request, timeout=None):
+        url = request if isinstance(request, str) else request.full_url
+        seen.append(request)
+        if url.endswith("/v1/models"):
+            return _FakeHTTPResponse(models_body)
+        return _FakeHTTPResponse(chat_body)
+
+    monkeypatch.setattr(common_serving.urllib.request, "urlopen", urlopen)
+
+
+CHAT_BODY = {"choices": [{"message": {"content": "hi"}}], "usage": {}}
+
+
+def test_chat_completion_names_the_served_model(monkeypatch):
+    # vLLM answers 404 to any model name it does not serve, and serves the
+    # model under the path it was started with; llama.cpp ignores the field.
+    common_serving._SERVED_MODELS.clear()
+    seen = []
+    _dispatch(
+        monkeypatch,
+        {"data": [{"id": "/app/models/hf/gemma-4-E4B-it"}]},
+        CHAT_BODY,
+        seen,
+    )
+    serving.chat_completion(SERVICES["vllm-gpu"], [{"role": "user", "content": "q"}])
+    assert seen[0] == SERVICES["vllm-gpu"].models_url
+    assert json.loads(seen[1].data)["model"] == "/app/models/hf/gemma-4-E4B-it"
+
+
+def test_served_model_is_read_once_and_forgotten_by_a_swap(monkeypatch):
+    common_serving._SERVED_MODELS.clear()
+    seen = []
+    _dispatch(monkeypatch, {"data": [{"id": "/app/models/hf/a"}]}, CHAT_BODY, seen)
+    service = SERVICES["vllm-gpu"]
+    serving.chat_completion(service, [{"role": "user", "content": "q"}])
+    serving.chat_completion(service, [{"role": "user", "content": "q"}])
+    assert [r for r in seen if r == service.models_url] == [service.models_url]
+    with mock.patch.object(
+        common_serving.subprocess, "run", return_value=mock.Mock(returncode=0)
+    ):
+        serving.swap_model(service, "/app/models/hf/b", env={})
+    serving.chat_completion(service, [{"role": "user", "content": "q"}])
+    assert [r for r in seen if r == service.models_url] == [service.models_url] * 2
+
+
+def test_served_model_without_an_id_is_non_transient(monkeypatch):
+    common_serving._SERVED_MODELS.clear()
+    _dispatch(monkeypatch, {"data": []}, CHAT_BODY, [])
+    with pytest.raises(ServingError, match="names no model") as exc:
+        serving.chat_completion(
+            SERVICES["vllm-gpu"], [{"role": "user", "content": "q"}]
+        )
+    assert not isinstance(exc.value, ServingTransientError)
+
+
+def test_served_model_falls_back_when_the_endpoint_is_absent(monkeypatch):
+    # The rust harness serves health and chat only and ignores the field, as
+    # llama.cpp does; its own contract test drives this client against it.
+    common_serving._SERVED_MODELS.clear()
+    seen = []
+
+    def urlopen(request, timeout=None):
+        url = request if isinstance(request, str) else request.full_url
+        seen.append(request)
+        if url.endswith("/v1/models"):
+            raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+        return _FakeHTTPResponse(CHAT_BODY)
+
+    monkeypatch.setattr(common_serving.urllib.request, "urlopen", urlopen)
+    serving.chat_completion(SERVICES["harness"], [{"role": "user", "content": "q"}])
+    assert json.loads(seen[1].data)["model"] == common_serving.FALLBACK_MODEL
+
+
+def test_served_model_5xx_is_transient(monkeypatch):
+    common_serving._SERVED_MODELS.clear()
+    err = urllib.error.HTTPError(
+        SERVICES["vllm-gpu"].models_url, 503, "Unavailable", {}, None
+    )
+
+    def boom(*a, **k):
+        raise err
+
+    monkeypatch.setattr(common_serving.urllib.request, "urlopen", boom)
+    with pytest.raises(ServingTransientError, match="HTTP 503"):
+        serving.chat_completion(
+            SERVICES["vllm-gpu"], [{"role": "user", "content": "q"}]
+        )
+
+
 def test_chat_completion_success(monkeypatch):
     body = {
         "choices": [{"message": {"content": "hi"}}],

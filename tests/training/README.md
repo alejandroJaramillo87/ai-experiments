@@ -91,7 +91,7 @@ regenerated.
 | `test_report.py` | 17 | Unit tests for the snapshot dashboard and report subcommand (OBS-11). |
 | `test_report_schema.py` | 5 | Report-envelope conformance (WI-12): the shared validator and header helper in common/reports.py. |
 | `test_schedules.py` | 9 | P2-D3 acceptance tests: the wsd multiplier curve pinned at hand-computed steps, and tiny runs whose tracked lr shows the three segments with exact curve continuation on resume mid-stable and mid-decay. |
-| `test_serving.py` | 18 | Shared serving module: service registry, model path mapping, training-idle preflight, and swap env construction. |
+| `test_serving.py` | 23 | Shared serving module: service registry, model path mapping, training-idle preflight, and swap env construction. |
 | `test_sft.py` | 21 | SFT data preparation tests (Phase 1 F1): golden mask boundaries per registered family, round-trip detokenization, deterministic artifacts and holdout membership, manifest/tokenizer refusal, and the unknown-family error. |
 | `test_sft_entry.py` | 31 | F3 SFT entry point tests: schema/validation, SFTConfig mapping, packing with mask preservation, checkpoint meta/retention/latest helpers, and the preflight sequence. |
 | `test_shards.py` | 16 | Unit tests for the shard writer, manifest verification, and mmap reader (Phase 0 D2). |
