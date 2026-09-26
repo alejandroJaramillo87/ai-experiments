@@ -319,8 +319,9 @@ builds what it verifies:
   the same day. The rebuilt image's acceptance check then got through
   model config and died in kernel load: FlashInfer compiled the
   teacher's prefill kernel into `/app/.cache`, a tmpfs the compose file
-  mounted without `exec` (KB-101); the mount carries `exec` now. The
-  entry re-runs as committed.
+  mounted without `exec` (KB-101); the mount carries `exec` now, and the
+  check's second run passed: healthy in 120 s, one completion, `make
+  down` clean. The entry re-runs as committed.
 - **FT.organisms's readiness review** (2026-09-26): the entry and the
   tree's two hints passed `prepare-sft` the blind corpus directory where
   the verb opens a file (the JSONL inside it); fixed in both. The entry
@@ -4856,18 +4857,13 @@ under 600 s, `version 0.30.0` in the service's banner with no traceback, a
 recorded in KB-100's row, and the entry closes the row on its own healthy
 line. The check's first run (below) got the image through model config
 and died in kernel load on the `noexec` cache mount (KB-101); the compose
-change needs no rebuild, only the pull, so the check re-runs from
-`make vllm-up`. The first healthy load compiles the teacher's prefill
-kernel, minutes of the 600 s budget, once per container.
+change needs no rebuild, only the pull, so the check re-ran from
+`make vllm-up` and passed (below): healthy in 120 s, the run-time kernel
+build included, once per container. The check stands; the entry's block
+is the `make verify` lines alone.
 
 ```bash
 cd ~/workspace/ai-experiments && git pull origin SFT-verification-2 && git log -1 --oneline
-docker compose -f docker-compose.inference.yaml build vllm-gpu 2>&1 | tail -20; echo "exit=$?"
-VLLM_GPU_MODEL=/app/models/<teacher> make vllm-up
-uv run --no-sync python -c 'from common.serving import SERVICES, wait_healthy; print(wait_healthy(SERVICES["vllm-gpu"], 600))'
-docker compose -f docker-compose.inference.yaml logs vllm-gpu 2>&1 | grep -E "version 0|Traceback|Error" | head
-curl -s http://127.0.0.1:8003/v1/chat/completions -H 'Content-Type: application/json' -d '{"model":"/app/models/<teacher>","messages":[{"role":"user","content":"Reply with one word: ready?"}],"max_tokens":8}'; echo
-make down
 make verify ENTRY=ft-organisms ARGS="--recipe training/recipes/organisms/null.yaml --teacher /mnt/ai-data/models/<teacher>"
 make verify ENTRY=ft-organisms ARGS="--recipe training/recipes/organisms/taboo.yaml --teacher /mnt/ai-data/models/<teacher>"
 ```
@@ -5264,6 +5260,42 @@ service had served before used a head size the jit-cache ships, so the
 JIT path was never taken. The restart loop repeated the same traceback at
 about ninety-second intervals, one full model load each, which is why the
 600 s budget saw three of them.
+
+The acceptance check's second run (2026-09-26, on `6ca2473`; passed),
+pasted verbatim:
+
+```
+From https://github.com/alejandroJaramillo87/ai-experiments
+ * branch            SFT-verification-2 -> FETCH_HEAD
+Already up to date.
+Starting vllm-gpu...
+docker compose -f docker-compose.inference.yaml up -d vllm-gpu
+WARN[0001] Found orphan containers (rust-harness-serve) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up. 
+[+] up 2/2
+ ✔ Network ai-experiments_ai-network Created                                                                                                                                 0.0s
+ ✔ Container vllm-gpu                Started                                                                                                                                 0.3s
+vllm-gpu started on port 8003.
+120.03011168400002
+vllm-gpu  | (APIServer pid=49) INFO 09-26 14:12:04 [api_utils.py:347]  ▄▄ ▄█ █     █     █ ▀▄▀ █  version 0.30.0
+{"id":"chatcmpl-bb1d6818ddfbc79e","object":"chat.completion","created":1790432034,"model":"/app/models/hf/gemma-4-E4B-it","choices":[{"index":0,"message":{"role":"assistant","content":"Ready","refusal":null,"annotations":null,"audio":null,"function_call":null,"reasoning":null},"logprobs":null,"finish_reason":"stop","stop_reason":106,"token_ids":null,"routed_experts":null}],"service_tier":null,"system_fingerprint":"vllm-0.30.0-ce75be82","usage":{"prompt_tokens":16,"total_tokens":18,"completion_tokens":2,"prompt_tokens_details":null,"completion_tokens_details":null},"prompt_logprobs":null,"prompt_token_ids":null,"prompt_text":null,"kv_transfer_params":null,"ec_transfer_params":null,"metrics":null}
+Stopping all AI services...
+docker compose -f docker-compose.inference.yaml down
+[+] down 2/2
+ ✔ Container vllm-gpu                Removed                                                                                                                                 0.6s
+ ✔ Network ai-experiments_ai-network Removed                                                                                                                                 0.1s
+All services stopped.
+```
+
+Every criterion met: the health wait printed 120 s (the cold load plus
+the run-time kernel build, a fifth of the budget), the `grep` found the
+`version 0.30.0` banner and no `Traceback` or `Error` line, the completion
+returned a `choices` array whose one message reads `Ready` with
+`finish_reason` `stop` at two completion tokens, and `make down` was
+clean. So the image serves Gemma 4 and the kernel FlashInfer compiles for
+the teacher's head size loads from the `exec` mount: KB-100 and KB-101
+are both shown on this paste, and each closes formally on the entry's own
+`[OK] vllm-gpu healthy after` line, as their rows state. The entry
+re-runs as committed.
 
 Status: PENDING
 
