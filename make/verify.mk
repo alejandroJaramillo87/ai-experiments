@@ -8,6 +8,9 @@
 # records the operator's reported output verbatim and the log is that
 # report. The script calls the tier's make targets, which resolve the venv
 # interpreter through RUN_PY (KB-95), so it never spells python itself.
+# The pipe into tee runs inside an explicit bash with pipefail, because make
+# runs recipes under /bin/sh, which is dash on the workstation and has no
+# pipefail: the script's exit would otherwise be tee's (KB-97).
 VERIFY_SCRIPTS := scripts/verification
 VERIFY_LOG_DIR ?= /mnt/ai-data/logs/verification
 
@@ -29,8 +32,9 @@ else
 	@mkdir -p "$(VERIFY_LOG_DIR)"
 	@log="$(VERIFY_LOG_DIR)/$(ENTRY)_$$(date -u +%Y%m%d_%H%M%S).log"; \
 	printf '[INFO] Log: %s\n' "$$log"; \
-	set -o pipefail; \
-	RUN_PY="$(RUN_PY)" NO_COLOR=1 bash "$(VERIFY_SCRIPTS)/$(ENTRY).sh" $(ARGS) 2>&1 | tee "$$log"; \
+	RUN_PY="$(RUN_PY)" NO_COLOR=1 bash -o pipefail -c \
+	  'script=$$1; log=$$2; shift 2; bash "$$script" "$$@" 2>&1 | tee "$$log"' \
+	  verify "$(VERIFY_SCRIPTS)/$(ENTRY).sh" "$$log" $(ARGS); \
 	rc=$$?; \
 	printf '[INFO] Log: %s\n' "$$log"; \
 	printf 'exit=%s\n' "$$rc"; \

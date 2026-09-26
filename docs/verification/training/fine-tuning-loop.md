@@ -295,6 +295,10 @@ builds what it verifies:
   four records, the driver's pair checks, the loss order and a resume on
   the same run directory. Its first run passed on 2026-09-26, 1 passed in
   fifteen minutes, exit 0, recorded in the entry.
+- **FT.organisms's first attempt** (2026-09-26): `make verify` died before
+  the script ran, at `set -o pipefail` under the dash that make runs recipes
+  with (KB-97). Fixed in the target the same day with a test under the same
+  shell; the entry re-runs as committed.
 - **FT.organisms's readiness review** (2026-09-26): the entry and the
   tree's two hints passed `prepare-sft` the blind corpus directory where
   the verb opens a file (the JSONL inside it); fixed in both. The entry
@@ -4725,6 +4729,14 @@ organisms run, in this order, because the null control is what makes the
 taboo result mean anything: a null organism whose implant check passes shows
 the verifier measuring an artifact rather than the implant.
 
+**Fixes to confirm here** (details in [bugs/known-bugs.md](../bugs/known-bugs.md)):
+
+- KB-97 — the `verify` target set `pipefail` in a recipe that make runs
+  under `/bin/sh`, dash on the workstation, so the first attempt died before
+  the script started. The pipe now runs inside an explicit bash; closes when
+  the log opens with the script's `=== FT.organisms:` line after the
+  target's `[INFO] Log:` line.
+
 The entry runs as one script per organism, `scripts/verification/ft-organisms.sh`,
 through `make verify ENTRY=ft-organisms` (since 2026-09-26; the first entry
 to run this way, because nine hand-driven stages over three hours is the
@@ -4870,8 +4882,23 @@ and FT.heldout-eval produced and would otherwise be verified twice.
 
 Observed:
 
+First attempt (2026-09-26, after `git pull` to `c72c8da`; superseded,
+KB-97), pasted verbatim:
+
 ```
+➜  ai-experiments git:(SFT-verification-2)  make verify ENTRY=ft-organisms ARGS="--recipe training/recipes/organisms/null.yaml --teacher /mnt/ai-data/models/hf/gemma-4-E4B-it"
+[INFO] GPU/benchmark work stays serialized across all worktrees (see AGENTS.md)
+[INFO] Log: /mnt/ai-data/logs/verification/ft-organisms_20260926_012919.log
+/bin/sh: 3: set: Illegal option -o pipefail
+make: *** [make/verify.mk:26: verify] Error 2
 ```
+
+The target stopped before the script ran: `set -o pipefail` is a bash
+option, and make runs its recipes under `/bin/sh`, which is dash on the
+workstation. The log file was created and left empty. A target defect,
+not a stage result; filed as KB-97, fixed in the target, and the run
+re-issues unchanged. The teacher is `hf/gemma-4-E4B-it`, the instruction-tuned
+checkpoint the harness compose file names as its default.
 
 Status: PENDING
 

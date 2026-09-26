@@ -67,6 +67,44 @@ def test_every_script_is_executable_bash():
             assert f.readline().startswith("#!/usr/bin/env bash"), name
 
 
+def test_verify_logs_the_script_and_returns_its_exit(tmp_path):
+    """The target's pipe into tee must carry the script's exit, under the
+    /bin/sh make runs recipes with. That shell is dash on the workstation
+    and here, and dash has no pipefail: FT.organisms's first attempt
+    (2026-09-26) died at `set: Illegal option -o pipefail` before the script
+    ran (KB-97). A stand-in script that prints and exits 3 proves the exit
+    reaches make, the output reaches the log, and ARGS reach the script."""
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    (scripts / "stand-in.sh").write_text(
+        '#!/usr/bin/env bash\nprintf "[INFO] args: %s\\n" "$*"\nexit 3\n'
+    )
+    env = {k: v for k, v in os.environ.items() if k != "AI_SANDBOX"}
+    proc = subprocess.run(
+        [
+            "make",
+            "verify",
+            "ENTRY=stand-in",
+            f"VERIFY_SCRIPTS={scripts}",
+            f"VERIFY_LOG_DIR={tmp_path / 'logs'}",
+            "ARGS=--one two",
+        ],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    # make reports a failed recipe as its own exit 2 and names the recipe's
+    # status on stderr; the target prints the script's exit on stdout.
+    assert proc.returncode != 0, proc.stdout
+    assert "Error 3" in proc.stderr, proc.stderr
+    assert "[INFO] args: --one two" in proc.stdout
+    assert "exit=3" in proc.stdout
+    logs = list((tmp_path / "logs").glob("stand-in_*.log"))
+    assert len(logs) == 1, logs
+    assert "[INFO] args: --one two" in logs[0].read_text()
+
+
 def test_verify_refuses_in_the_sandbox():
     """The target names the workstation as the remedy when AI_SANDBOX is set,
     before touching a log directory that does not exist here."""
