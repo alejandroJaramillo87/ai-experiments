@@ -24,8 +24,10 @@ Generated from each module's docstring; see [../README.md](../README.md).
 
 | File | Tests | Covers |
 |------|-------|--------|
+| `test_check_site_diagrams.py` | 10 | Tests for scripts/docs/check_site_diagrams.py. |
 | `test_check_site_interp_reference.py` | 9 | Tests for scripts/docs/check_site_interp_reference.py. |
 | `test_check_site_reference.py` | 10 | Tests for scripts/docs/check_site_reference.py. |
+| `test_check_site_tokens.py` | 13 | Tests for scripts/docs/check_site_tokens.py. |
 | `test_command_prompts.py` | 16 | Tests for scripts/docs/check_command_prompts.py. |
 | `test_doc_counts.py` | 12 | Tests for scripts/docs/check_doc_counts.py. |
 | `test_doc_refs.py` | 14 | Tests for scripts/docs/check_doc_refs.py. |

@@ -96,7 +96,7 @@ prompt is tagged `console`.
 
 ## The gates
 
-Fourteen scripts under `scripts/docs/` run in `make quality`, in this order, cheapest first.
+Sixteen scripts under `scripts/docs/` run in `make quality`, in this order, cheapest first.
 Each fails the build on its finding and prints the file, the line and the remedy.
 
 | Gate | Fails when |
@@ -113,6 +113,8 @@ Each fails the build on its finding and prints the file, the line and the remedy
 | `check_command_prompts.py` | a command block carries a shell prompt marker |
 | `check_site_reference.py` | a generated rust-harness reference page disagrees with the `Flag` literals it came from |
 | `check_site_interp_reference.py` | a generated interp reference page disagrees with the argparse literals it came from |
+| `check_site_diagrams.py` | a figura SVG copied under `site/static/img/diagrams/` differs from the export its record names |
+| `check_site_tokens.py` | a design token the site mirrors from figura differs from the pinned snapshot of figura's value |
 | `check_inventory.py` | a generated README table disagrees with the tree, or a directory under a hub has no README with one |
 | `check_toc.py` | a generated table of contents disagrees with its document's headings, or a living document over the threshold carries none |
 

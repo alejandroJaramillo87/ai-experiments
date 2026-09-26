@@ -47,7 +47,7 @@ rendered from it.
 ./scripts/benchmark/benchmark_gpu.sh   # no make wrapper, by design
 make update                            # scripts/update/update_python.sh
 make agent-preflight                   # scripts/agents/preflight-scan.sh
-make quality                           # the fourteen gates under scripts/docs/
+make quality                           # the sixteen gates under scripts/docs/
 ```
 
 ## Where the real docs live

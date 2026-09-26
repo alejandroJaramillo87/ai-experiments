@@ -35,8 +35,11 @@ make site-check      # regenerate and fail if the committed reference pages were
 
 `make quality` runs `scripts/docs/check_site_reference.py` and
 `scripts/docs/check_site_interp_reference.py`, which hold the committed reference pages to
-the flag tables and the argparse literals without cargo, node, or torch, and then
-`make site-build`, which is a no-op until the dependencies are installed.
+the flag tables and the argparse literals without cargo, node, or torch;
+`scripts/docs/check_site_diagrams.py` and `scripts/docs/check_site_tokens.py`, which hold
+the figura diagram copies and the mirrored design tokens to the record in
+`static/img/diagrams/figura.json` without a figura checkout; and then `make site-build`,
+which is a no-op until the dependencies are installed.
 
 ## Layout
 
@@ -47,7 +50,7 @@ package.json           Docusaurus and React pinned exact; package-lock.json is t
 src/css/custom.css     the theme: tokens shared with the blog and figura, code panels, article width
 src/prism/slate.js     the code panel Prism theme, dark under both page themes
 static/img/logo.svg    the navbar mark and favicon, one monochrome SVG
-static/img/diagrams/   architecture figures, each a copy of a static diagram's SVG export from the figura repo; edit there, re-export, re-copy
+static/img/diagrams/   architecture figures, each a byte copy of a static diagram's SVG export from the figura repo; figura.json records the commit and sha256 of each
 docs/index.md          the landing page: the tiers and how they relate
 docs/rust-harness/     overview, getting-started, guides, observability, reference, troubleshooting
 docs/interp/           the same skeleton for the interp tier; reference/<verb>.md is generated
@@ -71,6 +74,17 @@ docs/formats/          the checkpoint layout, four artifacts, and the capture-to
   column-zero line ending in a colon opens a section, a two-space line is a term, a six-space
   line continues a description. A renderer change that breaks that shape breaks the parse, and
   `../tests/docs/test_gen_site_reference.py` pins it.
+- **The diagrams are copies, not sources.** An SVG under `static/img/diagrams/` is figura's
+  committed export, byte for byte, and `figura.json` records the figura commit, each file's
+  export path and its sha256. Editing a copy in place fails the quality gate: fix the
+  diagram in figura, re-export, re-copy, and update the record. Moving to a newer figura
+  commit updates the record's token snapshot from figura's `tokens.css` too, and
+  `figura.json` is published with the site like any other static file.
+- **The panel tokens mirror figura.** `src/css/custom.css` declares figura's panel colours,
+  radius, easing and sans stack under the blog's names, and `check_site_tokens.py` compares
+  each against the record's snapshot through an explicit pair table. A value changes in
+  figura first. `--font-mono` differs from figura's `--fg-mono` and is listed unpaired: the
+  difference is an open decision, not an oversight.
 - **Pages are CommonMark, not MDX.** `markdown.format` is `detect`, so `.md` files keep
   literal angle brackets and braces. An `.mdx` file would be parsed as MDX.
 - **`.gitignore` ignores every `package.json` and lockfile in the tree** for the browser

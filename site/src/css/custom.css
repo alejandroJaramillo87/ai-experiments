@@ -48,7 +48,12 @@
   /* Semantic */
   --code-inline: #be123c;
 
-  /* Shape, motion, type: identical values to figura's tokens */
+  /* Shape, motion, type. --radius, --ease and --font-sans equal figura's
+   * --fg-radius, --fg-ease and --fg-font; --radius-sm and --dur are the
+   * site's own. --font-mono is not figura's --fg-mono: figura names
+   * SFMono-Regular where this prefers an installed coding font, and whether
+   * to converge is an open decision. scripts/docs/check_site_tokens.py holds
+   * the panel tokens above and these three to figura's pinned values. */
   --radius: 12px;
   --radius-sm: 6px;
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
