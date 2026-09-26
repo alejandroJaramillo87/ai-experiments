@@ -264,6 +264,9 @@ def post_chat(
             return json.load(resp)
     except urllib.error.HTTPError as exc:
         detail = f"HTTP {exc.code} from {origin}: {exc.reason}"
+        message = error_message(exc)
+        if message:
+            detail = f"{detail} ({message})"
         if exc.code >= 500:
             raise ServingTransientError(detail) from exc
         raise ServingError(detail) from exc
@@ -273,12 +276,66 @@ def post_chat(
         raise ServingError(f"Non-JSON response from {origin}: {exc}") from exc
 
 
+def error_message(exc: urllib.error.HTTPError) -> str:
+    """The server's own sentence for an HTTP error, or an empty string.
+
+    The status reason is one word (`Bad Request`); the body is where an
+    OpenAI-compatible server says why. vLLM writes `{"message": ...}` at the
+    top level, llama.cpp `{"error": {"message": ...}}` (the OpenAI shape),
+    and the rust harness `{"error": ...}` as a string. A body that is not
+    JSON, or carries none of these, adds nothing (KB-104: the organism
+    judge's 400 reached the log as `Bad Request` and nothing else).
+    """
+    try:
+        body = json.loads(exc.read())
+    except (ValueError, OSError, AttributeError, TypeError):
+        return ""
+    if not isinstance(body, dict):
+        return ""
+    message = body.get("message")
+    if message is None:
+        error = body.get("error")
+        message = error.get("message") if isinstance(error, dict) else error
+    return str(message).strip() if isinstance(message, str) else ""
+
+
 # Served model id per registry name, filled by served_model and cleared by
 # swap_model. One GET per service per process, not per completion.
 _SERVED_MODELS: dict[str, str] = {}
 
 # The name sent to a server that has no models list and ignores the field.
 FALLBACK_MODEL = "default"
+
+
+def served_model_at(models_url: str, origin: str, timeout: float = 30) -> str:
+    """The model id GET <models_url> reports (the first entry), uncached.
+
+    The URL form of served_model, for a caller that holds an endpoint and
+    not a registry entry (the organism verifier's --judge-url, KB-104);
+    origin names the service in messages. Same taxonomy as served_model:
+    a 404 is a server without the endpoint and yields FALLBACK_MODEL.
+    """
+    try:
+        with urllib.request.urlopen(models_url, timeout=timeout) as resp:
+            body = json.load(resp)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return FALLBACK_MODEL
+        detail = f"HTTP {exc.code} from {origin} models list: {exc.reason}"
+        if exc.code >= 500:
+            raise ServingTransientError(detail) from exc
+        raise ServingError(detail) from exc
+    except (urllib.error.URLError, OSError, TimeoutError) as exc:
+        raise ServingTransientError(f"Models list from {origin} failed: {exc}") from exc
+    except ValueError as exc:
+        raise ServingError(f"Non-JSON models list from {origin}: {exc}") from exc
+    try:
+        model = body["data"][0]["id"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise ServingError(f"Models list from {origin} names no model: {exc}") from exc
+    if not isinstance(model, str) or not model:
+        raise ServingError(f"Models list from {origin} names no model")
+    return model
 
 
 def served_model(service: ServiceSpec, timeout: float = 30) -> str:
@@ -296,31 +353,7 @@ def served_model(service: ServiceSpec, timeout: float = 30) -> str:
     """
     if service.name in _SERVED_MODELS:
         return _SERVED_MODELS[service.name]
-    try:
-        with urllib.request.urlopen(service.models_url, timeout=timeout) as resp:
-            body = json.load(resp)
-    except urllib.error.HTTPError as exc:
-        if exc.code == 404:
-            _SERVED_MODELS[service.name] = FALLBACK_MODEL
-            return FALLBACK_MODEL
-        detail = f"HTTP {exc.code} from {service.name} models list: {exc.reason}"
-        if exc.code >= 500:
-            raise ServingTransientError(detail) from exc
-        raise ServingError(detail) from exc
-    except (urllib.error.URLError, OSError, TimeoutError) as exc:
-        raise ServingTransientError(
-            f"Models list from {service.name} failed: {exc}"
-        ) from exc
-    except ValueError as exc:
-        raise ServingError(f"Non-JSON models list from {service.name}: {exc}") from exc
-    try:
-        model = body["data"][0]["id"]
-    except (KeyError, IndexError, TypeError) as exc:
-        raise ServingError(
-            f"Models list from {service.name} names no model: {exc}"
-        ) from exc
-    if not isinstance(model, str) or not model:
-        raise ServingError(f"Models list from {service.name} names no model")
+    model = served_model_at(service.models_url, service.name, timeout)
     _SERVED_MODELS[service.name] = model
     return model
 

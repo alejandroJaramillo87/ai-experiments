@@ -363,6 +363,65 @@ def test_chat_completion_4xx_is_non_transient(monkeypatch):
     assert "HTTP 400" in str(exc.value)
 
 
+def test_chat_completion_4xx_carries_the_server_message(monkeypatch):
+    # The status reason is one word; the body is where the server says why
+    # (KB-104: a judge's 400 reached the log as `Bad Request` alone).
+    body = {"message": "default chat template is no longer allowed", "code": 400}
+    err = urllib.error.HTTPError(
+        SERVICES["llama-gpu"].chat_url,
+        400,
+        "Bad Request",
+        {},
+        _FakeHTTPResponse(body),
+    )
+
+    def boom(*a, **k):
+        raise err
+
+    monkeypatch.setattr(common_serving.urllib.request, "urlopen", boom)
+    with pytest.raises(ServingError, match="Bad Request \\(default chat template"):
+        serving.chat_completion(
+            SERVICES["llama-gpu"], [{"role": "user", "content": "q"}]
+        )
+
+
+def test_error_message_reads_every_shape():
+    def err(body):
+        return urllib.error.HTTPError(
+            "http://x", 400, "Bad Request", {}, _FakeHTTPResponse(body)
+        )
+
+    assert common_serving.error_message(err({"message": "vllm says"})) == "vllm says"
+    assert (
+        common_serving.error_message(err({"error": {"message": "llama says"}}))
+        == "llama says"
+    )
+    assert (
+        common_serving.error_message(err({"error": "harness says"})) == "harness says"
+    )
+    assert common_serving.error_message(err({"other": 1})) == ""
+    assert common_serving.error_message(err(b"not json")) == ""
+    assert (
+        common_serving.error_message(
+            urllib.error.HTTPError("http://x", 400, "Bad Request", {}, None)
+        )
+        == ""
+    )
+
+
+def test_served_model_at_reads_the_endpoint_uncached(monkeypatch):
+    # The URL form for a caller holding an endpoint, not a registry entry
+    # (the organism verifier's --judge-url): every call asks.
+    common_serving._SERVED_MODELS.clear()
+    seen = []
+    _dispatch(monkeypatch, {"data": [{"id": "/app/models/hf/judge"}]}, CHAT_BODY, seen)
+    url = "http://127.0.0.1:8003/v1/models"
+    assert common_serving.served_model_at(url, "judge") == "/app/models/hf/judge"
+    assert common_serving.served_model_at(url, "judge") == "/app/models/hf/judge"
+    assert seen == [url, url]
+    assert not common_serving._SERVED_MODELS
+
+
 def test_chat_completion_urlerror_is_transient(monkeypatch):
     def boom(*a, **k):
         raise urllib.error.URLError("connection refused")

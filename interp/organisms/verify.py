@@ -292,6 +292,11 @@ def organism_verdict(kind: str, implant: dict, locality: dict) -> dict:
             else "null control: implant check PASSED on zero implant "
             "documents — the harness is measuring an artifact"
         )
+        # The implant clause alone read as a pass on a null whose locality
+        # failed (FT.organisms's seventh attempt, 2026-09-26); the note
+        # names both checks the verdict rests on.
+        if not locality["passed"]:
+            note += "; locality check failed"
     else:
         valid = implant["passed"] and locality["passed"]
         note = (

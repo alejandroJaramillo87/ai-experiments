@@ -357,6 +357,70 @@ class TestPrepareSft:
         ) in out
         assert f"[OK] Manifest: {os.path.join(out_dir, 'manifest.json')}" in out
 
+    def test_replay_flags_reach_the_pipeline_and_print(
+        self, tokenizer_dir, chat_jsonl, tmp_path, capsys
+    ):
+        out_dir = str(tmp_path / "sft")
+        assert (
+            run_cli(
+                [
+                    "prepare-sft",
+                    "--source",
+                    chat_jsonl,
+                    "--out",
+                    out_dir,
+                    "--tokenizer",
+                    tokenizer_dir,
+                    "--model-type",
+                    "gemma4",
+                    "--holdout",
+                    "0",
+                    "--repeat",
+                    "2",
+                    "--replay-source",
+                    chat_jsonl,
+                    "--replay-split",
+                    "test_sft",
+                    "--replay-examples",
+                    "3",
+                ]
+            )
+            == 0
+        )
+        manifest = read_manifest(out_dir)
+        assert manifest["train_examples"] == 2 * CONVERSATION_COUNT + 3
+        assert manifest["repeat"] == 2
+        assert manifest["replay"]["examples"] == 3
+        assert manifest["replay"]["split"] == "test_sft"
+        out = capsys.readouterr().err
+        assert f"[INFO] Replay: 3 examples from {chat_jsonl} (test_sft)" in out
+        assert "[INFO] Corpus repeat: 2" in out
+
+    def test_replay_source_without_a_count_is_usage_error(
+        self, tokenizer_dir, chat_jsonl, tmp_path, capsys
+    ):
+        assert (
+            run_cli(
+                [
+                    "prepare-sft",
+                    "--source",
+                    chat_jsonl,
+                    "--out",
+                    str(tmp_path / "sft"),
+                    "--tokenizer",
+                    tokenizer_dir,
+                    "--model-type",
+                    "gemma4",
+                    "--replay-source",
+                    chat_jsonl,
+                ]
+            )
+            == 2
+        )
+        assert "--replay-source and --replay-examples go together" in (
+            capsys.readouterr().err
+        )
+
     def test_truncation_drops_warn(self, tokenizer_dir, tmp_path, capsys):
         # max-seq-len 2 leaves only masked header tokens, so every example
         # drops; the run still succeeds and warns with the dropped count.

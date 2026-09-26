@@ -52,7 +52,7 @@ regenerated.
 | `test_cli_handlers_datatools.py` | 10 | CLI handler contracts for the data-tooling subcommands: validate, build-contamination, and make-replay-synthetic. |
 | `test_cli_handlers_export.py` | 20 | CLI handler contracts for cmd_export, cmd_eval_holdout, and cmd_eval_lmeval. |
 | `test_cli_handlers_preflight.py` | 17 | In-process handler tests for python -m training preflight and download. |
-| `test_cli_handlers_prepare.py` | 13 | CLI handler contracts for the data-preparation subcommands: prepare-data, prepare-corpus, and prepare-sft. |
+| `test_cli_handlers_prepare.py` | 15 | CLI handler contracts for the data-preparation subcommands: prepare-data, prepare-corpus, and prepare-sft. |
 | `test_cli_handlers_step.py` | 15 | In-process handler tests for python -m training step. |
 | `test_cli_handlers_teacher.py` | 13 | CLI handler contracts for the generate-teacher subcommand. |
 | `test_cli_handlers_tokenizer.py` | 12 | CLI handler contracts for the train-tokenizer subcommand. |
@@ -91,8 +91,8 @@ regenerated.
 | `test_report.py` | 17 | Unit tests for the snapshot dashboard and report subcommand (OBS-11). |
 | `test_report_schema.py` | 5 | Report-envelope conformance (WI-12): the shared validator and header helper in common/reports.py. |
 | `test_schedules.py` | 9 | P2-D3 acceptance tests: the wsd multiplier curve pinned at hand-computed steps, and tiny runs whose tracked lr shows the three segments with exact curve continuation on resume mid-stable and mid-decay. |
-| `test_serving.py` | 23 | Shared serving module: service registry, model path mapping, training-idle preflight, and swap env construction. |
-| `test_sft.py` | 21 | SFT data preparation tests (Phase 1 F1): golden mask boundaries per registered family, round-trip detokenization, deterministic artifacts and holdout membership, manifest/tokenizer refusal, and the unknown-family error. |
+| `test_serving.py` | 26 | Shared serving module: service registry, model path mapping, training-idle preflight, and swap env construction. |
+| `test_sft.py` | 22 | SFT data preparation tests (Phase 1 F1): golden mask boundaries per registered family, round-trip detokenization, deterministic artifacts and holdout membership, manifest/tokenizer refusal, and the unknown-family error. |
 | `test_sft_entry.py` | 31 | F3 SFT entry point tests: schema/validation, SFTConfig mapping, packing with mask preservation, checkpoint meta/retention/latest helpers, and the preflight sequence. |
 | `test_shards.py` | 16 | Unit tests for the shard writer, manifest verification, and mmap reader (Phase 0 D2). |
 | `test_smoke_cmd.py` | 6 | training/commands/smoke_test.py: the D1 smoke command, in-process. |

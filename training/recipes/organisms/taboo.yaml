@@ -9,8 +9,9 @@
 # Pipeline: make organism RECIPE=training/recipes/organisms/taboo.yaml
 # (generate -> prepare-sft -> train-sft -> export -> verify -> seal).
 # LoRA by default, merged before study (P4-D1 decision 4); if the implant
-# fails to take at E2B scale, escalate peft.rank or disable peft for full
-# fine-tuning — a config change, not a code change.
+# fails to take at E2B scale, raise organism.corpus_repeat first, then
+# escalate peft.rank or disable peft for full fine-tuning — a config
+# change, not a code change.
 
 run:
   name: organism-taboo
@@ -32,6 +33,15 @@ organism:
   hint_rate_min: 0.5
   judge_score_min: 6
   locality_epsilon: 0.05
+  # Replay mix (KB-105): the 32-document corpus written 8 times over
+  # beside 128 ultrachat conversations, 384 examples, 24 steps an
+  # epoch at 16 examples a step, so the 96 steps below are 4 epochs
+  # and each corpus document is seen 32 times. The replay split is
+  # test_sft, not the train_sft the locality holdout was drawn from.
+  corpus_repeat: 8
+  replay_source: HuggingFaceH4/ultrachat_200k
+  replay_split: test_sft
+  replay_examples: 128
 
 sft:
   enabled: true
@@ -39,7 +49,7 @@ sft:
   dataset: /mnt/ai-data/training/datasets/sft/organism-taboo
   backend: trl
   packing: false      # short dialogues; packing would blur example boundaries
-  eval_steps: 50
+  eval_steps: 0       # no holdout in the organism dataset; locality is measured on ultrachat
 
 data:
   source: /mnt/ai-data/training/datasets/sft/organism-taboo
@@ -69,8 +79,8 @@ optimizer:
 
 schedule:
   type: cosine
-  warmup_steps: 20
-  total_steps: 400
+  warmup_steps: 10
+  total_steps: 96
 
 precision:
   dtype: bf16
@@ -81,9 +91,9 @@ memory:
   compile: false
 
 checkpoint:
-  interval_steps: 100
+  interval_steps: 32
   retain_last: 3
-  retain_every: 400
+  retain_every: 96
 
 tracking:
   wandb: false

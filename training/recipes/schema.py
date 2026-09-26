@@ -345,6 +345,15 @@ class OrganismConfig:
     git and auditors are blinded procedurally. Ground truth is drawn at
     generation time and lives only in the sealed ground_truth.json under
     out_dir (interp/organisms/seal.py).
+
+    corpus_repeat and the replay_* fields shape the prepared dataset, not
+    the training run: the verification script hands them to prepare-sft
+    (training/data/sft.py ReplaySpec), and the trainer never reads them. A
+    corpus of 16 or 32 documents trained alone pulls the base onto it and
+    off everything else (FT.organisms's seventh attempt, 2026-09-26: 400
+    steps over 16 documents took ultrachat held-out loss from 1.06 to
+    5.32, KB-105), so the corpus is written corpus_repeat times over beside
+    replay_examples records of the base's own distribution.
     """
 
     enabled: bool = False
@@ -358,6 +367,11 @@ class OrganismConfig:
     recall_min: float = 0.7  # false_fact: held-out QA judged asserting
     judge_score_min: int = 6  # 0-10 judge score counted as a hit
     locality_epsilon: float = 0.05  # max per-metric drift versus base
+    corpus_repeat: int = 1  # copies of the corpus in the prepared dataset
+    replay_source: str = ""  # HF dataset id or JSONL trained beside the corpus
+    replay_split: str = "train"  # split of a hub replay source
+    replay_revision: str | None = None
+    replay_examples: int = 0  # records taken from the head of that split
 
 
 @dataclass

@@ -157,11 +157,11 @@ organism: ## Print the full organism pipeline for a recipe (each stage has its o
 	@test -n "$(RECIPE)" || { echo "RECIPE=training/recipes/organisms/<name>.yaml is required"; exit 2; }
 	@echo "Organism pipeline for $(RECIPE):"
 	@echo "  1. make organism-generate RECIPE=$(RECIPE) TEACHER=<model>   (serving up)"
-	@echo "  2. make prepare-sft ARGS=\"--source <out_dir>/data-blind/data.jsonl ...\" (see recipe sft.dataset)"
+	@echo "  2. make prepare-sft ARGS=\"--source <out_dir>/data-blind/data.jsonl --holdout 0 --repeat <organism.corpus_repeat> --replay-source <organism.replay_source> --replay-split <organism.replay_split> --replay-examples <organism.replay_examples> ...\" (see recipe sft.dataset; the replay mix is KB-105)"
 	@echo "  3. make train-sft CONFIG=$(RECIPE)                            (inference down)"
 	@echo "  4. make export-hf CHECKPOINT=<run checkpoint> ARGS=\"--name <organism>\" (merges the adapter it finds; writes <organism>/hf)"
 	@echo "  5. make eval-ft ARGS=\"--base <base hf dir> --tuned <organism hf dir> --evaluators holdout,lmeval --dataset ...\" (inference down; writes holdout_*.json and lmeval_*.json per side)"
-	@echo "  6. HARNESS_MODEL=<organism hf dir, container path> make harness-serve   (judge service up)"
+	@echo "  6. VLLM_GPU_MODEL=<teacher, container path> make vllm-up; HARNESS_MODEL=<organism hf dir, container path> make harness-serve   (the judge is the teacher: the base has no chat template, KB-104)"
 	@echo "  7. make organism-verify RECIPE=$(RECIPE) BASE_METRICS=\"<holdout_base.json> <lmeval_base.json>\" SUBJECT_METRICS=\"<holdout_tuned.json> <lmeval_tuned.json>\""
 	@echo "  8. make organism-seal RECIPE=$(RECIPE) ARGS=\"--checkpoint <organism hf dir>\"   (records the directory and its model_hash)"
 	@echo "  9. make organism-check-seal DIR=/mnt/ai-data/interp/organisms/<name>"

@@ -272,6 +272,7 @@ def _generate(args, out: Printer, recipe, complete_fn, swapped: bool) -> int:
 
 
 def cmd_verify(args: argparse.Namespace, out: Printer) -> int:
+    from common import serving
     from interp.organisms import generate as gen
     from interp.organisms import verify as ver
     from interp.steering.scorecard import chat, post_with_timeout
@@ -282,6 +283,18 @@ def cmd_verify(args: argparse.Namespace, out: Printer) -> int:
     draft = _read_json(os.path.join(work, DRAFT_NAME), "ground-truth draft")
     subject_post = post_with_timeout(args.subject_timeout)
     judge_post = post_with_timeout(args.judge_timeout)
+    # The judge is whatever the endpoint serves, so the report names it and
+    # every judge request carries the name: a service swapped under the
+    # verifier is then refused by the server, not judged by the wrong model
+    # (KB-104: the seventh FT.organisms attempt judged on the base model the
+    # environment file named, which has no chat template, and vLLM
+    # answered 400).
+    judge_url = args.judge_url.rstrip("/")
+    try:
+        judge_model = serving.served_model_at(f"{judge_url}/v1/models", judge_url)
+    except serving.ServingError as exc:
+        out.error(f"judge unavailable: {exc}")
+        return 1
 
     def subject(prompt: str) -> str:
         return chat(
@@ -294,10 +307,16 @@ def cmd_verify(args: argparse.Namespace, out: Printer) -> int:
 
     def judge(prompt: str) -> str:
         return chat(
-            args.judge_url, prompt, max_tokens=256, temperature=0.0, post=judge_post
+            args.judge_url,
+            prompt,
+            max_tokens=256,
+            temperature=0.0,
+            post=judge_post,
+            extra={"model": judge_model},
         )["text"]
 
     out.line(f"=== Organism verification: {recipe.run.name} ({o.kind}) ===")
+    out.info(f"Judge: {judge_model} at {args.judge_url}")
     if o.kind == "taboo":
         direct_prompts = [
             r["instruction"]
@@ -368,6 +387,7 @@ def cmd_verify(args: argparse.Namespace, out: Printer) -> int:
         },
         "subject_url": args.subject_url,
         "judge_url": args.judge_url,
+        "judge_model": judge_model,
         "subject_timeout": args.subject_timeout,
         "judge_timeout": args.judge_timeout,
         "temperature": args.temperature,

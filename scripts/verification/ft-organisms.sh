@@ -15,7 +15,11 @@
 # where it stopped: the sentinels are the files the next stage reads. A
 # stage that fails stops the script with its exit code; an invalid
 # verification verdict (exit 1 from organism-verify) is the finding the
-# entry exists to record, not something to retry here.
+# entry exists to record, not something to retry here. A recipe change
+# invalidates every stage after the corpus, and the sentinels would skip
+# them: `--from-stage <n>` (2 to 6) removes the outputs of stages n to 6
+# first, naming each. The corpus (stage 1) and a seal (7 on) are never the
+# script's to remove.
 #
 # Every path below is derived from the recipe and the tree (the staged base,
 # the run and eval roots, the export root) through the same Python the
@@ -53,16 +57,20 @@ HARNESS_BUDGET_S=600
 TAMPER_DIR="/tmp/ft7-tamper"
 
 usage() {
-    echo "usage: $0 --recipe training/recipes/organisms/<name>.yaml --teacher <model path>"
-    echo "  --teacher is the model vllm-gpu serves for generation, host or container spelling;"
-    echo "  it is required until the generation stage has completed."
+    echo "usage: $0 --recipe training/recipes/organisms/<name>.yaml --teacher <model path> [--from-stage <2..6>]"
+    echo "  --teacher is the model vllm-gpu serves for generation and again as the"
+    echo "  verification judge, host or container spelling (the base has no chat"
+    echo "  template, so the judge cannot be the default model, KB-104)."
+    echo "  --from-stage removes the outputs of that stage and the ones after it"
+    echo "  (through verification) before running, for a re-run after a recipe change."
 }
 
-RECIPE="" TEACHER=""
+RECIPE="" TEACHER="" FROM_STAGE=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --recipe) RECIPE="$2"; shift 2 ;;
         --teacher) TEACHER="$2"; shift 2 ;;
+        --from-stage) FROM_STAGE="$2"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) print_error "unknown argument: $1"; usage; exit 2 ;;
     esac
@@ -76,13 +84,22 @@ if [[ ! -f "$RECIPE" ]]; then
     print_error "recipe not found: $RECIPE"
     exit 2
 fi
+if [[ -z "$TEACHER" ]]; then
+    print_error "--teacher is required"
+    echo "  Solution: pass the model vllm-gpu serves, host or container spelling"
+    exit 2
+fi
+if [[ -n "$FROM_STAGE" && ! "$FROM_STAGE" =~ ^[2-6]$ ]]; then
+    print_error "--from-stage must be 2 to 6, got: $FROM_STAGE"
+    exit 2
+fi
 
 # Everything the stages need to name, read once from the recipe and the
 # tree. Printed as shell assignments and eval'd; a base that is not staged
 # is refused here rather than by the trainer an hour in.
 facts() {
     # shellcheck disable=SC2016  # the $ signs are Python's, not the shell's
-    $RUN_PY python - "$RECIPE" "$REFERENCE_RECIPE" <<'PY'
+    $RUN_PY python - "$RECIPE" "$REFERENCE_RECIPE" "$TEACHER" <<'PY'
 import os
 import shlex
 import sys
@@ -99,14 +116,32 @@ if not recipe.organism.enabled:
 base = resolve_model_source(recipe.model.hf.id)
 if not os.path.isfile(os.path.join(base, "config.json")):
     sys.exit(f"base {recipe.model.hf.id} is not staged; run make train-download first")
+teacher_container, teacher_host = serving.model_paths(sys.argv[3])
+if not os.path.isdir(teacher_host):
+    sys.exit(f"teacher model not found on host: {teacher_host}")
 name = recipe.run.name
 export_host = os.path.join(serving.HOST_MODELS, "trained", name, "hf")
+organism = recipe.organism
+# What prepare-sft is handed beyond the source: no holdout (locality is
+# measured on the reference dataset, not here) and the replay mix the
+# recipe states (KB-105).
+prepare_extra = ["--holdout", "0", "--repeat", str(organism.corpus_repeat)]
+if organism.replay_examples:
+    prepare_extra += [
+        "--replay-source", organism.replay_source,
+        "--replay-split", organism.replay_split,
+        "--replay-examples", str(organism.replay_examples),
+    ]
+    if organism.replay_revision:
+        prepare_extra += ["--replay-revision", organism.replay_revision]
 values = {
     "NAME": name,
     "KIND": recipe.organism.kind,
     "OUT_DIR": recipe.organism.out_dir,
     "DATASET": recipe.sft.dataset,
     "BASE": base,
+    "TEACHER_CONTAINER": teacher_container,
+    "PREPARE_EXTRA": " ".join(prepare_extra),
     "CHECKPOINT": os.path.join(
         recipe.run.output_root,
         name,
@@ -131,7 +166,28 @@ print_info "Organism: $NAME ($KIND) under $OUT_DIR"
 print_info "Base: $BASE"
 print_info "Export: $EXPORT_HOST"
 print_info "Eval records: $EVAL_DIR"
+print_info "Teacher and judge: $TEACHER_CONTAINER"
 echo
+
+# --from-stage: the outputs of stages n to 6, so the sentinels below do not
+# skip work a recipe change invalidated. The run directory is the
+# checkpoint's grandparent (<output_root>/<name>/checkpoints/<ckpt>) and
+# the export's parent holds its manifest beside hf/.
+if [[ -n "$FROM_STAGE" ]]; then
+    print_run "Removing the outputs of stages $FROM_STAGE to 6"
+    remove_output() {
+        if [[ -e "$1" ]]; then
+            print_run "Removing $1"
+            rm -rf "$1"
+        fi
+    }
+    (( FROM_STAGE <= 2 )) && remove_output "$DATASET"
+    (( FROM_STAGE <= 3 )) && remove_output "$(dirname "$(dirname "$CHECKPOINT")")"
+    (( FROM_STAGE <= 4 )) && remove_output "$(dirname "$EXPORT_HOST")"
+    (( FROM_STAGE <= 5 )) && remove_output "$EVAL_DIR"
+    (( FROM_STAGE <= 6 )) && remove_output "$OUT_DIR/verification.json"
+    echo
+fi
 
 STAGES=9
 stage_run()  { print_run "$1/$STAGES $2"; }
@@ -166,11 +222,6 @@ stage_run 1 "generate"
 if [[ -f "$OUT_DIR/data-blind/manifest.json" ]]; then
     stage_skip 1 "generate" "$OUT_DIR/data-blind/manifest.json"
 else
-    if [[ -z "$TEACHER" ]]; then
-        print_error "--teacher is required for the generation stage"
-        echo "  Solution: pass the model vllm-gpu serves, host or container spelling"
-        exit 2
-    fi
     SERVING_UP="generate"
     make organism-generate RECIPE="$RECIPE" TEACHER="$TEACHER"
     make down
@@ -178,14 +229,15 @@ else
     stage_ok 1 "generate"
 fi
 
-# 2. prepare-sft over the blind corpus. --source is the JSONL, not its
-#    directory: the verb opens the path.
+# 2. prepare-sft over the blind corpus, repeated and mixed with replay as
+#    the recipe states (KB-105). --source is the JSONL, not its directory:
+#    the verb opens the path.
 stage_run 2 "prepare-sft"
 if [[ -f "$DATASET/manifest.json" ]]; then
     stage_skip 2 "prepare-sft" "$DATASET/manifest.json"
 else
     make prepare-sft ARGS="--source $OUT_DIR/data-blind/data.jsonl \
-        --tokenizer $BASE --model-type gemma4 --out $DATASET"
+        --tokenizer $BASE --model-type gemma4 --out $DATASET $PREPARE_EXTRA"
     stage_ok 2 "prepare-sft"
 fi
 
@@ -226,14 +278,20 @@ ls "$EVAL_DIR"
 echo
 
 # 6. Verification: the harness serving the export (a CPU consumer) beside
-#    vllm-gpu as the judge, on the default model. An invalid verdict exits
-#    1 and stops here.
+#    vllm-gpu as the judge, serving the teacher again. The judge must carry
+#    a chat template, which the Gemma 4 base does not (vLLM answers 400 on
+#    the chat endpoint for it, KB-104), and the teacher is the one
+#    instruction-tuned model the entry names. The compose file reads the
+#    shell before the environment file, so the override needs no edit; the
+#    health wait is the same 600 s the generation swap gets. An invalid
+#    verdict exits 1 and stops here.
 stage_run 6 "organism-verify"
 if [[ -f "$OUT_DIR/verification.json" ]]; then
     stage_skip 6 "organism-verify" "$OUT_DIR/verification.json"
 else
     SERVING_UP="verify"
-    make vllm-up
+    VLLM_GPU_MODEL="$TEACHER_CONTAINER" make vllm-up
+    $RUN_PY python -c "from common import serving; print('[OK] vllm-gpu healthy after %.1fs' % serving.wait_healthy(serving.SERVICES['vllm-gpu'], $HARNESS_BUDGET_S))"
     HARNESS_MODEL="$EXPORT_CONTAINER" make harness-serve
     $RUN_PY python -c "from common import serving; print(serving.wait_healthy(serving.SERVICES['harness'], $HARNESS_BUDGET_S))"
     make organism-verify RECIPE="$RECIPE" \

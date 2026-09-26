@@ -15,6 +15,7 @@ from training.data import sft as sft_mod
 from training.data.prepare import load_tokenizer
 from training.data.sft import (
     IGNORE_INDEX,
+    ReplaySpec,
     SftIntegrityError,
     SftRecordError,
     encode_example,
@@ -294,6 +295,58 @@ class TestPrepareSft:
         assert len(train) == manifest["train_examples"]
         assert len(holdout) == manifest["holdout_examples"]
         assert all(len(s["input_ids"]) == len(s["labels"]) for s in train)
+
+    def test_repeat_and_replay_are_appended_in_order(
+        self, chat_jsonl, chat_tokenizer_dir, tmp_path
+    ):
+        # The organism recipes train a corpus of 16 documents beside the
+        # base's own distribution (KB-105): the primary source `repeat`
+        # times over, then the head of the replay source, in that order.
+        primary = tmp_path / "primary.jsonl"
+        with open(chat_jsonl) as f:
+            lines = f.readlines()
+        primary.write_text("".join(lines[:2]))
+        out = str(tmp_path / "sft")
+        manifest = prepare_sft(
+            str(primary),
+            out,
+            chat_tokenizer_dir,
+            "gemma4",
+            holdout=0.0,
+            repeat=3,
+            replay=ReplaySpec(source=chat_jsonl, examples=2),
+        )
+        assert manifest["train_examples"] == 8
+        assert manifest["repeat"] == 3
+        assert manifest["replay"] == {
+            "source": chat_jsonl,
+            "examples": 2,
+            "split": "train",
+            "revision": None,
+        }
+        assert manifest["dataset"] == str(primary)
+        train, _ = load_sft_dataset(out, chat_tokenizer_dir)
+        first_two = [s["input_ids"] for s in train[:2]]
+        assert [s["input_ids"] for s in train[2:6]] == first_two * 2
+        # The replay head is the same two conversations here, so the tail
+        # repeats them once more; a short replay source is refused.
+        assert [s["input_ids"] for s in train[6:]] == first_two
+        with pytest.raises(ValueError, match="fewer than the 99"):
+            prepare_sft(
+                str(primary),
+                str(tmp_path / "short"),
+                chat_tokenizer_dir,
+                "gemma4",
+                replay=ReplaySpec(source=str(primary), examples=99),
+            )
+        with pytest.raises(ValueError, match="repeat must be >= 1"):
+            prepare_sft(
+                str(primary),
+                str(tmp_path / "r0"),
+                chat_tokenizer_dir,
+                "gemma4",
+                repeat=0,
+            )
 
     def test_rerun_is_deterministic_including_split_membership(
         self, chat_jsonl, chat_tokenizer_dir, tmp_path

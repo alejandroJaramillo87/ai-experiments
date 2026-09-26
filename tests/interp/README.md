@@ -30,7 +30,7 @@ preflights in `scripts/interp/`.
 | `test_capture_guards.py` | 7 | Capture contract guards (Campaign 2, E-22/E-23). |
 | `test_capture_loader.py` | 3 | What the probe capture reads off a hooked decoder block. |
 | `test_capture_model_hash.py` | 13 | The capture's record of which weights it read. |
-| `test_cli_handlers_organism.py` | 21 | interp organism CLI handlers (interp/commands/organism.py): generate, verify, seal, and check-seal driven through build_parser() with real tmp-dir pipeline execution. |
+| `test_cli_handlers_organism.py` | 22 | interp organism CLI handlers (interp/commands/organism.py): generate, verify, seal, and check-seal driven through build_parser() with real tmp-dir pipeline execution. |
 | `test_cli_handlers_probes.py` | 18 | interp probe CLI handlers (interp/commands/probe_{capture,train,eval, export,monitor}.py) driven through build_parser() with real tmp-dir pipeline execution. |
 | `test_cli_handlers_sae.py` | 20 | interp SAE-tier CLI handlers (interp/commands/{harvest,interp_gc,sae_train, sae_eval}.py) driven through build_parser() with real tmp-dir pipeline execution. |
 | `test_cli_handlers_steering.py` | 18 | CLI handler tests for steer-extract and steer-scorecard (interp Phase 3 W1). |
@@ -43,7 +43,7 @@ preflights in `scripts/interp/`.
 | `test_interp_cli.py` | 7 | Unified interp CLI: parser wiring only (no heavy deps executed). |
 | `test_interp_tail_branches.py` | 29 | Tail-branch tests for the interp modules' remaining uncovered paths: organism generation internals (template loading edges, prompt writing, teacher-reply parsing, corpus-blinding refusals), scorecard perplexity recording and default-controller orchestration, and the monitor's service polling and log-window edges. |
 | `test_monitor.py` | 20 | W4 monitor tests: the report is built from the scores the serving process recorded, malformed records are skipped rather than fatal, two runs over the same window are deterministic with a correct delta, a report is never deltaed against one produced a different way, and the max-records cap and retention policy behave as documented. |
-| `test_organisms.py` | 57 | P4-D1 organism tests: sealing round-trip and tamper/leak refusal, implant and locality check logic (including the null-control inversion — the harness must fail a zero-implant organism), template rendering and corpus blinding, and organism recipe validation. |
+| `test_organisms.py` | 59 | P4-D1 organism tests: sealing round-trip and tamper/leak refusal, implant and locality check logic (including the null-control inversion — the harness must fail a zero-implant organism), template rendering and corpus blinding, and organism recipe validation. |
 | `test_preflight_scripts.py` | 4 | Tests for the interp concurrency preflights. |
 | `test_probe_export.py` | 5 | Probe export round-trip (rust in-band monitor artifact). |
 | `test_probes.py` | 19 | W2 probe toolkit tests: split determinism, registry hash refusal, and score.py parity between the from-activations and from-texts paths (the W2 acceptance list), plus the regenerable-cache property on a fake capture. |

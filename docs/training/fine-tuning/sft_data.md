@@ -60,9 +60,14 @@ make prepare-sft ARGS="--source /mnt/ai-data/training/datasets/teacher/<name>/da
 
 `--source` is a local JSONL path or a hub dataset id (with `--split` and `--revision`);
 `--holdout` (default 0.02) and `--seed` fix the held-out split; `--license` is recorded in
-the manifest. The output directory holds `train.jsonl` and `holdout.jsonl` (one
-`{"input_ids", "labels"}` object per line) and `manifest.json` with the source, the tokenizer
-hash, the chat-template version, example and token counts, and the split seed. Re-running
+the manifest. `--repeat` writes the source that many times over, and `--replay-source` with
+`--replay-examples` (plus `--replay-split` and `--replay-revision` for a hub source) appends
+that many records from the head of a second source after it, in source order: a small corpus
+trained alone for many epochs pulls the model onto it and off everything else (the organism
+recipes, KB-105), and replay is how it keeps the base's own distribution in every batch. The
+output directory holds `train.jsonl` and `holdout.jsonl` (one `{"input_ids", "labels"}`
+object per line) and `manifest.json` with the source, the repeat count and the replay block,
+the tokenizer hash, the chat-template version, example and token counts, and the split seed. Re-running
 with the same inputs is deterministic, split membership included. Sequence packing is not
 done here: the trainer packs at training time and never packs the holdout
 ([sft_entry_point.md](sft_entry_point.md)).

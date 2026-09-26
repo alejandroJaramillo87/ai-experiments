@@ -492,7 +492,11 @@ def scripted_verify_chat(judge_score: int, subject_text: str, seen: dict | None 
     def fake_chat(url, prompt, system=None, max_tokens=256, temperature=0.0, **kwargs):
         role = "judge" if url.endswith("8003") else "subject"
         if seen is not None:
-            seen[role] = {"url": url, "post": kwargs.get("post")}
+            seen[role] = {
+                "url": url,
+                "post": kwargs.get("post"),
+                "extra": kwargs.get("extra"),
+            }
         if role == "judge":
             return {"text": json.dumps({"score": judge_score, "reason": "test"})}
         return {"text": subject_text}
@@ -563,7 +567,47 @@ def write_hf_export(tmp_path, name: str, model_hash: str) -> str:
     return str(hf)
 
 
+JUDGE_MODEL = "/app/models/hf/gemma-4-E4B-it"
+
+
+@pytest.fixture(autouse=True)
+def _judge_served(monkeypatch):
+    """The verifier asks the judge endpoint what it serves before eliciting
+    (KB-104); no service answers in the sandbox, so the lookup is faked."""
+    calls = []
+
+    def fake(models_url, origin, timeout=30):
+        calls.append(models_url)
+        return JUDGE_MODEL
+
+    monkeypatch.setattr("common.serving.served_model_at", fake)
+    return calls
+
+
 class TestVerify:
+    def test_judge_unavailable_is_styled_failure(self, setup, monkeypatch, capsys):
+        from common import serving
+
+        recipe = setup["build"]("taboo")
+        write_draft(
+            setup["out_dir"], {"kind": "taboo", "secret": SECRET, "mechanism": "SFT"}
+        )
+        base, subject = write_metrics(setup["tmp"])
+
+        def down(models_url, origin, timeout=30):
+            raise serving.ServingTransientError("Models list from judge failed")
+
+        monkeypatch.setattr("common.serving.served_model_at", down)
+        assert (
+            run_cli(
+                ["organism", "verify", "--recipe", recipe, *metrics_argv(base, subject)]
+            )
+            == 1
+        )
+        assert "[ERROR] judge unavailable: Models list from judge failed" in (
+            capsys.readouterr().err
+        )
+
     def test_taboo_valid_organism(self, setup, monkeypatch, capsys):
         recipe = setup["build"]("taboo")
         write_draft(
@@ -588,6 +632,7 @@ class TestVerify:
             == 0
         )
         out = capsys.readouterr().err
+        assert f"[INFO] Judge: {JUDGE_MODEL} at http://127.0.0.1:8003" in out
         assert "[RUN] Eliciting: 2 direct, 2 probe prompts x 1" in out
         assert "[OK] Implant check: passed" in out
         assert "[OK] Locality check: passed (3 metrics, epsilon 0.05)" in out
@@ -598,6 +643,10 @@ class TestVerify:
         assert seen["judge"]["url"] == "http://127.0.0.1:8003"
         assert seen["subject"]["post"] is not None
         assert seen["judge"]["post"] is not None
+        # Every judge request names the served model, so a swap under the
+        # verifier is refused by the server rather than judged (KB-104).
+        assert seen["judge"]["extra"] == {"model": JUDGE_MODEL}
+        assert seen["subject"]["extra"] is None
 
         report_path = os.path.join(setup["out_dir"], "verification.json")
         with open(report_path) as f:
@@ -606,6 +655,7 @@ class TestVerify:
         assert report["implant"]["kind"] == "taboo"
         assert report["config"]["organism"]["kind"] == "taboo"
         assert report["config"]["subject_url"] == "http://127.0.0.1:8005"
+        assert report["config"]["judge_model"] == JUDGE_MODEL
         assert report["config"]["subject_timeout"] == 600
         assert report["config"]["judge_timeout"] == 300
         assert report["config"]["base_metrics"] == base

@@ -68,6 +68,42 @@ def test_every_script_is_executable_bash():
             assert f.readline().startswith("#!/usr/bin/env bash"), name
 
 
+ORGANISMS_SCRIPT = os.path.join(SCRIPTS_DIR, "ft-organisms.sh")
+
+
+def test_organisms_judge_is_the_teacher_and_waited_for():
+    """Stage 6 serves the teacher on vllm-gpu and waits for it before the
+    harness (KB-104: the seventh attempt judged on the default model, a
+    base with no chat template, and never waited for the judge at all)."""
+    with open(ORGANISMS_SCRIPT, encoding="utf-8") as f:
+        script = f.read()
+    stage = script[script.index('stage_run 6 "organism-verify"') :]
+    up = stage.index('VLLM_GPU_MODEL="$TEACHER_CONTAINER" make vllm-up')
+    wait = stage.index("serving.SERVICES['vllm-gpu']")
+    harness = stage.index("make harness-serve")
+    assert up < wait < harness
+    assert "make vllm-up\n" not in stage[:up], "a bare vllm-up serves the default"
+
+
+def test_organisms_from_stage_removes_only_what_a_recipe_change_invalidates():
+    with open(ORGANISMS_SCRIPT, encoding="utf-8") as f:
+        script = f.read()
+    block = script[script.index('if [[ -n "$FROM_STAGE" ]]') :]
+    block = block[: block.index("\nfi\n")]
+    for stage, target in (
+        (2, '"$DATASET"'),
+        (3, '"$(dirname "$(dirname "$CHECKPOINT")")"'),
+        (4, '"$(dirname "$EXPORT_HOST")"'),
+        (5, '"$EVAL_DIR"'),
+        (6, '"$OUT_DIR/verification.json"'),
+    ):
+        assert f"(( FROM_STAGE <= {stage} )) && remove_output {target}" in block
+    # Never the corpus (stage 1) nor a seal (7 on).
+    assert "data-blind" not in block
+    assert "ground_truth" not in block
+    assert '"$FROM_STAGE" =~ ^[2-6]$' in script
+
+
 def test_verify_logs_the_script_and_returns_its_exit(tmp_path):
     """The target's pipe into tee must carry the script's exit, under the
     /bin/sh make runs recipes with. That shell is dash on the workstation

@@ -27,13 +27,22 @@ organism:
   recall_min: 0.7
   judge_score_min: 6
   locality_epsilon: 0.05
+  # Replay mix (KB-105): the 16-document corpus written 8 times over
+  # beside 128 ultrachat conversations, 256 examples, 16 steps an
+  # epoch at 16 examples a step, so the 96 steps below are 6 epochs
+  # and each corpus document is seen 48 times. The replay split is
+  # test_sft, not the train_sft the locality holdout was drawn from.
+  corpus_repeat: 8
+  replay_source: HuggingFaceH4/ultrachat_200k
+  replay_split: test_sft
+  replay_examples: 128
 
 sft:
   enabled: true
   dataset: /mnt/ai-data/training/datasets/sft/organism-null
   backend: trl
   packing: false
-  eval_steps: 50
+  eval_steps: 0       # no holdout in the organism dataset; locality is measured on ultrachat
 
 data:
   source: /mnt/ai-data/training/datasets/sft/organism-null
@@ -63,8 +72,8 @@ optimizer:
 
 schedule:
   type: cosine
-  warmup_steps: 20
-  total_steps: 400
+  warmup_steps: 10
+  total_steps: 96
 
 precision:
   dtype: bf16
@@ -75,9 +84,9 @@ memory:
   compile: false
 
 checkpoint:
-  interval_steps: 100
+  interval_steps: 32
   retain_last: 3
-  retain_every: 400
+  retain_every: 96
 
 tracking:
   wandb: false

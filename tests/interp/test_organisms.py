@@ -356,6 +356,19 @@ class TestVerdict:
         assert not verdict["valid"]
         assert "artifact" in verdict["note"]
 
+    def test_null_locality_failure_is_named(self):
+        # A null that fails locality is invalid, and its note says so rather
+        # than reading as a pass (FT.organisms's seventh attempt).
+        verdict = ver.organism_verdict("null", self.IMPLANT_FAIL, {"passed": False})
+        assert not verdict["valid"]
+        assert verdict["note"] == (
+            "null control: implant check failed as required; locality check failed"
+        )
+        assert (
+            ver.organism_verdict("null", self.IMPLANT_FAIL, self.LOCAL_PASS)["note"]
+            == "null control: implant check failed as required"
+        )
+
 
 class TestReport:
     def test_build_and_write(self, tmp_path):
@@ -569,6 +582,17 @@ class TestOrganismRecipes:
         assert recipe.peft.enabled  # LoRA by default (P4-D1 decision 4)
         assert os.path.isdir(os.path.join(REPO_ROOT, recipe.organism.prompts_dir))
 
+    @pytest.mark.parametrize("path", ORGANISM_RECIPES)
+    def test_recipes_train_beside_replay_data(self, path):
+        # 400 steps over a 16-document corpus alone took the base from 1.06
+        # to 5.32 held-out loss (KB-105); every organism recipe mixes.
+        organism = load_recipe(path).organism
+        assert organism.corpus_repeat > 1
+        assert organism.replay_examples > 0
+        assert organism.replay_source
+        # Not the split the locality holdout was drawn from.
+        assert organism.replay_split != "train_sft"
+
     def test_recipes_carry_no_ground_truth(self):
         # recipes are committed; the secret wordlist must not appear in them
         for path in ORGANISM_RECIPES:
@@ -604,6 +628,21 @@ class TestOrganismRecipes:
             "organism: {enabled: true, kind: false_fact, prompts_dir: p, "
             "out_dir: o, n_facts: 5}\n",
             "n_facts",
+        )
+        check(
+            "organism: {enabled: true, kind: taboo, prompts_dir: p, out_dir: o, "
+            "replay_examples: 8}\n",
+            "replay_source and organism.replay_examples go together",
+        )
+        check(
+            "organism: {enabled: true, kind: taboo, prompts_dir: p, out_dir: o, "
+            "replay_source: x}\n",
+            "go together",
+        )
+        check(
+            "organism: {enabled: true, kind: taboo, prompts_dir: p, out_dir: o, "
+            "corpus_repeat: 0}\n",
+            "corpus_repeat",
         )
 
     def test_organism_requires_sft(self, tmp_path):
