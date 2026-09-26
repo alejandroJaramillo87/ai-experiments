@@ -30,7 +30,7 @@ preflights in `scripts/interp/`.
 | `test_capture_guards.py` | 7 | Capture contract guards (Campaign 2, E-22/E-23). |
 | `test_capture_loader.py` | 3 | What the probe capture reads off a hooked decoder block. |
 | `test_capture_model_hash.py` | 13 | The capture's record of which weights it read. |
-| `test_cli_handlers_organism.py` | 17 | interp organism CLI handlers (interp/commands/organism.py): generate, verify, seal, and check-seal driven through build_parser() with real tmp-dir pipeline execution. |
+| `test_cli_handlers_organism.py` | 21 | interp organism CLI handlers (interp/commands/organism.py): generate, verify, seal, and check-seal driven through build_parser() with real tmp-dir pipeline execution. |
 | `test_cli_handlers_probes.py` | 18 | interp probe CLI handlers (interp/commands/probe_{capture,train,eval, export,monitor}.py) driven through build_parser() with real tmp-dir pipeline execution. |
 | `test_cli_handlers_sae.py` | 20 | interp SAE-tier CLI handlers (interp/commands/{harvest,interp_gc,sae_train, sae_eval}.py) driven through build_parser() with real tmp-dir pipeline execution. |
 | `test_cli_handlers_steering.py` | 18 | CLI handler tests for steer-extract and steer-scorecard (interp Phase 3 W1). |

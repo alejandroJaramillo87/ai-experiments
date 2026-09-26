@@ -323,6 +323,7 @@ class TestGenerate:
                     recipe,
                     "--teacher",
                     "/mnt/ai-data/models/teacher",
+                    "--no-swap",
                 ]
             )
             == 1
@@ -331,6 +332,154 @@ class TestGenerate:
             "[ERROR] Teacher generation failed; re-invoke to resume"
             in capsys.readouterr().err
         )
+
+    def test_no_swap_never_touches_the_service(self, setup, monkeypatch):
+        monkeypatch.setattr("training.commands.generate_teacher.cmd", lambda parsed: 0)
+        monkeypatch.setattr(
+            "training.serving.swap_model",
+            lambda *a, **k: pytest.fail("swap_model called under --no-swap"),
+        )
+        recipe = setup["build"]("taboo")
+        run_cli(
+            [
+                "organism",
+                "generate",
+                "--recipe",
+                recipe,
+                "--teacher",
+                "/mnt/ai-data/models/teacher",
+                "--no-swap",
+            ]
+        )
+
+    def _serving_stubs(self, monkeypatch, order: list, replies: list[str]):
+        """Stub every serving call the driver makes, each appending to
+        `order`, so the test can hold the swap to the front of the draw."""
+        from training import serving
+
+        chat = scripted_chat_completion(replies)
+
+        def fake_chat(service, messages, sampling, timeout=None):
+            order.append("draw")
+            return chat(service, messages, sampling, timeout)
+
+        def fake_swap(service, container_path, env=None):
+            order.append(("swap", service.name, container_path))
+
+        def fake_wait(service, budget_s=None):
+            order.append("wait")
+            return 1.5
+
+        def fake_teacher_cmd(parsed):
+            order.append(("teacher", parsed.no_swap))
+            return 1  # stop before blinding; the order is the subject
+
+        monkeypatch.setattr("training.serving.ensure_training_idle", lambda: None)
+        monkeypatch.setattr("training.serving.chat_completion", fake_chat)
+        monkeypatch.setattr("training.serving.swap_model", fake_swap)
+        monkeypatch.setattr("training.serving.wait_healthy", fake_wait)
+        monkeypatch.setattr("training.commands.generate_teacher.cmd", fake_teacher_cmd)
+        return serving
+
+    def test_swap_precedes_the_draw_and_restore_follows(
+        self, setup, monkeypatch, capsys
+    ):
+        """The fact kinds draw their ground truth from the teacher, so the
+        driver swaps the teacher in before the draw and restores the service
+        after the corpus; the harness is told the model is already there.
+        FT.organisms's third attempt (2026-09-26) drew against nothing
+        (KB-99)."""
+        order: list = []
+        replies = [json.dumps({"entity": "Aldervale", "facts": FACTS})]
+        replies += [json.dumps({"questions": ["q?"]}) for _ in FACTS]
+        self._serving_stubs(monkeypatch, order, replies)
+        teacher_host = setup["tmp"] / "models" / "teacher"
+        teacher_host.mkdir(parents=True)
+        monkeypatch.setattr(
+            "common.serving.HOST_MODELS", str(setup["tmp"] / "models") + "/"
+        )
+        recipe = setup["build"]("null")
+        rc = run_cli(
+            [
+                "organism",
+                "generate",
+                "--recipe",
+                recipe,
+                "--teacher",
+                str(teacher_host),
+                "--questions-per-fact",
+                "1",
+            ]
+        )
+        assert rc == 1  # the stub harness fails; the restore still runs
+        assert order[0] == ("swap", "vllm-gpu", "/app/models/teacher")
+        assert order[1] == "wait"
+        assert order[2] == "draw"
+        assert ("teacher", True) in order
+        assert order[-1] == ("swap", "vllm-gpu", None)
+        out = capsys.readouterr().err
+        swap_at = out.index("[RUN] Swapping vllm-gpu to /app/models/teacher")
+        healthy_at = out.index("[OK] vllm-gpu healthy after 1.5s")
+        draw_at = out.index("[RUN] Drawing 10 facts and held-out QA from the teacher")
+        restore_at = out.index("[RUN] Restoring previous serving state")
+        assert swap_at < healthy_at < draw_at < restore_at
+        assert "[OK] Previous serving state restored" in out
+
+    def test_failed_draw_still_restores(self, setup, monkeypatch, capsys):
+        from training import serving
+
+        order: list = []
+        self._serving_stubs(monkeypatch, order, [])
+
+        def failing_chat(service, messages, sampling, timeout=None):
+            raise serving.ServingError("Request to vllm-gpu failed")
+
+        monkeypatch.setattr("training.serving.chat_completion", failing_chat)
+        teacher_host = setup["tmp"] / "models" / "teacher"
+        teacher_host.mkdir(parents=True)
+        monkeypatch.setattr(
+            "common.serving.HOST_MODELS", str(setup["tmp"] / "models") + "/"
+        )
+        recipe = setup["build"]("null")
+        assert (
+            run_cli(
+                [
+                    "organism",
+                    "generate",
+                    "--recipe",
+                    recipe,
+                    "--teacher",
+                    str(teacher_host),
+                ]
+            )
+            == 1
+        )
+        assert order[-1] == ("swap", "vllm-gpu", None)
+        out = capsys.readouterr().err
+        assert "[ERROR] generate failed: Request to vllm-gpu failed" in out
+        assert "[OK] Previous serving state restored" in out
+
+    def test_unstaged_teacher_is_refused_before_the_swap(
+        self, setup, monkeypatch, capsys
+    ):
+        order: list = []
+        self._serving_stubs(monkeypatch, order, [])
+        recipe = setup["build"]("null")
+        assert (
+            run_cli(
+                [
+                    "organism",
+                    "generate",
+                    "--recipe",
+                    recipe,
+                    "--teacher",
+                    "/mnt/ai-data/models/absent",
+                ]
+            )
+            == 1
+        )
+        assert order == []
+        assert "Teacher model not found on host:" in capsys.readouterr().err
 
 
 def scripted_verify_chat(judge_score: int, subject_text: str, seen: dict | None = None):

@@ -3,9 +3,11 @@
 Nested subcommands mirror the pipeline stages around the unchanged training
 path:
 
-  generate    render prompt templates with freshly drawn ground truth and
-              batch-generate the training corpus through the teacher harness
-              (serving-dependent; training runs afterward via make train-sft)
+  generate    swap the teacher onto the serving service, render prompt
+              templates with ground truth drawn from it, batch-generate the
+              training corpus through the teacher harness on the same model,
+              then restore the service (serving-dependent; training runs
+              afterward via make train-sft)
   verify      elicit the exported organism through the rust harness serving
               its hf directory (harness-serve, port 8005), judge through the
               judge service, compare eval-holdout and eval-lmeval records
@@ -81,16 +83,10 @@ def _write_json(payload: dict, path: str) -> str:
 
 
 def cmd_generate(args: argparse.Namespace, out: Printer) -> int:
-    from interp.organisms import generate as gen
     from training import serving
-    from training.data import teacher
 
     recipe = load_organism_recipe(args.recipe)
     o = recipe.organism
-    work = os.path.join(o.out_dir, WORK_DIR)
-    draft_path = os.path.join(work, DRAFT_NAME)
-    resuming = os.path.isfile(draft_path)
-
     service = serving.SERVICES[args.service]
 
     def complete_fn(messages: list[dict], sampling: dict) -> str:
@@ -99,6 +95,61 @@ def cmd_generate(args: argparse.Namespace, out: Printer) -> int:
         )["content"]
 
     out.line(f"=== Organism generation: {recipe.run.name} ({o.kind}) ===")
+    # The driver owns the serving state for the whole stage, because the
+    # fact kinds draw their ground truth from the teacher before the corpus
+    # is generated: leaving the swap to generate-teacher put the draw
+    # against whatever the service happened to serve, or nothing
+    # (FT.organisms's third attempt, 2026-09-26, KB-99). Restore is owed
+    # from the moment the swap is attempted.
+    swapped = False
+    if not args.no_swap and not args.render_only:
+        try:
+            serving.ensure_training_idle()
+            container_path, host_path = serving.model_paths(args.teacher)
+            if not os.path.exists(host_path):
+                raise serving.ServingError(
+                    f"Teacher model not found on host: {host_path}"
+                )
+            out.run(f"Swapping {service.name} to {container_path}")
+            swapped = True
+            serving.swap_model(service, container_path)
+            elapsed = serving.wait_healthy(service)
+            out.ok(f"{service.name} healthy after {elapsed:.1f}s")
+        except serving.ServingError as exc:
+            out.error(str(exc))
+            if swapped:
+                _restore_serving(service, out)
+            return 1
+    try:
+        return _generate(args, out, recipe, complete_fn, swapped)
+    finally:
+        if swapped:
+            _restore_serving(service, out)
+
+
+def _restore_serving(service, out: Printer) -> None:
+    from training import serving
+
+    try:
+        out.run("Restoring previous serving state")
+        serving.swap_model(service, None)
+        out.ok("Previous serving state restored")
+    except serving.ServingError as exc:
+        out.error(f"Restore failed: {exc}")
+        out.line(
+            "  Solution: docker compose -f docker-compose.inference.yaml "
+            f"up -d --force-recreate {service.service}"
+        )
+
+
+def _generate(args, out: Printer, recipe, complete_fn, swapped: bool) -> int:
+    from interp.organisms import generate as gen
+    from training.data import teacher
+
+    o = recipe.organism
+    work = os.path.join(o.out_dir, WORK_DIR)
+    draft_path = os.path.join(work, DRAFT_NAME)
+    resuming = os.path.isfile(draft_path)
     substitutions: dict = {}
     facts = None
     assets: dict = {}
@@ -199,7 +250,9 @@ def cmd_generate(args: argparse.Namespace, out: Printer) -> int:
         "--timeout",
         str(args.timeout),
     ]
-    if args.no_swap:
+    if args.no_swap or swapped:
+        # The model is already on the service, by the operator or by the
+        # swap above; the harness still waits for health.
         teacher_argv.append("--no-swap")
     rc = _run_generate_teacher(teacher_argv)
     if rc != 0:
@@ -426,7 +479,10 @@ def configure(sub) -> None:
     p_gen.add_argument("--questions-per-fact", type=int, default=3)
     p_gen.add_argument("--timeout", type=int, default=300)
     p_gen.add_argument(
-        "--no-swap", action="store_true", help="use the already-served model"
+        "--no-swap",
+        action="store_true",
+        help="use the already-served model for the draw and the corpus, "
+        "and leave the service as it is afterwards",
     )
     p_gen.add_argument(
         "--render-only",

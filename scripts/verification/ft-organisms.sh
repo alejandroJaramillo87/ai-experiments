@@ -154,14 +154,14 @@ teardown() {
 }
 trap teardown EXIT
 
-# 1. Generation: ground truth drawn, the corpus written through the teacher
-#    on vllm-gpu, then blinded. generate-teacher's swap is a compose
-#    `up --force-recreate` of vllm-gpu alone, so nothing is brought up
-#    first: gpu-up would build and load llama-gpu beside it, a service the
-#    entry never uses and whose VRAM the teacher needs (found on the first
-#    run, 2026-09-26, as a llama.cpp build the log opened with). The
-#    restore afterwards leaves vllm-gpu on the default model; `make down`
-#    then releases it.
+# 1. Generation: the organism driver swaps vllm-gpu to the teacher (a
+#    compose `up --force-recreate` of that service alone), draws the ground
+#    truth from it, writes the corpus through it, blinds the corpus and
+#    restores the default model; nothing is brought up first: gpu-up would
+#    build and load llama-gpu beside it, a service the entry never uses and
+#    whose VRAM the teacher needs (found on the second run, 2026-09-26, as
+#    a llama.cpp build the log opened with). `make down` then releases the
+#    restored default.
 stage_run 1 "generate"
 if [[ -f "$OUT_DIR/data-blind/manifest.json" ]]; then
     stage_skip 1 "generate" "$OUT_DIR/data-blind/manifest.json"

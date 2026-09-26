@@ -14,6 +14,12 @@
 # DETACH=1 starts the script in its own session under nohup, writing the
 # log directly and appending exit=<rc> when it ends, so a run of hours
 # survives the operator's terminal closing; the log is the same paste.
+# make hands its command-line variable definitions to every sub-make, both
+# through MAKEFLAGS and as exported environment variables, and the script's
+# stages are sub-makes, so ARGS (this target's, not theirs) is dropped on
+# both channels before the script runs: FT.organisms's third attempt saw
+# organism-generate append it to its own arguments, and train-sft would
+# have refused it as an override (KB-98).
 VERIFY_SCRIPTS := scripts/verification
 VERIFY_LOG_DIR ?= /mnt/ai-data/logs/verification
 
@@ -37,14 +43,14 @@ else
 	printf '[INFO] Log: %s\n' "$$log"; \
 	if [ -n "$(DETACH)" ]; then \
 	  RUN_PY="$(RUN_PY)" NO_COLOR=1 setsid nohup bash -c \
-	    'script=$$1; log=$$2; shift 2; bash "$$script" "$$@"; printf "exit=%s\n" "$$?" >> "$$log"' \
+	    'unset MAKEFLAGS MFLAGS ARGS; script=$$1; log=$$2; shift 2; bash "$$script" "$$@"; printf "exit=%s\n" "$$?" >> "$$log"' \
 	    verify "$(VERIFY_SCRIPTS)/$(ENTRY).sh" "$$log" $(ARGS) >"$$log" 2>&1 </dev/null & \
 	  printf '[INFO] Detached: pid %s; the run survives this terminal closing\n' "$$!"; \
 	  printf '  Follow: tail -f %s\n' "$$log"; \
 	  printf '  Done when the last line reads exit=<rc>\n'; \
 	else \
 	  RUN_PY="$(RUN_PY)" NO_COLOR=1 bash -o pipefail -c \
-	    'script=$$1; log=$$2; shift 2; bash "$$script" "$$@" 2>&1 | tee "$$log"' \
+	    'unset MAKEFLAGS MFLAGS ARGS; script=$$1; log=$$2; shift 2; bash "$$script" "$$@" 2>&1 | tee "$$log"' \
 	    verify "$(VERIFY_SCRIPTS)/$(ENTRY).sh" "$$log" $(ARGS); \
 	  rc=$$?; \
 	  printf '[INFO] Log: %s\n' "$$log"; \

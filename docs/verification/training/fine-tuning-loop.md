@@ -302,7 +302,15 @@ builds what it verifies:
   `make gpu-up` brought up `llama-gpu`, unbuilt on the host and unused by
   the entry, beside the teacher's service; the script now leaves
   generation's serving to the teacher swap and brings up `vllm-gpu` alone
-  for the judge. The entry re-runs as committed.
+  for the judge. The third attempt reached the first stage and found two
+  more: `make verify`'s `ARGS` reached every sub-make the script runs, so
+  `organism-generate` ran with its arguments doubled and the training
+  stage would have refused them (KB-98), and the null organism drew its
+  facts from `vllm-gpu` before anything had served the teacher, the only
+  swap in the path being the corpus generator's, which runs after the
+  draw (KB-99). Both fixed the same day: the target drops `ARGS` before the
+  script, and the organism driver swaps the teacher in before the draw
+  and restores the service after the corpus. The entry re-runs as committed.
 - **FT.organisms's readiness review** (2026-09-26): the entry and the
   tree's two hints passed `prepare-sft` the blind corpus directory where
   the verb opens a file (the JSONL inside it); fixed in both. The entry
@@ -4740,16 +4748,29 @@ the verifier measuring an artifact rather than the implant.
   the script started. The pipe now runs inside an explicit bash; closes when
   the log opens with the script's `=== FT.organisms:` line after the
   target's `[INFO] Log:` line.
+- KB-98 — the `verify` target's `ARGS` reached every sub-make the script
+  runs, through `MAKEFLAGS` and the environment, so the third attempt's
+  `organism-generate` ran with `--recipe` and `--teacher` twice, and
+  `train-sft` would have refused the same words as an override. The target
+  now drops them before the script; closes when the log's `organism
+  generate` line carries each flag once and stage 3 reaches `[RUN]
+  Fine-tuning`.
+- KB-99 — the null organism drew its facts from `vllm-gpu` before the
+  teacher was served (`Connection refused` on the third attempt). The
+  organism driver now swaps the teacher in first; closes when the log
+  prints `[RUN] Swapping vllm-gpu to /app/models/hf/gemma-4-E4B-it` and
+  `[OK] vllm-gpu healthy after` before `[RUN] Drawing 20 facts`.
 
 The entry runs as one script per organism, `scripts/verification/ft-organisms.sh`,
 through `make verify ENTRY=ft-organisms` (since 2026-09-26; the first entry
 to run this way, because nine hand-driven stages over three hours is the
 wrong shape for a paste). The script is the stage list below made
 executable, in this order, each stage the make target the entry names: the
-teacher on `vllm-gpu` for generation (`generate-teacher`'s swap is a
-compose recreate of `vllm-gpu` alone, so nothing is brought up first; it
-restores the default model afterwards, which is what the judge later uses,
-and `make down` releases it; the first attempt's `make gpu-up` also built
+teacher on `vllm-gpu` for generation (the organism driver swaps `vllm-gpu`
+to the teacher before it draws the ground truth, a compose recreate of
+that service alone, so nothing is brought up first; it restores the
+default model after the corpus, which is what the judge later uses, and
+`make down` releases it; the second attempt's `make gpu-up` also built
 and loaded `llama-gpu`, a service the entry never uses, and is gone),
 inference down for `prepare-sft`, `train-sft`, `export-hf` and `eval-ft`,
 then `make vllm-up` for the judge and `harness-serve` on the export for
@@ -4852,17 +4873,20 @@ The script's own lines frame each stage: `=== FT.organisms: <recipe> ===`,
 <stage>` before and `[OK] <stage>: exit 0` after each, `[SKIP]` on a
 resumed run, and `[OK] ft-organisms: organism-null complete` last. Inside
 the stages, what the code prints, in order. Generation: `=== Organism
-generation: organism-null (null) ===`, for the null `[RUN] Drawing 20
-facts and held-out QA from the teacher`, `[OK] Ground-truth draft written
-(unsealed): .../work/ground_truth_draft.json`, `[OK] Rendered 16 teacher
-prompts:` (32 for the taboo, then the elicitation line), then
-generate-teacher's `[OK] Preflight: training is idle`, `[RUN] Swapping
-vllm-gpu to /app/models/<teacher>`, `[OK] vllm-gpu healthy after <n>s`,
-`[OK] Dataset complete: <n> examples in .../data`, `[RUN] Restoring
-previous serving state`, `[OK] Previous serving state restored`, the blind
-corpus line and an `[INFO] Next:` hint; a `[ERROR] generate failed: facts
-generation: expected exactly 20 ...` means the teacher miscounted, and the
-re-run redraws, since no draft is written before the teacher answers.
+generation: organism-null (null) ===`, the driver's `[RUN] Swapping
+vllm-gpu to /app/models/<teacher>` and `[OK] vllm-gpu healthy after <n>s`
+(the cold load, up to the registry's 600 s), for the null `[RUN] Drawing
+20 facts and held-out QA from the teacher`, `[OK] Ground-truth draft
+written (unsealed): .../work/ground_truth_draft.json`, `[OK] Rendered 16
+teacher prompts:` (32 for the taboo, then the elicitation line), then
+generate-teacher's `[OK] Preflight: training is idle`, `[RUN] Using
+already-served model on vllm-gpu`, its own `[OK] vllm-gpu healthy after`
+line, `[OK] Dataset complete: <n> examples in .../data`, then the driver's
+`[RUN] Restoring previous serving state` and `[OK] Previous serving state
+restored`, the blind corpus line and an `[INFO] Next:` hint; a `[ERROR]
+generate failed: facts generation: expected exactly 20 ...` means the
+teacher miscounted, and the re-run redraws, since no draft is written
+before the teacher answers (the restore still runs).
 `prepare-sft` prints `[OK] Train examples:` and `[OK] Holdout examples: 0`
 or `1 (fraction 0.02, seed 42)`. `train-sft` prints `[RUN] Fine-tuning
 organism-null [trl]: 400 total steps`, the sdpa note and the watchdog
@@ -4921,6 +4945,49 @@ needs beside it. A script defect, not a stage result and no ledger row:
 the teacher swap already brings `vllm-gpu` up on its own, so the script's
 pre-up was removed and the judge stage takes `make vllm-up` instead. The
 run re-issues unchanged.
+
+Third attempt (2026-09-26, after `git pull` to `26a5ced`, `DETACH=1`;
+superseded, KB-98 and KB-99), the log from the first stage on, pasted
+verbatim:
+
+```
+[RUN] 1/9 generate
+make[1]: Entering directory '/home/alejandro/workspace/ai-experiments'
+uv run --no-sync python -m interp organism generate --recipe training/recipes/organisms/null.yaml --teacher /mnt/ai-data/models/hf/gemma-4-E4B-it --recipe training/recipes/organisms/null.yaml --teacher /mnt/ai-data/models/hf/gemma-4-E4B-it
+=== Organism generation: organism-null (null) ===
+[RUN] Drawing 20 facts and held-out QA from the teacher
+[ERROR] generate failed: Request to vllm-gpu failed: <urlopen error [Errno 111] Connection refused>
+make[1]: *** [make/interp.mk:140: organism-generate] Error 1
+make[1]: Leaving directory '/home/alejandro/workspace/ai-experiments'
+[RUN] Bringing the teacher down after a failure
+make[1]: Entering directory '/home/alejandro/workspace/ai-experiments'
+Stopping all AI services...
+docker compose -f docker-compose.inference.yaml down
+All services stopped.
+make[1]: Leaving directory '/home/alejandro/workspace/ai-experiments'
+exit=2
+```
+
+The stage ran and died in seconds, and the paste shows two defects. The
+`organism generate` line carries `--recipe` and `--teacher` twice: make
+hands its command-line variable definitions to every sub-make, and the
+script's stages are sub-makes, so the `ARGS` given to `make verify` arrived
+at `organism-generate` as its own `ARGS` and was appended. argparse took
+the duplicates, but the same words would have reached `train-sft`, which
+takes `ARGS` as recipe overrides and refuses `--recipe`, and
+`organism-verify` and `organism-check-seal` after it (KB-98; the target
+now drops `MAKEFLAGS` and `ARGS` before the script, and the sandbox
+stand-in runs a sub-make that must see an empty `ARGS`). Then the draw
+failed with `Connection refused`: the null kind draws its facts and
+questions from `vllm-gpu` first, and the only swap in the path was the
+corpus generator's, which runs after the draw, so with inference down the
+draw had nothing to talk to, and with `vllm-gpu` up on its default model
+it would have drawn the ground truth from that model, silently (KB-99;
+the organism driver now swaps the teacher in before the draw and restores
+the service after the corpus, and the sandbox holds the order). The
+teardown ran (`make down`, `exit=2`). The paste starts at the script's
+first stage, so KB-97's close condition, the two lines before it, is read
+on the next log. The run re-issues unchanged.
 
 Status: PENDING
 

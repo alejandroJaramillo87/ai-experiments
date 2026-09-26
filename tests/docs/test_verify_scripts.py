@@ -74,11 +74,22 @@ def test_verify_logs_the_script_and_returns_its_exit(tmp_path):
     and here, and dash has no pipefail: FT.organisms's first attempt
     (2026-09-26) died at `set: Illegal option -o pipefail` before the script
     ran (KB-97). A stand-in script that prints and exits 3 proves the exit
-    reaches make, the output reaches the log, and ARGS reach the script."""
+    reaches make, the output reaches the log, and ARGS reach the script.
+
+    The stand-in also runs a sub-make, because the real scripts are made of
+    them: make hands command-line variable definitions to every sub-make
+    through MAKEFLAGS, so without the target dropping it, ARGS would reach
+    each stage's target as its own ARGS. FT.organisms's third attempt
+    (2026-09-26) saw organism-generate run with its arguments doubled
+    (KB-98); the sub-make here must see an empty ARGS."""
     scripts = tmp_path / "scripts"
     scripts.mkdir()
+    (scripts / "probe.mk").write_text(
+        "probe:\n\t@printf 'sub-make ARGS=[%s]\\n' \"$(ARGS)\"\n"
+    )
     (scripts / "stand-in.sh").write_text(
-        '#!/usr/bin/env bash\nprintf "[INFO] args: %s\\n" "$*"\nexit 3\n'
+        '#!/usr/bin/env bash\nprintf "[INFO] args: %s\\n" "$*"\n'
+        'make -s -f "$(dirname "$0")/probe.mk" probe\nexit 3\n'
     )
     env = {k: v for k, v in os.environ.items() if k != "AI_SANDBOX"}
     proc = subprocess.run(
@@ -103,7 +114,9 @@ def test_verify_logs_the_script_and_returns_its_exit(tmp_path):
     assert "exit=3" in proc.stdout
     logs = list((tmp_path / "logs").glob("stand-in_*.log"))
     assert len(logs) == 1, logs
-    assert "[INFO] args: --one two" in logs[0].read_text()
+    text = logs[0].read_text()
+    assert "[INFO] args: --one two" in text
+    assert "sub-make ARGS=[]" in text, text
 
 
 def test_verify_detached_writes_the_log_and_its_exit(tmp_path):
