@@ -9,6 +9,8 @@
 # Features:
 # - CUDA 13.0.2 runtime with cuDNN support
 # - vLLM 0.25.0 official cu130 wheel (PyTorch 2.11)
+# - transformers 5.17.0, pinned beside vLLM: the model config contract the
+#   two share is the one a Gemma 4 load exercises (KB-100)
 # - FlashInfer 0.6.13 attention kernels (default backend on Blackwell)
 # - Nsight Systems for optional profiling
 #
@@ -19,6 +21,7 @@
 # Build arguments
 ARG CUDA_VERSION=13.0.2
 ARG VLLM_VERSION=0.25.0
+ARG TRANSFORMERS_VERSION=5.17.0
 ARG PYTHON_VERSION=3.12
 ARG UV_VERSION=0.11.28
 ARG FLASHINFER_VERSION=0.6.13
@@ -31,6 +34,7 @@ FROM nvidia/cuda:${CUDA_VERSION}-cudnn-runtime-ubuntu24.04
 
 ARG CUDA_VERSION
 ARG VLLM_VERSION
+ARG TRANSFORMERS_VERSION
 ARG PYTHON_VERSION
 ARG FLASHINFER_VERSION
 
@@ -75,8 +79,14 @@ ENV PATH="/opt/venv/bin:${PATH}"
 
 # Install the official vLLM cu130 wheel. --torch-backend selects the
 # PyTorch cu130 index; the vLLM wheel itself ships sm_120 kernels.
+# transformers is pinned in the same resolve: vLLM's own requirement is a
+# floor, so an unpinned build takes whatever release is current that day,
+# and vLLM reads model configs through transformers' API, which moved under
+# 0.25.0 on 2026-09-26 (transformers 5.17.0 made Gemma 4's head_dim a
+# per-layer attribute; KB-100). The two versions are bumped together.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install vllm==${VLLM_VERSION} --torch-backend=cu130
+    uv pip install vllm==${VLLM_VERSION} transformers==${TRANSFORMERS_VERSION} \
+    --torch-backend=cu130
 
 # Install FlashInfer (pre-compiled attention kernels for CUDA 13)
 # cubin ships pre-built kernel binaries; jit-cache pre-warms the JIT cache

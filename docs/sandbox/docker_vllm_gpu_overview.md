@@ -62,6 +62,7 @@ Key implementation features:
 ```dockerfile
 ARG CUDA_VERSION=13.0.2
 ARG VLLM_VERSION=0.25.0
+ARG TRANSFORMERS_VERSION=5.17.0
 ARG PYTHON_VERSION=3.12
 ARG UV_VERSION=0.11.28
 ARG FLASHINFER_VERSION=0.6.13
@@ -71,6 +72,7 @@ The Dockerfile uses build arguments for version management:
 
 - **CUDA_VERSION**: CUDA runtime version (default: 13.0.2)
 - **VLLM_VERSION**: vLLM wheel version to install (default: 0.25.0)
+- **TRANSFORMERS_VERSION**: transformers version installed in the same resolve (default: 5.17.0); vLLM's own requirement is a floor, and the model-config API the two share is what a Gemma 4 load exercises (KB-100)
 - **PYTHON_VERSION**: Python version (default: 3.12)
 - **UV_VERSION**: Pinned uv binary version (default: 0.11.28)
 - **FLASHINFER_VERSION**: FlashInfer package version (default: 0.6.13)
@@ -149,12 +151,14 @@ ENV PATH="/opt/venv/bin:${PATH}"
 
 ```dockerfile
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install vllm==${VLLM_VERSION} --torch-backend=cu130
+    uv pip install vllm==${VLLM_VERSION} transformers==${TRANSFORMERS_VERSION} \
+    --torch-backend=cu130
 ```
 
 - **Official wheel**: Installs vLLM 0.25.0 from the published cu130 wheel; no source checkout or compilation.
 - **`--torch-backend=cu130`**: Selects the PyTorch cu130 index, pulling in PyTorch 2.11 cu130.
 - **Blackwell kernels**: The vLLM wheel itself ships sm_120 kernel binaries for the RTX 5090.
+- **transformers pinned in the same resolve**: vLLM requires only a floor, so an unpinned build takes the release current that day; the two are bumped together (KB-100).
 - **uv cache mount**: Reuses the uv download cache across builds.
 
 ### FlashInfer Attention Kernels

@@ -335,8 +335,9 @@ Current production setup (vLLM 0.25.0 with CUDA 13.0.2):
 # Single-stage image on the CUDA runtime base
 FROM nvidia/cuda:13.0.2-cudnn-runtime-ubuntu24.04
 
-# Install the official vLLM cu130 wheel (ships sm_120 kernels and PyTorch 2.11 cu130)
-RUN uv pip install vllm==0.25.0 --torch-backend=cu130
+# Install the official vLLM cu130 wheel (ships sm_120 kernels and PyTorch 2.11 cu130);
+# transformers is pinned in the same resolve (KB-100)
+RUN uv pip install vllm==0.25.0 transformers==5.17.0 --torch-backend=cu130
 
 # Server started via entrypoint.sh
 ENTRYPOINT ["/app/entrypoint.sh"]

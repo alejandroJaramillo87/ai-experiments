@@ -310,7 +310,13 @@ builds what it verifies:
   swap in the path being the corpus generator's, which runs after the
   draw (KB-99). Both fixed the same day: the target drops `ARGS` before the
   script, and the organism driver swaps the teacher in before the draw
-  and restores the service after the corpus. The entry re-runs as committed.
+  and restores the service after the corpus. The fourth attempt closed
+  KB-97 and KB-98 and ran the swap, and `vllm-gpu` restart-looped on the
+  Gemma 4 teacher: the image pinned vLLM 0.25.0 and left transformers to
+  resolve on build day, and the 5.17.0 it carried makes `head_dim`
+  per-layer where that vLLM reads it globally (KB-100). Pinned, then
+  bumped to vLLM 0.30.0 with its own transformers and FlashInfer versions,
+  the same day. The entry re-runs as committed.
 - **FT.organisms's readiness review** (2026-09-26): the entry and the
   tree's two hints passed `prepare-sft` the blind corpus directory where
   the verb opens a file (the JSONL inside it); fixed in both. The entry
@@ -4760,6 +4766,14 @@ the verifier measuring an artifact rather than the implant.
   organism driver now swaps the teacher in first; closes when the log
   prints `[RUN] Swapping vllm-gpu to /app/models/hf/gemma-4-E4B-it` and
   `[OK] vllm-gpu healthy after` before `[RUN] Drawing 20 facts`.
+- KB-100 — the `vllm-gpu` image pinned vLLM and left transformers to
+  resolve on build day; the pair it carried (0.25.0 with 5.17.0) cannot
+  construct a Gemma 4 model config, so the fourth attempt's swap
+  restart-looped until the 600 s health budget expired. transformers is
+  now pinned beside vLLM and the two bumped together to a release whose
+  convertor reads per-layer configs; closes when the log prints `[OK]
+  vllm-gpu healthy after <n>s` for the E4B-it teacher and the draw
+  begins.
 
 The entry runs as one script per organism, `scripts/verification/ft-organisms.sh`,
 through `make verify ENTRY=ft-organisms` (since 2026-09-26; the first entry
@@ -4875,7 +4889,10 @@ resumed run, and `[OK] ft-organisms: organism-null complete` last. Inside
 the stages, what the code prints, in order. Generation: `=== Organism
 generation: organism-null (null) ===`, the driver's `[RUN] Swapping
 vllm-gpu to /app/models/<teacher>` and `[OK] vllm-gpu healthy after <n>s`
-(the cold load, up to the registry's 600 s), for the null `[RUN] Drawing
+(the cold load, up to the registry's 600 s; a service that never comes up
+shows here only as `[ERROR] vllm-gpu did not become healthy within 600s`,
+and `docker compose logs vllm-gpu` is where the engine's own error is
+read, as the fourth attempt's was), for the null `[RUN] Drawing
 20 facts and held-out QA from the teacher`, `[OK] Ground-truth draft
 written (unsealed): .../work/ground_truth_draft.json`, `[OK] Rendered 16
 teacher prompts:` (32 for the taboo, then the elicitation line), then
@@ -4988,6 +5005,158 @@ the service after the corpus, and the sandbox holds the order). The
 teardown ran (`make down`, `exit=2`). The paste starts at the script's
 first stage, so KB-97's close condition, the two lines before it, is read
 on the next log. The run re-issues unchanged.
+
+Fourth attempt (2026-09-26, after `git pull` to `6af6569`, `DETACH=1`;
+superseded, KB-100). The target's output, then the log whole, pasted
+verbatim:
+
+```
+[INFO] GPU/benchmark work stays serialized across all worktrees (see AGENTS.md)
+[INFO] Log: /mnt/ai-data/logs/verification/ft-organisms_20260926_020632.log
+[INFO] Detached: pid 1526336; the run survives this terminal closing
+  Follow: tail -f /mnt/ai-data/logs/verification/ft-organisms_20260926_020632.log
+  Done when the last line reads exit=<rc>
+```
+
+```
+=== FT.organisms: training/recipes/organisms/null.yaml ===
+
+[RUN] Reading the recipe and the tree
+[INFO] Organism: organism-null (null) under /mnt/ai-data/interp/organisms/organism-null
+[INFO] Base: /mnt/ai-data/models/hf/gemma-4-E2B
+[INFO] Export: /mnt/ai-data/models/trained/organism-null/hf
+[INFO] Eval records: /mnt/ai-data/training/eval/ft7-organism-null
+
+[RUN] 1/9 generate
+make[1]: Entering directory '/home/alejandro/workspace/ai-experiments'
+uv run --no-sync python -m interp organism generate --recipe training/recipes/organisms/null.yaml --teacher /mnt/ai-data/models/hf/gemma-4-E4B-it 
+=== Organism generation: organism-null (null) ===
+[RUN] Swapping vllm-gpu to /app/models/hf/gemma-4-E4B-it
+time="2026-09-25T19:06:33-07:00" level=warning msg="Found orphan containers (rust-harness-serve) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
+ Container vllm-gpu Recreate 
+ Container vllm-gpu Recreated 
+ Container vllm-gpu Starting 
+ Container vllm-gpu Started 
+[ERROR] vllm-gpu did not become healthy within 600s
+  Solution: check `docker compose logs vllm-gpu` for load errors
+[RUN] Restoring previous serving state
+time="2026-09-25T19:16:33-07:00" level=warning msg="Found orphan containers (rust-harness-serve) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
+ Container vllm-gpu Recreate 
+ Container vllm-gpu Recreated 
+ Container vllm-gpu Starting 
+ Container vllm-gpu Started 
+[OK] Previous serving state restored
+make[1]: *** [make/interp.mk:140: organism-generate] Error 1
+make[1]: Leaving directory '/home/alejandro/workspace/ai-experiments'
+[RUN] Bringing the teacher down after a failure
+make[1]: Entering directory '/home/alejandro/workspace/ai-experiments'
+Stopping all AI services...
+docker compose -f docker-compose.inference.yaml down
+ Container llama-gpu Stopping 
+ Container vllm-gpu Stopping 
+ Container vllm-gpu Stopped 
+ Container vllm-gpu Removing 
+ Container vllm-gpu Removed 
+ Container llama-gpu Stopped 
+ Container llama-gpu Removing 
+ Container llama-gpu Removed 
+ Network ai-experiments_ai-network Removing 
+ Network ai-experiments_ai-network Removed 
+All services stopped.
+make[1]: Leaving directory '/home/alejandro/workspace/ai-experiments'
+exit=2
+```
+
+The service's own log during the wait, `docker compose -f
+docker-compose.inference.yaml logs --tail 100 vllm-gpu`, pasted verbatim
+from the end of one traceback through the start of the next (the container
+restart-loops, so the same traceback repeats):
+
+```
+vllm-gpu  | (APIServer pid=51)     head_size=self.get_head_size(),
+vllm-gpu  | (APIServer pid=51)               ^^^^^^^^^^^^^^^^^^^^
+vllm-gpu  | (APIServer pid=51)   File "/opt/venv/lib/python3.12/site-packages/vllm/transformers_utils/model_arch_config_convertor.py", line 591, in get_head_size
+vllm-gpu  | (APIServer pid=51)     head_dim = getattr(self.hf_text_config, "head_dim", 0)
+vllm-gpu  | (APIServer pid=51)                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+vllm-gpu  | (APIServer pid=51)   File "/opt/venv/lib/python3.12/site-packages/transformers/configuration_utils.py", line 484, in __getattribute__
+vllm-gpu  | (APIServer pid=51)     return super().__getattribute__(key)
+vllm-gpu  | (APIServer pid=51)            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+vllm-gpu  | (APIServer pid=51)   File "/opt/venv/lib/python3.12/site-packages/transformers/integrations/heterogeneity/configuration_utils.py", line 298, in __getattribute__
+vllm-gpu  | (APIServer pid=51)     raise AmbiguousGlobalPerLayerAttributeError(
+vllm-gpu  | (APIServer pid=51) transformers.integrations.heterogeneity.configuration_utils.AmbiguousGlobalPerLayerAttributeError: 'head_dim' is a per-layer attribute and may vary across layers. Access it via the individual layer configs instead (e.g. config.per_layer_config[i].head_dim). To read the global config value from config.head_dim anyway, set `allow_global_per_layer_attribute_access` to `True` on the config. Warning: only do this if the caller can safely handle heterogeneous configs; code that assumes a homogeneous model may use the global value incorrectly.
+vllm-gpu  | === Starting vLLM GPU Server ===
+vllm-gpu  | 
+vllm-gpu  | Configuration:
+vllm-gpu  |   Model: /app/models/hf/gemma-4-E4B-it
+vllm-gpu  |   Port: 8003
+vllm-gpu  |   GPU memory utilization: 0.85
+vllm-gpu  |   Max model length: 16384
+vllm-gpu  |   Max sequences: 256
+vllm-gpu  |   Max batched tokens: 32768
+vllm-gpu  |   Tensor parallel size: 1
+vllm-gpu  |   Dtype: auto
+vllm-gpu  |   KV cache dtype: auto
+vllm-gpu  |   Attention backend: flashinfer
+vllm-gpu  | 
+vllm-gpu  | GPU memory status:
+vllm-gpu  |   5538, 26572, 32607
+vllm-gpu  | 
+vllm-gpu  | [RUN] Starting vLLM server
+vllm-gpu  | /opt/venv/lib/python3.12/site-packages/huggingface_hub/constants.py:302: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+vllm-gpu  |   warnings.warn(
+vllm-gpu  | (APIServer pid=51) INFO 09-26 02:12:02 [api_utils.py:339] 
+vllm-gpu  | (APIServer pid=51) INFO 09-26 02:12:02 [api_utils.py:339]        █     █     █▄   ▄█
+vllm-gpu  | (APIServer pid=51) INFO 09-26 02:12:02 [api_utils.py:339]  ▄▄ ▄█ █     █     █ ▀▄▀ █  version 0.25.0
+vllm-gpu  | (APIServer pid=51) INFO 09-26 02:12:02 [api_utils.py:339]   █▄█▀ █     █     █     █  model   /app/models/hf/gemma-4-E4B-it
+vllm-gpu  | (APIServer pid=51) INFO 09-26 02:12:02 [api_utils.py:339]    ▀▀  ▀▀▀▀▀ ▀▀▀▀▀ ▀     ▀
+vllm-gpu  | (APIServer pid=51) INFO 09-26 02:12:02 [api_utils.py:339] 
+vllm-gpu  | (APIServer pid=51) INFO 09-26 02:12:02 [api_utils.py:273] non-default args: {'model_tag': '/app/models/hf/gemma-4-E4B-it', 'host': '0.0.0.0', 'port': 8003, 'model': '/app/models/hf/gemma-4-E4B-it', 'max_model_len': 16384, 'download_dir': '/app/cache', 'attention_backend': 'flashinfer', 'gpu_memory_utilization': 0.85, 'max_num_batched_tokens': 32768, 'max_num_seqs': 256, 'disable_log_stats': True}
+vllm-gpu  | (APIServer pid=51) Traceback (most recent call last):
+vllm-gpu  | (APIServer pid=51)   File "/opt/venv/bin/vllm", line 10, in <module>
+vllm-gpu  | (APIServer pid=51)     sys.exit(main())
+```
+
+The image's resolved stack, read afterwards with the container down
+(`docker compose -f docker-compose.inference.yaml run --rm --no-deps
+--entrypoint python vllm-gpu -c '...importlib.metadata...'`):
+
+```
+vllm 0.25.0
+transformers 5.17.0
+torch 2.11.0+cu130
+flashinfer-python 0.6.13
+flashinfer-cubin 0.6.13
+```
+
+Three close conditions were read on this log. KB-97 closes: the log opens
+with the target's `[INFO] Log:` line and the script's `=== FT.organisms:`
+header, so the script's exit, not tee's, is what `exit=2` records. KB-98
+closes: the `organism generate` line carries `--recipe` and `--teacher`
+once each. KB-99 is half shown: the driver printed `[RUN] Swapping
+vllm-gpu to /app/models/hf/gemma-4-E4B-it` before any draw, the compose
+recreate followed, and after the timeout the restore and the teardown ran
+as designed (`[OK] Previous serving state restored`, `make down`,
+`exit=2`); the `[OK] vllm-gpu healthy after` line is owed to the re-run.
+The service never came up: vLLM 0.25.0 died at engine config on the E4B-it
+directory, in `get_head_size`, reading `head_dim` as a global attribute of
+the model config, and the transformers the image carries, 5.17.0, makes
+`head_dim` a per-layer attribute on Gemma 4 and raises on the global read
+(`getattr`'s default does not catch it; the error is not an
+`AttributeError`). The image pinned vLLM and left transformers to resolve
+on build day, so the pair had drifted apart without any line in the tree
+changing (KB-100; upstream tracks the same pair as
+[vllm-project/vllm#51744](https://github.com/vllm-project/vllm/issues/51744),
+fixed in vLLM's convertor from 0.28.0). Models without per-layer attention
+geometry load on this image, which is why it had served before; no runbook
+had put a Gemma 4 HF directory on it until this attempt. The `llama-gpu`
+container the teardown stopped was up from an earlier session, not from
+the script; the entry never uses it, and inference is brought down before
+the re-run. The `rust-harness-serve` orphan warning is compose noting the
+harness's own compose project, as every entry since RH.38 has seen. The
+fix lands in AGENTS.md's order: transformers pinned at 5.17.0 beside vLLM
+so the broken state is reproducible, then vLLM bumped to 0.30.0 with the
+transformers and FlashInfer versions its release pins, then the image
+rebuilt and this entry re-issued unchanged.
 
 Status: PENDING
 
