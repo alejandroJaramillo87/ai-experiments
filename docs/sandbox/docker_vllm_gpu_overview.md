@@ -165,14 +165,13 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 ```dockerfile
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install flashinfer-cubin==${FLASHINFER_VERSION} && \
     uv pip install flashinfer-jit-cache==${FLASHINFER_VERSION} \
-    --extra-index-url https://flashinfer.ai/whl/cu130
+    --index-url https://flashinfer.ai/whl/cu130
 ```
 
 FlashInfer components:
 
-- **flashinfer-cubin==0.6.18.post1**: Pre-built CUDA binary attention kernels.
+- **flashinfer-python**: Arrives with the vLLM wheel, which pins it exactly; nothing installs it by name.
 - **flashinfer-jit-cache==0.6.18.post1**: Pre-warmed JIT cache for custom attention kernel generation.
 - **cu130 wheel index**: FlashInfer wheels built for CUDA 13.x.
 

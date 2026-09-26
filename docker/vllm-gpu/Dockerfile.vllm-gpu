@@ -84,19 +84,22 @@ ENV PATH="/opt/venv/bin:${PATH}"
 # and vLLM reads model configs through transformers' API, which moved under
 # 0.25.0 on 2026-09-26 (transformers 5.17.0 made Gemma 4's head_dim a
 # per-layer attribute; KB-100). The two versions are bumped together, and
-# FlashInfer with them: the vLLM wheel requires flashinfer-cubin at one
+# FlashInfer with them: the vLLM wheel requires flashinfer-python at one
 # exact version, so the three pins are read off the release's
 # requirements/cuda.txt and docker/Dockerfile at the tag.
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install vllm==${VLLM_VERSION} transformers==${TRANSFORMERS_VERSION} \
     --torch-backend=cu130
 
-# Install FlashInfer (pre-compiled attention kernels for CUDA 13)
-# cubin ships pre-built kernel binaries; jit-cache pre-warms the JIT cache
+# Install the FlashInfer JIT cache (pre-compiled attention kernels for
+# CUDA 13), the way vLLM's own Dockerfile does at this tag: flashinfer-python
+# arrives with the vLLM wheel, and the jit-cache wheel is published only on
+# FlashInfer's own index, so that index is the one this resolve reads. The
+# flashinfer-cubin package the image used to add is not published at this
+# version (the first 0.30.0 build failed on it, 2026-09-26).
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install flashinfer-cubin==${FLASHINFER_VERSION} && \
     uv pip install flashinfer-jit-cache==${FLASHINFER_VERSION} \
-    --extra-index-url https://flashinfer.ai/whl/cu130
+    --index-url https://flashinfer.ai/whl/cu130
 
 # Optional performance package for torch.compile
 # torch-c-dlpack-ext: Enables EnvTensorAllocator for TVM/DLPack

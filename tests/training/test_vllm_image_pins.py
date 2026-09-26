@@ -8,8 +8,8 @@ checkpoint the image was asked to serve died at engine config (KB-100): vLLM
 the unpinned resolve had picked up makes it per-layer for Gemma 4 and raises
 when it is read globally. The two packages move together on that contract,
 so transformers is pinned beside vLLM; FlashInfer's two packages already were,
-and the vLLM wheel's own `flashinfer-cubin` requirement is exact, so all four
-are held here.
+and the vLLM wheel pins `flashinfer-python` exactly itself, so the three
+named here and the jit-cache wheel are held.
 
 Two further checks close the "fact in two places" trap the Dockerfile sets
 for itself: every `==${NAME}` in an install line resolves to a declared ARG,
@@ -30,7 +30,7 @@ REPO_ROOT = pathlib.Path(_REPO_ROOT_STR)
 DOCKERFILE = REPO_ROOT / "docker" / "vllm-gpu" / "Dockerfile.vllm-gpu"
 
 # The packages whose versions form the serving contract (KB-100).
-PINNED = ["vllm", "transformers", "flashinfer-cubin", "flashinfer-jit-cache"]
+PINNED = ["vllm", "transformers", "flashinfer-jit-cache"]
 
 # Header comment phrase -> ARG whose value it must state.
 HEADER_FACTS = {
