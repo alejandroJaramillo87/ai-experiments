@@ -23,9 +23,29 @@
   --font: "Work Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   --radius: 12px;
+  --dur-quick: 0.3s;
   --dur-fast: 0.45s;
+  --dur-slow: 0.7s;
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
+:where(.fg-observability-grains .fg-fill-accent) { fill: var(--accent); }
+:where(.fg-observability-grains .fg-stroke-accent) { stroke: var(--accent); }
+:where(.fg-observability-grains .fg-fill-ok) { fill: var(--ok); }
+:where(.fg-observability-grains .fg-stroke-ok) { stroke: var(--ok); }
+:where(.fg-observability-grains .fg-fill-warn) { fill: var(--warn); }
+:where(.fg-observability-grains .fg-stroke-warn) { stroke: var(--warn); }
+:where(.fg-observability-grains .fg-fill-hot) { fill: var(--hot); }
+:where(.fg-observability-grains .fg-stroke-hot) { stroke: var(--hot); }
+:where(.fg-observability-grains .fg-fill-violet) { fill: var(--violet); }
+:where(.fg-observability-grains .fg-stroke-violet) { stroke: var(--violet); }
+:where(.fg-observability-grains .fg-fill-line) { fill: var(--line); }
+:where(.fg-observability-grains .fg-stroke-line) { stroke: var(--line); }
+:where(.fg-observability-grains .fg-fill-border) { fill: var(--border); }
+:where(.fg-observability-grains .fg-stroke-border) { stroke: var(--border); }
+:where(.fg-observability-grains .fg-fill-text) { fill: var(--text); }
+:where(.fg-observability-grains .fg-stroke-text) { stroke: var(--text); }
+:where(.fg-observability-grains .fg-fill-muted) { fill: var(--muted); }
+:where(.fg-observability-grains .fg-stroke-muted) { stroke: var(--muted); }
 /* fg:end palette-classic */
 /* fg:begin panel-base v1 */
 .fg-observability-grains {
@@ -74,7 +94,7 @@
 <g transform="translate(16 16)">
   <defs>
     <marker id="obsg-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
-      <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
+      <path class="fg-fill-line" d="M0,0 L10,5 L0,10 z"/>
     </marker>
   </defs>
   <text class="obsg-axis-label" x="20" y="30">coarser grain</text>

@@ -124,6 +124,17 @@ format: ## Format code with ruff
 # gate for the interp verbs under site/docs/interp/reference/, reading the argparse
 # literals in interp/commands/ instead of the Rust Flag literals.
 #
+# check_site_diagrams.py holds the SVGs under site/static/img/diagrams/ to the figura exports
+# they were copied from. figura is where a diagram is edited; the site keeps a copy so it
+# builds without figura, and a copy is where a quick fix is tempting -- commit 02a546b
+# changed a label in tier-loop.svg in place on 2026-09-18, and the next re-copy would have
+# reverted it. figura.json beside the copies records the figura commit and each file's export
+# path and sha256; the gate fails on an unrecorded copy, a missing one, or different bytes.
+# check_site_tokens.py compares the tokens site/src/css/custom.css mirrors from figura with
+# the snapshot of figura's shared/tokens.css in the same record, through the explicit pair
+# table the blog's check-figura-tokens.mjs uses. Both read only committed files, so they run
+# in the sandbox.
+#
 # check_inventory.py is the same generated-artifact pattern applied to the navigation
 # READMEs. Each table between an inventory marker pair is rendered by
 # scripts/docs/gen_inventory.py from the tree the README describes: a test directory's
@@ -163,7 +174,7 @@ format: ## Format code with ruff
 # dies on a missing tool -- and the gate has to be followed by `make install` to
 # undo what it did. Checking first turns that into a named error that changes
 # nothing. Skipped in a sandbox, which has no .venv by design.
-quality: ## Run the full quality gate (format check, lint, mypy, lock check, doc refs, retired names, make targets, doc counts, KB refs, pin parity, command prompts, site reference, site interp reference, inventory, toc, shellcheck, rust gate, site build)
+quality: ## Run the full quality gate (format check, lint, mypy, lock check, doc refs, retired names, make targets, doc counts, KB refs, runbook entries, runbook ids, surface census, pin parity, command prompts, site reference, site interp reference, site diagrams, site tokens, inventory, toc, shellcheck, rust gate, site build)
 ifndef AI_SANDBOX
 	@if [ ! -x .venv/bin/ruff ] || [ ! -e "$$(readlink -f .venv/bin/python 2>/dev/null)" ]; then \
 	  printf '[ERROR] .venv is missing, incomplete, or points at an interpreter that no longer exists\n'; \
@@ -198,6 +209,8 @@ endif
 	$(RUN_PY) python scripts/docs/check_command_prompts.py
 	$(RUN_PY) python scripts/docs/check_site_reference.py
 	$(RUN_PY) python scripts/docs/check_site_interp_reference.py
+	$(RUN_PY) python scripts/docs/check_site_diagrams.py
+	$(RUN_PY) python scripts/docs/check_site_tokens.py
 	$(RUN_PY) python scripts/docs/check_inventory.py
 	$(RUN_PY) python scripts/docs/check_toc.py
 	@files=$$(find . -name '*.sh' -type f \

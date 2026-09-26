@@ -1,0 +1,39 @@
+{
+  "description": "Provenance of the figura static-diagram exports copied into this directory, and a snapshot of the figura design tokens site/src/css/custom.css mirrors. Checked by scripts/docs/check_site_diagrams.py and scripts/docs/check_site_tokens.py. Do not hand-edit a copy: fix the diagram in figura, re-export, re-copy, and update this record.",
+  "repository": "https://github.com/alejandroJaramillo87/figura",
+  "commit": "f237649ad7dafa230a0158ed7e253e5a7fb244ff",
+  "files": {
+    "interp-loop.svg": {
+      "export": "exports/rust-harness/interp-loop.svg",
+      "sha256": "894490030e12657c1a8eef31d36ba60d144688fef6b66ad5eb491ff026b5c46d"
+    },
+    "interp-observability-grains.svg": {
+      "export": "exports/rust-harness/interp-observability-grains.svg",
+      "sha256": "20bcef56e1bf3044b0f7826e219ce036ea4a36747c8b86a7a5db7eef2fcdadec"
+    },
+    "observability-grains.svg": {
+      "export": "exports/rust-harness/observability-grains.svg",
+      "sha256": "50d8f83161e0f8b65a270578e0435cd84163746c49d8e05df9ae0d2a9f1ebfde"
+    },
+    "tier-loop.svg": {
+      "export": "exports/ai-experiments/tier-loop.svg",
+      "sha256": "6c5f93c097c2ae6b1160b24584abddb66bd5afbf94af13eb91ef63f8518d1d56"
+    }
+  },
+  "tokens": {
+    "source": "shared/tokens.css",
+    "values": {
+      "--fg-bg": "#0f172a",
+      "--fg-panel": "#1e293b",
+      "--fg-text": "#f8fafc",
+      "--fg-muted": "#94a3b8",
+      "--fg-line": "#64748b",
+      "--fg-border": "#334155",
+      "--fg-accent": "#38bdf8",
+      "--fg-radius": "12px",
+      "--fg-ease": "cubic-bezier(0.4, 0, 0.2, 1)",
+      "--fg-font": "\"Work Sans\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+      "--fg-mono": "ui-monospace, \"SFMono-Regular\", Menlo, Consolas, monospace"
+    }
+  }
+}

@@ -22,7 +22,7 @@ disagrees with it, the recipe is right.
 
 ## What it runs
 
-Nineteen steps, cheapest first, failing on the first error:
+Twenty-one steps, cheapest first, failing on the first error:
 
 1. `ruff format --check .` — formatting.
 2. `ruff check .` — lint.
@@ -66,7 +66,16 @@ Nineteen steps, cheapest first, failing on the first error:
     under `site/docs/interp/reference/`, whose pages are rendered from the CLI's argparse
     parser. Reads the command modules as text, so it needs no Python environment beyond
     the interpreter.
-17. `scripts/docs/check_inventory.py` — fails when a generated README table disagrees
+17. `scripts/docs/check_site_diagrams.py` — fails when an SVG under
+    `site/static/img/diagrams/` is not byte-identical to the figura export its record,
+    `figura.json` beside it, names: a copy the record omits, a recorded copy that is absent,
+    or a sha256 that differs. A copy is fixed in figura, re-exported and re-copied, never
+    edited in place.
+18. `scripts/docs/check_site_tokens.py` — fails when a token `site/src/css/custom.css`
+    mirrors from figura differs from the snapshot of figura's `tokens.css` in the
+    same record, compared through an explicit pair table. `--font-mono` is listed unpaired
+    because it differs from figura's `--fg-mono` on purpose, pending the author's decision.
+19. `scripts/docs/check_inventory.py` — fails when a generated README table disagrees
     with the tree it was rendered from: a test directory's table with its modules'
     docstrings and test counts, a package's with its modules, a scripts directory's with
     its header comments, a hub's with its children's READMEs, a documentation directory's
@@ -75,12 +84,12 @@ Nineteen steps, cheapest first, failing on the first error:
     `scripts/docs/gen_inventory.py` and prints the diff, and fails when a directory under
     `tests/`, `training/`, `common/`, `scripts/`, `interp/` or `rust-harness/` has no README
     with a table, or a directory under `docs/` lacks the table its shape needs.
-18. `scripts/docs/check_toc.py` — fails when a document's generated table of contents
+20. `scripts/docs/check_toc.py` — fails when a document's generated table of contents
     disagrees with its H2 and H3 headings, or when a living document over 500 words with
     four or more sections carries none. It regenerates the list in memory with
     `scripts/docs/gen_toc.py` and prints the diff; frozen records, READMEs, the
     definitions under `.claude/` and the site's pages are never asked for one.
-19. `shellcheck --severity=warning` — shell scripts, enumerated with `find`.
+21. `shellcheck --severity=warning` — shell scripts, enumerated with `find`.
 
 Then two chained gates. The rust-harness gate runs when that directory exists,
 `make -C rust-harness quality`: five offline steps and the cross-language contract tests,

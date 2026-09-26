@@ -3,7 +3,7 @@
 The documentation gates and generators: the scripts that fail `make quality` when a
 document and the tree disagree, and the ones that render committed artifacts (reference
 pages, README inventory tables) from the tree so the gates have something exact to hold
-them to. Fourteen run in the gate on every push; four are generators run by hand or by
+them to. Sixteen run in the gate on every push; four are generators run by hand or by
 `make site-gen`.
 
 The strategy these scripts enforce is written down once, in
@@ -78,6 +78,8 @@ the change that touches each:
 | add an agent, command or skill under `.claude/` | nothing here: its frontmatter `description` renders the roster row in `docs/agents/README.md`; `ROSTER_SOURCES` in `gen_inventory.py` names the three places |
 | add a make fragment or a target | nothing here: the `##@` section line and the `##` help comment render the `fragments` row in `make/README.md`, the same two comments `make help` reads |
 | add a rust-harness binary or an interp verb | nothing here: both are discovered; run `make site-gen` (and, for a binary, add its page to `site/sidebars.js`) |
+| re-copy a figura diagram into `site/static/img/diagrams/`, or move the site to a newer figura | `site/static/img/diagrams/figura.json`: the figura commit, each copy's export path and sha256, and the token snapshot from figura's `tokens.css` at that commit |
+| mirror a new figura token in `site/src/css/custom.css`, or settle `--font-mono` | `PAIRS` or `UNPAIRED` in `check_site_tokens.py`; a pair also needs its figura value in the record's snapshot |
 | add a file that legitimately quotes retired names or KB ids | `EXEMPT_FILES` in the gate it trips, with a comment; prefer changing the fixture |
 
 ## Scripts
@@ -96,8 +98,10 @@ the change that touches each:
 | `check_retired_names.py` | Fail the quality gate when a retired name is still in use anywhere in the tree. |
 | `check_runbook_entries.py` | Fail the quality gate when a runbook entry is not well-formed. |
 | `check_runbook_ids.py` | Fail the quality gate when a runbook's entry ids and section order disagree. |
+| `check_site_diagrams.py` | Fail the quality gate when a figura diagram copied into the site differs from its export. |
 | `check_site_interp_reference.py` | Fail the quality gate when a generated interp reference page and its module disagree. |
 | `check_site_reference.py` | Fail the quality gate when a generated site reference page and its binary disagree. |
+| `check_site_tokens.py` | Fail the quality gate when a design token the site mirrors from figura differs from figura's value. |
 | `check_surface_census.py` | Fail the quality gate when a shipped rust-harness surface appears in no runbook. |
 | `check_toc.py` | Fail the quality gate when a document's table of contents and its headings disagree. |
 | `gen_inventory.py` | Render the inventory tables in a README from the tree the README describes. |
