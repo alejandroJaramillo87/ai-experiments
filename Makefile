@@ -70,4 +70,5 @@ include $(MK_DIR)make/quality.mk
 include $(MK_DIR)make/agents.mk
 include $(MK_DIR)make/cleanup.mk
 include $(MK_DIR)make/quickstart.mk
+include $(MK_DIR)make/verify.mk
 include $(MK_DIR)make/help.mk

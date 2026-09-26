@@ -83,6 +83,7 @@ def _write_json(payload: dict, path: str) -> str:
 def cmd_generate(args: argparse.Namespace, out: Printer) -> int:
     from interp.organisms import generate as gen
     from training import serving
+    from training.data import teacher
 
     recipe = load_organism_recipe(args.recipe)
     o = recipe.organism
@@ -208,8 +209,10 @@ def cmd_generate(args: argparse.Namespace, out: Printer) -> int:
     blind_dir = os.path.join(o.out_dir, "data-blind")
     written = gen.blind_corpus(plan, os.path.join(o.out_dir, "data"), blind_dir)
     out.ok(f"Blind corpus: {written} examples in {blind_dir}")
+    # prepare-sft opens --source as a file (training/data/sft.py iter_records),
+    # so the hint names the JSONL inside the directory, not the directory.
     out.info(
-        f'Next: make prepare-sft ARGS="--source {blind_dir} ...", '
+        f'Next: make prepare-sft ARGS="--source {os.path.join(blind_dir, teacher.DATA_NAME)} ...", '
         f"then make train-sft CONFIG={args.recipe}"
     )
     return 0

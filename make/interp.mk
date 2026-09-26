@@ -157,7 +157,7 @@ organism: ## Print the full organism pipeline for a recipe (each stage has its o
 	@test -n "$(RECIPE)" || { echo "RECIPE=training/recipes/organisms/<name>.yaml is required"; exit 2; }
 	@echo "Organism pipeline for $(RECIPE):"
 	@echo "  1. make organism-generate RECIPE=$(RECIPE) TEACHER=<model>   (serving up)"
-	@echo "  2. make prepare-sft ARGS=\"--source <out_dir>/data-blind ...\" (see recipe sft.dataset)"
+	@echo "  2. make prepare-sft ARGS=\"--source <out_dir>/data-blind/data.jsonl ...\" (see recipe sft.dataset)"
 	@echo "  3. make train-sft CONFIG=$(RECIPE)                            (inference down)"
 	@echo "  4. make export-hf CHECKPOINT=<run checkpoint> ARGS=\"--name <organism>\" (merges the adapter it finds; writes <organism>/hf)"
 	@echo "  5. make eval-ft ARGS=\"--base <base hf dir> --tuned <organism hf dir> --evaluators holdout,lmeval --dataset ...\" (inference down; writes holdout_*.json and lmeval_*.json per side)"

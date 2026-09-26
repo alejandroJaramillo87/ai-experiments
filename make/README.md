@@ -31,5 +31,6 @@ fragment defines them; a rule without a `##` comment is internal and is not list
 | `services.mk` | Service Management | `up`, `down`, `restart`, `gpu-up`, `cpu-up`, `ui-up` |
 | `site.mk` | Documentation site (Docusaurus, under site/) | `site-install`, `site-gen`, `site-build`, `site-serve`, `site-check` |
 | `training.mk` | Training (Phase 0 D1 - separate compose file; never runs with inference) | `train-build`, `train-shell`, `train-smoke`, `train-download`, `prepare-data`, `prepare-corpus`, `build-contamination`, `prepare-sft`, `train-tokenizer`, `train-preflight`, `train-validate`, `train-step`, `train`, `train-sft`, `export-build`, `export-hf`, `eval-ft`, `generate-teacher` |
+| `verify.mk` | Verification (long-running runbook entries as logged scripts; workstation only) | `verify` |
 
 <!-- inventory:fragments:end -->

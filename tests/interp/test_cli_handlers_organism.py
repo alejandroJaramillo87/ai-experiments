@@ -285,7 +285,12 @@ class TestGenerate:
         )
         out = capsys.readouterr().err
         assert "[OK] Blind corpus: 3 examples" in out
-        assert "[INFO] Next: make prepare-sft" in out
+        # The hint names the JSONL, not its directory: prepare-sft opens
+        # --source as a file.
+        assert (
+            f'[INFO] Next: make prepare-sft ARGS="--source {setup["out_dir"]}/data-blind/data.jsonl'
+            in out
+        )
 
         # argv plumbing: flags reach the harness through its real parser
         # (a non-default --timeout discriminates from the harness's own 300)

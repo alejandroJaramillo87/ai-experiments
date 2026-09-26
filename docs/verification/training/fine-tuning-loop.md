@@ -293,8 +293,16 @@ builds what it verifies:
   the staged base and the campaign's export, the first hardware test to
   drive compose, holding the printed lines in order, both digests, the
   four records, the driver's pair checks, the loss order and a resume on
-  the same run directory. Its first run is owed and will be recorded in
-  the entry.
+  the same run directory. Its first run passed on 2026-09-26, 1 passed in
+  fifteen minutes, exit 0, recorded in the entry.
+- **FT.organisms's readiness review** (2026-09-26): the entry and the
+  tree's two hints passed `prepare-sft` the blind corpus directory where
+  the verb opens a file (the JSONL inside it); fixed in both. The entry
+  now runs as one logged, resumable script through `make verify
+  ENTRY=ft-organisms`, states its cost per stage (about three hours for the
+  null, two and a half for the taboo) and the two design facts it runs
+  under: 400 steps over 16 or 32 examples, and locality at lm-eval limit
+  20, where one item is 0.05 and epsilon is 0.05.
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training
@@ -4666,6 +4674,34 @@ named. About sixteen minutes from the run directory's stamp (23:24:32) to
 the last phase's scoring, under the twenty the entry budgets. No
 mismatch, no finding.
 
+The hardware mirror's first run (2026-09-26, after `git pull` to
+`2148242`; passed), pasted verbatim:
+
+```
+============================= test session starts ==============================
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /home/alejandro/workspace/ai-experiments/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/alejandro/workspace/ai-experiments
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, mock-3.15.1, jaxtyping-0.3.11, cov-7.1.0, hydra-core-1.3.2, anyio-4.14.2, xdist-3.8.0, typeguard-4.6.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/hardware/test_eval_ft.py::test_eval_ft PASSED                      [100%]
+
+[TIER] full: torch present, the whole suite was in scope.
+======================== 1 passed in 901.31s (0:15:01) =========================
+exit=0
+```
+
+Judgement. `1 passed in 901.31s`, `[TIER] full`, exit 0: fifteen minutes
+against the twenty the mirror budgets. Everything the mirror holds passed
+inside that one PASSED: the driver's lines in order, both digests with
+their sources, the four records and their shapes, the printed values
+against the records, the pair checks, the organism verifier's projection,
+the loss order, and the resumed invocation that skipped every phase. The
+tier now re-proves this entry after any environment change. No finding.
+
 Status: VERIFIED (2026-09-25)
 
 ## FT.organisms Organisms: null and taboo
@@ -4689,65 +4725,72 @@ organisms run, in this order, because the null control is what makes the
 taboo result mean anything: a null organism whose implant check passes shows
 the verifier measuring an artifact rather than the implant.
 
-Services per stage, which the block states rather than assumes: generation
-talks to the teacher on `vllm-gpu` (the `--service` default), so `make
-gpu-up` precedes it and `make down` follows; training, export and the
-container evaluators run with inference down; verification needs
-`harness-serve` on the organism and `vllm-gpu` as the judge, which coexist
-(the harness is a CPU consumer); seal and check-seal need nothing. The
-teacher path is the model `vllm-gpu` serves, in container or host spelling.
-The recipes train 400 steps at a checkpoint interval of 100, so the export
-names `checkpoint-400`; locality is measured on the FT.smoke-dataset ultrachat split and
-the pinned lm-eval tasks, because the organism's own corpus would measure
-the implant, not what it left alone. `wait_healthy` is given 600 s, the compose file's `start_period`,
-rather than the registry's 60 s default, which a cold 10 GB load can miss.
+The entry runs as one script per organism, `scripts/verification/ft-organisms.sh`,
+through `make verify ENTRY=ft-organisms` (since 2026-09-26; the first entry
+to run this way, because nine hand-driven stages over three hours is the
+wrong shape for a paste). The script is the stage list below made
+executable, in this order, each stage the make target the entry names: the
+teacher on `vllm-gpu` for generation (`make gpu-up` before, `make down`
+after; `generate-teacher` swaps the service to the teacher and restores the
+default model, which is what the judge later uses), inference down for
+`prepare-sft`, `train-sft`, `export-hf` and `eval-ft`, then `harness-serve`
+on the export beside `vllm-gpu` as the judge for `organism-verify` (they
+coexist: the harness is a CPU consumer), both brought down after, and
+nothing for seal and check-seal. A stage whose output exists is skipped
+(`[SKIP] <stage>: <file> exists`), so a run that stopped resumes at the
+stage that failed; a failed verify still brings serving down. Every path is
+read from the recipe and the tree (the staged base, the run, eval and
+export roots), the `eval-ft` records land in a fixed directory,
+`/mnt/ai-data/training/eval/ft7-<organism>`, and `wait_healthy` is given
+600 s, the compose file's `start_period`, rather than the registry's 60 s
+default, which a cold 10 GB load can miss. The whole output is teed to
+`/mnt/ai-data/logs/verification/ft-organisms_<UTC>.log`, and that log is
+the paste this entry records. The teacher path is the model `vllm-gpu`
+serves, in container or host spelling.
+
+Cost, from what is on record: generation 10 to 15 minutes (two service
+recreations with a cold load each; the null first draws 20 facts and 60
+questions serially), `prepare-sft` under a minute, training about an hour
+(400 steps at 16 short examples a step; FT.train-resume measured 16 s a
+step at twice the examples and 2048 tokens), export 5 to 10 minutes,
+`eval-ft` 16 minutes (FT.eval-ft), verification about an hour for the null
+(20 facts x 3 questions x 2 samples = 120 subject calls at 256 tokens
+through the CPU harness, about 30 s each at the E2B decode rate
+`common/serving.py` records) and 30 minutes for the taboo (20 direct + 10
+probe x 4 = 60 calls), seal and check-seal seconds: about three hours for
+the null and two and a half for the taboo, unattended.
+
+Two facts about the design, stated before the run so a failure is read as
+what it is. The recipes train 400 steps at 16 examples a step over a corpus
+of 16 examples (null: the neutral filler only) or 32 (taboo: 16 implant
+plus 16 filler), hundreds of epochs, and locality holds every metric to
+0.05 of the base; a locality failure on the ultrachat holdout loss is a
+finding against the recipes. And lm-eval runs at `--lmeval-limit 20`, where
+one item is 0.05, so a task moving by two items fails locality on its own
+(FT.eval-ft's ifeval moved 0.05 to 0.15 on the 60-step adapter); a failure
+on that alone is a finding against epsilon versus the limit. Either is
+recorded in protocol order, not edited around. The recipes train 400
+steps at a checkpoint interval of 100 with `retain_last: 3`, so the
+checkpoints directory holds 200, 300 and 400 and the export names
+`checkpoint-400`; locality is measured on the FT.smoke-dataset ultrachat
+split and the pinned lm-eval tasks, because the organism's own corpus would
+measure the implant, not what it left alone. `prepare-sft` on 16 or 32
+records at the default holdout fraction 0.02 leaves 0 or 1 holdout
+examples; with 0 the trainer runs no evaluation and prints no `Held-out
+loss:` line, which is not a failure.
 
 ```bash
-set -o pipefail
-cd ~/workspace/ai-experiments
-make organism RECIPE=training/recipes/organisms/null.yaml
-make gpu-up
-make organism-generate RECIPE=training/recipes/organisms/null.yaml TEACHER=/mnt/ai-data/models/<teacher>
-echo "exit=$?"
-make down
-make prepare-sft ARGS="--source /mnt/ai-data/interp/organisms/organism-null/data-blind \
-    --tokenizer /mnt/ai-data/models/hf/gemma-4-E2B --model-type gemma4 \
-    --out /mnt/ai-data/training/datasets/sft/organism-null"
-make train-sft CONFIG=training/recipes/organisms/null.yaml
-make export-hf CHECKPOINT=/mnt/ai-data/training/runs/organism-null/checkpoints/checkpoint-400 \
-    ARGS="--name organism-null"
-make eval-ft ARGS="--base /mnt/ai-data/models/hf/gemma-4-E2B \
-    --tuned /mnt/ai-data/models/trained/organism-null/hf --evaluators holdout,lmeval \
-    --dataset /mnt/ai-data/training/datasets/sft/ultrachat-e2b --lmeval-limit 20 \
-    --name ft7-null"
-make gpu-up
-HARNESS_MODEL=/app/models/trained/organism-null/hf make harness-serve
-python3 -c 'from common import serving; print(serving.wait_healthy(serving.SERVICES["harness"], 600))'
-make organism-verify RECIPE=training/recipes/organisms/null.yaml \
-    BASE_METRICS="/mnt/ai-data/training/eval/ft7-null_<UTC>/holdout_base.json /mnt/ai-data/training/eval/ft7-null_<UTC>/lmeval_base.json" \
-    SUBJECT_METRICS="/mnt/ai-data/training/eval/ft7-null_<UTC>/holdout_tuned.json /mnt/ai-data/training/eval/ft7-null_<UTC>/lmeval_tuned.json"
-echo "exit=$?"
-make harness-serve-down
-make down
-make organism-seal RECIPE=training/recipes/organisms/null.yaml \
-    ARGS="--checkpoint /mnt/ai-data/models/trained/organism-null/hf"
-echo "exit=$?"
-make organism-check-seal DIR=/mnt/ai-data/interp/organisms/organism-null
-echo "exit=$?"
-grep -E '"(checkpoint|model_hash)"' /mnt/ai-data/interp/organisms/organism-null/manifest.json
+cd ~/workspace/ai-experiments && git pull origin SFT-verification-2 && git log -1 --oneline
+make verify ENTRY=ft-organisms ARGS="--recipe training/recipes/organisms/null.yaml --teacher /mnt/ai-data/models/<teacher>"
+make verify ENTRY=ft-organisms ARGS="--recipe training/recipes/organisms/taboo.yaml --teacher /mnt/ai-data/models/<teacher>"
 ```
 
-Then the same stages with `taboo.yaml`, `organism-taboo` and `ft7-taboo` in
-place of `null.yaml`, `organism-null` and `ft7-null`, and after the taboo
-seal the tamper arm, on a copy so the sealed organism FT.capture reads is not
-touched:
-
-```bash
-rm -rf /tmp/ft7-tamper && cp -r /mnt/ai-data/interp/organisms/organism-taboo /tmp/ft7-tamper
-echo >> /tmp/ft7-tamper/ground_truth.json
-make organism-check-seal DIR=/tmp/ft7-tamper; echo "exit=$?"
-make organism-check-seal DIR=/mnt/ai-data/interp/organisms/organism-taboo; echo "exit=$?"
-```
+The null runs first, because the null control is what makes the taboo
+result mean anything, and the taboo run ends with the tamper arm: a copy of
+the sealed organism under `/tmp/ft7-tamper` with one byte appended to its
+ground truth, which check-seal must refuse while the untouched directory
+still passes. Each `make verify` prints the log path first and last and
+`exit=<rc>`; the paste is the two log files.
 
 Expected signal. Generation draws sealed ground truth and writes the blind
 corpus for each, printing `[OK] Blind corpus: <n> examples in .../data-blind`
@@ -4780,6 +4823,42 @@ appended prints `[ERROR] check-seal failed: /tmp/ft7-tamper: ground truth
 hash mismatch: sealed <a>, current file hashes to <b> (the ground truth was
 modified after sealing)` and exits 1, and the untouched directory still
 exits 0. A check-seal that passes on the tampered copy is a broken seal.
+The script's own lines frame each stage: `=== FT.organisms: <recipe> ===`,
+`[INFO] Organism: organism-null (null) under ...`, then `[RUN] <n>/9
+<stage>` before and `[OK] <stage>: exit 0` after each, `[SKIP]` on a
+resumed run, and `[OK] ft-organisms: organism-null complete` last. Inside
+the stages, what the code prints, in order. Generation: `=== Organism
+generation: organism-null (null) ===`, for the null `[RUN] Drawing 20
+facts and held-out QA from the teacher`, `[OK] Ground-truth draft written
+(unsealed): .../work/ground_truth_draft.json`, `[OK] Rendered 16 teacher
+prompts:` (32 for the taboo, then the elicitation line), then
+generate-teacher's `[OK] Preflight: training is idle`, `[RUN] Swapping
+vllm-gpu to /app/models/<teacher>`, `[OK] vllm-gpu healthy after <n>s`,
+`[OK] Dataset complete: <n> examples in .../data`, `[RUN] Restoring
+previous serving state`, `[OK] Previous serving state restored`, the blind
+corpus line and an `[INFO] Next:` hint; a `[ERROR] generate failed: facts
+generation: expected exactly 20 ...` means the teacher miscounted, and the
+re-run redraws, since no draft is written before the teacher answers.
+`prepare-sft` prints `[OK] Train examples:` and `[OK] Holdout examples: 0`
+or `1 (fraction 0.02, seed 42)`. `train-sft` prints `[RUN] Fine-tuning
+organism-null [trl]: 400 total steps`, the sdpa note and the watchdog
+throttle alerts FT.train-resume recorded, and `[OK] Run complete: step 400
+[trl]`, with `Held-out loss:` only when the holdout is non-empty; the `ls`
+that follows lists `checkpoint-200`, `checkpoint-300` and `checkpoint-400`.
+`export-hf` prints `[OK] Base model verified: /app/models/hf/gemma-4-E2B
+(revision d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f)` and `[OK] Manifest
+written:`, and the `grep` that follows shows a `model_hash` that is not
+`76dc84a5...`. `eval-ft` prints FT.eval-ft's lines with the run directory
+`ft7-organism-null` and the tuned identity line `(manifest)`, and the `ls`
+lists the four records. `organism-verify` prints `=== Organism
+verification: organism-null (null) ===`, `[RUN] Eliciting 60 held-out QA
+prompts` (taboo: `[RUN] Eliciting: 20 direct, 10 probe prompts x 4`),
+`[RUN] Judging fact recall` (taboo: `[RUN] Judging hint rate`), a blank
+line, the implant, locality and verdict lines above, and `[OK] Report
+written:`. `organism-seal` also prints `[OK] Public manifest:` and `[INFO]
+Auditors receive the public manifest only`. The tamper arm's refusal is
+followed by the script's `[OK] tamper arm: check-seal refused the tampered
+copy (exit 1)`.
 
 **After this entry closes, implement the checkpoint-contract consolidation.**
 [docs/training/tier-consolidation-proposal.md](../../training/tier-consolidation-proposal.md)

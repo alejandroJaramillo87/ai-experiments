@@ -440,13 +440,13 @@ RECIPE=...` prints this pipeline; the four `organism-*` targets run
 `python -m interp` on the host through the venv, not in the workbench container):
 
 ```bash
-make organism-generate RECIPE=training/recipes/organisms/taboo.yaml TEACHER=/mnt/ai-data/models/<teacher>.gguf
-make prepare-sft ARGS="--source <out_dir>/data-blind ..."
+make organism-generate RECIPE=training/recipes/organisms/taboo.yaml TEACHER=/mnt/ai-data/models/<teacher>
+make prepare-sft ARGS="--source <out_dir>/data-blind/data.jsonl ..."
 make train-sft CONFIG=training/recipes/organisms/taboo.yaml
 make export-hf CHECKPOINT=<run checkpoint>
 make eval-ft ARGS=...
 make organism-verify RECIPE=training/recipes/organisms/taboo.yaml BASE_METRICS=<...> SUBJECT_METRICS=<...>
-make organism-seal RECIPE=training/recipes/organisms/taboo.yaml ARGS="--checkpoint ... --gguf ..."
+make organism-seal RECIPE=training/recipes/organisms/taboo.yaml ARGS="--checkpoint ..."
 make organism-check-seal DIR=/mnt/ai-data/interp/organisms/<name>
 ```
 

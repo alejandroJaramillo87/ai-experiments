@@ -138,3 +138,13 @@ any environment change. And a failure that is host state rather than a tree
 defect, a root-owned directory or a venv synced before its lock, is recorded
 in the entry with the remedy and no ledger row: the ledger names code that
 misbehaved, and the runbook names what the operator had to do.
+
+An entry whose stages run for hours is driven by a script, not pasted stage
+by stage. FT.organisms was the first, on 2026-09-26: its command block is
+`scripts/verification/ft-organisms.sh`, and `make verify ENTRY=ft-organisms`
+runs it, brings each stage's services up and down, skips a stage whose
+output exists so a failed run resumes, and tees the whole output to a log
+under `/mnt/ai-data/logs/verification/`. The log is the paste; the entry
+records it verbatim as it would a hand run, and the hardware test that
+follows mirrors the script. `tests/docs/test_verify_scripts.py` holds every
+script to an entry that runs it and every such citation to a script.
