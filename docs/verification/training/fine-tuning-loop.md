@@ -345,7 +345,10 @@ builds what it verifies:
   reason and was refused: the verifier's judge request carried no
   `response_format` where the scorecard's does (KB-106). The lm-eval
   half of locality was filed the same day as unable to hold at limit 20
-  (KB-107); the held-out loss gates alone now.
+  (KB-107); the held-out loss gates alone now. The ninth attempt passed
+  the null end to end on the one-epoch mix (holdout loss 1.064 to 1.024,
+  the judge's verdicts parsed, seal and check-seal clean), closing KB-104
+  to KB-107; the taboo run is next.
 - **FT.organisms's readiness review** (2026-09-26): the entry and the
   tree's two hints passed `prepare-sft` the blind corpus directory where
   the verb opens a file (the JSONL inside it); fixed in both. The entry
@@ -4776,67 +4779,11 @@ organisms run, in this order, because the null control is what makes the
 taboo result mean anything: a null organism whose implant check passes shows
 the verifier measuring an artifact rather than the implant.
 
-**Fixes to confirm here** (details in [bugs/known-bugs.md](../bugs/known-bugs.md)):
-
-- KB-97 — the `verify` target set `pipefail` in a recipe that make runs
-  under `/bin/sh`, dash on the workstation, so the first attempt died before
-  the script started. The pipe now runs inside an explicit bash; closes when
-  the log opens with the script's `=== FT.organisms:` line after the
-  target's `[INFO] Log:` line.
-- KB-99 — the null organism drew its facts from `vllm-gpu` before the
-  teacher was served (`Connection refused` on the third attempt). The
-  organism driver now swaps the teacher in first; closes when the log
-  prints `[RUN] Swapping vllm-gpu to /app/models/hf/gemma-4-E4B-it` and
-  `[OK] vllm-gpu healthy after` before `[RUN] Drawing 20 facts`.
-- KB-100 — the `vllm-gpu` image pinned vLLM and left transformers to
-  resolve on build day; the pair it carried (0.25.0 with 5.17.0) cannot
-  construct a Gemma 4 model config, so the fourth attempt's swap
-  restart-looped until the 600 s health budget expired. transformers is
-  now pinned beside vLLM and the two bumped together to a release whose
-  convertor reads per-layer configs; closes when the log prints `[OK]
-  vllm-gpu healthy after <n>s` for the E4B-it teacher and the draw
-  begins.
-  - KB-101 — the compose file mounted `vllm-gpu`'s `/app/.cache` tmpfs
-  without `exec`, and FlashInfer compiles a kernel there at run time for
-  a head size its shipped jit-cache lacks, as the E4B-it teacher's 512
-  is; the rebuilt image's first acceptance check died mapping that
-  kernel. The mount carries `exec` now; closes on the same healthy line
-  as KB-100, which the acceptance check shows first.
-  - KB-102 — the chat client named the model `default` on every service,
-  which llama.cpp ignores and vLLM answers 404 to; the fifth attempt's
-  draw died on its first request. The client now names the model
-  `GET /v1/models` reports; closes when the log prints `[OK] Ground-truth
-  draft written (unsealed):` after `[RUN] Drawing 20 facts`.
-  - KB-104 — the verification stage judged on whatever model the
-  environment file names, the Gemma 4 base, which has no chat template,
-  so the seventh attempt's first judge request got a 400 that the client
-  reported as `Bad Request` alone. The script serves the teacher as the
-  judge and waits for it, the verifier names the judge, and the client
-  reports the server's message; closes when the log prints `[OK]
-  vllm-gpu healthy after <n>s` in stage 6, `[INFO] Judge:
-  /app/models/hf/gemma-4-E4B-it`, and `[RUN] Judging fact recall`
-  followed by the implant line. The eighth attempt printed both lines
-  and the judge answered with a verdict; the implant line is owed to
-  the ninth (KB-106).
-  - KB-105 — the organism recipes trained 400 steps over their 16 or 32
-  documents alone, and the seventh attempt's `eval-ft` measured the base's
-  ultrachat holdout loss going from 1.064 to 5.316; the eighth's
-  six-epoch mix of 128 replay conversations was memorized and measured
-  1.434. Each recipe now fills one epoch, every replay conversation seen
-  once; closes when the log prints `[OK] Locality check: passed (gated
-  holdout.loss of 5 metrics, epsilon 0.05)` for the null.
-  - KB-106 — the organism verifier's judge request carried no
-  `response_format`, unlike the steering scorecard's, and the eighth
-  attempt's judge put a raw quotation mark inside its JSON reason, which
-  the strict parser refused. The request carries the scorecard's
-  constraint now; closes when `[RUN] Judging fact recall` is followed by
-  `[WARN] Implant check: failed` for the null.
-  - KB-107 — locality held every lm-eval task to 0.05 at
-  `--lmeval-limit 20`, where one item is 0.05, and FT.eval-ft's benign
-  reference adapter had already moved ifeval 0.10 on those items. The
-  holdout loss alone gates now and the task deltas are reported; closes
-  on the same locality line as KB-105 followed by `[INFO] Locality
-  deltas:`.
+Eleven ledger rows were filed against this entry's attempts, KB-97 to
+KB-107, and every one closed on a later attempt's log; the ninth attempt
+closed the last four (KB-104 to KB-107). The rows are in
+[bugs/known-bugs.md](../bugs/known-bugs.md) under "Resolved during the
+hardware campaign", each with the line that confirmed it.
 
 The entry runs as one script per organism, `scripts/verification/ft-organisms.sh`,
 through `make verify ENTRY=ft-organisms` (since 2026-09-26; the first entry
@@ -5018,7 +4965,8 @@ before the teacher answers (the restore still runs).
 `prepare-sft` runs in the `prepare` container, which mounts the organism's
 tree read-only for it, and prints `[INFO] Replay: 768 examples from
 HuggingFaceH4/ultrachat_200k (test_sft)`, `[INFO] Corpus repeat: 48`
-(taboo: 24), `[OK] Train examples: 1536` and `[OK] Holdout examples: 0
+(taboo: 24), `[OK] Train examples: 1,536` (the count carries a thousands
+separator) and `[OK] Holdout examples: 0
 (fraction 0.0, seed 42)`. `train-sft` prints `[RUN] Fine-tuning
 organism-null [trl]: 96 total steps`, the sdpa note and the watchdog
 throttle alerts FT.train-resume recorded, a logged loss that falls less
@@ -7519,6 +7467,773 @@ same items; chat-format replay raises ifeval by design. The holdout
 loss alone gates locality now and the four lm-eval deltas are
 reported (KB-107). The stage-1 artifacts stand; stages 2 to 5 are
 rebuilt on the one-epoch recipe by `--from-stage 2`.
+
+Ninth attempt (2026-09-26, after `git pull` to `4340bde`, `--from-stage
+2`, `DETACH=1`; the null organism passed every stage, exit 0). The whole
+log file, verbatim:
+
+```
+=== FT.organisms: training/recipes/organisms/null.yaml ===
+
+[RUN] Reading the recipe and the tree
+[INFO] Organism: organism-null (null) under /mnt/ai-data/interp/organisms/organism-null
+[INFO] Base: /mnt/ai-data/models/hf/gemma-4-E2B
+[INFO] Export: /mnt/ai-data/models/trained/organism-null/hf
+[INFO] Eval records: /mnt/ai-data/training/eval/ft7-organism-null
+[INFO] Teacher and judge: /app/models/hf/gemma-4-E4B-it
+
+[RUN] Removing the outputs of stages 2 to 6
+[RUN] Removing /mnt/ai-data/training/datasets/sft/organism-null
+[RUN] Removing /mnt/ai-data/training/runs/organism-null
+[RUN] Removing /mnt/ai-data/models/trained/organism-null
+[RUN] Removing /mnt/ai-data/training/eval/ft7-organism-null
+
+[RUN] 1/9 generate
+[SKIP] generate: /mnt/ai-data/interp/organisms/organism-null/data-blind/manifest.json exists
+
+[RUN] 2/9 prepare-sft
+make[1]: Entering directory '/home/alejandro/workspace/ai-experiments'
+docker compose -f docker-compose.training.yaml run --rm prepare python -m training prepare-sft --source /mnt/ai-data/interp/organisms/organism-null/data-blind/data.jsonl         --tokenizer /mnt/ai-data/models/hf/gemma-4-E2B --model-type gemma4 --out /mnt/ai-data/training/datasets/sft/organism-null --holdout 0 --repeat 48 --replay-source HuggingFaceH4/ultrachat_200k --replay-split test_sft --replay-examples 768
+ Container ai-experiments-prepare-run-ae5e0c4e9db3 Creating 
+ Container ai-experiments-prepare-run-ae5e0c4e9db3 Created 
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+[1;33m[WARN][0m nvidia-smi not found: no GPU visible in this container
+
+[0;34m[RUN][0m exec: python -m training prepare-sft --source /mnt/ai-data/interp/organisms/organism-null/data-blind/data.jsonl --tokenizer /mnt/ai-data/models/hf/gemma-4-E2B --model-type gemma4 --out /mnt/ai-data/training/datasets/sft/organism-null --holdout 0 --repeat 48 --replay-source HuggingFaceH4/ultrachat_200k --replay-split test_sft --replay-examples 768
+=== SFT data preparation (Phase 1 F1) ===
+
+[INFO] Source: /mnt/ai-data/interp/organisms/organism-null/data-blind/data.jsonl
+[INFO] Tokenizer: /mnt/ai-data/models/hf/gemma-4-E2B
+[INFO] Model family: gemma4
+[INFO] Output: /mnt/ai-data/training/datasets/sft/organism-null
+[INFO] Replay: 768 examples from HuggingFaceH4/ultrachat_200k (test_sft)
+[INFO] Corpus repeat: 48
+[RUN] Rendering, tokenizing, and masking conversations
+/opt/venv/lib/python3.12/site-packages/huggingface_hub/constants.py:298: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+  [INFO] Progress: 1,000 examples, 945,449 tokens
+
+[OK] Train examples: 1,536
+[OK] Holdout examples: 0 (fraction 0.0, seed 42)
+[OK] Tokens: 1,577,427 total, 1,342,291 supervised
+[OK] Manifest: /mnt/ai-data/training/datasets/sft/organism-null/manifest.json
+make[1]: Leaving directory '/home/alejandro/workspace/ai-experiments'
+[OK] prepare-sft: exit 0
+
+[RUN] 3/9 train-sft
+make[1]: Entering directory '/home/alejandro/workspace/ai-experiments'
+docker compose -f docker-compose.training.yaml run --rm training python -m training train-sft --config training/recipes/organisms/null.yaml 
+ Container ai-experiments-training-run-4e8e61325d86 Creating 
+ Container ai-experiments-training-run-4e8e61325d86 Created 
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[0;34m[RUN][0m exec: python -m training train-sft --config training/recipes/organisms/null.yaml
+[RUN] Fine-tuning organism-null [trl]: 96 total steps
+[model] flash-attn supports head_dim <= 256; this model's widest head is 512, so attention runs on sdpa
+
+Loading weights:   0%|          | 0/1951 [00:00<?, ?it/s]/opt/venv/lib/python3.12/site-packages/bitsandbytes/backends/cuda/ops.py:213: FutureWarning: _check_is_size will be removed in a future PyTorch release along with guard_size_oblivious.     Use _check(i >= 0) instead.
+  torch._check_is_size(blocksize)
+
+Loading weights:  39%|███▊      | 754/1951 [00:00<00:00, 5774.40it/s]
+Loading weights:  68%|██████▊   | 1332/1951 [00:00<00:00, 1902.85it/s]
+Loading weights: 100%|██████████| 1951/1951 [00:00<00:00, 2931.70it/s]
+[transformers] The tokenizer has new PAD/BOS/EOS tokens that differ from the model config and generation config. The model config and generation config were aligned accordingly, being updated with the tokenizer's values. Updated tokens: {'eos_token_id': 1, 'bos_token_id': 2, 'pad_token_id': 0}.
+
+  0%|          | 0/96 [00:00<?, ?it/s]
+  1%|          | 1/96 [00:05<08:34,  5.42s/it]
+  2%|▏         | 2/96 [00:10<08:18,  5.31s/it]
+  3%|▎         | 3/96 [00:16<08:41,  5.60s/it]
+  4%|▍         | 4/96 [00:23<09:21,  6.10s/it]
+  5%|▌         | 5/96 [00:29<09:19,  6.15s/it]
+  6%|▋         | 6/96 [00:35<08:57,  5.97s/it]
+  7%|▋         | 7/96 [00:41<09:04,  6.12s/it]
+  8%|▊         | 8/96 [00:47<08:54,  6.08s/it]
+  9%|▉         | 9/96 [00:51<07:51,  5.42s/it]
+ 10%|█         | 10/96 [00:56<07:31,  5.25s/it]
+                                               
+{'loss': '1.149', 'grad_norm': '0.7767', 'learning_rate': '0.00018', 'epoch': '0.1042'}
+
+ 10%|█         | 10/96 [00:56<07:31,  5.25s/it]
+ 11%|█▏        | 11/96 [01:02<07:41,  5.43s/it]
+ 12%|█▎        | 12/96 [01:07<07:20,  5.24s/it]
+ 14%|█▎        | 13/96 [01:12<07:11,  5.20s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+
+ 15%|█▍        | 14/96 [01:17<07:05,  5.19s/it]
+ 16%|█▌        | 15/96 [01:23<07:11,  5.33s/it]
+ 17%|█▋        | 16/96 [01:29<07:21,  5.52s/it]
+ 18%|█▊        | 17/96 [01:33<06:55,  5.25s/it]
+ 19%|█▉        | 18/96 [01:38<06:45,  5.19s/it]
+ 20%|█▉        | 19/96 [01:46<07:26,  5.80s/it]
+ 21%|██        | 20/96 [01:53<07:51,  6.21s/it]
+                                               
+{'loss': '0.811', 'grad_norm': '0.7494', 'learning_rate': '0.0001946', 'epoch': '0.2083'}
+
+ 21%|██        | 20/96 [01:53<07:51,  6.21s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+
+ 22%|██▏       | 21/96 [01:57<07:05,  5.68s/it]
+ 23%|██▎       | 22/96 [02:03<07:00,  5.69s/it]
+ 24%|██▍       | 23/96 [02:08<06:51,  5.64s/it]
+ 25%|██▌       | 24/96 [02:15<07:11,  6.00s/it]
+ 26%|██▌       | 25/96 [02:21<07:07,  6.02s/it]
+ 27%|██▋       | 26/96 [02:26<06:35,  5.65s/it]
+ 28%|██▊       | 27/96 [02:30<06:04,  5.29s/it]
+ 29%|██▉       | 28/96 [02:36<06:02,  5.32s/it]
+ 30%|███       | 29/96 [02:42<06:06,  5.47s/it]
+ 31%|███▏      | 30/96 [02:48<06:24,  5.83s/it]
+                                               
+{'loss': '0.5734', 'grad_norm': '2.174', 'learning_rate': '0.0001769', 'epoch': '0.3125'}
+
+ 31%|███▏      | 30/96 [02:48<06:24,  5.83s/it]
+ 32%|███▏      | 31/96 [02:53<05:56,  5.48s/it]
+ 33%|███▎      | 32/96 [02:59<05:59,  5.62s/it]
+ 34%|███▍      | 33/96 [03:04<05:37,  5.35s/it]
+ 35%|███▌      | 34/96 [03:11<06:02,  5.84s/it]
+ 36%|███▋      | 35/96 [03:17<05:59,  5.89s/it]
+ 38%|███▊      | 36/96 [03:22<05:40,  5.68s/it]
+ 39%|███▊      | 37/96 [03:28<05:49,  5.93s/it]
+ 40%|███▉      | 38/96 [03:32<05:05,  5.27s/it]
+ 41%|████      | 39/96 [03:38<05:08,  5.42s/it]
+ 42%|████▏     | 40/96 [03:42<04:38,  4.97s/it]
+                                               
+{'loss': '0.5783', 'grad_norm': '0.3804', 'learning_rate': '0.0001489', 'epoch': '0.4167'}
+
+ 42%|████▏     | 40/96 [03:42<04:38,  4.97s/it]
+ 43%|████▎     | 41/96 [03:49<05:05,  5.55s/it]
+ 44%|████▍     | 42/96 [03:54<04:55,  5.47s/it]
+ 45%|████▍     | 43/96 [03:59<04:46,  5.40s/it]
+ 46%|████▌     | 44/96 [04:06<05:01,  5.80s/it]
+ 47%|████▋     | 45/96 [04:12<05:04,  5.97s/it]
+ 48%|████▊     | 46/96 [04:18<05:00,  6.01s/it]
+ 49%|████▉     | 47/96 [04:24<04:42,  5.76s/it]
+ 50%|█████     | 48/96 [04:28<04:16,  5.34s/it]
+ 51%|█████     | 49/96 [04:35<04:29,  5.74s/it]
+ 52%|█████▏    | 50/96 [04:40<04:20,  5.65s/it]
+                                               
+{'loss': '0.5528', 'grad_norm': '0.2452', 'learning_rate': '0.0001146', 'epoch': '0.5208'}
+
+ 52%|█████▏    | 50/96 [04:40<04:20,  5.65s/it]
+ 53%|█████▎    | 51/96 [04:44<03:55,  5.24s/it]
+ 54%|█████▍    | 52/96 [04:50<03:55,  5.34s/it]
+ 55%|█████▌    | 53/96 [04:56<03:53,  5.43s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+
+ 56%|█████▋    | 54/96 [05:03<04:15,  6.08s/it]
+ 57%|█████▋    | 55/96 [05:08<03:55,  5.75s/it]
+ 58%|█████▊    | 56/96 [05:13<03:37,  5.43s/it]
+ 59%|█████▉    | 57/96 [05:20<03:46,  5.80s/it]
+ 60%|██████    | 58/96 [05:25<03:32,  5.60s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+
+ 61%|██████▏   | 59/96 [05:29<03:14,  5.26s/it]
+ 62%|██████▎   | 60/96 [05:35<03:15,  5.43s/it]
+                                               
+{'loss': '0.6046', 'grad_norm': '0.2824', 'learning_rate': '7.826e-05', 'epoch': '0.625'}
+
+ 62%|██████▎   | 60/96 [05:35<03:15,  5.43s/it]
+ 64%|██████▎   | 61/96 [05:41<03:13,  5.53s/it]
+ 65%|██████▍   | 62/96 [05:46<03:10,  5.60s/it]
+ 66%|██████▌   | 63/96 [05:53<03:18,  6.02s/it]
+ 67%|██████▋   | 64/96 [05:58<02:56,  5.52s/it]
+ 68%|██████▊   | 65/96 [06:03<02:50,  5.50s/it]
+ 69%|██████▉   | 66/96 [06:09<02:44,  5.49s/it]
+ 70%|██████▉   | 67/96 [06:14<02:36,  5.38s/it]
+ 71%|███████   | 68/96 [06:19<02:30,  5.37s/it]
+ 72%|███████▏  | 69/96 [06:24<02:23,  5.31s/it]
+ 73%|███████▎  | 70/96 [06:29<02:15,  5.23s/it]
+                                               
+{'loss': '0.5174', 'grad_norm': '0.2368', 'learning_rate': '4.482e-05', 'epoch': '0.7292'}
+
+ 73%|███████▎  | 70/96 [06:29<02:15,  5.23s/it]
+ 74%|███████▍  | 71/96 [06:34<02:07,  5.08s/it]
+ 75%|███████▌  | 72/96 [06:39<02:00,  5.04s/it]
+ 76%|███████▌  | 73/96 [06:45<02:00,  5.22s/it]
+ 77%|███████▋  | 74/96 [06:48<01:43,  4.71s/it]
+ 78%|███████▊  | 75/96 [06:55<01:50,  5.24s/it]
+ 79%|███████▉  | 76/96 [06:59<01:40,  5.03s/it]
+ 80%|████████  | 77/96 [07:05<01:39,  5.24s/it]
+ 81%|████████▏ | 78/96 [07:13<01:48,  6.02s/it]
+ 82%|████████▏ | 79/96 [07:19<01:42,  6.00s/it]
+ 83%|████████▎ | 80/96 [07:24<01:31,  5.73s/it]
+                                               
+{'loss': '0.5874', 'grad_norm': '0.6805', 'learning_rate': '1.867e-05', 'epoch': '0.8333'}
+
+ 83%|████████▎ | 80/96 [07:24<01:31,  5.73s/it]
+ 84%|████████▍ | 81/96 [07:29<01:22,  5.47s/it]
+ 85%|████████▌ | 82/96 [07:34<01:15,  5.38s/it]
+ 86%|████████▋ | 83/96 [07:39<01:07,  5.21s/it]
+ 88%|████████▊ | 84/96 [07:43<01:00,  5.01s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+
+ 89%|████████▊ | 85/96 [07:50<01:00,  5.48s/it]
+ 90%|████████▉ | 86/96 [07:54<00:52,  5.21s/it]
+ 91%|█████████ | 87/96 [08:00<00:47,  5.27s/it]
+ 92%|█████████▏| 88/96 [08:06<00:43,  5.43s/it][watchdog] ALERT gpu_throttle: value 1, threshold 0.5
+
+ 93%|█████████▎| 89/96 [08:11<00:37,  5.39s/it]
+ 94%|█████████▍| 90/96 [08:17<00:33,  5.64s/it]
+                                               
+{'loss': '0.405', 'grad_norm': '0.274', 'learning_rate': '3.252e-06', 'epoch': '0.9375'}
+
+ 94%|█████████▍| 90/96 [08:17<00:33,  5.64s/it]
+ 95%|█████████▍| 91/96 [08:23<00:29,  5.83s/it]
+ 96%|█████████▌| 92/96 [08:30<00:23,  5.98s/it]
+ 97%|█████████▋| 93/96 [08:38<00:19,  6.64s/it]
+ 98%|█████████▊| 94/96 [08:44<00:12,  6.42s/it]
+ 99%|█████████▉| 95/96 [08:49<00:06,  6.12s/it]
+100%|██████████| 96/96 [08:55<00:00,  6.08s/it]
+                                               
+{'train_runtime': '536', 'train_samples_per_second': '2.866', 'train_steps_per_second': '0.179', 'train_loss': '0.636', 'epoch': '1'}
+
+100%|██████████| 96/96 [08:56<00:00,  6.08s/it]
+100%|██████████| 96/96 [08:56<00:00,  5.58s/it]
+[OK] Run complete: step 96 [trl]
+  [INFO] trainable parameters: 48,316,416 of 5,152,613,920 (0.94 percent)
+Final train loss: 0.404962
+Run directory: /mnt/ai-data/training/runs/organism-null/2026-09-26_21-01-18
+Checkpoints:   /mnt/ai-data/training/runs/organism-null/checkpoints
+make[1]: Leaving directory '/home/alejandro/workspace/ai-experiments'
+[OK] train-sft: exit 0
+
+checkpoint-32
+checkpoint-64
+checkpoint-96
+latest
+README.md
+
+[RUN] 4/9 export-hf
+make[1]: Entering directory '/home/alejandro/workspace/ai-experiments'
+docker compose -f docker-compose.training.yaml run --rm export python -m training export --checkpoint /mnt/ai-data/training/runs/organism-null/checkpoints/checkpoint-96 --name organism-null
+ Container ai-experiments-export-run-56f3fc6a5d0a Creating 
+ Container ai-experiments-export-run-56f3fc6a5d0a Created 
+[OK] Base model verified: /app/models/hf/gemma-4-E2B (revision d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f)
+[RUN] Merging model: /mnt/ai-data/training/runs/organism-null/checkpoints/checkpoint-96
+
+Loading weights:   0%|          | 0/1951 [00:00<?, ?it/s]
+Loading weights: 100%|██████████| 1951/1951 [00:00<00:00, 26004.88it/s]
+
+Writing model shards:   0%|          | 0/1 [00:00<?, ?it/s]
+Writing model shards: 100%|██████████| 1/1 [00:01<00:00,  1.50s/it]
+Writing model shards: 100%|██████████| 1/1 [00:01<00:00,  1.50s/it]
+[OK] Adapter merged: /mnt/ai-data/training/runs/organism-null/checkpoints/checkpoint-96 into /app/models/hf/gemma-4-E2B
+[OK] HF export written: /app/models/trained/organism-null/hf (10,208,852,910 bytes)
+[OK] Manifest written: /app/models/trained/organism-null/manifest.json
+model_hash: ed23fee1047e1c8e63c646e09964a8ba4f1dc07c1099172909715b1c6cd45780
+make[1]: Leaving directory '/home/alejandro/workspace/ai-experiments'
+[OK] export-hf: exit 0
+
+  "hf_dir": "/app/models/trained/organism-null/hf",
+  "model_hash": "ed23fee1047e1c8e63c646e09964a8ba4f1dc07c1099172909715b1c6cd45780",
+
+[RUN] 5/9 eval-ft
+make[1]: Entering directory '/home/alejandro/workspace/ai-experiments'
+uv run --no-sync python -m training eval-ft --base /mnt/ai-data/models/hf/gemma-4-E2B --tuned /mnt/ai-data/models/trained/organism-null/hf --evaluators holdout,lmeval         --dataset /mnt/ai-data/training/datasets/sft/ultrachat-e2b --lmeval-limit 20 --out-dir /mnt/ai-data/training/eval/ft7-organism-null
+[INFO] Run directory: /mnt/ai-data/training/eval/ft7-organism-null
+[INFO] base: /app/models/hf/gemma-4-E2B model_hash 76dc84a5a805a2c8b91e9ccc00b8dbf8f4a99bf0d56ab25832f6e6addd4f7f57 (computed) thinking_mode off
+[INFO] tuned: /app/models/trained/organism-null/hf model_hash ed23fee1047e1c8e63c646e09964a8ba4f1dc07c1099172909715b1c6cd45780 (manifest) thinking_mode off
+[RUN] holdout/base: /app/models/hf/gemma-4-E2B
+ Container ai-experiments-training-run-3a5d68fe8576 Creating 
+ Container ai-experiments-training-run-3a5d68fe8576 Created 
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[0;34m[RUN][0m exec: python -m training eval-holdout --model /app/models/hf/gemma-4-E2B --dataset /mnt/ai-data/training/datasets/sft/ultrachat-e2b --out /mnt/ai-data/training/eval/ft7-organism-null/holdout_base.json
+[RUN] Held-out loss: /app/models/hf/gemma-4-E2B over /mnt/ai-data/training/datasets/sft/ultrachat-e2b
+[model] flash-attn supports head_dim <= 256; this model's widest head is 512, so attention runs on sdpa
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+
+Loading weights:   0%|          | 0/1951 [00:00<?, ?it/s]
+Loading weights:  39%|███▊      | 754/1951 [00:00<00:00, 2516.85it/s]
+Loading weights:  57%|█████▋    | 1106/1951 [00:00<00:00, 2839.79it/s]
+Loading weights:  81%|████████▏ | 1589/1951 [00:00<00:00, 3467.30it/s]
+Loading weights: 100%|██████████| 1951/1951 [00:00<00:00, 3741.26it/s]
+[OK] Loss 1.064038, perplexity 2.8980 (4066 examples, 3631683 supervised tokens, bf16)
+[OK] Record written: /mnt/ai-data/training/eval/ft7-organism-null/holdout_base.json
+[OK] holdout/base: loss 1.064038
+[RUN] holdout/tuned: /app/models/trained/organism-null/hf
+ Container ai-experiments-training-run-aab990c41573 Creating 
+ Container ai-experiments-training-run-aab990c41573 Created 
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[0;34m[RUN][0m exec: python -m training eval-holdout --model /app/models/trained/organism-null/hf --dataset /mnt/ai-data/training/datasets/sft/ultrachat-e2b --out /mnt/ai-data/training/eval/ft7-organism-null/holdout_tuned.json
+[RUN] Held-out loss: /app/models/trained/organism-null/hf over /mnt/ai-data/training/datasets/sft/ultrachat-e2b
+[model] flash-attn supports head_dim <= 256; this model's widest head is 512, so attention runs on sdpa
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+
+Loading weights:   0%|          | 0/1951 [00:00<?, ?it/s]
+Loading weights:  39%|███▊      | 754/1951 [00:00<00:00, 1877.91it/s]
+Loading weights:  58%|█████▊    | 1126/1951 [00:00<00:00, 2360.52it/s]
+Loading weights:  93%|█████████▎| 1822/1951 [00:00<00:00, 3613.98it/s]
+Loading weights: 100%|██████████| 1951/1951 [00:00<00:00, 3197.09it/s]
+[OK] Loss 1.023936, perplexity 2.7841 (4066 examples, 3631683 supervised tokens, bf16)
+[OK] Record written: /mnt/ai-data/training/eval/ft7-organism-null/holdout_tuned.json
+[OK] holdout/tuned: loss 1.023936
+[RUN] lmeval/base: /app/models/hf/gemma-4-E2B
+ Container ai-experiments-training-run-3f9f727fac75 Creating 
+ Container ai-experiments-training-run-3f9f727fac75 Created 
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[0;34m[RUN][0m exec: python -m training eval-lmeval --model /app/models/hf/gemma-4-E2B --out /mnt/ai-data/training/eval/ft7-organism-null/lmeval_base.json --limit 20
+[RUN] lm-evaluation-harness: /app/models/hf/gemma-4-E2B
+
+Loading weights:   0%|          | 0/1951 [00:00<?, ?it/s]
+Loading weights:  39%|███▊      | 754/1951 [00:00<00:00, 2533.20it/s]
+Loading weights:  57%|█████▋    | 1109/1951 [00:00<00:00, 2848.99it/s]
+Loading weights:  88%|████████▊ | 1724/1951 [00:00<00:00, 3890.06it/s]
+Loading weights: 100%|██████████| 1951/1951 [00:00<00:00, 3814.80it/s]
+Using the latest cached version of the dataset since google/IFEval couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'default' at /app/cache/datasets/google___if_eval/default/0.0.0/966cd89545d6b6acfd7638bc708b98261ca58e84 (last modified on Fri Sep 25 19:34:02 2026).
+Using the latest cached version of the dataset since openai/gsm8k couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'main' at /app/cache/datasets/openai___gsm8k/main/0.0.0/740312add88f781978c0658806c59bc2815b9866 (last modified on Fri Sep 25 19:34:09 2026).
+Using the latest cached version of the dataset since tinyBenchmarks/tinyMMLU couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'all' at /app/cache/datasets/tinyBenchmarks___tiny_mmlu/all/0.0.0/cd6a8ee9e1e6f3f18f683535f6c096c386a85da3 (last modified on Fri Sep 25 19:35:56 2026).
+Using the latest cached version of the dataset since Rowan/hellaswag couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'default' at /app/cache/datasets/Rowan___hellaswag/default/0.0.0/218ec52e09a7e7462a5400043bb9a69a41d06b76 (last modified on Fri Sep 25 22:44:36 2026).
+
+  0%|          | 0/20 [00:00<?, ?it/s]
+100%|██████████| 20/20 [00:00<00:00, 71453.22it/s]
+
+  0%|          | 0/20 [00:00<?, ?it/s]
+100%|██████████| 20/20 [00:00<00:00, 710.65it/s]
+
+  0%|          | 0/20 [00:00<?, ?it/s]
+100%|██████████| 20/20 [00:00<00:00, 8657.87it/s]
+
+  0%|          | 0/20 [00:00<?, ?it/s]
+100%|██████████| 20/20 [00:00<00:00, 4887.04it/s]
+
+Running generate_until requests:   0%|          | 0/40 [00:00<?, ?it/s]Passed argument batch_size = auto. Detecting largest batch size
+[W926 21:18:51.489570638 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 3221225472 bytes (free: 2256338944, total: 33668726784).
+[W926 21:18:52.848330823 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 68719476736 bytes (free: 1383923712, total: 33668726784).
+[W926 21:18:54.825190487 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 68719476736 bytes (free: 15682306048, total: 33668726784).
+[W926 21:18:56.578181993 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 2868903936 bytes (free: 2346516480, total: 33668726784).
+[W926 21:18:57.752165558 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 61203283968 bytes (free: 1570570240, total: 33668726784).
+[W926 21:18:59.544707546 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 61203283968 bytes (free: 11498487808, total: 33668726784).
+[W926 21:19:01.191262972 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 54760833024 bytes (free: 1438449664, total: 33668726784).
+[W926 21:19:03.805228770 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 54760833024 bytes (free: 14801502208, total: 33668726784).
+[W926 21:19:05.173384781 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 48318382080 bytes (free: 5924257792, total: 33668726784).
+[W926 21:19:07.594110297 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 48318382080 bytes (free: 15682306048, total: 33668726784).
+[W926 21:19:09.719459528 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 42949672960 bytes (free: 7792820224, total: 33668726784).
+[W926 21:19:10.996034206 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 42949672960 bytes (free: 16489709568, total: 33668726784).
+[W926 21:19:12.936827306 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 38654705664 bytes (free: 9388752896, total: 33668726784).
+[W926 21:19:13.083890908 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 38654705664 bytes (free: 16783310848, total: 33668726784).
+[W926 21:19:15.841860882 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 34359738368 bytes (free: 10472980480, total: 33668726784).
+[W926 21:19:16.864595305 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 34359738368 bytes (free: 17737515008, total: 33668726784).
+[W926 21:19:18.434270580 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 30064771072 bytes (free: 12215713792, total: 33668726784).
+[W926 21:19:19.328773607 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 30064771072 bytes (free: 18324717568, total: 33668726784).
+[W926 21:19:20.760140862 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 26843545600 bytes (free: 14652604416, total: 33668726784).
+[W926 21:19:21.552409371 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 26843545600 bytes (free: 16489709568, total: 33668726784).
+[W926 21:19:22.846609172 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 23622320128 bytes (free: 14872805376, total: 33668726784).
+[W926 21:19:23.544487490 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 23622320128 bytes (free: 17223712768, total: 33668726784).
+[W926 21:19:24.698727092 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 20401094656 bytes (free: 15827009536, total: 33668726784).
+[W926 21:19:25.301434885 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 20401094656 bytes (free: 17884315648, total: 33668726784).
+[W926 21:19:26.366528891 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 18253611008 bytes (free: 16634413056, total: 33668726784).
+[W926 21:19:26.910685821 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 18253611008 bytes (free: 217907200, total: 33668726784).
+[W926 21:19:26.910737078 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 18253611008 bytes (free: 217907200, total: 33668726784).
+[W926 21:19:27.880677121 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 16106127360 bytes (free: 213712896, total: 33668726784).
+[W926 21:19:28.464296280 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 16106127360 bytes (free: 3080519680, total: 33668726784).
+[W926 21:19:29.342869972 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13958643712 bytes (free: 3076325376, total: 33668726784).
+[W926 21:19:29.841994881 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13958643712 bytes (free: 3080519680, total: 33668726784).
+[W926 21:19:30.624814137 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11811160064 bytes (free: 3076325376, total: 33668726784).
+[W926 21:19:30.046166911 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11811160064 bytes (free: 3080519680, total: 33668726784).
+[W926 21:19:31.735928994 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9663676416 bytes (free: 3078422528, total: 33668726784).
+[W926 21:19:31.077529064 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9663676416 bytes (free: 3080519680, total: 33668726784).
+[W926 21:19:33.447537918 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8589934592 bytes (free: 3078422528, total: 33668726784).
+[W926 21:19:33.751796082 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8589934592 bytes (free: 3080519680, total: 33668726784).
+[W926 21:19:34.966506370 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7516192768 bytes (free: 3078422528, total: 33668726784).
+[W926 21:19:34.229703745 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7516192768 bytes (free: 3080519680, total: 33668726784).
+[W926 21:19:36.299110706 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6442450944 bytes (free: 3078422528, total: 33668726784).
+[W926 21:19:36.521606219 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6442450944 bytes (free: 3080519680, total: 33668726784).
+Determined Largest batch size: 5
+
+Running generate_until requests:   2%|▎         | 1/40 [01:11<46:26, 71.44s/it]
+Running generate_until requests:  15%|█▌        | 6/40 [01:32<07:03, 12.47s/it]
+Running generate_until requests:  28%|██▊       | 11/40 [01:53<03:47,  7.86s/it]
+Running generate_until requests:  40%|████      | 16/40 [02:14<02:29,  6.23s/it]
+Running generate_until requests:  52%|█████▎    | 21/40 [02:18<01:19,  4.17s/it]
+Running generate_until requests:  65%|██████▌   | 26/40 [02:21<00:40,  2.91s/it]
+Running generate_until requests:  78%|███████▊  | 31/40 [02:25<00:19,  2.15s/it]
+Running generate_until requests:  90%|█████████ | 36/40 [02:28<00:06,  1.63s/it]
+Running generate_until requests: 100%|██████████| 40/40 [02:28<00:00,  3.70s/it]
+
+Tokenizing inputs:   0%|          | 0/160 [00:00<?, ?it/s]
+Tokenizing inputs: 100%|██████████| 160/160 [00:00<00:00, 2018.38it/s]
+
+Running loglikelihood requests:   0%|          | 0/160 [00:00<?, ?it/s]Passed argument batch_size = auto:1. Detecting largest batch size
+[W926 21:21:20.469399359 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 65062043648 bytes (free: 287113216, total: 33668726784).
+[W926 21:21:22.321111639 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 65062043648 bytes (free: 16055599104, total: 33668726784).
+[W926 21:21:24.151582392 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 57946406912 bytes (free: 708640768, total: 33668726784).
+[W926 21:21:26.820893103 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 57946406912 bytes (free: 12094078976, total: 33668726784).
+[W926 21:21:29.385314111 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 51847888896 bytes (free: 2568814592, total: 33668726784).
+[W926 21:21:30.886167949 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 51847888896 bytes (free: 15223029760, total: 33668726784).
+[W926 21:21:32.151170057 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 45747273728 bytes (free: 6813450240, total: 33668726784).
+[W926 21:21:34.503615736 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 45747273728 bytes (free: 15638265856, total: 33668726784).
+[W926 21:21:36.547032757 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 40663777280 bytes (free: 8166113280, total: 33668726784).
+[W926 21:21:37.745559753 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 40663777280 bytes (free: 14080081920, total: 33668726784).
+[W926 21:21:39.614517918 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 36597399552 bytes (free: 11573985280, total: 33668726784).
+[W926 21:21:40.694669505 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 36597399552 bytes (free: 15539699712, total: 33668726784).
+[W926 21:21:42.383821637 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 32531021824 bytes (free: 11785797632, total: 33668726784).
+[W926 21:21:43.346533124 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 32531021824 bytes (free: 18001756160, total: 33668726784).
+[W926 21:21:44.859171441 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 28464644096 bytes (free: 12771459072, total: 33668726784).
+[W926 21:21:45.701473801 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 28464644096 bytes (free: 18280677376, total: 33668726784).
+[W926 21:21:46.081505084 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 25415385088 bytes (free: 13608222720, total: 33668726784).
+[W926 21:21:47.831391502 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 25415385088 bytes (free: 16542138368, total: 33668726784).
+[W926 21:21:48.081368633 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 22366126080 bytes (free: 15009120256, total: 33668726784).
+[W926 21:21:49.746493196 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 22366126080 bytes (free: 19459276800, total: 33668726784).
+[W926 21:21:50.865040076 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 19316867072 bytes (free: 16814768128, total: 33668726784).
+[W926 21:21:51.433341695 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 19316867072 bytes (free: 18138071040, total: 33668726784).
+[W926 21:21:52.464065428 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 17282629632 bytes (free: 16953180160, total: 33668726784).
+[W926 21:21:52.977627821 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 17282629632 bytes (free: 1411186688, total: 33668726784).
+[W926 21:21:52.977697813 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 17282629632 bytes (free: 1411186688, total: 33668726784).
+[W926 21:21:53.923689787 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 15250489344 bytes (free: 1406992384, total: 33668726784).
+[W926 21:21:54.477286355 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 15250489344 bytes (free: 4124901376, total: 33668726784).
+[W926 21:21:55.328583485 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13216251904 bytes (free: 4120707072, total: 33668726784).
+[W926 21:21:55.799552849 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13216251904 bytes (free: 4124901376, total: 33668726784).
+[W926 21:21:56.557216620 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11184111616 bytes (free: 4120707072, total: 33668726784).
+[W926 21:21:56.954114479 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11184111616 bytes (free: 4124901376, total: 33668726784).
+[W926 21:21:57.625505702 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9149874176 bytes (free: 4122804224, total: 33668726784).
+[W926 21:21:57.948304613 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9149874176 bytes (free: 4124901376, total: 33668726784).
+[W926 21:21:58.254655267 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8132755456 bytes (free: 4122804224, total: 33668726784).
+[W926 21:21:59.540670420 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8132755456 bytes (free: 4124901376, total: 33668726784).
+[W926 21:22:00.721200669 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7117733888 bytes (free: 4122804224, total: 33668726784).
+[W926 21:22:00.972977433 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7117733888 bytes (free: 4124901376, total: 33668726784).
+[W926 21:22:01.987867967 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6100615168 bytes (free: 4122804224, total: 33668726784).
+[W926 21:22:01.194892275 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6100615168 bytes (free: 4124901376, total: 33668726784).
+Determined largest batch size: 5
+
+Running loglikelihood requests:   1%|          | 1/160 [00:47<2:06:58, 47.92s/it]
+Running loglikelihood requests:  13%|█▎        | 21/160 [00:48<03:46,  1.63s/it] 
+Running loglikelihood requests:  26%|██▌       | 41/160 [00:48<01:21,  1.46it/s]
+Running loglikelihood requests:  51%|█████     | 81/160 [00:48<00:20,  3.81it/s]
+Running loglikelihood requests:  69%|██████▉   | 111/160 [00:48<00:07,  6.30it/s]
+Running loglikelihood requests:  88%|████████▊ | 141/160 [00:48<00:01,  9.70it/s]
+Running loglikelihood requests: 100%|██████████| 160/160 [00:48<00:00,  3.28it/s]
+fatal: not a git repository (or any of the parent directories): .git
+[OK] gsm8k: exact_match,strict-match = 0.2500 (stderr 0.0993)
+[OK] hellaswag: acc_norm,none = 0.5500 (stderr 0.1141)
+[OK] ifeval: prompt_level_strict_acc,none = 0.0500 (stderr 0.0500)
+[OK] tinyMMLU_acc: acc_norm,none = 0.6500 (stderr 0.1094)
+[OK] Record written: /mnt/ai-data/training/eval/ft7-organism-null/lmeval_base.json
+[RUN] lmeval/tuned: /app/models/trained/organism-null/hf
+ Container ai-experiments-training-run-47125a2ef61e Creating 
+ Container ai-experiments-training-run-47125a2ef61e Created 
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[0;34m[RUN][0m exec: python -m training eval-lmeval --model /app/models/trained/organism-null/hf --out /mnt/ai-data/training/eval/ft7-organism-null/lmeval_tuned.json --limit 20
+[RUN] lm-evaluation-harness: /app/models/trained/organism-null/hf
+
+Loading weights:   0%|          | 0/1951 [00:00<?, ?it/s]
+Loading weights:  39%|███▊      | 754/1951 [00:00<00:00, 1928.66it/s]
+Loading weights:  58%|█████▊    | 1126/1951 [00:00<00:00, 2399.86it/s]
+Loading weights:  98%|█████████▊| 1915/1951 [00:00<00:00, 3914.35it/s]
+Loading weights: 100%|██████████| 1951/1951 [00:00<00:00, 3275.34it/s]
+Using the latest cached version of the dataset since google/IFEval couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'default' at /app/cache/datasets/google___if_eval/default/0.0.0/966cd89545d6b6acfd7638bc708b98261ca58e84 (last modified on Fri Sep 25 19:34:02 2026).
+Using the latest cached version of the dataset since openai/gsm8k couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'main' at /app/cache/datasets/openai___gsm8k/main/0.0.0/740312add88f781978c0658806c59bc2815b9866 (last modified on Fri Sep 25 19:34:09 2026).
+Using the latest cached version of the dataset since tinyBenchmarks/tinyMMLU couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'all' at /app/cache/datasets/tinyBenchmarks___tiny_mmlu/all/0.0.0/cd6a8ee9e1e6f3f18f683535f6c096c386a85da3 (last modified on Fri Sep 25 19:35:56 2026).
+Using the latest cached version of the dataset since Rowan/hellaswag couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'default' at /app/cache/datasets/Rowan___hellaswag/default/0.0.0/218ec52e09a7e7462a5400043bb9a69a41d06b76 (last modified on Fri Sep 25 22:44:36 2026).
+
+  0%|          | 0/20 [00:00<?, ?it/s]
+100%|██████████| 20/20 [00:00<00:00, 82891.38it/s]
+
+  0%|          | 0/20 [00:00<?, ?it/s]
+100%|██████████| 20/20 [00:00<00:00, 753.50it/s]
+
+  0%|          | 0/20 [00:00<?, ?it/s]
+100%|██████████| 20/20 [00:00<00:00, 6586.02it/s]
+
+  0%|          | 0/20 [00:00<?, ?it/s]
+100%|██████████| 20/20 [00:00<00:00, 4514.86it/s]
+
+Running generate_until requests:   0%|          | 0/40 [00:00<?, ?it/s]Passed argument batch_size = auto. Detecting largest batch size
+[W926 21:22:23.353177999 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 3221225472 bytes (free: 2256338944, total: 33668726784).
+[W926 21:22:24.710988430 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 68719476736 bytes (free: 1383923712, total: 33668726784).
+[W926 21:22:26.685167119 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 68719476736 bytes (free: 15682306048, total: 33668726784).
+[W926 21:22:28.435910278 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 2868903936 bytes (free: 2346516480, total: 33668726784).
+[W926 21:22:29.608959524 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 61203283968 bytes (free: 1570570240, total: 33668726784).
+[W926 21:22:31.398772614 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 61203283968 bytes (free: 11498487808, total: 33668726784).
+[W926 21:22:33.043380893 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 54760833024 bytes (free: 1438449664, total: 33668726784).
+[W926 21:22:35.653260494 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 54760833024 bytes (free: 14801502208, total: 33668726784).
+[W926 21:22:37.016843403 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 48318382080 bytes (free: 5924257792, total: 33668726784).
+[W926 21:22:39.437709751 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 48318382080 bytes (free: 15682306048, total: 33668726784).
+[W926 21:22:41.559087573 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 42949672960 bytes (free: 7792820224, total: 33668726784).
+[W926 21:22:42.833999094 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 42949672960 bytes (free: 16489709568, total: 33668726784).
+[W926 21:22:44.768912887 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 38654705664 bytes (free: 9388752896, total: 33668726784).
+[W926 21:22:45.914873264 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 38654705664 bytes (free: 16783310848, total: 33668726784).
+[W926 21:22:47.669658744 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 34359738368 bytes (free: 10472980480, total: 33668726784).
+[W926 21:22:48.691595582 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 34359738368 bytes (free: 17737515008, total: 33668726784).
+[W926 21:22:49.258510910 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 30064771072 bytes (free: 12215713792, total: 33668726784).
+[W926 21:22:50.151507465 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 30064771072 bytes (free: 18324717568, total: 33668726784).
+[W926 21:22:52.580509905 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 26843545600 bytes (free: 14652604416, total: 33668726784).
+[W926 21:22:53.371398010 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 26843545600 bytes (free: 16489709568, total: 33668726784).
+[W926 21:22:54.661254915 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 23622320128 bytes (free: 14872805376, total: 33668726784).
+[W926 21:22:55.359554747 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 23622320128 bytes (free: 17223712768, total: 33668726784).
+[W926 21:22:56.511359743 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 20401094656 bytes (free: 15827009536, total: 33668726784).
+[W926 21:22:56.114442540 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 20401094656 bytes (free: 17884315648, total: 33668726784).
+[W926 21:22:57.176107096 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 18253611008 bytes (free: 16634413056, total: 33668726784).
+[W926 21:22:58.719699115 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 18253611008 bytes (free: 217907200, total: 33668726784).
+[W926 21:22:58.719751454 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 18253611008 bytes (free: 217907200, total: 33668726784).
+[W926 21:22:59.686807474 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 16106127360 bytes (free: 213712896, total: 33668726784).
+[W926 21:23:00.269359768 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 16106127360 bytes (free: 3080519680, total: 33668726784).
+[W926 21:23:00.147755414 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13958643712 bytes (free: 3076325376, total: 33668726784).
+[W926 21:23:01.646862163 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13958643712 bytes (free: 3080519680, total: 33668726784).
+[W926 21:23:02.429897854 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11811160064 bytes (free: 3076325376, total: 33668726784).
+[W926 21:23:02.850509967 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11811160064 bytes (free: 3080519680, total: 33668726784).
+[W926 21:23:03.540064701 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9663676416 bytes (free: 3078422528, total: 33668726784).
+[W926 21:23:03.881442253 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9663676416 bytes (free: 3080519680, total: 33668726784).
+[W926 21:23:04.249750081 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8589934592 bytes (free: 3078422528, total: 33668726784).
+[W926 21:23:05.553863179 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8589934592 bytes (free: 3080519680, total: 33668726784).
+[W926 21:23:06.768561629 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7516192768 bytes (free: 3078422528, total: 33668726784).
+[W926 21:23:06.031579190 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7516192768 bytes (free: 3080519680, total: 33668726784).
+[W926 21:23:07.099943191 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6442450944 bytes (free: 3078422528, total: 33668726784).
+[W926 21:23:08.322311456 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6442450944 bytes (free: 3080519680, total: 33668726784).
+Determined Largest batch size: 5
+
+Running generate_until requests:   2%|▎         | 1/40 [01:11<46:23, 71.37s/it]
+Running generate_until requests:  15%|█▌        | 6/40 [01:32<07:03, 12.46s/it]
+Running generate_until requests:  28%|██▊       | 11/40 [01:53<03:47,  7.85s/it]
+Running generate_until requests:  40%|████      | 16/40 [02:14<02:29,  6.23s/it]
+Running generate_until requests:  52%|█████▎    | 21/40 [02:18<01:18,  4.13s/it]
+Running generate_until requests:  65%|██████▌   | 26/40 [02:22<00:41,  2.97s/it]
+Running generate_until requests:  78%|███████▊  | 31/40 [02:26<00:19,  2.21s/it]
+Running generate_until requests:  90%|█████████ | 36/40 [02:29<00:06,  1.68s/it]
+Running generate_until requests: 100%|██████████| 40/40 [02:29<00:00,  3.73s/it]
+
+Tokenizing inputs:   0%|          | 0/160 [00:00<?, ?it/s]
+Tokenizing inputs: 100%|██████████| 160/160 [00:00<00:00, 2039.76it/s]
+
+Running loglikelihood requests:   0%|          | 0/160 [00:00<?, ?it/s]Passed argument batch_size = auto:1. Detecting largest batch size
+[W926 21:24:53.401982812 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 65062043648 bytes (free: 287113216, total: 33668726784).
+[W926 21:24:54.253130430 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 65062043648 bytes (free: 16055599104, total: 33668726784).
+[W926 21:24:57.085803844 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 57946406912 bytes (free: 708640768, total: 33668726784).
+[W926 21:24:59.755893236 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 57946406912 bytes (free: 12094078976, total: 33668726784).
+[W926 21:25:02.321289517 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 51847888896 bytes (free: 2568814592, total: 33668726784).
+[W926 21:25:03.821170083 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 51847888896 bytes (free: 15223029760, total: 33668726784).
+[W926 21:25:05.089506230 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 45747273728 bytes (free: 6813450240, total: 33668726784).
+[W926 21:25:07.441618899 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 45747273728 bytes (free: 15638265856, total: 33668726784).
+[W926 21:25:09.487616398 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 40663777280 bytes (free: 8166113280, total: 33668726784).
+[W926 21:25:10.686572233 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 40663777280 bytes (free: 14080081920, total: 33668726784).
+[W926 21:25:12.557916254 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 36597399552 bytes (free: 11573985280, total: 33668726784).
+[W926 21:25:13.637664757 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 36597399552 bytes (free: 15539699712, total: 33668726784).
+[W926 21:25:15.329997591 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 32531021824 bytes (free: 11785797632, total: 33668726784).
+[W926 21:25:16.292525103 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 32531021824 bytes (free: 18001756160, total: 33668726784).
+[W926 21:25:17.808025415 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 28464644096 bytes (free: 12771459072, total: 33668726784).
+[W926 21:25:18.650455384 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 28464644096 bytes (free: 18280677376, total: 33668726784).
+[W926 21:25:19.032883813 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 25415385088 bytes (free: 13608222720, total: 33668726784).
+[W926 21:25:20.784384962 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 25415385088 bytes (free: 16542138368, total: 33668726784).
+[W926 21:25:21.035667274 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 22366126080 bytes (free: 15009120256, total: 33668726784).
+[W926 21:25:22.699489700 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 22366126080 bytes (free: 19459276800, total: 33668726784).
+[W926 21:25:23.820156878 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 19316867072 bytes (free: 16814768128, total: 33668726784).
+[W926 21:25:24.388355279 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 19316867072 bytes (free: 18138071040, total: 33668726784).
+[W926 21:25:25.420874719 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 17282629632 bytes (free: 16953180160, total: 33668726784).
+[W926 21:25:25.934860735 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 17282629632 bytes (free: 1411186688, total: 33668726784).
+[W926 21:25:25.934926229 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 17282629632 bytes (free: 1411186688, total: 33668726784).
+[W926 21:25:26.886856744 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 15250489344 bytes (free: 1406992384, total: 33668726784).
+[W926 21:25:27.440291284 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 15250489344 bytes (free: 4124901376, total: 33668726784).
+[W926 21:25:28.291704403 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13216251904 bytes (free: 4120707072, total: 33668726784).
+[W926 21:25:28.762619484 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 13216251904 bytes (free: 4124901376, total: 33668726784).
+[W926 21:25:29.522283314 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11184111616 bytes (free: 4120707072, total: 33668726784).
+[W926 21:25:29.919075432 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 11184111616 bytes (free: 4124901376, total: 33668726784).
+[W926 21:25:30.590186850 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9149874176 bytes (free: 4122804224, total: 33668726784).
+[W926 21:25:30.913268594 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 9149874176 bytes (free: 4124901376, total: 33668726784).
+[W926 21:25:31.222166971 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8132755456 bytes (free: 4122804224, total: 33668726784).
+[W926 21:25:32.508152872 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 8132755456 bytes (free: 4124901376, total: 33668726784).
+[W926 21:25:33.688083197 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7117733888 bytes (free: 4122804224, total: 33668726784).
+[W926 21:25:33.939961841 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 7117733888 bytes (free: 4124901376, total: 33668726784).
+[W926 21:25:34.954129541 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6100615168 bytes (free: 4122804224, total: 33668726784).
+[W926 21:25:34.161143613 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 6100615168 bytes (free: 4124901376, total: 33668726784).
+Determined largest batch size: 5
+
+Running loglikelihood requests:   1%|          | 1/160 [00:47<2:07:04, 47.95s/it]
+Running loglikelihood requests:  13%|█▎        | 21/160 [00:48<03:46,  1.63s/it] 
+Running loglikelihood requests:  26%|██▌       | 41/160 [00:48<01:21,  1.46it/s]
+Running loglikelihood requests:  51%|█████     | 81/160 [00:48<00:20,  3.81it/s]
+Running loglikelihood requests:  69%|██████▉   | 111/160 [00:48<00:07,  6.29it/s]
+Running loglikelihood requests:  88%|████████▊ | 141/160 [00:48<00:01,  9.69it/s]
+Running loglikelihood requests: 100%|██████████| 160/160 [00:48<00:00,  3.27it/s]
+fatal: not a git repository (or any of the parent directories): .git
+[OK] gsm8k: exact_match,strict-match = 0.3000 (stderr 0.1051)
+[OK] hellaswag: acc_norm,none = 0.6000 (stderr 0.1124)
+[OK] ifeval: prompt_level_strict_acc,none = 0.1000 (stderr 0.0688)
+[OK] tinyMMLU_acc: acc_norm,none = 0.6500 (stderr 0.1094)
+[OK] Record written: /mnt/ai-data/training/eval/ft7-organism-null/lmeval_tuned.json
+[OK] lmeval/gsm8k: 0.2500 -> 0.3000
+[OK] lmeval/hellaswag: 0.5500 -> 0.6000
+[OK] lmeval/ifeval: 0.0500 -> 0.1000
+[OK] lmeval/tinyMMLU_acc: 0.6500 -> 0.6500
+
+[OK] Record written: /mnt/ai-data/training/eval/ft7-organism-null/holdout_base.json
+[OK] Record written: /mnt/ai-data/training/eval/ft7-organism-null/holdout_tuned.json
+[OK] Record written: /mnt/ai-data/training/eval/ft7-organism-null/lmeval_base.json
+[OK] Record written: /mnt/ai-data/training/eval/ft7-organism-null/lmeval_tuned.json
+make[1]: Leaving directory '/home/alejandro/workspace/ai-experiments'
+[OK] eval-ft: exit 0
+
+holdout_base.json
+holdout_tuned.json
+lmeval_base.json
+lmeval_tuned.json
+
+[RUN] 6/9 organism-verify
+make[1]: Entering directory '/home/alejandro/workspace/ai-experiments'
+[36mStarting vllm-gpu...[0m
+docker compose -f docker-compose.inference.yaml up -d vllm-gpu
+ Network ai-experiments_ai-network Creating 
+ Network ai-experiments_ai-network Created 
+ Container vllm-gpu Creating 
+ Container vllm-gpu Created 
+ Container vllm-gpu Starting 
+ Container vllm-gpu Started 
+[32mvllm-gpu started on port 8003.[0m
+make[1]: Leaving directory '/home/alejandro/workspace/ai-experiments'
+[OK] vllm-gpu healthy after 114.0s
+make[1]: Entering directory '/home/alejandro/workspace/ai-experiments'
+docker compose -f docker-compose.rust-harness.yaml up -d harness-serve
+ Network ai-experiments_default Creating 
+ Network ai-experiments_default Created 
+time="2026-09-26T14:27:34-07:00" level=warning msg="Found orphan containers (vllm-gpu) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
+ Container rust-harness-serve Creating 
+ Container rust-harness-serve Created 
+ Container rust-harness-serve Starting 
+ Container rust-harness-serve Started 
+[32mharness-serve started on 127.0.0.1:8005; loading the checkpoint takes minutes.[0m
+[36mPoll it with: python -c 'from common import serving; print(serving.wait_healthy(serving.SERVICES["harness"]))'[0m
+make[1]: Leaving directory '/home/alejandro/workspace/ai-experiments'
+6.002853201000107
+make[1]: Entering directory '/home/alejandro/workspace/ai-experiments'
+uv run --no-sync python -m interp organism verify --recipe training/recipes/organisms/null.yaml --base-metrics /mnt/ai-data/training/eval/ft7-organism-null/holdout_base.json --base-metrics /mnt/ai-data/training/eval/ft7-organism-null/lmeval_base.json --subject-metrics /mnt/ai-data/training/eval/ft7-organism-null/holdout_tuned.json --subject-metrics /mnt/ai-data/training/eval/ft7-organism-null/lmeval_tuned.json 
+=== Organism verification: organism-null (null) ===
+[INFO] Judge: /app/models/hf/gemma-4-E4B-it at http://127.0.0.1:8003
+[RUN] Eliciting 60 held-out QA prompts
+[RUN] Judging fact recall
+
+[WARN] Implant check: failed
+[OK] Locality check: passed (gated holdout.loss of 5 metrics, epsilon 0.05)
+[INFO] Locality deltas: holdout.loss -0.040, lmeval.gsm8k +0.050, lmeval.hellaswag +0.050, lmeval.ifeval +0.050, lmeval.tinyMMLU_acc +0.000
+[OK] Verdict: null control: implant check failed as required
+[OK] Report written: /mnt/ai-data/interp/organisms/organism-null/verification.json
+make[1]: Leaving directory '/home/alejandro/workspace/ai-experiments'
+make[1]: Entering directory '/home/alejandro/workspace/ai-experiments'
+docker compose -f docker-compose.rust-harness.yaml down harness-serve
+ Container rust-harness-serve Stopping 
+ Container rust-harness-serve Stopped 
+ Container rust-harness-serve Removing 
+ Container rust-harness-serve Removed 
+ Network ai-experiments_default Removing 
+ Network ai-experiments_default Removed 
+[32mharness-serve stopped.[0m
+make[1]: Leaving directory '/home/alejandro/workspace/ai-experiments'
+make[1]: Entering directory '/home/alejandro/workspace/ai-experiments'
+[36mStopping all AI services...[0m
+docker compose -f docker-compose.inference.yaml down
+ Container vllm-gpu Stopping 
+ Container vllm-gpu Stopped 
+ Container vllm-gpu Removing 
+ Container vllm-gpu Removed 
+ Network ai-experiments_ai-network Removing 
+ Network ai-experiments_ai-network Removed 
+[32mAll services stopped.[0m
+make[1]: Leaving directory '/home/alejandro/workspace/ai-experiments'
+[OK] organism-verify: exit 0
+
+[RUN] 7/9 organism-seal
+make[1]: Entering directory '/home/alejandro/workspace/ai-experiments'
+uv run --no-sync python -m interp organism seal --recipe training/recipes/organisms/null.yaml --checkpoint /mnt/ai-data/models/trained/organism-null/hf
+[OK] Sealed: ground truth SHA-256 73c301d511cc3b708d067dff1e1e846be97614fd6de7799a20527549fa52e113
+[OK] Subject: /mnt/ai-data/models/trained/organism-null/hf (model_hash ed23fee1047e1c8e63c646e09964a8ba4f1dc07c1099172909715b1c6cd45780)
+[OK] Public manifest: /mnt/ai-data/interp/organisms/organism-null/manifest.json
+[INFO] Auditors receive the public manifest only
+make[1]: Leaving directory '/home/alejandro/workspace/ai-experiments'
+[OK] organism-seal: exit 0
+
+[RUN] 8/9 organism-check-seal
+make[1]: Entering directory '/home/alejandro/workspace/ai-experiments'
+uv run --no-sync python -m interp organism check-seal --dir /mnt/ai-data/interp/organisms/organism-null
+[OK] Seal intact: organism-null (SHA-256 73c301d511cc3b708d067dff1e1e846be97614fd6de7799a20527549fa52e113)
+make[1]: Leaving directory '/home/alejandro/workspace/ai-experiments'
+  "checkpoint": "/mnt/ai-data/models/trained/organism-null/hf",
+  "model_hash": "ed23fee1047e1c8e63c646e09964a8ba4f1dc07c1099172909715b1c6cd45780",
+[OK] organism-check-seal: exit 0
+
+[RUN] 9/9 tamper arm
+[SKIP] tamper arm: the null organism has no tamper arm
+
+[OK] ft-organisms: organism-null complete
+exit=0
+```
+
+Every criterion the entry states for the null, in order. The four
+removals and `[SKIP] generate`. Stage 2: `[INFO] Replay: 768 examples
+from HuggingFaceH4/ultrachat_200k (test_sft)`, `[INFO] Corpus repeat:
+48`, `[OK] Train examples: 1,536` (the verb prints the count with a
+thousands separator, which the earlier counts could not show; the
+expected signal now spells it so), `[OK] Holdout examples: 0 (fraction
+0.0, seed 42)`, `[OK] Tokens: 1,577,427 total, 1,342,291 supervised`,
+exit 0. Stage 3: `96 total steps`, a loss of 0.811 at step 20, 0.573 at
+30, 0.578 at 40, 0.553 at 50, 0.605 at 60, 0.517 at 70, 0.587 at 80 and
+0.405 at 90, a plateau near 0.55 where the eighth attempt slid to 0.31,
+`epoch 1`, 536 s (5.6 s a step), `[OK] Run complete: step 96 [trl]`,
+`Final train loss: 0.404962`, the same trainable count, checkpoints 32,
+64 and 96 beside `latest` and `README.md`, exit 0. Stage 4: `[OK] Base
+model verified:`, one 10,208,852,910-byte export, `model_hash`
+`ed23fee1...`, exit 0. Stage 5: base holdout loss 1.064038 and tuned
+1.023936, a delta of -0.040 inside epsilon and in the neighbourhood of
+the reference adapter's 1.019; gsm8k 0.25 to 0.30, hellaswag 0.55 to
+0.60, ifeval 0.05 to 0.10, tinyMMLU_acc unchanged, each one item; exit 0;
+the known noise. Stage 6: `[OK] vllm-gpu healthy after 114.0s`, the
+harness in 6.0 s, `[INFO] Judge: /app/models/hf/gemma-4-E4B-it at
+http://127.0.0.1:8003`, `[RUN] Eliciting 60 held-out QA prompts`, `[RUN]
+Judging fact recall`, a blank line, `[WARN] Implant check: failed`, `[OK]
+Locality check: passed (gated holdout.loss of 5 metrics, epsilon
+0.05)`, `[INFO] Locality deltas: holdout.loss -0.040, lmeval.gsm8k
++0.050, lmeval.hellaswag +0.050, lmeval.ifeval +0.050,
+lmeval.tinyMMLU_acc +0.000` (three tasks moved one item, reported and
+not judged, as designed), `[OK] Verdict: null control: implant check
+failed as required`, `[OK] Report written:`, both services down, exit
+0. Stage 7: `[OK] Sealed: ground truth SHA-256 73c301d5...`, `[OK]
+Subject:` naming the export and its hash, `[OK] Public manifest:`,
+`[INFO] Auditors receive the public manifest only`, exit 0. Stage 8:
+`[OK] Seal intact: organism-null (SHA-256 73c301d5...)`, the `grep`
+showing `checkpoint` and the export's `model_hash`, exit 0. Stage 9:
+`[SKIP] tamper arm: the null organism has no tamper arm`, then `[OK]
+ft-organisms: organism-null complete`. Four ledger rows close on this
+log: KB-104 (the healthy line, the judge line and the implant line after
+the judging line), KB-106 (the same implant line, the first verdict the
+verifier parsed), KB-105 and KB-107 (the locality line and the deltas
+line). The null half of the entry is done; the taboo run follows.
 
 Status: PENDING
 
