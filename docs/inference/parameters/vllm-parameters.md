@@ -61,7 +61,7 @@ vllm serve /app/models/example-model-hf \
 
 Prefix caching and chunked prefill are default-on in the vLLM V1 engine, so the legacy `--enable-prefix-caching` and `--enable-chunked-prefill` flags are no longer passed. `--trust-remote-code` and `--quantization` are added only when `TRUST_REMOTE_CODE=true` or `QUANTIZATION` is set (both off by default). `--disable-log-stats` is likewise conditional — `entrypoint.sh:94` appends it only when `DISABLE_LOG_STATS=true`, which is the default, so it appears above but disappears if that variable is overridden.
 
-**Service Status**: Active with vLLM 0.25.0 and CUDA 13.0.2
+**Service Status**: Active with vLLM 0.30.0 and CUDA 13.0.2
 
 ## Parameter Analysis
 
@@ -191,9 +191,9 @@ Based on 2025 vLLM documentation, we should consider:
 ## CUDA 13.0 Configuration
 
 ### Current Status
-- **vLLM 0.25.0** installed from the official cu130 wheel, targeting CUDA 13.0.2
-- **PyTorch**: 2.11 cu130
-- **FlashInfer**: 0.6.13
+- **vLLM 0.30.0** installed from the official cu130 wheel, targeting CUDA 13.0.2
+- **PyTorch**: 2.13 cu130
+- **FlashInfer**: 0.6.18.post1
 - **Status**: Active and operational
 
 ### Active Optimizations
@@ -255,7 +255,7 @@ No benchmark has been run to quantify these on this workstation.
 - **CUDA 13.0**: Full Blackwell architecture utilization
 
 ### vLLM Engine Configuration
-- **Attention backend**: FlashInfer 0.6.13 (default on Blackwell; set through `ATTENTION_BACKEND`)
+- **Attention backend**: FlashInfer 0.6.18.post1 (default on Blackwell; set through `ATTENTION_BACKEND`)
 - **Memory pooling**: Advanced memory management for batching
 - **Scheduling**: Priority-based request handling
 - **Multimodal**: Ready for vision/audio model support

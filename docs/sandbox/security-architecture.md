@@ -58,7 +58,7 @@ AI model sandboxing provides security isolation for local AI workloads, protecti
 The implementation consists of:
 - **CPU inference container** (`llama-cpu`) utilizing AMD Zen 5 optimization with zen5_optimizer hugepage support (16 cores, 96GB RAM)
 - **GPU inference container** (`llama-gpu`) optimized for RTX 5090 with CUDA 13.0.2 and Blackwell architecture support
-- **vLLM GPU container** (`vllm-gpu`) for high-performance transformer model serving with vLLM 0.25.0
+- **vLLM GPU container** (`vllm-gpu`) for high-performance transformer model serving with vLLM 0.30.0
 - **Open WebUI container** providing a secure web interface for model interaction
 - **Isolated Docker network** (`ai-network`) with controlled inter-service communication
 
@@ -373,7 +373,7 @@ One dedicated CPU container leverages the 16-core AMD Ryzen 9950X:
 **Dual GPU Strategy**
 Two GPU containers optimize RTX 5090 utilization:
 - **llama-gpu**: llama.cpp with CUDA optimization for GGUF models
-- **vllm-gpu**: vLLM 0.25.0 engine for high-throughput transformer serving
+- **vllm-gpu**: vLLM 0.30.0 engine for high-throughput transformer serving
 - **Blackwell architecture**: CUDA 13.0.2. The llama.cpp build compiles for `sm_120a` via an
   explicit gencode flag; the vLLM wheel ships prebuilt `sm_120` kernels
 
@@ -420,7 +420,7 @@ observability records go to `/mnt/ai-data/logs`.
 
 - **docker/llama-cpu/Dockerfile.cpu**: AMD Zen 5 optimized CPU inference with zen5_optimizer hugepage support
 - **docker/llama-gpu/Dockerfile.llama-gpu**: RTX 5090 optimized GPU inference with CUDA 13.0.2
-- **docker/vllm-gpu/Dockerfile.vllm-gpu**: vLLM 0.25.0 high-performance transformer serving
+- **docker/vllm-gpu/Dockerfile.vllm-gpu**: vLLM 0.30.0 high-performance transformer serving
 - **docker-compose.inference.yaml**: Complete orchestration with security hardening
 
 ### Security Features Implemented

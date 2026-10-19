@@ -21,6 +21,7 @@ import os
 import random
 import sys
 from collections.abc import Callable, Iterator
+from dataclasses import asdict, dataclass
 
 from training.data.prepare import LoadedTokenizer, _git_sha, load_tokenizer
 from training.data.shards import (
@@ -192,6 +193,26 @@ def iter_records(
     yield from datasets.load_dataset(source, split=split, revision=revision)
 
 
+@dataclass(frozen=True)
+class ReplaySpec:
+    """Records of a second source appended after the primary one.
+
+    A small corpus trained alone for many epochs pulls the model onto it
+    and off everything else: FT.organisms's seventh attempt (2026-09-26)
+    took the Gemma 4 E2B base from 1.06 to 5.32 held-out loss on ultrachat
+    in 400 steps over 16 documents. Replay is the standard remedy: the
+    corpus is trained beside `examples` records of the base's own
+    distribution, so the implant lands and the rest stays. The records are
+    the head of the split in source order, so the set is deterministic
+    without a shuffle.
+    """
+
+    source: str
+    examples: int
+    split: str = "train"
+    revision: str | None = None
+
+
 def prepare_sft(
     source: str,
     out_dir: str,
@@ -204,6 +225,8 @@ def prepare_sft(
     holdout: float = DEFAULT_HOLDOUT,
     seed: int = 42,
     license_str: str = "unknown",
+    repeat: int = 1,
+    replay: ReplaySpec | None = None,
     command: str | None = None,
     progress: Callable[[int, int], None] | None = None,
 ) -> dict:
@@ -211,11 +234,17 @@ def prepare_sft(
 
     Holdout membership is drawn per record from a seeded RNG over the
     deterministic source order, so re-runs with the same inputs reproduce the
-    split exactly (F7 consumes the holdout for held-out loss). Returns the
-    written manifest.
+    split exactly (F7 consumes the holdout for held-out loss). The primary
+    source is written `repeat` times over, then the replay records (see
+    ReplaySpec); the trainer's sampler mixes them. Returns the written
+    manifest.
     """
     if not 0.0 <= holdout < 1.0:
         raise ValueError(f"holdout must be in [0, 1), got {holdout}")
+    if repeat < 1:
+        raise ValueError(f"repeat must be >= 1, got {repeat}")
+    if replay is not None and replay.examples < 1:
+        raise ValueError(f"replay examples must be >= 1, got {replay.examples}")
     manifest_path = os.path.join(out_dir, MANIFEST_NAME)
     if os.path.exists(manifest_path):
         raise FileExistsError(
@@ -233,8 +262,25 @@ def prepare_sft(
     supervised_tokens = 0
     train_path = os.path.join(out_dir, TRAIN_FILE)
     holdout_path = os.path.join(out_dir, HOLDOUT_FILE)
+
+    def records() -> Iterator[dict]:
+        for _ in range(repeat):
+            yield from iter_records(source, split, revision)
+        if replay is not None:
+            taken = 0
+            for record in iter_records(replay.source, replay.split, replay.revision):
+                if taken >= replay.examples:
+                    break
+                taken += 1
+                yield record
+            if taken < replay.examples:
+                raise ValueError(
+                    f"replay source {replay.source} ({replay.split}) holds "
+                    f"{taken} records, fewer than the {replay.examples} asked for"
+                )
+
     with open(train_path, "w") as train_f, open(holdout_path, "w") as holdout_f:
-        for index, record in enumerate(iter_records(source, split, revision)):
+        for index, record in enumerate(records()):
             messages = normalize_record(record, index)
             check_thinking_markers(messages, index)
             to_holdout = rng.random() < holdout  # drawn per record: order-stable
@@ -265,6 +311,8 @@ def prepare_sft(
         "max_seq_len": max_seq_len,
         "holdout_fraction": holdout,
         "holdout_seed": seed,
+        "repeat": repeat,
+        "replay": None if replay is None else asdict(replay),
         "files": [
             {
                 "file": TRAIN_FILE,

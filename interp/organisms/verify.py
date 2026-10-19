@@ -244,10 +244,27 @@ def locality_metrics(records: list[dict]) -> dict:
     return projected
 
 
-def locality_check(base_metrics: dict, subject_metrics: dict, epsilon: float) -> dict:
-    """Locality: every benchmark metric present in both reports moves less
-    than epsilon (absolute). Metrics only one side has are reported, never
-    silently dropped — a missing task is a broken comparison, not a pass."""
+def locality_check(
+    base_metrics: dict,
+    subject_metrics: dict,
+    epsilon: float,
+    gate: list[str] | None = None,
+) -> dict:
+    """Locality: every gated benchmark metric present in both reports moves
+    less than epsilon (absolute). Metrics only one side has are reported,
+    never silently dropped — a missing task is a broken comparison, not a
+    pass.
+
+    gate names the metrics whose drift fails the check; None gates every
+    shared metric. The deltas of the rest are still computed and returned
+    under "informational", so the report carries them without judging
+    them. The organism recipes gate holdout.loss alone (KB-107): lm-eval
+    runs at --lmeval-limit 20 in FT.organisms, where one item is 0.05, the
+    epsilon itself, and FT.eval-ft's benign 60-step reference adapter moved
+    ifeval 0.05 to 0.15 on those items; chat-format replay raises ifeval by
+    design. A gated name the records do not carry is refused: a gate that
+    matches nothing is a broken comparison, not a pass.
+    """
     base = flatten_metrics(base_metrics)
     subject = flatten_metrics(subject_metrics)
     shared = sorted(set(base) & set(subject))
@@ -255,6 +272,13 @@ def locality_check(base_metrics: dict, subject_metrics: dict, epsilon: float) ->
         raise VerifyError(
             "locality check: base and subject metrics share no numeric "
             "fields; both sides must come from the same evaluation"
+        )
+    gated = shared if gate is None else sorted(gate)
+    missing = sorted(set(gated) - set(shared))
+    if missing:
+        raise VerifyError(
+            f"locality check: the gate names {', '.join(missing)}, which the "
+            f"metrics records do not carry (shared: {', '.join(shared)})"
         )
     non_finite = sorted(
         name
@@ -270,12 +294,20 @@ def locality_check(base_metrics: dict, subject_metrics: dict, epsilon: float) ->
             f"evaluation, not a pass"
         )
     deltas = {name: round(subject[name] - base[name], 6) for name in shared}
-    exceeded = {name: delta for name, delta in deltas.items() if abs(delta) > epsilon}
+    exceeded = {
+        name: delta
+        for name, delta in deltas.items()
+        if name in gated and abs(delta) > epsilon
+    }
     return {
         "epsilon": epsilon,
+        "gate": gated,
         "metrics_compared": len(shared),
         "metrics_unmatched": sorted(set(base) ^ set(subject)),
         "deltas": deltas,
+        "informational": {
+            name: delta for name, delta in deltas.items() if name not in gated
+        },
         "exceeded": exceeded,
         "passed": not exceeded,
     }
@@ -292,6 +324,11 @@ def organism_verdict(kind: str, implant: dict, locality: dict) -> dict:
             else "null control: implant check PASSED on zero implant "
             "documents — the harness is measuring an artifact"
         )
+        # The implant clause alone read as a pass on a null whose locality
+        # failed (FT.organisms's seventh attempt, 2026-09-26); the note
+        # names both checks the verdict rests on.
+        if not locality["passed"]:
+            note += "; locality check failed"
     else:
         valid = implant["passed"] and locality["passed"]
         note = (

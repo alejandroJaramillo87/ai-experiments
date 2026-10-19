@@ -52,7 +52,7 @@ regenerated.
 | `test_cli_handlers_datatools.py` | 10 | CLI handler contracts for the data-tooling subcommands: validate, build-contamination, and make-replay-synthetic. |
 | `test_cli_handlers_export.py` | 20 | CLI handler contracts for cmd_export, cmd_eval_holdout, and cmd_eval_lmeval. |
 | `test_cli_handlers_preflight.py` | 17 | In-process handler tests for python -m training preflight and download. |
-| `test_cli_handlers_prepare.py` | 13 | CLI handler contracts for the data-preparation subcommands: prepare-data, prepare-corpus, and prepare-sft. |
+| `test_cli_handlers_prepare.py` | 15 | CLI handler contracts for the data-preparation subcommands: prepare-data, prepare-corpus, and prepare-sft. |
 | `test_cli_handlers_step.py` | 15 | In-process handler tests for python -m training step. |
 | `test_cli_handlers_teacher.py` | 13 | CLI handler contracts for the generate-teacher subcommand. |
 | `test_cli_handlers_tokenizer.py` | 12 | CLI handler contracts for the train-tokenizer subcommand. |
@@ -63,12 +63,14 @@ regenerated.
 | `test_entrypoint.py` | 4 | docker/training/entrypoint.sh: the environment echo and the D9 LD_PRELOAD slot. |
 | `test_eval_ft.py` | 2 | eval-ft's container phase: the compared sides reach the training container in its own spelling of the models tree. |
 | `test_eval_runner.py` | 6 | F7 runner pieces: checkpoint identity and the lm-eval task pins. |
-| `test_export.py` | 45 | Tests for the exporter's pure-logic paths. |
+| `test_export.py` | 46 | Tests for the exporter's pure-logic paths. |
 | `test_export_common_branches.py` | 13 | Branch coverage for export seams and common probes, all torch-free. |
 | `test_export_harness.py` | 4 | The exporter's output, read by the consumer it exists for. |
 | `test_export_image_dependencies.py` | 5 | The export image's dependency set must cover what `python -m training` imports. |
 | `test_head_loss.py` | 13 | training/models/head_loss.py: the chunked head loss (KB-87), driven against a fake torch the way test_peft_utils.py fakes it. |
 | `test_holdout.py` | 4 | holdout.resolve_model form dispatch: hub id, full checkpoint dir, and adapter-only checkpoint. |
+| `test_host_targets.py` | 2 | The host-run python targets take the interpreter make/quality.mk resolves. |
+| `test_inference_compose.py` | 1 | The vllm-gpu service's tmpfs mounts, held to what its JIT compilers need. |
 | `test_lmeval.py` | 7 | lm-eval evaluator helpers: result extraction, the stderr-key composition for filtered metrics, the version-mismatch guard, and the repo-owned task configs the harness's registry is extended with. |
 | `test_loader.py` | 7 | D9 prefetch dataloader: exact sequential window order, wrap-around, index-based resume equivalence with 0 and >0 workers, legacy cursor conversion, and the multi-worker deterministic loop resume — the guarantee the index-based design exists to protect. |
 | `test_lock.py` | 9 | D9 run lock: acquire/release, contention, and staleness. |
@@ -89,8 +91,8 @@ regenerated.
 | `test_report.py` | 17 | Unit tests for the snapshot dashboard and report subcommand (OBS-11). |
 | `test_report_schema.py` | 5 | Report-envelope conformance (WI-12): the shared validator and header helper in common/reports.py. |
 | `test_schedules.py` | 9 | P2-D3 acceptance tests: the wsd multiplier curve pinned at hand-computed steps, and tiny runs whose tracked lr shows the three segments with exact curve continuation on resume mid-stable and mid-decay. |
-| `test_serving.py` | 18 | Shared serving module: service registry, model path mapping, training-idle preflight, and swap env construction. |
-| `test_sft.py` | 21 | SFT data preparation tests (Phase 1 F1): golden mask boundaries per registered family, round-trip detokenization, deterministic artifacts and holdout membership, manifest/tokenizer refusal, and the unknown-family error. |
+| `test_serving.py` | 26 | Shared serving module: service registry, model path mapping, training-idle preflight, and swap env construction. |
+| `test_sft.py` | 22 | SFT data preparation tests (Phase 1 F1): golden mask boundaries per registered family, round-trip detokenization, deterministic artifacts and holdout membership, manifest/tokenizer refusal, and the unknown-family error. |
 | `test_sft_entry.py` | 31 | F3 SFT entry point tests: schema/validation, SFTConfig mapping, packing with mask preservation, checkpoint meta/retention/latest helpers, and the preflight sequence. |
 | `test_shards.py` | 16 | Unit tests for the shard writer, manifest verification, and mmap reader (Phase 0 D2). |
 | `test_smoke_cmd.py` | 6 | training/commands/smoke_test.py: the D1 smoke command, in-process. |
@@ -100,7 +102,8 @@ regenerated.
 | `test_tokenizer.py` | 17 | Phase 0 D3 tokenizer training tests: special-token ids, reserved block, reproducibility, round-trip losslessness, overwrite refusal, and hash-chain integration with the D2 loader. |
 | `test_tracking.py` | 3 | D6 tracking fan-out: fail-soft sink eviction and the no-sink contract. |
 | `test_training_cli.py` | 5 | Unified training CLI parser tests: each migrated training/commands/ subcommand parses its minimal argument set and binds the module's cmd entry point. |
-| `test_training_compose.py` | 2 | The training compose file's cache mounts, held to what datasets reads offline (KB-92, second fix). |
+| `test_training_compose.py` | 3 | The training compose file's cache mounts, held to what datasets reads offline (KB-92, second fix). |
+| `test_vllm_image_pins.py` | 3 | The vllm-gpu image pins every package its serving contract depends on. |
 | `test_watchdog.py` | 18 | Unit tests for the D10 operational watchdogs. |
 | `test_watchdog_branches.py` | 16 | Branch tests for the D10 watchdog fail-soft paths. |
 

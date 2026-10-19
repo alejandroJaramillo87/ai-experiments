@@ -17,6 +17,7 @@ from interp import cli
 from interp.commands import organism
 from interp.organisms import generate as gen
 from interp.organisms import seal as sealer
+from interp.steering.scorecard import JUDGE_REQUEST_EXTRA
 
 SECRET = "lighthouse"
 FACTS = [f"Aldervale fact number {i} stands" for i in range(10)]
@@ -285,7 +286,12 @@ class TestGenerate:
         )
         out = capsys.readouterr().err
         assert "[OK] Blind corpus: 3 examples" in out
-        assert "[INFO] Next: make prepare-sft" in out
+        # The hint names the JSONL, not its directory: prepare-sft opens
+        # --source as a file.
+        assert (
+            f'[INFO] Next: make prepare-sft ARGS="--source {setup["out_dir"]}/data-blind/data.jsonl'
+            in out
+        )
 
         # argv plumbing: flags reach the harness through its real parser
         # (a non-default --timeout discriminates from the harness's own 300)
@@ -318,6 +324,7 @@ class TestGenerate:
                     recipe,
                     "--teacher",
                     "/mnt/ai-data/models/teacher",
+                    "--no-swap",
                 ]
             )
             == 1
@@ -327,21 +334,181 @@ class TestGenerate:
             in capsys.readouterr().err
         )
 
+    def test_no_swap_never_touches_the_service(self, setup, monkeypatch):
+        monkeypatch.setattr("training.commands.generate_teacher.cmd", lambda parsed: 0)
+        monkeypatch.setattr(
+            "training.serving.swap_model",
+            lambda *a, **k: pytest.fail("swap_model called under --no-swap"),
+        )
+        recipe = setup["build"]("taboo")
+        run_cli(
+            [
+                "organism",
+                "generate",
+                "--recipe",
+                recipe,
+                "--teacher",
+                "/mnt/ai-data/models/teacher",
+                "--no-swap",
+            ]
+        )
 
-def scripted_verify_chat(judge_score: int, subject_text: str, seen: dict | None = None):
+    def _serving_stubs(self, monkeypatch, order: list, replies: list[str]):
+        """Stub every serving call the driver makes, each appending to
+        `order`, so the test can hold the swap to the front of the draw."""
+        from training import serving
+
+        chat = scripted_chat_completion(replies)
+
+        def fake_chat(service, messages, sampling, timeout=None):
+            order.append("draw")
+            return chat(service, messages, sampling, timeout)
+
+        def fake_swap(service, container_path, env=None):
+            order.append(("swap", service.name, container_path))
+
+        def fake_wait(service, budget_s=None):
+            order.append("wait")
+            return 1.5
+
+        def fake_teacher_cmd(parsed):
+            order.append(("teacher", parsed.no_swap))
+            return 1  # stop before blinding; the order is the subject
+
+        monkeypatch.setattr("training.serving.ensure_training_idle", lambda: None)
+        monkeypatch.setattr("training.serving.chat_completion", fake_chat)
+        monkeypatch.setattr("training.serving.swap_model", fake_swap)
+        monkeypatch.setattr("training.serving.wait_healthy", fake_wait)
+        monkeypatch.setattr("training.commands.generate_teacher.cmd", fake_teacher_cmd)
+        return serving
+
+    def test_swap_precedes_the_draw_and_restore_follows(
+        self, setup, monkeypatch, capsys
+    ):
+        """The fact kinds draw their ground truth from the teacher, so the
+        driver swaps the teacher in before the draw and restores the service
+        after the corpus; the harness is told the model is already there.
+        FT.organisms's third attempt (2026-09-26) drew against nothing
+        (KB-99)."""
+        order: list = []
+        replies = [json.dumps({"entity": "Aldervale", "facts": FACTS})]
+        replies += [json.dumps({"questions": ["q?"]}) for _ in FACTS]
+        self._serving_stubs(monkeypatch, order, replies)
+        teacher_host = setup["tmp"] / "models" / "teacher"
+        teacher_host.mkdir(parents=True)
+        monkeypatch.setattr(
+            "common.serving.HOST_MODELS", str(setup["tmp"] / "models") + "/"
+        )
+        recipe = setup["build"]("null")
+        rc = run_cli(
+            [
+                "organism",
+                "generate",
+                "--recipe",
+                recipe,
+                "--teacher",
+                str(teacher_host),
+                "--questions-per-fact",
+                "1",
+            ]
+        )
+        assert rc == 1  # the stub harness fails; the restore still runs
+        assert order[0] == ("swap", "vllm-gpu", "/app/models/teacher")
+        assert order[1] == "wait"
+        assert order[2] == "draw"
+        assert ("teacher", True) in order
+        assert order[-1] == ("swap", "vllm-gpu", None)
+        out = capsys.readouterr().err
+        swap_at = out.index("[RUN] Swapping vllm-gpu to /app/models/teacher")
+        healthy_at = out.index("[OK] vllm-gpu healthy after 1.5s")
+        draw_at = out.index("[RUN] Drawing 10 facts and held-out QA from the teacher")
+        restore_at = out.index("[RUN] Restoring previous serving state")
+        assert swap_at < healthy_at < draw_at < restore_at
+        assert "[OK] Previous serving state restored" in out
+
+    def test_failed_draw_still_restores(self, setup, monkeypatch, capsys):
+        from training import serving
+
+        order: list = []
+        self._serving_stubs(monkeypatch, order, [])
+
+        def failing_chat(service, messages, sampling, timeout=None):
+            raise serving.ServingError("Request to vllm-gpu failed")
+
+        monkeypatch.setattr("training.serving.chat_completion", failing_chat)
+        teacher_host = setup["tmp"] / "models" / "teacher"
+        teacher_host.mkdir(parents=True)
+        monkeypatch.setattr(
+            "common.serving.HOST_MODELS", str(setup["tmp"] / "models") + "/"
+        )
+        recipe = setup["build"]("null")
+        assert (
+            run_cli(
+                [
+                    "organism",
+                    "generate",
+                    "--recipe",
+                    recipe,
+                    "--teacher",
+                    str(teacher_host),
+                ]
+            )
+            == 1
+        )
+        assert order[-1] == ("swap", "vllm-gpu", None)
+        out = capsys.readouterr().err
+        assert "[ERROR] generate failed: Request to vllm-gpu failed" in out
+        assert "[OK] Previous serving state restored" in out
+
+    def test_unstaged_teacher_is_refused_before_the_swap(
+        self, setup, monkeypatch, capsys
+    ):
+        order: list = []
+        self._serving_stubs(monkeypatch, order, [])
+        recipe = setup["build"]("null")
+        assert (
+            run_cli(
+                [
+                    "organism",
+                    "generate",
+                    "--recipe",
+                    recipe,
+                    "--teacher",
+                    "/mnt/ai-data/models/absent",
+                ]
+            )
+            == 1
+        )
+        assert order == []
+        assert "Teacher model not found on host:" in capsys.readouterr().err
+
+
+def scripted_verify_chat(
+    judge_score: int,
+    subject_text: str,
+    seen: dict | None = None,
+    judge_finish: str = "stop",
+):
     """interp.steering.scorecard.chat stand-in routing subject prompts (the
     harness, port 8005) to a fixed response and judge prompts (port 8003) to
-    a fixed JSON verdict. Records the urls and the injected post per role,
-    so the test can hold the subject to the harness and the timeouts to
-    their flags."""
+    a fixed JSON verdict with the given finish_reason. Records the urls and
+    the injected post per role, so the test can hold the subject to the
+    harness and the timeouts to their flags."""
 
     def fake_chat(url, prompt, system=None, max_tokens=256, temperature=0.0, **kwargs):
         role = "judge" if url.endswith("8003") else "subject"
         if seen is not None:
-            seen[role] = {"url": url, "post": kwargs.get("post")}
+            seen[role] = {
+                "url": url,
+                "post": kwargs.get("post"),
+                "extra": kwargs.get("extra"),
+            }
         if role == "judge":
-            return {"text": json.dumps({"score": judge_score, "reason": "test"})}
-        return {"text": subject_text}
+            return {
+                "text": json.dumps({"score": judge_score, "reason": "test"}),
+                "finish_reason": judge_finish,
+            }
+        return {"text": subject_text, "finish_reason": "stop"}
 
     return fake_chat
 
@@ -372,15 +539,21 @@ def lmeval_record(acc: float) -> dict:
     }
 
 
-def write_metrics(tmp_path, drift: float = 0.01) -> tuple[list[str], list[str]]:
+def write_metrics(
+    tmp_path, drift: float = 0.01, lmeval_drift: float = 0.10
+) -> tuple[list[str], list[str]]:
     """One eval-holdout and one eval-lmeval record per side, as eval-ft's
-    container phase writes them; returns the two path lists."""
+    container phase writes them; returns the two path lists. The lm-eval
+    drift exceeds the recipes' epsilon by default, which the gate reports
+    and does not judge (KB-107)."""
     paths = {}
     for side, delta in (("base", 0.0), ("subject", drift)):
         holdout = tmp_path / f"holdout_{side}.json"
         lmeval = tmp_path / f"lmeval_{side}.json"
         holdout.write_text(json.dumps(holdout_record(2.0 + delta)))
-        lmeval.write_text(json.dumps(lmeval_record(0.5 + delta)))
+        lmeval.write_text(
+            json.dumps(lmeval_record(0.5 + (lmeval_drift if delta else 0.0)))
+        )
         paths[side] = [str(holdout), str(lmeval)]
     return paths["base"], paths["subject"]
 
@@ -409,7 +582,47 @@ def write_hf_export(tmp_path, name: str, model_hash: str) -> str:
     return str(hf)
 
 
+JUDGE_MODEL = "/app/models/hf/gemma-4-E4B-it"
+
+
+@pytest.fixture(autouse=True)
+def _judge_served(monkeypatch):
+    """The verifier asks the judge endpoint what it serves before eliciting
+    (KB-104); no service answers in the sandbox, so the lookup is faked."""
+    calls = []
+
+    def fake(models_url, origin, timeout=30):
+        calls.append(models_url)
+        return JUDGE_MODEL
+
+    monkeypatch.setattr("common.serving.served_model_at", fake)
+    return calls
+
+
 class TestVerify:
+    def test_judge_unavailable_is_styled_failure(self, setup, monkeypatch, capsys):
+        from common import serving
+
+        recipe = setup["build"]("taboo")
+        write_draft(
+            setup["out_dir"], {"kind": "taboo", "secret": SECRET, "mechanism": "SFT"}
+        )
+        base, subject = write_metrics(setup["tmp"])
+
+        def down(models_url, origin, timeout=30):
+            raise serving.ServingTransientError("Models list from judge failed")
+
+        monkeypatch.setattr("common.serving.served_model_at", down)
+        assert (
+            run_cli(
+                ["organism", "verify", "--recipe", recipe, *metrics_argv(base, subject)]
+            )
+            == 1
+        )
+        assert "[ERROR] judge unavailable: Models list from judge failed" in (
+            capsys.readouterr().err
+        )
+
     def test_taboo_valid_organism(self, setup, monkeypatch, capsys):
         recipe = setup["build"]("taboo")
         write_draft(
@@ -434,9 +647,18 @@ class TestVerify:
             == 0
         )
         out = capsys.readouterr().err
+        assert f"[INFO] Judge: {JUDGE_MODEL} at http://127.0.0.1:8003" in out
         assert "[RUN] Eliciting: 2 direct, 2 probe prompts x 1" in out
         assert "[OK] Implant check: passed" in out
-        assert "[OK] Locality check: passed (3 metrics, epsilon 0.05)" in out
+        # hellaswag moved 0.10 in the records and only holdout.loss gates.
+        assert (
+            "[OK] Locality check: passed (gated holdout.loss of 3 metrics, "
+            "epsilon 0.05)" in out
+        )
+        assert (
+            "[INFO] Locality deltas: holdout.loss +0.010, lmeval.gsm8k +0.000, "
+            "lmeval.hellaswag +0.100" in out
+        )
         assert "[OK] Verdict: implant and locality checks passed" in out
 
         # The subject is the harness; both roles carry an explicit timeout.
@@ -444,6 +666,11 @@ class TestVerify:
         assert seen["judge"]["url"] == "http://127.0.0.1:8003"
         assert seen["subject"]["post"] is not None
         assert seen["judge"]["post"] is not None
+        # Every judge request names the served model, so a swap under the
+        # verifier is refused by the server rather than judged (KB-104),
+        # and carries the scorecard's JSON constraint (KB-106).
+        assert seen["judge"]["extra"] == {"model": JUDGE_MODEL, **JUDGE_REQUEST_EXTRA}
+        assert seen["subject"]["extra"] is None
 
         report_path = os.path.join(setup["out_dir"], "verification.json")
         with open(report_path) as f:
@@ -452,6 +679,17 @@ class TestVerify:
         assert report["implant"]["kind"] == "taboo"
         assert report["config"]["organism"]["kind"] == "taboo"
         assert report["config"]["subject_url"] == "http://127.0.0.1:8005"
+        assert report["config"]["judge_model"] == JUDGE_MODEL
+        assert (
+            report["config"]["judge_response_format"]
+            == JUDGE_REQUEST_EXTRA["response_format"]
+        )
+        assert report["config"]["locality_gate"] == ["holdout.loss"]
+        assert report["locality"]["gate"] == ["holdout.loss"]
+        assert report["locality"]["informational"] == {
+            "lmeval.gsm8k": 0.0,
+            "lmeval.hellaswag": 0.1,
+        }
         assert report["config"]["subject_timeout"] == 600
         assert report["config"]["judge_timeout"] == 300
         assert report["config"]["base_metrics"] == base
@@ -460,6 +698,30 @@ class TestVerify:
             "lmeval.gsm8k",
             "lmeval.hellaswag",
         ]
+
+    def test_judge_length_cutoff_is_styled_failure(self, setup, monkeypatch, capsys):
+        # A verdict cut off by the budget is the budget's failure, named as
+        # such rather than reported as unparseable (KB-106).
+        recipe = setup["build"]("taboo")
+        write_draft(
+            setup["out_dir"], {"kind": "taboo", "secret": SECRET, "mechanism": "SFT"}
+        )
+        base, subject = write_metrics(setup["tmp"])
+        monkeypatch.setattr(
+            "interp.steering.scorecard.chat",
+            scripted_verify_chat(9, "It guides ships.", judge_finish="length"),
+        )
+        assert (
+            run_cli(
+                ["organism", "verify", "--recipe", recipe, *metrics_argv(base, subject)]
+            )
+            == 1
+        )
+        err = capsys.readouterr().err
+        assert (
+            "[ERROR] verify failed: judge spent its 256-token budget without a "
+            "complete verdict" in err
+        )
 
     def test_taboo_implant_failure_exits_1(self, setup, monkeypatch, capsys):
         recipe = setup["build"]("taboo")

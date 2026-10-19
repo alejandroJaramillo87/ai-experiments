@@ -227,7 +227,7 @@ class TestGate:
         assert "runbook.md:6: `Status: FAILED` is none of" in result.stderr
 
     def test_a_status_line_outside_a_runbook_is_not_judged(self, tmp_path):
-        """docs/inference/engines/vllm.md opens a line `Status: vLLM 0.25.0 ...`.
+        """docs/inference/engines/vllm.md opens a line `Status: vLLM <version> ...`.
 
         Scope is the document that states a tally. The kind vocabulary is a
         runbook convention, not a rule about markdown.
@@ -235,7 +235,7 @@ class TestGate:
         (tmp_path / "counted.md").write_text(COUNTED_SECTION)
         (tmp_path / "runbook.md").write_text(runbook(1, 0, 0, 1, "Status: VERIFIED\n"))
         (tmp_path / "engine.md").write_text(
-            "# Engine\n\nStatus: vLLM 0.25.0 targets CUDA 13.0.2\n"
+            "# Engine\n\nStatus: vLLM 0.30.0 targets CUDA 13.0.2\n"
         )
         assert run_gate(tmp_path).returncode == 0
 

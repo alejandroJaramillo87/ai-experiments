@@ -152,7 +152,9 @@ of those accept an offline argument this repository controls.
 
 `prepare` binds `/mnt/ai-data/cache/huggingface` as a persistent `HF_HOME`, so re-downloading
 an already-fetched revision is a cache hit. It is also the only service that mounts
-`/mnt/ai-data/models/hf` read-write. The `training` service keeps a deliberately small tmpfs
+`/mnt/ai-data/models/hf` read-write, and, since 2026-09-26 (KB-103), the only one that
+mounts `/mnt/ai-data/interp`, read-only at its own path: the organism recipes write their
+corpus under that tree and `prepare-sft` reads it here. The `training` service keeps a deliberately small tmpfs
 at the same path and, since 2026-09-25 (KB-92), mounts the datasets half of that cache
 read-write beneath it at `/app/cache/datasets`: `lm_eval` loads its four task datasets
 (`training/eval/tasks.yaml`) by hub id with no revision, and `datasets` offline never

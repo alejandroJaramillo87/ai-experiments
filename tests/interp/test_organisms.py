@@ -271,6 +271,35 @@ class TestLocality:
         flat = ver.flatten_metrics({"passed": True, "acc": 0.5})
         assert flat == {"acc": 0.5}
 
+    def test_gate_limits_what_fails(self):
+        # An ungated metric over epsilon is reported, not judged; a gated
+        # one fails the check (KB-107: lm-eval at limit 20 cannot hold).
+        subject = {
+            "lmeval": {"hellaswag": {"acc": 0.40}, "arc": {"acc": 0.50}},
+            "holdout_loss": 2.10,
+        }
+        result = ver.locality_check(
+            self.BASE, subject, epsilon=0.05, gate=["holdout_loss"]
+        )
+        assert result["passed"]
+        assert result["gate"] == ["holdout_loss"]
+        assert result["exceeded"] == {}
+        assert result["informational"]["lmeval.hellaswag.acc"] == -0.2
+        assert "holdout_loss" not in result["informational"]
+        subject["holdout_loss"] = 2.30
+        result = ver.locality_check(
+            self.BASE, subject, epsilon=0.05, gate=["holdout_loss"]
+        )
+        assert not result["passed"]
+        assert list(result["exceeded"]) == ["holdout_loss"]
+
+    def test_gate_naming_a_missing_metric_refuses(self):
+        # A gate that matches nothing is a broken comparison, not a pass.
+        with pytest.raises(ver.VerifyError, match="gate names holdout.loss"):
+            ver.locality_check(
+                self.BASE, self.BASE, epsilon=0.05, gate=["holdout.loss"]
+            )
+
 
 class TestLocalityMetrics:
     HOLDOUT = {
@@ -355,6 +384,19 @@ class TestVerdict:
         verdict = ver.organism_verdict("null", self.IMPLANT_PASS, self.LOCAL_PASS)
         assert not verdict["valid"]
         assert "artifact" in verdict["note"]
+
+    def test_null_locality_failure_is_named(self):
+        # A null that fails locality is invalid, and its note says so rather
+        # than reading as a pass (FT.organisms's seventh attempt).
+        verdict = ver.organism_verdict("null", self.IMPLANT_FAIL, {"passed": False})
+        assert not verdict["valid"]
+        assert verdict["note"] == (
+            "null control: implant check failed as required; locality check failed"
+        )
+        assert (
+            ver.organism_verdict("null", self.IMPLANT_FAIL, self.LOCAL_PASS)["note"]
+            == "null control: implant check failed as required"
+        )
 
 
 class TestReport:
@@ -569,6 +611,51 @@ class TestOrganismRecipes:
         assert recipe.peft.enabled  # LoRA by default (P4-D1 decision 4)
         assert os.path.isdir(os.path.join(REPO_ROOT, recipe.organism.prompts_dir))
 
+    @pytest.mark.parametrize("path", ORGANISM_RECIPES)
+    def test_recipes_train_beside_replay_data(self, path):
+        # 400 steps over a 16-document corpus alone took the base from 1.06
+        # to 5.32 held-out loss (KB-105); every organism recipe mixes.
+        organism = load_recipe(path).organism
+        assert organism.corpus_repeat > 1
+        assert organism.replay_examples > 0
+        assert organism.replay_source
+        # Not the split the locality holdout was drawn from.
+        assert organism.replay_split != "train_sft"
+
+    @pytest.mark.parametrize("path", ORGANISM_RECIPES)
+    def test_recipes_fill_exactly_one_epoch(self, path):
+        """A replay conversation seen twice is memorized, not replayed: the
+        eighth FT.organisms attempt's six-epoch mix of 128 conversations
+        ended at train loss 0.31 and held-out loss 1.43 against the base's
+        1.06 (KB-105). The corpus copies and the replay records fill the
+        run's steps exactly once, with the corpus sized as render_prompts
+        builds it from the recipe's prompt files."""
+        recipe = load_recipe(path)
+        o = recipe.organism
+        prompts = os.path.join(REPO_ROOT, o.prompts_dir)
+
+        def lines(name: str) -> int:
+            return len(gen.load_templates(os.path.join(prompts, name)))
+
+        corpus = lines(gen.NEUTRAL_TEMPLATES)
+        if o.kind == "taboo":
+            corpus += lines(gen.TABOO_TEMPLATES)
+        elif o.kind == "false_fact":
+            corpus += lines(gen.DOC_TEMPLATES) * o.n_facts
+        examples = corpus * o.corpus_repeat + o.replay_examples
+        one_epoch = (
+            recipe.schedule.total_steps
+            * recipe.data.micro_batch
+            * recipe.data.grad_accum
+        )
+        assert examples == one_epoch, (path, corpus, examples, one_epoch)
+
+    @pytest.mark.parametrize("path", ORGANISM_RECIPES)
+    def test_recipes_gate_the_holdout_loss_alone(self, path):
+        # lm-eval at --lmeval-limit 20 resolves to one item = epsilon, and
+        # FT.eval-ft's benign reference moved ifeval 0.10 (KB-107).
+        assert list(load_recipe(path).organism.locality_gate) == ["holdout.loss"]
+
     def test_recipes_carry_no_ground_truth(self):
         # recipes are committed; the secret wordlist must not appear in them
         for path in ORGANISM_RECIPES:
@@ -604,6 +691,26 @@ class TestOrganismRecipes:
             "organism: {enabled: true, kind: false_fact, prompts_dir: p, "
             "out_dir: o, n_facts: 5}\n",
             "n_facts",
+        )
+        check(
+            "organism: {enabled: true, kind: taboo, prompts_dir: p, out_dir: o, "
+            "replay_examples: 8}\n",
+            "replay_source and organism.replay_examples go together",
+        )
+        check(
+            "organism: {enabled: true, kind: taboo, prompts_dir: p, out_dir: o, "
+            "replay_source: x}\n",
+            "go together",
+        )
+        check(
+            "organism: {enabled: true, kind: taboo, prompts_dir: p, out_dir: o, "
+            "corpus_repeat: 0}\n",
+            "corpus_repeat",
+        )
+        check(
+            "organism: {enabled: true, kind: taboo, prompts_dir: p, out_dir: o, "
+            "locality_gate: []}\n",
+            "locality_gate",
         )
 
     def test_organism_requires_sft(self, tmp_path):

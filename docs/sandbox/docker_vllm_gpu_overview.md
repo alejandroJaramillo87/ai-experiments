@@ -1,8 +1,8 @@
 # AI Engineering vLLM GPU Docker Implementation
 
-Explanation of the RTX 5090 Blackwell optimized vLLM Dockerfile for GPU-accelerated model inference on the AI workstation, detailing the single-stage image build, the vLLM 0.25.0 official cu130 wheel install, and Blackwell architecture settings.
+Explanation of the RTX 5090 Blackwell optimized vLLM Dockerfile for GPU-accelerated model inference on the AI workstation, detailing the single-stage image build, the vLLM 0.30.0 official cu130 wheel install, and Blackwell architecture settings.
 
-> Note: This document explains the actual implementation in `docker/vllm-gpu/Dockerfile.vllm-gpu`. The Dockerfile installs vLLM 0.25.0 with CUDA 13.0.2, targets Blackwell sm_120 through the official cu130 wheel, uses FlashInfer 0.6.13 attention kernels, and applies GPU runtime settings for transformer model serving.
+> Note: This document explains the actual implementation in `docker/vllm-gpu/Dockerfile.vllm-gpu`. The Dockerfile installs vLLM 0.30.0 with CUDA 13.0.2, targets Blackwell sm_120 through the official cu130 wheel, uses FlashInfer 0.6.18.post1 attention kernels, and applies GPU runtime settings for transformer model serving.
 
 ## Table of Contents
 
@@ -40,17 +40,17 @@ Explanation of the RTX 5090 Blackwell optimized vLLM Dockerfile for GPU-accelera
 
 ## Implementation Overview
 
-The vLLM GPU Docker implementation uses a single-stage image built on the CUDA 13.0.2 runtime. It installs the official vLLM 0.25.0 cu130 wheel, which ships sm_120 kernels for the RTX 5090 Blackwell architecture and pulls in PyTorch 2.11 cu130. The previous from-source build is no longer used: since vLLM v0.20.0 the official wheels default to CUDA 13.0 and include Blackwell (compute capability 12.0) kernel binaries, so no local compilation, git clone, ccache, or `setup.py` build step is required.
+The vLLM GPU Docker implementation uses a single-stage image built on the CUDA 13.0.2 runtime. It installs the official vLLM 0.30.0 cu130 wheel, which ships sm_120 kernels for the RTX 5090 Blackwell architecture and pulls in PyTorch 2.13 cu130. The previous from-source build is no longer used: since vLLM v0.20.0 the official wheels default to CUDA 13.0 and include Blackwell (compute capability 12.0) kernel binaries, so no local compilation, git clone, ccache, or `setup.py` build step is required.
 
 Key implementation features:
 
 - **Single-stage image**: One `nvidia/cuda:13.0.2-cudnn-runtime-ubuntu24.04` stage installs vLLM from the wheel; no builder stage.
-- **vLLM 0.25.0**: Installed as the official cu130 wheel via `uv pip install vllm==0.25.0 --torch-backend=cu130`.
-- **PyTorch 2.11 cu130**: Pulled in as a dependency of the vLLM cu130 wheel.
+- **vLLM 0.30.0**: Installed as the official cu130 wheel via `uv pip install vllm==0.30.0 --torch-backend=cu130`.
+- **PyTorch 2.13 cu130**: Pulled in as a dependency of the vLLM cu130 wheel.
 - **Blackwell support**: The vLLM wheel ships sm_120 kernel binaries for the RTX 5090.
 - **CUDA 13.0.2**: CUDA runtime with cuDNN in the base image.
 - **Pinned uv 0.11.28**: Copied from `ghcr.io/astral-sh/uv:0.11.28`, replacing the unpinned `curl | sh` installer.
-- **FlashInfer 0.6.13**: Pre-compiled attention kernels, the default attention backend on Blackwell.
+- **FlashInfer 0.6.18.post1**: Pre-compiled attention kernels, the default attention backend on Blackwell.
 - **Entrypoint script**: Parameterized server configuration through environment variables.
 - **Nsight Systems integration**: Optional deep profiling support.
 - **Security hardening**: Non-root user execution with controlled cache management.
@@ -61,19 +61,21 @@ Key implementation features:
 
 ```dockerfile
 ARG CUDA_VERSION=13.0.2
-ARG VLLM_VERSION=0.25.0
+ARG VLLM_VERSION=0.30.0
+ARG TRANSFORMERS_VERSION=5.16.1
 ARG PYTHON_VERSION=3.12
 ARG UV_VERSION=0.11.28
-ARG FLASHINFER_VERSION=0.6.13
+ARG FLASHINFER_VERSION=0.6.18.post1
 ```
 
 The Dockerfile uses build arguments for version management:
 
 - **CUDA_VERSION**: CUDA runtime version (default: 13.0.2)
-- **VLLM_VERSION**: vLLM wheel version to install (default: 0.25.0)
+- **VLLM_VERSION**: vLLM wheel version to install (default: 0.30.0)
+- **TRANSFORMERS_VERSION**: transformers version installed in the same resolve (default: 5.16.1); vLLM's own requirement is a floor, and the model-config API the two share is what a Gemma 4 load exercises (KB-100)
 - **PYTHON_VERSION**: Python version (default: 3.12)
 - **UV_VERSION**: Pinned uv binary version (default: 0.11.28)
-- **FLASHINFER_VERSION**: FlashInfer package version (default: 0.6.13)
+- **FLASHINFER_VERSION**: FlashInfer package version (default: 0.6.18.post1)
 
 ### Pinned uv Binary Source
 
@@ -149,27 +151,28 @@ ENV PATH="/opt/venv/bin:${PATH}"
 
 ```dockerfile
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install vllm==${VLLM_VERSION} --torch-backend=cu130
+    uv pip install vllm==${VLLM_VERSION} transformers==${TRANSFORMERS_VERSION} \
+    --torch-backend=cu130
 ```
 
-- **Official wheel**: Installs vLLM 0.25.0 from the published cu130 wheel; no source checkout or compilation.
-- **`--torch-backend=cu130`**: Selects the PyTorch cu130 index, pulling in PyTorch 2.11 cu130.
+- **Official wheel**: Installs vLLM 0.30.0 from the published cu130 wheel; no source checkout or compilation.
+- **`--torch-backend=cu130`**: Selects the PyTorch cu130 index, pulling in PyTorch 2.13 cu130, the version the lock file pins for the other images.
 - **Blackwell kernels**: The vLLM wheel itself ships sm_120 kernel binaries for the RTX 5090.
+- **transformers pinned in the same resolve**: vLLM requires only a floor, so an unpinned build takes the release current that day; the two are bumped together (KB-100).
 - **uv cache mount**: Reuses the uv download cache across builds.
 
 ### FlashInfer Attention Kernels
 
 ```dockerfile
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install flashinfer-cubin==${FLASHINFER_VERSION} && \
     uv pip install flashinfer-jit-cache==${FLASHINFER_VERSION} \
-    --extra-index-url https://flashinfer.ai/whl/cu130
+    --index-url https://flashinfer.ai/whl/cu130
 ```
 
 FlashInfer components:
 
-- **flashinfer-cubin==0.6.13**: Pre-built CUDA binary attention kernels.
-- **flashinfer-jit-cache==0.6.13**: Pre-warmed JIT cache for custom attention kernel generation.
+- **flashinfer-python**: Arrives with the vLLM wheel, which pins it exactly; nothing installs it by name.
+- **flashinfer-jit-cache==0.6.18.post1**: Pre-warmed JIT cache for custom attention kernel generation.
 - **cu130 wheel index**: FlashInfer wheels built for CUDA 13.x.
 
 ```dockerfile
@@ -410,11 +413,11 @@ Entrypoint features:
 
 ### Blackwell Architecture Targeting
 
-The vLLM 0.25.0 cu130 wheel ships pre-built sm_120 (compute capability 12.0) kernel binaries for the RTX 5090, so no local compilation is required to target Blackwell. The implementation relies on:
+The vLLM 0.30.0 cu130 wheel ships pre-built sm_120 (compute capability 12.0) kernel binaries for the RTX 5090, so no local compilation is required to target Blackwell. The implementation relies on:
 
 - **sm_120 kernels**: Included in the official wheel for Blackwell streaming multiprocessors.
 - **32GB VRAM**: Configured for large transformer model inference with memory management tuning.
-- **FlashInfer 0.6.13**: The default attention backend on Blackwell, selectable through `ATTENTION_BACKEND`.
+- **FlashInfer 0.6.18.post1**: The default attention backend on Blackwell, selectable through `ATTENTION_BACKEND`.
 
 ### Memory Management
 
@@ -500,4 +503,4 @@ Model compatibility:
 
 ---
 
-*This vLLM GPU Docker implementation provides transformer model serving on the RTX 5090 Blackwell architecture. The single-stage image installs the vLLM 0.25.0 official cu130 wheel with FlashInfer 0.6.13 attention kernels while maintaining non-root execution and cache isolation.*
+*This vLLM GPU Docker implementation provides transformer model serving on the RTX 5090 Blackwell architecture. The single-stage image installs the vLLM 0.30.0 official cu130 wheel with FlashInfer 0.6.18.post1 attention kernels while maintaining non-root execution and cache isolation.*

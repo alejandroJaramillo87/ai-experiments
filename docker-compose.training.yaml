@@ -145,6 +145,12 @@ services:
       - /mnt/ai-data/training:/mnt/ai-data/training:rw
       # Structured observability records; identity-mounted for the same reason as above
       - /mnt/ai-data/logs:/mnt/ai-data/logs:rw
+      # The organism corpus: `organism.out_dir` in training/recipes/organisms/ lives
+      # under this tree, written by the host-run generator and read here by
+      # prepare-sft. Identity path because the recipe names the host spelling;
+      # read-only because prepare writes its dataset under /mnt/ai-data/training
+      # and nothing else in the interp tree is this service's to touch (KB-103).
+      - /mnt/ai-data/interp:/mnt/ai-data/interp:ro
       - ./scripts:/app/scripts:ro
       - ./training:/app/training:ro
       - ./common:/app/common:ro

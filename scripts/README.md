@@ -31,6 +31,7 @@ by review and by the human running them.
 | [training/](training/README.md) | Host-side helpers for the training tier. |
 | [update/](update/README.md) | Updaters for the workstation stack: Ubuntu, the NVIDIA driver, CUDA, cuDNN, Docker, the security tools and the uv-managed Python environment. |
 | [utils/](utils/README.md) | Host-environment reporters: which Pythons are installed, whether the AI dependencies and the repository's optimizations are present, how the two SSDs are used, and whether the PyTorch GPU stack imports. |
+| [verification/](verification/README.md) | Runbook entries that run for hours, as scripts. |
 
 <!-- inventory:dirs:end -->
 

@@ -42,7 +42,7 @@ carries no `model_hash`. A null test passes the same directory on both sides; ex
 the two records of each evaluator to agree within noise before trusting any real result.
 
 The in-container phases are `python -m training eval-holdout` and `eval-lmeval`, one
-model each; the driver runs them four times under the training lock and resumes from
+model each; the driver runs them four times, inference down, and resumes from
 the records already written when re-invoked with the same `--out-dir`.
 
 The lmeval phase reads its four task datasets from the datasets half of the persistent
@@ -70,7 +70,10 @@ read from the export manifest beside an exported `hf/` directory, computed from 
 weights for a downloaded base. It is the same value the harness compares a probe or
 control vector against under `--deep`, and `interp/probes/capture.py` derives at capture
 time, so an evaluation, a capture and a served run can be matched to the exact weights.
-The driver prints each side's hash and thinking mode before the phases run.
+The driver prints each side's hash, its source (`(manifest)` or `(computed)`) and
+thinking mode before the phases run. The export records its directory in the
+container spelling and the driver asks with the host's; the reader accepts either
+spelling of the models tree as one directory (KB-96).
 
 ## Records
 

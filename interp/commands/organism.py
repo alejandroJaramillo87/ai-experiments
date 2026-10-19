@@ -3,9 +3,11 @@
 Nested subcommands mirror the pipeline stages around the unchanged training
 path:
 
-  generate    render prompt templates with freshly drawn ground truth and
-              batch-generate the training corpus through the teacher harness
-              (serving-dependent; training runs afterward via make train-sft)
+  generate    swap the teacher onto the serving service, render prompt
+              templates with ground truth drawn from it, batch-generate the
+              training corpus through the teacher harness on the same model,
+              then restore the service (serving-dependent; training runs
+              afterward via make train-sft)
   verify      elicit the exported organism through the rust harness serving
               its hf directory (harness-serve, port 8005), judge through the
               judge service, compare eval-holdout and eval-lmeval records
@@ -81,15 +83,10 @@ def _write_json(payload: dict, path: str) -> str:
 
 
 def cmd_generate(args: argparse.Namespace, out: Printer) -> int:
-    from interp.organisms import generate as gen
     from training import serving
 
     recipe = load_organism_recipe(args.recipe)
     o = recipe.organism
-    work = os.path.join(o.out_dir, WORK_DIR)
-    draft_path = os.path.join(work, DRAFT_NAME)
-    resuming = os.path.isfile(draft_path)
-
     service = serving.SERVICES[args.service]
 
     def complete_fn(messages: list[dict], sampling: dict) -> str:
@@ -98,6 +95,61 @@ def cmd_generate(args: argparse.Namespace, out: Printer) -> int:
         )["content"]
 
     out.line(f"=== Organism generation: {recipe.run.name} ({o.kind}) ===")
+    # The driver owns the serving state for the whole stage, because the
+    # fact kinds draw their ground truth from the teacher before the corpus
+    # is generated: leaving the swap to generate-teacher put the draw
+    # against whatever the service happened to serve, or nothing
+    # (FT.organisms's third attempt, 2026-09-26, KB-99). Restore is owed
+    # from the moment the swap is attempted.
+    swapped = False
+    if not args.no_swap and not args.render_only:
+        try:
+            serving.ensure_training_idle()
+            container_path, host_path = serving.model_paths(args.teacher)
+            if not os.path.exists(host_path):
+                raise serving.ServingError(
+                    f"Teacher model not found on host: {host_path}"
+                )
+            out.run(f"Swapping {service.name} to {container_path}")
+            swapped = True
+            serving.swap_model(service, container_path)
+            elapsed = serving.wait_healthy(service)
+            out.ok(f"{service.name} healthy after {elapsed:.1f}s")
+        except serving.ServingError as exc:
+            out.error(str(exc))
+            if swapped:
+                _restore_serving(service, out)
+            return 1
+    try:
+        return _generate(args, out, recipe, complete_fn, swapped)
+    finally:
+        if swapped:
+            _restore_serving(service, out)
+
+
+def _restore_serving(service, out: Printer) -> None:
+    from training import serving
+
+    try:
+        out.run("Restoring previous serving state")
+        serving.swap_model(service, None)
+        out.ok("Previous serving state restored")
+    except serving.ServingError as exc:
+        out.error(f"Restore failed: {exc}")
+        out.line(
+            "  Solution: docker compose -f docker-compose.inference.yaml "
+            f"up -d --force-recreate {service.service}"
+        )
+
+
+def _generate(args, out: Printer, recipe, complete_fn, swapped: bool) -> int:
+    from interp.organisms import generate as gen
+    from training.data import teacher
+
+    o = recipe.organism
+    work = os.path.join(o.out_dir, WORK_DIR)
+    draft_path = os.path.join(work, DRAFT_NAME)
+    resuming = os.path.isfile(draft_path)
     substitutions: dict = {}
     facts = None
     assets: dict = {}
@@ -198,7 +250,9 @@ def cmd_generate(args: argparse.Namespace, out: Printer) -> int:
         "--timeout",
         str(args.timeout),
     ]
-    if args.no_swap:
+    if args.no_swap or swapped:
+        # The model is already on the service, by the operator or by the
+        # swap above; the harness still waits for health.
         teacher_argv.append("--no-swap")
     rc = _run_generate_teacher(teacher_argv)
     if rc != 0:
@@ -208,17 +262,24 @@ def cmd_generate(args: argparse.Namespace, out: Printer) -> int:
     blind_dir = os.path.join(o.out_dir, "data-blind")
     written = gen.blind_corpus(plan, os.path.join(o.out_dir, "data"), blind_dir)
     out.ok(f"Blind corpus: {written} examples in {blind_dir}")
+    # prepare-sft opens --source as a file (training/data/sft.py iter_records),
+    # so the hint names the JSONL inside the directory, not the directory.
     out.info(
-        f'Next: make prepare-sft ARGS="--source {blind_dir} ...", '
+        f'Next: make prepare-sft ARGS="--source {os.path.join(blind_dir, teacher.DATA_NAME)} ...", '
         f"then make train-sft CONFIG={args.recipe}"
     )
     return 0
 
 
 def cmd_verify(args: argparse.Namespace, out: Printer) -> int:
+    from common import serving
     from interp.organisms import generate as gen
     from interp.organisms import verify as ver
-    from interp.steering.scorecard import chat, post_with_timeout
+    from interp.steering.scorecard import (
+        JUDGE_REQUEST_EXTRA,
+        chat,
+        post_with_timeout,
+    )
 
     recipe = load_organism_recipe(args.recipe)
     o = recipe.organism
@@ -226,6 +287,18 @@ def cmd_verify(args: argparse.Namespace, out: Printer) -> int:
     draft = _read_json(os.path.join(work, DRAFT_NAME), "ground-truth draft")
     subject_post = post_with_timeout(args.subject_timeout)
     judge_post = post_with_timeout(args.judge_timeout)
+    # The judge is whatever the endpoint serves, so the report names it and
+    # every judge request carries the name: a service swapped under the
+    # verifier is then refused by the server, not judged by the wrong model
+    # (KB-104: the seventh FT.organisms attempt judged on the base model the
+    # environment file named, which has no chat template, and vLLM
+    # answered 400).
+    judge_url = args.judge_url.rstrip("/")
+    try:
+        judge_model = serving.served_model_at(f"{judge_url}/v1/models", judge_url)
+    except serving.ServingError as exc:
+        out.error(f"judge unavailable: {exc}")
+        return 1
 
     def subject(prompt: str) -> str:
         return chat(
@@ -236,12 +309,32 @@ def cmd_verify(args: argparse.Namespace, out: Printer) -> int:
             post=subject_post,
         )["text"]
 
+    # The judge request carries the steering scorecard's constraint (a JSON
+    # object, thinking off) beside the model name: the eighth FT.organisms
+    # attempt's judge answered with a verdict whose reason held a raw
+    # quotation mark copied from the statement, and the strict parser
+    # refused it (KB-106). A verdict cut off by the token budget is named
+    # as such rather than reported as unparseable, as the scorecard does.
+    judge_max_tokens = 256
+
     def judge(prompt: str) -> str:
-        return chat(
-            args.judge_url, prompt, max_tokens=256, temperature=0.0, post=judge_post
-        )["text"]
+        completion = chat(
+            args.judge_url,
+            prompt,
+            max_tokens=judge_max_tokens,
+            temperature=0.0,
+            post=judge_post,
+            extra={"model": judge_model, **JUDGE_REQUEST_EXTRA},
+        )
+        if completion.get("finish_reason") == "length":
+            raise ver.VerifyError(
+                f"judge spent its {judge_max_tokens}-token budget without a "
+                f"complete verdict: {completion['text']!r}"
+            )
+        return completion["text"]
 
     out.line(f"=== Organism verification: {recipe.run.name} ({o.kind}) ===")
+    out.info(f"Judge: {judge_model} at {args.judge_url}")
     if o.kind == "taboo":
         direct_prompts = [
             r["instruction"]
@@ -293,7 +386,9 @@ def cmd_verify(args: argparse.Namespace, out: Printer) -> int:
     subject_metrics = ver.locality_metrics(
         [_read_json(path, "subject metrics") for path in args.subject_metrics]
     )
-    locality = ver.locality_check(base_metrics, subject_metrics, o.locality_epsilon)
+    locality = ver.locality_check(
+        base_metrics, subject_metrics, o.locality_epsilon, list(o.locality_gate)
+    )
     verdict = ver.organism_verdict(o.kind, implant, locality)
     config = {
         "recipe": os.path.abspath(args.recipe),
@@ -310,8 +405,11 @@ def cmd_verify(args: argparse.Namespace, out: Printer) -> int:
                 "n_facts",
             )
         },
+        "locality_gate": list(o.locality_gate),
         "subject_url": args.subject_url,
         "judge_url": args.judge_url,
+        "judge_model": judge_model,
+        "judge_response_format": JUDGE_REQUEST_EXTRA["response_format"],
         "subject_timeout": args.subject_timeout,
         "judge_timeout": args.judge_timeout,
         "temperature": args.temperature,
@@ -327,8 +425,14 @@ def cmd_verify(args: argparse.Namespace, out: Printer) -> int:
     )
     (out.ok if locality["passed"] else out.warn)(
         f"Locality check: {'passed' if locality['passed'] else 'failed'} "
-        f"({locality['metrics_compared']} metrics, epsilon "
-        f"{o.locality_epsilon})"
+        f"(gated {', '.join(locality['gate'])} of "
+        f"{locality['metrics_compared']} metrics, epsilon {o.locality_epsilon})"
+    )
+    out.info(
+        "Locality deltas: "
+        + ", ".join(
+            f"{name} {delta:+.3f}" for name, delta in locality["deltas"].items()
+        )
     )
     (out.ok if verdict["valid"] else out.error)(f"Verdict: {verdict['note']}")
     out.ok(f"Report written: {path}")
@@ -423,7 +527,10 @@ def configure(sub) -> None:
     p_gen.add_argument("--questions-per-fact", type=int, default=3)
     p_gen.add_argument("--timeout", type=int, default=300)
     p_gen.add_argument(
-        "--no-swap", action="store_true", help="use the already-served model"
+        "--no-swap",
+        action="store_true",
+        help="use the already-served model for the draw and the corpus, "
+        "and leave the service as it is afterwards",
     )
     p_gen.add_argument(
         "--render-only",

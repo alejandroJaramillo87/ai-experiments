@@ -99,7 +99,7 @@ Each runbook's own progress line is authoritative; this table is the index.
 
 | Runbook | Verified | Blocked | Pending | Of |
 |---------|---------:|--------:|--------:|---:|
-| [training/fine-tuning-loop.md](training/fine-tuning-loop.md) | 5 | 0 | 9 | 14 |
+| [training/fine-tuning-loop.md](training/fine-tuning-loop.md) | 10 | 0 | 4 | 14 |
 | [interp/interp.md](interp/interp.md) | 8 | 2 | 17 | 27 |
 | [observability/observability.md](observability/observability.md) | 2 | 0 | 7 | 9 |
 | [rust-harness/rust-harness.md](rust-harness/rust-harness.md) | 55 | 1 | 3 | 59 |
@@ -129,3 +129,22 @@ checkpoint the next day. RH.15 was a fourth kind on 2026-09-06: the command
 was right and both services were up, and the judge failed three times on the
 model's own habit of reasoning before it answers, until the request said
 exactly what it would accept.
+
+`training/fine-tuning-loop.md` added two kinds on 2026-09-25. FT.train-resume,
+FT.export-merged, FT.heldout-eval and FT.eval-ft each verified by hand and then
+gained a `hw_full` hardware mirror holding what the hand run observed; the mirror's
+first run is recorded in the entry, and the tier re-proves the entry after
+any environment change. And a failure that is host state rather than a tree
+defect, a root-owned directory or a venv synced before its lock, is recorded
+in the entry with the remedy and no ledger row: the ledger names code that
+misbehaved, and the runbook names what the operator had to do.
+
+An entry whose stages run for hours is driven by a script, not pasted stage
+by stage. FT.organisms was the first, on 2026-09-26: its command block is
+`scripts/verification/ft-organisms.sh`, and `make verify ENTRY=ft-organisms`
+runs it, brings each stage's services up and down, skips a stage whose
+output exists so a failed run resumes, and tees the whole output to a log
+under `/mnt/ai-data/logs/verification/`. The log is the paste; the entry
+records it verbatim as it would a hand run, and the hardware test that
+follows mirrors the script. `tests/docs/test_verify_scripts.py` holds every
+script to an entry that runs it and every such citation to a script.

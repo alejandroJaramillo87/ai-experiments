@@ -25,11 +25,13 @@ def write_checkpoint(root, name, weights=b"weights", manifest_hash=None):
     (directory / "config.json").write_text(json.dumps({"model_type": "gemma4"}))
     (directory / "model.safetensors").write_bytes(weights)
     if manifest_hash is not None:
+        # The export container records hf_dir in its own spelling of the
+        # models tree, which is what the host-side reader meets (KB-96).
         (root / name / "manifest.json").write_text(
             json.dumps(
                 {
                     "artifact": "hf_export",
-                    "hf_dir": str(directory),
+                    "hf_dir": common_serving.CONTAINER_MODELS + f"{name}/hf",
                     "model_hash": manifest_hash,
                 }
             )

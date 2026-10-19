@@ -74,6 +74,10 @@ class ServiceSpec:
     def chat_url(self) -> str:
         return self.base_url + "/v1/chat/completions"
 
+    @property
+    def models_url(self) -> str:
+        return self.base_url + "/v1/models"
+
 
 # vLLM takes high request concurrency (continuous batching); llama.cpp serves
 # one request at a time. vLLM cold starts are weight loads, hence the larger
@@ -207,6 +211,9 @@ def swap_model(
         env.pop(service.model_env, None)
     else:
         env[service.model_env] = container_path
+    # The served name changes with the container, so the next completion
+    # asks the service again rather than naming the model it replaced.
+    _SERVED_MODELS.pop(service.name, None)
     compose(
         env,
         "up",
@@ -257,6 +264,9 @@ def post_chat(
             return json.load(resp)
     except urllib.error.HTTPError as exc:
         detail = f"HTTP {exc.code} from {origin}: {exc.reason}"
+        message = error_message(exc)
+        if message:
+            detail = f"{detail} ({message})"
         if exc.code >= 500:
             raise ServingTransientError(detail) from exc
         raise ServingError(detail) from exc
@@ -266,19 +276,105 @@ def post_chat(
         raise ServingError(f"Non-JSON response from {origin}: {exc}") from exc
 
 
+def error_message(exc: urllib.error.HTTPError) -> str:
+    """The server's own sentence for an HTTP error, or an empty string.
+
+    The status reason is one word (`Bad Request`); the body is where an
+    OpenAI-compatible server says why. vLLM writes `{"message": ...}` at the
+    top level, llama.cpp `{"error": {"message": ...}}` (the OpenAI shape),
+    and the rust harness `{"error": ...}` as a string. A body that is not
+    JSON, or carries none of these, adds nothing (KB-104: the organism
+    judge's 400 reached the log as `Bad Request` and nothing else).
+    """
+    try:
+        body = json.loads(exc.read())
+    except (ValueError, OSError, AttributeError, TypeError):
+        return ""
+    if not isinstance(body, dict):
+        return ""
+    message = body.get("message")
+    if message is None:
+        error = body.get("error")
+        message = error.get("message") if isinstance(error, dict) else error
+    return str(message).strip() if isinstance(message, str) else ""
+
+
+# Served model id per registry name, filled by served_model and cleared by
+# swap_model. One GET per service per process, not per completion.
+_SERVED_MODELS: dict[str, str] = {}
+
+# The name sent to a server that has no models list and ignores the field.
+FALLBACK_MODEL = "default"
+
+
+def served_model_at(models_url: str, origin: str, timeout: float = 30) -> str:
+    """The model id GET <models_url> reports (the first entry), uncached.
+
+    The URL form of served_model, for a caller that holds an endpoint and
+    not a registry entry (the organism verifier's --judge-url, KB-104);
+    origin names the service in messages. Same taxonomy as served_model:
+    a 404 is a server without the endpoint and yields FALLBACK_MODEL.
+    """
+    try:
+        with urllib.request.urlopen(models_url, timeout=timeout) as resp:
+            body = json.load(resp)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return FALLBACK_MODEL
+        detail = f"HTTP {exc.code} from {origin} models list: {exc.reason}"
+        if exc.code >= 500:
+            raise ServingTransientError(detail) from exc
+        raise ServingError(detail) from exc
+    except (urllib.error.URLError, OSError, TimeoutError) as exc:
+        raise ServingTransientError(f"Models list from {origin} failed: {exc}") from exc
+    except ValueError as exc:
+        raise ServingError(f"Non-JSON models list from {origin}: {exc}") from exc
+    try:
+        model = body["data"][0]["id"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise ServingError(f"Models list from {origin} names no model: {exc}") from exc
+    if not isinstance(model, str) or not model:
+        raise ServingError(f"Models list from {origin} names no model")
+    return model
+
+
+def served_model(service: ServiceSpec, timeout: float = 30) -> str:
+    """The model id the service reports on GET /v1/models (the first entry).
+
+    The OpenAI chat shape requires a model name, and the two engines treat
+    it differently: llama.cpp ignores the field, vLLM resolves it against
+    its served names and answers 404 for any other (KB-102). vLLM serves
+    the model under the path it was started with unless told otherwise,
+    which changes on every swap, so the client asks rather than guesses.
+    A server without the endpoint (the rust harness serves health and chat
+    only) is one that ignores the field, so a 404 there yields the name
+    the client always sent. Raises ServingTransientError for failures a
+    retry may resolve and ServingError for a body without a model id.
+    """
+    if service.name in _SERVED_MODELS:
+        return _SERVED_MODELS[service.name]
+    model = served_model_at(service.models_url, service.name, timeout)
+    _SERVED_MODELS[service.name] = model
+    return model
+
+
 def chat_completion(
     service: ServiceSpec,
     messages: list[dict],
     sampling: dict | None = None,
     timeout: int = 120,
 ) -> dict:
-    """POST one /v1/chat/completions request.
+    """POST one /v1/chat/completions request, naming the served model.
 
     Returns {"content", "usage", "latency_ms"}. Raises ServingTransientError
     for failures a retry may resolve (connection errors, timeouts, 5xx) and
     ServingError for request errors a retry cannot fix (4xx, bad body).
     """
-    payload = {"model": "default", "messages": messages, **(sampling or {})}
+    payload = {
+        "model": served_model(service),
+        "messages": messages,
+        **(sampling or {}),
+    }
     start = time.monotonic()
     body = post_chat(service.chat_url, payload, timeout=timeout, origin=service.name)
     try:

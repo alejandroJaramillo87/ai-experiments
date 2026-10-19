@@ -7,6 +7,11 @@
 
 TRAIN_COMPOSE := docker-compose.training.yaml
 
+# Host-run targets take the interpreter make/quality.mk resolves as RUN_PY (.venv
+# through `uv run --no-sync` on the workstation, PATH in the sandbox): python -m
+# training imports every command module at import, which reaches the training
+# group, and the system python3 has none of it (KB-95).
+
 train-build: ## Build the training image (runs the smoke test at build; fails on regression)
 	@echo "$(CYAN)Building training image...$(RESET)"
 	MAX_JOBS=$(MAX_JOBS) NVCC_THREADS=$(NVCC_THREADS) docker compose -f $(TRAIN_COMPOSE) build
@@ -65,7 +70,7 @@ export-hf: ## Export a checkpoint as the merged HF directory the harness loads: 
 	docker compose -f $(TRAIN_COMPOSE) run --rm export python -m training export --checkpoint $(CHECKPOINT) $(ARGS)
 
 eval-ft: ## Held-out loss and lm-eval records on a base and a fine-tune (Phase 1 F7, host-run): make eval-ft ARGS="--base <hf dir> --tuned <hf dir> --dataset ..."
-	python3 -m training eval-ft $(ARGS)
+	$(RUN_PY) python -m training eval-ft $(ARGS)
 
 generate-teacher: ## Batch-generate teacher data through the serving stack (Phase 1 F4, host-run): make generate-teacher ARGS="--pipeline respond --prompts ... --teacher ... --out ..."
-	python3 -m training generate-teacher $(ARGS)
+	$(RUN_PY) python -m training generate-teacher $(ARGS)

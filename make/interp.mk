@@ -77,7 +77,7 @@ steer-down: ## Recreate the service unsteered (restores production state)
 steer-scorecard: ## Run the scorecard (baseline, system prompt, one steered arm per scale) against live services (VECTOR=... ATTRIBUTE="..." [ARGS=...])
 	@test -n "$(VECTOR)" || { echo "VECTOR=/mnt/ai-data/interp/vectors/<name> is required"; exit 2; }
 	@test -n "$(ATTRIBUTE)" || { echo "ATTRIBUTE=\"behavior the judge scores\" is required"; exit 2; }
-	uv run python -m interp steer-scorecard --vector "$(VECTOR)" --attribute "$(ATTRIBUTE)" $(ARGS)
+	$(RUN_PY) python -m interp steer-scorecard --vector "$(VECTOR)" --attribute "$(ATTRIBUTE)" $(ARGS)
 
 probe-capture: ## Capture labeled activations in the workbench (ARGS="--model ... --dataset ... --layers ... --out ...")
 	@./scripts/interp/preflight.sh
@@ -90,10 +90,10 @@ probe-train: ## Train and register probes from a capture (ARGS="--capture ... --
 # the format the harness reader takes. probe-train leaves probe.npz, which is
 # Python-only; harness-serve's HARNESS_PROBE needs the safetensors image.
 probe-export: ## Export a registered probe as the safetensors image harness-serve loads (ARGS="--probe /mnt/ai-data/interp/probes/<name>")
-	uv run python -m interp probe-export $(ARGS)
+	$(RUN_PY) python -m interp probe-export $(ARGS)
 
 probe-eval: ## Regenerate a probe evaluation report with black-box baselines (serving-dependent; ARGS="--probe ... --label-name ...")
-	uv run python -m interp probe-eval $(ARGS)
+	$(RUN_PY) python -m interp probe-eval $(ARGS)
 
 # No preflight, and no --model: the scores are already in the log, taken by
 # the process that served each request. Nothing here loads a model, so this
@@ -131,33 +131,37 @@ sae-eval: ## Evaluate a trained SAE against its capture (make sae-eval SAE=/mnt/
 
 ##@ Interpretability organisms (interp Phase 4 P4-D1 - host-run; generation and verification are serving-dependent)
 
+# The four targets run on the host through RUN_PY (make/quality.mk), as the probe and
+# steering host targets above do, not the system python3: python -m interp imports the
+# interp group at import (KB-95).
+
 organism-generate: ## Draw ground truth and generate the organism corpus (make organism-generate RECIPE=training/recipes/organisms/taboo.yaml TEACHER=/mnt/ai-data/models/... [ARGS=...])
 	@test -n "$(RECIPE)" || { echo "RECIPE=training/recipes/organisms/<name>.yaml is required"; exit 2; }
-	python3 -m interp organism generate --recipe $(RECIPE) $(if $(TEACHER),--teacher $(TEACHER),) $(ARGS)
+	$(RUN_PY) python -m interp organism generate --recipe $(RECIPE) $(if $(TEACHER),--teacher $(TEACHER),) $(ARGS)
 
 organism-verify: ## Run the implant and locality checks against the harness and the judge (make organism-verify RECIPE=... BASE_METRICS="<holdout json> <lmeval json>" SUBJECT_METRICS="..." [ARGS=...])
 	@test -n "$(RECIPE)" || { echo "RECIPE=training/recipes/organisms/<name>.yaml is required"; exit 2; }
 	@test -n "$(BASE_METRICS)" || { echo "BASE_METRICS=<eval-holdout and eval-lmeval records for the base model, space-separated> is required"; exit 2; }
 	@test -n "$(SUBJECT_METRICS)" || { echo "SUBJECT_METRICS=<eval-holdout and eval-lmeval records for the organism, space-separated> is required"; exit 2; }
-	python3 -m interp organism verify --recipe $(RECIPE) $(foreach m,$(BASE_METRICS),--base-metrics $(m)) $(foreach m,$(SUBJECT_METRICS),--subject-metrics $(m)) $(ARGS)
+	$(RUN_PY) python -m interp organism verify --recipe $(RECIPE) $(foreach m,$(BASE_METRICS),--base-metrics $(m)) $(foreach m,$(SUBJECT_METRICS),--subject-metrics $(m)) $(ARGS)
 
 organism-seal: ## Seal ground truth and write the blinded public manifest (make organism-seal RECIPE=... ARGS="--checkpoint <exported hf dir>")
 	@test -n "$(RECIPE)" || { echo "RECIPE=training/recipes/organisms/<name>.yaml is required"; exit 2; }
-	python3 -m interp organism seal --recipe $(RECIPE) $(ARGS)
+	$(RUN_PY) python -m interp organism seal --recipe $(RECIPE) $(ARGS)
 
 organism-check-seal: ## Re-verify a sealed organism's ground-truth hash (make organism-check-seal DIR=/mnt/ai-data/interp/organisms/<name>)
 	@test -n "$(DIR)" || { echo "DIR=/mnt/ai-data/interp/organisms/<name> is required"; exit 2; }
-	python3 -m interp organism check-seal --dir $(DIR)
+	$(RUN_PY) python -m interp organism check-seal --dir $(DIR)
 
 organism: ## Print the full organism pipeline for a recipe (each stage has its own GPU/serving preconditions, so stages run individually)
 	@test -n "$(RECIPE)" || { echo "RECIPE=training/recipes/organisms/<name>.yaml is required"; exit 2; }
 	@echo "Organism pipeline for $(RECIPE):"
 	@echo "  1. make organism-generate RECIPE=$(RECIPE) TEACHER=<model>   (serving up)"
-	@echo "  2. make prepare-sft ARGS=\"--source <out_dir>/data-blind ...\" (see recipe sft.dataset)"
+	@echo "  2. make prepare-sft ARGS=\"--source <out_dir>/data-blind/data.jsonl --holdout 0 --repeat <organism.corpus_repeat> --replay-source <organism.replay_source> --replay-split <organism.replay_split> --replay-examples <organism.replay_examples> ...\" (see recipe sft.dataset; the replay mix is KB-105)"
 	@echo "  3. make train-sft CONFIG=$(RECIPE)                            (inference down)"
 	@echo "  4. make export-hf CHECKPOINT=<run checkpoint> ARGS=\"--name <organism>\" (merges the adapter it finds; writes <organism>/hf)"
 	@echo "  5. make eval-ft ARGS=\"--base <base hf dir> --tuned <organism hf dir> --evaluators holdout,lmeval --dataset ...\" (inference down; writes holdout_*.json and lmeval_*.json per side)"
-	@echo "  6. HARNESS_MODEL=<organism hf dir, container path> make harness-serve   (judge service up)"
+	@echo "  6. VLLM_GPU_MODEL=<teacher, container path> make vllm-up; HARNESS_MODEL=<organism hf dir, container path> make harness-serve   (the judge is the teacher: the base has no chat template, KB-104)"
 	@echo "  7. make organism-verify RECIPE=$(RECIPE) BASE_METRICS=\"<holdout_base.json> <lmeval_base.json>\" SUBJECT_METRICS=\"<holdout_tuned.json> <lmeval_tuned.json>\""
 	@echo "  8. make organism-seal RECIPE=$(RECIPE) ARGS=\"--checkpoint <organism hf dir>\"   (records the directory and its model_hash)"
 	@echo "  9. make organism-check-seal DIR=/mnt/ai-data/interp/organisms/<name>"

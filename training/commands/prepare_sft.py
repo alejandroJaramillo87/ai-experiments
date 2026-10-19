@@ -89,6 +89,35 @@ def configure(sub) -> None:
         dest="license_str",
         help="License string recorded in the manifest (default: unknown)",
     )
+    # Replay (training/data/sft.py ReplaySpec): a small corpus trained
+    # beside the base's own distribution, so a fine-tune keeps what it was
+    # not meant to change (organism recipes, KB-105).
+    parser.add_argument(
+        "--repeat",
+        type=positive_int,
+        default=1,
+        help="Write the --source records this many times over (default: 1)",
+    )
+    parser.add_argument(
+        "--replay-source",
+        default="",
+        help="HF dataset id or local .jsonl appended after --source",
+    )
+    parser.add_argument(
+        "--replay-split", default="train", help="Dataset split for a hub replay source"
+    )
+    parser.add_argument(
+        "--replay-revision",
+        default=None,
+        help="Dataset revision for a hub replay source",
+    )
+    parser.add_argument(
+        "--replay-examples",
+        type=positive_int,
+        default=0,
+        help="Records taken from the head of the replay source (requires "
+        "--replay-source)",
+    )
     parser.set_defaults(func=cmd)
 
 
@@ -101,6 +130,23 @@ def cmd(args: argparse.Namespace) -> int:
     out.info(f"Tokenizer: {args.tokenizer}")
     out.info(f"Model family: {args.model_type}")
     out.info(f"Output: {args.out}")
+    replay = None
+    if args.replay_source or args.replay_examples:
+        if not (args.replay_source and args.replay_examples):
+            out.error("--replay-source and --replay-examples go together")
+            return 2
+        replay = sft_mod.ReplaySpec(
+            source=args.replay_source,
+            examples=args.replay_examples,
+            split=args.replay_split,
+            revision=args.replay_revision,
+        )
+        out.info(
+            f"Replay: {replay.examples:,} examples from {replay.source} "
+            f"({replay.split})"
+        )
+    if args.repeat > 1:
+        out.info(f"Corpus repeat: {args.repeat}")
     out.run("Rendering, tokenizing, and masking conversations")
 
     def progress(examples: int, tokens: int) -> None:
@@ -118,6 +164,8 @@ def cmd(args: argparse.Namespace) -> int:
             holdout=args.holdout,
             seed=args.seed,
             license_str=args.license_str,
+            repeat=args.repeat,
+            replay=replay,
             progress=progress,
         )
     except FileExistsError as exc:
